@@ -145,6 +145,46 @@ module tf.graph.util {
   }
 
   /**
+   * Asynchronously runs an expensive task that returns a promise. Updates the
+   * tracker's progress after the promise resolves. Returns a new promise that
+   * resolves after the progress is updated.
+   */
+  export function runAsyncPromiseTask<T>(
+      msg: string, incProgressValue: number, task: () => Promise<T>,
+      tracker: ProgressTracker): Promise<T> {
+    return new Promise((resolve, reject) => {
+      let handleError = function(e) {
+        // Errors that happen inside asynchronous tasks are
+        // reported to the tracker using a user-friendly message.
+        tracker.reportError('Failed ' + msg, e);
+        reject(e);
+      };
+
+      // Update the progress message to say the current running task.
+      tracker.setMessage(msg);
+      // Run the expensive task with a delay that gives enough time for the
+      // UI to update.
+      setTimeout(function() {
+        try {
+          let start = Date.now();
+          task()
+              .then(function(value) {
+                /* tslint:disable */
+                console.log(msg, ':', Date.now() - start, 'ms');
+                // Update the progress value.
+                tracker.updateProgress(incProgressValue);
+                // Return the result to be used by other tasks.
+                resolve(value);
+              })
+              .catch(handleError);
+        } catch (e) {
+          handleError(e);
+        }
+      }, ASYNC_TASK_DELAY);
+    });
+  }
+
+  /**
    * Returns a query selector with escaped special characters that are not
    * allowed in a query selector.
    */
@@ -192,5 +232,59 @@ module tf.graph.util {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Given a list of strings, it returns a new list of strings with the longest
+   * common prefix removed. If the common prefix is one of the strings in the
+   * list, it returns the original strings.
+   */
+  export function removeCommonPrefix(strings: string[]) {
+    if (strings.length < 2) {
+      return strings;
+    }
+
+    let index = 0;
+    let largestIndex = 0;
+    // Find the shortest name across all strings.
+    let minLength = _.min(_.map(strings, str => str.length));
+    while (true) {
+      index++;
+      let prefixes = _.map(strings, str => str.substring(0, index));
+      let allTheSame = prefixes.every((prefix, i) => {
+        return (i === 0 ? true : prefix === prefixes[i - 1]);
+      });
+      if (allTheSame) {
+        if (index >= minLength) {
+          // There is a string whose whole name is a prefix to other string.
+          // In this case, we return the original list of string.
+          return strings;
+        }
+        largestIndex = index;
+      } else {
+        break;
+      }
+    }
+    return _.map(strings, str => str.substring(largestIndex));
+  }
+
+  /**
+   * Given a queryString, aka ?foo=1&bar=2, return the object representation.
+   */
+  export function getQueryParams(queryString: string) {
+    if (queryString.charAt(0) === '?') {
+      queryString = queryString.slice(1);
+    }
+
+    let queryParams = _.chain(queryString.split('&'))
+                          .map((item) => {
+                            if (item) {
+                              return item.split('=');
+                            }
+                          })
+                          .compact()
+                          .value();
+
+    return _.object(queryParams);
   }
 }

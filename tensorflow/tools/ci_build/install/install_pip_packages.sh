@@ -19,19 +19,33 @@ set -e
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
-# Use pip to install numpy to the latest version, instead of 1.8.2 through
-# apt-get
-wget -q https://pypi.python.org/packages/17/f3/404bc85be67150663024d2bb5af654c7d16cf678077690dda27b91be14eb/numpy-1.8.2-cp27-cp27mu-manylinux1_x86_64.whl#md5=3ccf5c004fc99bd06dd443de80d622e6
-mv numpy-1.8.2-cp27-cp27mu-manylinux1_x86_64.whl \
-   numpy-1.8.2-cp27-none-linux_x86_64.whl
-pip install numpy-1.8.2-cp27-none-linux_x86_64.whl
-rm numpy-1.8.2-cp27-none-linux_x86_64.whl
+pip install wheel
+pip3 install wheel
 
-wget -q https://pypi.python.org/packages/33/7d/46d8905d39f462e0f6d1f38e1d165adc2939b9f91ca800e1cba8ef0c0f24/numpy-1.8.2-cp34-cp34m-manylinux1_x86_64.whl#md5=528b2b555d2b6979f10e444cacc04fc9
-mv numpy-1.8.2-cp34-cp34m-manylinux1_x86_64.whl \
-   numpy-1.8.2-cp34-none-linux_x86_64.whl
-pip3 install numpy-1.8.2-cp34-none-linux_x86_64.whl
-rm numpy-1.8.2-cp34-none-linux_x86_64.whl
+# Install six.
+pip install --upgrade six==1.10.0
+pip3 install --upgrade six==1.10.0
+
+# Install protobuf.
+pip install --upgrade protobuf==3.0.0
+pip3 install --upgrade protobuf==3.0.0
+
+# Remove obsolete version of six, which can sometimes confuse virtualenv.
+rm -rf /usr/lib/python3/dist-packages/six*
+
+# Use pip to install numpy to a modern version, instead of 1.8.2 that comes
+# with apt-get in ubuntu:14.04.
+wget -q https://pypi.python.org/packages/06/92/3c786303889e6246971ad4c48ac2b4e37a1b1c67c0dc2106dc85cb15c18e/numpy-1.11.0-cp27-cp27mu-manylinux1_x86_64.whl#md5=6ffb66ff78c28c55bfa09a2ceee487df
+mv numpy-1.11.0-cp27-cp27mu-manylinux1_x86_64.whl \
+   numpy-1.11.0-cp27-none-linux_x86_64.whl
+pip install numpy-1.11.0-cp27-none-linux_x86_64.whl
+rm numpy-1.11.0-cp27-none-linux_x86_64.whl
+
+wget -q https://pypi.python.org/packages/ea/ca/5e48a68be496e6f79c3c8d90f7c03ea09bbb154ea4511f5b3d6c825cefe5/numpy-1.11.0-cp34-cp34m-manylinux1_x86_64.whl#md5=08a002aeffa20354aa5045eadb549361
+mv numpy-1.11.0-cp34-cp34m-manylinux1_x86_64.whl \
+   numpy-1.11.0-cp34-none-linux_x86_64.whl
+pip3 install numpy-1.11.0-cp34-none-linux_x86_64.whl
+rm numpy-1.11.0-cp34-none-linux_x86_64.whl
 
 # Use pip to install scipy to get the latest version, instead of 0.13 through
 # apt-get.
@@ -76,3 +90,10 @@ pip3 install py-cpuinfo
 # pylint tests require the following:
 pip install pylint
 pip3 install pylint
+
+# pep8 tests require the following:
+pip install pep8
+pip3 install pep8
+
+# tf.mock require the following for python2:
+pip install mock

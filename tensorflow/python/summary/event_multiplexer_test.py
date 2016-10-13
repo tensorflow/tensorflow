@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import os.path
+import shutil
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
@@ -31,7 +32,8 @@ def _AddEvents(path):
   if not gfile.IsDirectory(path):
     gfile.MakeDirs(path)
   fpath = os.path.join(path, 'hypothetical.tfevents.out')
-  with gfile.GFile(fpath, 'w'):
+  with gfile.GFile(fpath, 'w') as f:
+    f.write('')
     return fpath
 
 
@@ -100,7 +102,12 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     super(EventMultiplexerTest, self).setUp()
-    event_accumulator.EventAccumulator = _GetFakeAccumulator
+    self.stubs = googletest.StubOutForTesting()
+
+    self.stubs.Set(event_accumulator, 'EventAccumulator', _GetFakeAccumulator)
+
+  def tearDown(self):
+    self.stubs.CleanUp()
 
   def testEmptyLoader(self):
     x = event_multiplexer.EventMultiplexer()
@@ -272,6 +279,31 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x.AddRun('run2')
     self.assertTrue(x._GetAccumulator('run1').reload_called)
     self.assertTrue(x._GetAccumulator('run2').reload_called)
+
+
+class EventMultiplexerWithRealAccumulatorTest(test_util.TensorFlowTestCase):
+
+  def testDeletingDirectoryRemovesRun(self):
+    x = event_multiplexer.EventMultiplexer()
+    tmpdir = self.get_temp_dir()
+    join = os.path.join
+    run1_dir = join(tmpdir, 'run1')
+    run2_dir = join(tmpdir, 'run2')
+    run3_dir = join(tmpdir, 'run3')
+
+    for dirname in [run1_dir, run2_dir, run3_dir]:
+      _AddEvents(dirname)
+
+    x.AddRun(run1_dir, 'run1')
+    x.AddRun(run2_dir, 'run2')
+    x.AddRun(run3_dir, 'run3')
+
+    x.Reload()
+
+    # Delete the directory, then reload.
+    shutil.rmtree(run2_dir)
+    x.Reload()
+    self.assertNotIn('run2', x.Runs().keys())
 
 
 if __name__ == '__main__':

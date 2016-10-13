@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 using namespace tensorflow;
 
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
     .Output("zeroed: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Zeros out all but the first value of a Tensor.
 

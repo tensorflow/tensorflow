@@ -36,12 +36,7 @@ class DeterminantOpTest(tf.test.TestCase):
 
   def _compareDeterminant(self, matrix_x):
     with self.test_session():
-      # Check the batch version, which should work for ndim >= 2
-      self._compareDeterminantBase(
-          matrix_x, tf.batch_matrix_determinant(matrix_x))
-      if matrix_x.ndim == 2:
-        # Check the simple version
-        self._compareDeterminantBase(matrix_x, tf.matrix_determinant(matrix_x))
+      self._compareDeterminantBase(matrix_x, tf.matrix_determinant(matrix_x))
 
   def testBasic(self):
     # 2x2 matrices

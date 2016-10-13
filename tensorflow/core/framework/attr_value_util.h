@@ -56,13 +56,15 @@ void SetAttrValue(double value, AttrValue* out);
 void SetAttrValue(bool value, AttrValue* out);
 void SetAttrValue(DataType value, AttrValue* out);
 void SetAttrValue(const TensorShape& value, AttrValue* out);
+void SetAttrValue(const TensorShapeProto& value, AttrValue* out);
+void SetAttrValue(const PartialTensorShape& value, AttrValue* out);
 void SetAttrValue(const Tensor& value, AttrValue* out);
 void SetAttrValue(const TensorProto& value, AttrValue* out);
 void SetAttrValue(const NameAttrList& value, AttrValue* out);
-void SetAttrValue(const PartialTensorShape& value, AttrValue* out);
 
 void SetAttrValue(gtl::ArraySlice<string> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<const char*> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<StringPiece> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int64> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int32> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<float> value, AttrValue* out);
@@ -72,9 +74,10 @@ void SetAttrValue(const std::vector<bool>& value, AttrValue* out);
 void SetAttrValue(std::initializer_list<bool> value, AttrValue* out);
 void SetAttrValue(DataTypeSlice value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorShape> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<PartialTensorShape> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
-void SetAttrValue(gtl::ArraySlice<PartialTensorShape> value, AttrValue* out);
 
 inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
   *out = value;

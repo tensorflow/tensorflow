@@ -89,9 +89,9 @@ class Optimizer(object):
 
   ### Gating Gradients
 
-  Both `minimize()` and `compute_gradients()` accept a `gate_gradient` argument
-  that controls the degree of parallelism during the application of the
-  gradients.
+  Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
+  argument that controls the degree of parallelism during the application of
+  the gradients.
 
   The possible values are: `GATE_NONE`, `GATE_OP`, and `GATE_GRAPH`.
 
@@ -152,6 +152,9 @@ class Optimizer(object):
     #  {slot_name : { variable_to_train: slot_for_the_variable, ...}, ... }
     self._slots = {}
 
+  def get_name(self):
+    return self._name
+
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,
                colocate_gradients_with_ops=False, name=None,
@@ -209,7 +212,7 @@ class Optimizer(object):
 
     Args:
       loss: A Tensor containing the value to minimize.
-      var_list: Optional list of tf.Variable to update to minimize
+      var_list: Optional list of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
@@ -279,26 +282,37 @@ class Optimizer(object):
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
+
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works
+    converted_grads_and_vars = []
     for g, v in grads_and_vars:
+      if g is not None:
+        try:
+          # Convert the grad to Tensor or IndexedSlices if necessary
+          g = ops.convert_to_tensor_or_indexed_slices(g)
+        except TypeError:
+          raise TypeError(
+              "Gradient must be convertible to a Tensor or IndexedSlices, or None: %s" %g)
       if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       if not isinstance(v, variables.Variable):
         raise TypeError(
             "Variable must be a tf.Variable: %s" % v)
-      if g is not None:
-        self._assert_valid_dtypes([g, v])
-    var_list = [v for g, v in grads_and_vars if g is not None]
+
+      converted_grads_and_vars.append((g,v))
+
+    converted_grads_and_vars = tuple(converted_grads_and_vars)
+    var_list = [v for g, v in converted_grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s" %
-                       (grads_and_vars,))
+                       (converted_grads_and_vars,))
     with ops.control_dependencies(None):
       self._create_slots(var_list)
     update_ops = []
-    with ops.op_scope([], name, self._name) as name:
+    with ops.name_scope(name, self._name) as name:
       self._prepare()
-      for grad, var in grads_and_vars:
+      for grad, var in converted_grads_and_vars:
         if grad is None:
           continue
         # We colocate all ops created in _apply_dense or _apply_sparse
@@ -371,7 +385,7 @@ class Optimizer(object):
   def _valid_dtypes(self):
     """Valid types for loss, variables and gradients.
 
-    Defaults to `float32`. Subclasses should override to allow other types.
+    Subclasses should override to allow other float types.
 
     Returns:
       Valid types for loss, variables and gradients.

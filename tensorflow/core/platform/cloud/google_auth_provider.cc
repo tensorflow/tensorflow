@@ -21,7 +21,7 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cloud/base64.h"
+#include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -46,7 +46,7 @@ constexpr char kWellKnownCredentialsFile[] =
 
 // The minimum time delta between now and the token expiration time
 // for the token to be re-used.
-constexpr int kExpirationTimeMarginSec = 10;
+constexpr int kExpirationTimeMarginSec = 60;
 
 // The URL to retrieve the auth bearer token via OAuth with a refresh token.
 constexpr char kOAuthV3Url[] = "https://www.googleapis.com/oauth2/v3/token";
@@ -125,6 +125,7 @@ GoogleAuthProvider::GoogleAuthProvider(
       env_(env) {}
 
 Status GoogleAuthProvider::GetToken(string* t) {
+  mutex_lock lock(mu_);
   const uint64 now_sec = env_->NowSeconds();
 
   if (!current_token_.empty() &&
@@ -132,12 +133,37 @@ Status GoogleAuthProvider::GetToken(string* t) {
     *t = current_token_;
     return Status::OK();
   }
-  if (GetTokenFromFiles().ok() || GetTokenFromGce().ok()) {
+
+  // First, try to get the token using credentials stored in a few special
+  // file locations.
+  auto token_from_files_status = GetTokenFromFiles();
+
+  // If that didn't work, try to get the token assuming we're running on
+  // Google Compute Engine (GCE).
+  auto token_from_gce_status =
+      token_from_files_status.ok() ? Status::OK() : GetTokenFromGce();
+
+  if (token_from_files_status.ok() || token_from_gce_status.ok()) {
     *t = current_token_;
     return Status::OK();
   }
-  return errors::FailedPrecondition(
-      "All attempts to get a Google authentication bearer token failed.");
+
+  LOG(WARNING)
+      << "All attempts to get a Google authentication bearer token failed, "
+      << "returning an empty token. Retrieving token from files failed with \""
+      << token_from_files_status.ToString() << "\"."
+      << " Retrieving token from GCE failed with \""
+      << token_from_gce_status.ToString() << "\".";
+
+  // Public objects can still be accessed with an empty bearer token,
+  // so return an empty token instead of failing.
+  *t = "";
+
+  // From now on, always return the empty token.
+  expiration_timestamp_sec_ = UINT64_MAX;
+  current_token_ = "";
+
+  return Status::OK();
 }
 
 Status GoogleAuthProvider::GetTokenFromFiles() {

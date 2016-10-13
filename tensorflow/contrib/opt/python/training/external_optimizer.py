@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 
 
 __all__ = ['ExternalOptimizerInterface', 'ScipyOptimizerInterface']
@@ -65,6 +66,13 @@ class ExternalOptimizerInterface(object):
       self._vars = variables.trainable_variables()
     else:
       self._vars = list(var_list)
+
+    self._update_placeholders = [array_ops.placeholder(var.dtype)
+                                 for var in self._vars]
+    self._var_updates = [var.assign(array_ops.reshape(placeholder,
+                                                      _get_shape_tuple(var)))
+                         for var, placeholder in
+                         zip(self._vars, self._update_placeholders)]
 
     loss_grads = _compute_gradients(loss, self._vars)
     equalities_grads = [_compute_gradients(equality, self._vars)
@@ -110,24 +118,24 @@ class ExternalOptimizerInterface(object):
       step_callback: A function to be called at each optimization step;
         arguments are the current values of all optimization variables
         flattened into a single vector.
-      loss_callback: A function to be called every time the loss is computed,
-        with evaluated fetches supplied as positional arguments.
-      grad_callback: A function to be called every time the loss gradient is
-        computed, with evaluated fetches supplied as positional arguments.
+      loss_callback: A function to be called every time the loss and gradients
+        are computed, with evaluated fetches supplied as positional arguments.
+      grad_callback: Deprecated.
     """
     session = session or ops.get_default_session()
     feed_dict = feed_dict or {}
     fetches = fetches or []
 
     loss_callback = loss_callback or (lambda *fetches: None)
-    grad_callback = grad_callback or (lambda *fetches: None)
     step_callback = step_callback or (lambda xk: None)
+    # TODO(chapelle): Remove grad_callback (b/30590858)
+    if grad_callback:
+      logging.warn('grad_callback is deprecated. Please use loss_callback.')
 
     # Construct loss function and associated gradient.
-    loss_func = self._make_eval_func(
-        self._loss, session, feed_dict, fetches, loss_callback)
     loss_grad_func = self._make_eval_func(
-        self._packed_loss_grad, session, feed_dict, fetches, grad_callback)
+        [self._loss, self._packed_loss_grad],
+        session, feed_dict, fetches, loss_callback)
 
     # Construct equality constraint functions and associated gradients.
     equality_funcs = self._make_eval_funcs(
@@ -146,8 +154,8 @@ class ExternalOptimizerInterface(object):
 
     # Perform minimization.
     packed_var_val = self._minimize(
-        initial_val=initial_packed_var_val, loss_func=loss_func,
-        loss_grad_func=loss_grad_func, equality_funcs=equality_funcs,
+        initial_val=initial_packed_var_val, loss_grad_func=loss_grad_func,
+        equality_funcs=equality_funcs,
         equality_grad_funcs=equality_grad_funcs,
         inequality_funcs=inequality_funcs,
         inequality_grad_funcs=inequality_grad_funcs,
@@ -156,10 +164,10 @@ class ExternalOptimizerInterface(object):
                 for packing_slice in self._packing_slices]
 
     # Set optimization variables to their new values.
-    session.run([var.assign(var_val.reshape(_get_shape_tuple(var)))
-                 for var, var_val in zip(self._vars, var_vals)])
+    session.run(self._var_updates,
+                feed_dict=dict(zip(self._update_placeholders, var_vals)))
 
-  def _minimize(self, initial_val, loss_func, loss_grad_func, equality_funcs,
+  def _minimize(self, initial_val, loss_grad_func, equality_funcs,
                 equality_grad_funcs, inequality_funcs, inequality_grad_funcs,
                 step_callback, optimizer_kwargs):
     """Wrapper for a particular optimization algorithm implementation.
@@ -170,9 +178,8 @@ class ExternalOptimizerInterface(object):
 
     Args:
       initial_val: A NumPy vector of initial values.
-      loss_func: A function accepting a NumPy packed variable vector and
-        returning a loss value.
-      loss_grad_func: A function that computes the gradient of loss_func with
+      loss_grad_func: A function accepting a NumPy packed variable vector and
+        returning two outputs, a loss value and the gradient of that loss with
         respect to the packed variable vector.
       equality_funcs: A list of functions each of which specifies a scalar
         quantity that an optimizer should hold exactly zero.
@@ -202,9 +209,13 @@ class ExternalOptimizerInterface(object):
       flattened = [array_ops.reshape(tensor, [-1]) for tensor in tensors]
       return array_ops.concat(0, flattened)
 
-  def _make_eval_func(self, tensor, session, feed_dict, fetches,
+  def _make_eval_func(self, tensors, session, feed_dict, fetches,
                       callback=None):
-    """Construct a function that evaluates a `Tensor`."""
+    """Construct a function that evaluates a `Tensor` or list of `Tensor`s."""
+    if not isinstance(tensors, list):
+      tensors = [tensors]
+    num_tensors = len(tensors)
+
     def eval_func(x):
       """Function to evaluate a `Tensor`."""
       augmented_feed_dict = {
@@ -212,15 +223,15 @@ class ExternalOptimizerInterface(object):
           for var, packing_slice in zip(self._vars, self._packing_slices)
       }
       augmented_feed_dict.update(feed_dict)
-      augmented_fetches = [tensor] + fetches
+      augmented_fetches = tensors + fetches
 
       augmented_fetch_vals = session.run(
           augmented_fetches, feed_dict=augmented_feed_dict)
 
       if callable(callback):
-        callback(*augmented_fetch_vals[1:])
+        callback(*augmented_fetch_vals[num_tensors:])
 
-      return augmented_fetch_vals[0]
+      return augmented_fetch_vals[:num_tensors]
 
     return eval_func
 
@@ -277,12 +288,13 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
 
   _DEFAULT_METHOD = 'L-BFGS-B'
 
-  def _minimize(self, initial_val, loss_func, loss_grad_func, equality_funcs,
+  def _minimize(self, initial_val, loss_grad_func, equality_funcs,
                 equality_grad_funcs, inequality_funcs, inequality_grad_funcs,
                 step_callback, optimizer_kwargs):
-    def grad_func_wrapper(x):
+    def loss_grad_func_wrapper(x):
       # SciPy's L-BFGS-B Fortran implementation requires gradients as doubles.
-      return loss_grad_func(x).astype('float64')
+      loss, gradient = loss_grad_func(x)
+      return loss, gradient.astype('float64')
 
     method = optimizer_kwargs.pop('method', self._DEFAULT_METHOD)
 
@@ -292,9 +304,9 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
     for func, grad_func in zip(inequality_funcs, inequality_grad_funcs):
       constraints.append({'type': 'ineq', 'fun': func, 'jac': grad_func})
 
-    minimize_args = [loss_func, initial_val]
+    minimize_args = [loss_grad_func_wrapper, initial_val]
     minimize_kwargs = {
-        'jac': grad_func_wrapper,
+        'jac': True,
         'callback': step_callback,
         'method': method,
         'constraints': constraints,
@@ -306,7 +318,15 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
       del minimize_kwargs['callback']
 
     import scipy.optimize  # pylint: disable=g-import-not-at-top
-    return scipy.optimize.minimize(*minimize_args, **minimize_kwargs)['x']
+    result = scipy.optimize.minimize(*minimize_args, **minimize_kwargs)
+    logging.info('Optimization terminated with:\n'
+                 '  Message: %s\n'
+                 '  Objective function value: %f\n'
+                 '  Number of iterations: %d\n'
+                 '  Number of functions evaluations: %d',
+                 result.message, result.fun, result.nit, result.nfev)
+
+    return result['x']
 
 
 def _accumulate(list_):

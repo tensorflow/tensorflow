@@ -100,7 +100,7 @@ class MirrorPadOp : public OpKernel {
         OP_REQUIRES(
             context, before < in0.dim_size(d) && after < in0.dim_size(d),
             errors::InvalidArgument("paddings must be less than"
-                                    "than the dimension size: ",
+                                    " the dimension size: ",
                                     before, ", ", after, " not less than ",
                                     in0.dim_size(d)));
       }
@@ -108,8 +108,11 @@ class MirrorPadOp : public OpKernel {
       output_shape.AddDim(before + in0.dim_size(d) + after);
     }
 
-    if (dims == 0) {
-      context->set_output(0, in0);
+    if (output_shape.num_elements() == in0.NumElements()) {
+      // When num_elements == 0, shape may have changed.
+      Tensor out;
+      CHECK(out.CopyFrom(in0, output_shape));
+      context->set_output(0, out);
       return;
     }
 
@@ -145,6 +148,30 @@ class MirrorPadOp : public OpKernel {
 
 using CpuDevice = Eigen::ThreadPoolDevice;
 using GpuDevice = Eigen::GpuDevice;
+
+namespace functor {
+// Forward declarations of the functor specializations defined in the sharded
+// files.
+#define DECLARE_CPU_SPEC(T, i)                                               \
+  template <>                                                                \
+  void MirrorPad<CpuDevice, T, i>::operator()(                               \
+      const CpuDevice&, typename TTypes<T, i, int32>::Tensor,                \
+      typename TTypes<T, i, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
+      int);                                                                  \
+  extern template struct MirrorPad<CpuDevice, T, i>;
+
+#define DECLARE_CPU_SPECS(T) \
+  DECLARE_CPU_SPEC(T, 1);    \
+  DECLARE_CPU_SPEC(T, 2);    \
+  DECLARE_CPU_SPEC(T, 3);    \
+  DECLARE_CPU_SPEC(T, 4);    \
+  DECLARE_CPU_SPEC(T, 5);
+
+TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
+
+#undef DECLARE_CPU_SPEC
+#undef DECLARE_CPU_SPECS
+}  // namespace functor
 
 #define REGISTER_KERNEL(type)                            \
   REGISTER_KERNEL_BUILDER(Name("MirrorPad")              \
@@ -258,14 +285,14 @@ class MirrorPadGradOp : public OpKernel {
       } else if (offset_ == 1) {  // REFLECT mode.
         OP_REQUIRES(context, before < out_size && after < out_size,
                     errors::InvalidArgument("paddings must be less than"
-                                            "than the output dimension size: ",
+                                            " the output dimension size: ",
                                             before, ", ", after,
                                             " not less than ", out_size));
       }
       output_shape.AddDim(out_size);
     }
 
-    if (dims == 0) {
+    if (output_shape == in0.shape()) {
       context->set_output(0, in0);
       return;
     }
@@ -304,6 +331,29 @@ class MirrorPadGradOp : public OpKernel {
  private:
   int offset_;
 };
+
+namespace functor {
+// Forward declarations of the functor specializations defined in the sharded
+// files.
+#define DECLARE_CPU_SPEC(T, k)                                               \
+  template <>                                                                \
+  void MirrorPadGrad<CpuDevice, T, k>::operator()(                           \
+      const CpuDevice&, typename TTypes<T, k, int32>::Tensor,                \
+      typename TTypes<T, k, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
+      int, typename TTypes<T, k, int32>::Tensor);                            \
+  extern template struct MirrorPadGrad<CpuDevice, T, k>;
+
+#define DECLARE_CPU_SPECS(T) \
+  DECLARE_CPU_SPEC(T, 1);    \
+  DECLARE_CPU_SPEC(T, 2);    \
+  DECLARE_CPU_SPEC(T, 3);    \
+  DECLARE_CPU_SPEC(T, 4);    \
+  DECLARE_CPU_SPEC(T, 5);
+
+TF_CALL_NUMBER_TYPES(DECLARE_CPU_SPECS);
+#undef DECLARE_CPU_SPECS
+#undef DECLARE_CPU_SPEC
+}  // namespace functor
 
 #define REGISTER_KERNEL(type)                            \
   REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")          \

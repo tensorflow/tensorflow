@@ -14,6 +14,6 @@ variables if there are any, or an empty array if there are none.
 
 ##### Returns:
 
-  A 1-D tensor containing names of the unintialized variables, or an empty 1-D
-  tensor if there are no variables or no uninitialized variables.
+  A 1-D tensor containing names of the uninitialized variables, or an empty
+  1-D tensor if there are no variables or no uninitialized variables.
 

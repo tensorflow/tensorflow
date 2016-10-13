@@ -4,32 +4,31 @@ Computes the mean absolute error between the labels and predictions.
 
 The `streaming_mean_absolute_error` function creates two local variables,
 `total` and `count` that are used to compute the mean absolute error. This
-average is ultimately returned as `mean_absolute_error`: an idempotent
-operation that simply divides `total` by `count`. To facilitate the estimation
-of the mean absolute error over a stream of data, the function utilizes two
-operations. First, an `absolute_errors` operation computes the absolute value
-of the differences between `predictions` and `labels`. Second, an `update_op`
-operation whose behavior is dependent on the value of `weights`. If `weights`
-is None, then `update_op` increments `total` with the reduced sum of
-`absolute_errors` and increments `count` with the number of elements in
-`absolute_errors`. If `weights` is not `None`, then `update_op` increments
-`total` with the reduced sum of the product of `weights` and `absolute_errors`
-and increments `count` with the reduced sum of `weights`. In addition to
-performing the updates, `update_op` also returns the `mean_absolute_error`
-value.
+average is weighted by `weights`, and it is ultimately returned as
+`mean_absolute_error`: an idempotent operation that simply divides `total` by
+`count`.
+
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`mean_absolute_error`. Internally, an `absolute_errors` operation computes the
+absolute value of the differences between `predictions` and `labels`. Then
+`update_op` increments `total` with the reduced sum of the product of
+`weights` and `absolute_errors`, and it increments `count` with the reduced
+sum of `weights`
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 ##### Args:
 
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional set of weights of the same shape as `predictions`. If
-    `weights` is not None, the function computes a weighted mean.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_absolute_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -42,7 +41,8 @@ value.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match
-    `predictions` or if either `metrics_collections` or `updates_collections`
-    are not a list or tuple.
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 

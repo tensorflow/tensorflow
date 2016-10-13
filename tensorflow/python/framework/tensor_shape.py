@@ -112,11 +112,13 @@ class Dimension(object):
 
     Dimensions are combined as follows:
 
+    ```python
         Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
         Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
         Dimension(None).merge_with(Dimension(n))    == Dimension(n)
         Dimension(None).merge_with(Dimension(None)) == Dimension(None)
         Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    ```
 
     Args:
       other: Another Dimension.
@@ -185,16 +187,18 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
+    ```
       Dimension(m)    * Dimension(n)    == Dimension(m * n)
       Dimension(m)    * Dimension(None) == Dimension(None)
       Dimension(None) * Dimension(n)    == Dimension(None)
       Dimension(None) * Dimension(None) == Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.
 
     Returns:
-      A Dimension whose value is the sum of `self` and `other`.
+      A Dimension whose value is the product of `self` and `other`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
@@ -438,6 +442,8 @@ class TensorShape(object):
             # Protos store variable-size dimensions as -1
             as_dimension(dim.size if dim.size != -1 else None)
             for dim in dims.dim]
+    elif isinstance(dims, TensorShape):
+      self._dims = dims.dims
     else:
       try:
         dims_iter = iter(dims)
@@ -484,6 +490,13 @@ class TensorShape(object):
 
   # Python 3 wants __bool__, Python 2.7 wants __nonzero__
   __nonzero__ = __bool__
+
+  def __iter__(self):
+    """Returns `self.dims` if the rank is known, otherwise raises ValueError."""
+    if self._dims is None:
+      raise ValueError("Cannot iterate over a shape with unknown rank.")
+    else:
+      return iter(self._dims)
 
   def __getitem__(self, key):
     """Returns the value of a dimension or a shape, depending on the key.
@@ -755,11 +768,16 @@ class TensorShape(object):
       raise ValueError("Shape %s is not fully defined" % self)
 
   def as_list(self):
-    """Returns a list of integers or None for each dimension.
+    """Returns a list of integers or `None` for each dimension.
 
     Returns:
-      A list of integers or None for each dimension.
+      A list of integers or `None` for each dimension.
+
+    Raises:
+      ValueError: If `self` is an unknown shape with an unknown rank.
     """
+    if self._dims is None:
+      raise ValueError("as_list() is not defined on an unknown TensorShape.")
     return [dim.value for dim in self._dims]
 
   def as_proto(self):

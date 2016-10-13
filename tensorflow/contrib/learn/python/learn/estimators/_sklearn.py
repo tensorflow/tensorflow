@@ -42,7 +42,8 @@ class _BaseEstimator(object):
 
     Args:
       deep: boolean, optional
-        If True, will return the parameters for this estimator and
+
+        If `True`, will return the parameters for this estimator and
         contained subobjects that are estimators.
 
     Returns:
@@ -178,7 +179,7 @@ def _train_test_split(*args, **options):
 
   np.random.seed(random_state)
   indices = np.random.permutation(args[0].shape[0])
-  train_idx, test_idx = indices[:train_size], indices[:train_size]
+  train_idx, test_idx = indices[:train_size], indices[train_size:]
   result = []
   for x in args:
     result += [x.take(train_idx, axis=0), x.take(test_idx, axis=0)]
@@ -209,4 +210,3 @@ else:
   log_loss = None
   mean_squared_error = _mean_squared_error
   train_test_split = _train_test_split
-

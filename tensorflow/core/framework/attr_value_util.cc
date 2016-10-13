@@ -167,7 +167,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
 
   if (attr_value.value_case() == AttrValue::kPlaceholder) {
     return errors::InvalidArgument(
-        "AttrValue had value with unexpected type 'placeholder");
+        "AttrValue had value with unexpected type 'placeholder'");
   }
 
   // If the attr type is 'list', we expect attr_value.has_list() to be
@@ -308,8 +308,19 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
+void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
 void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
+}
+
+void SetAttrValue(const TensorShapeProto& value, AttrValue* out) {
+  *out->mutable_shape() = value;
 }
 
 void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
@@ -320,6 +331,13 @@ void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
   out->mutable_list();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
+  }
+}
+
+void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    *out->mutable_list()->add_shape() = v;
   }
 }
 

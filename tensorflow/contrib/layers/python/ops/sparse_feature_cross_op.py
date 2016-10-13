@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -32,7 +33,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
                          name=None):
   """Crosses a list of Tensor or SparseTensor objects.
 
-  See sparse_cross_op.cc for more details.
+  See sparse_feature_cross_kernel.cc for more details.
 
   Args:
     inputs: List of `SparseTensor` or `Tensor` to be crossed.
@@ -85,4 +86,6 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
                                                     name=name))
   return ops.SparseTensor(indices_out, values_out, shape_out)
 
-ops.NoGradient("SparseFeatureCross")
+
+ops.RegisterShape("SparseFeatureCross")(common_shapes.call_cpp_shape_fn)
+ops.NotDifferentiable("SparseFeatureCross")

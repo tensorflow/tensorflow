@@ -222,7 +222,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  def testEquivSparseGradientDescentwithoutRegularizaion(self):
+  def testEquivSparseGradientDescentwithoutRegularization(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():
         val0, val1 = self.applyOptimizer(
@@ -242,7 +242,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  def testEquivGradientDescentwithoutRegularizaion(self):
+  def testEquivGradientDescentwithoutRegularization(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():
         val0, val1 = self.applyOptimizer(

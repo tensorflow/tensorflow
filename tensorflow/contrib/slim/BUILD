@@ -25,7 +25,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -56,6 +55,22 @@ py_test(
 )
 
 py_library(
+    name = "model_analyzer",
+    srcs = ["python/slim/model_analyzer.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "nets",
+    srcs = ["nets.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":slim",
+        "//tensorflow/contrib/slim/python/slim/nets",
+    ],
+)
+
+py_library(
     name = "queues",
     srcs = ["python/slim/queues.py"],
     srcs_version = "PY2AND3",
@@ -75,7 +90,9 @@ py_library(
     deps = [
         ":evaluation",
         ":learning",
+        ":model_analyzer",
         ":queues",
+        "//tensorflow/contrib/slim/python/slim/data",
     ],
 )
 

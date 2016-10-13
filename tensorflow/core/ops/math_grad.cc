@@ -375,21 +375,42 @@ REGISTER_OP_GRADIENT("Div", DivGrad);
 
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
-  return GradForBinaryCwise(g, {
-      {{"z"}, "Pow", {"x", "y"}},
-      // dz * y * Pow(x, y - 1)
-      FDH::Const("const", 1.0f),
-      {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
-      {{"t0"}, "Sub", {"y", "one"}, {}, {"dz"}},
-      {{"t1"}, "Pow", {"x", "t0"}},
-      {{"t2"}, "Mul", {"dz", "y"}},
-      {{"gx"}, "Mul", {"t1", "t2"}},
-      // dz * z * Log(x)
-      {{"t3"}, "Log", {"x"}, {}, {"dz"}},
-      {{"t4"}, "Mul", {"dz", "z"}},
-      {{"gy"}, "Mul", {"t3", "t4"}},
-  });
+  std::vector<FDH::Node> nodes = {
+    {{"z"}, "Pow", {"x", "y"}},
+    // dz * y * Pow(x, y - 1)
+    FDH::Const("const_zero", 0.0f),
+    FDH::Const("const_one", 1.0f),
+    {{"zero"}, "Cast", {"const_zero"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+    {{"one"}, "Cast", {"const_one"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+    {{"t0"}, "Sub", {"y", "one"}, {}, {"dz"}},
+    {{"t1"}, "Pow", {"x", "t0"}},
+    {{"t2"}, "Mul", {"dz", "y"}},
+    {{"gx"}, "Mul", {"t1", "t2"}},
+    {{"unsafe_log"}, "Log", {"x"}, {}, {"dz"}},
+    {{"zeros"}, "ZerosLike", {"x"}}};
   // clang-format on
+  std::vector<FDH::Node> log_x_handling;
+  DataType T;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
+  if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
+    // dz * z * (x != 0 ? Log(x) : 0)
+    // clang-format off
+    log_x_handling = {
+      {{"nz_x"}, "NotEqual", {"x", "zero"}},
+      {{"safe_log"}, "Select", {"nz_x", "unsafe_log", "zeros"}}};
+    // clang-format on
+  } else {
+    // dz * z * (x > 0 ? Log(x) : 0)
+    // clang-format off
+    log_x_handling = {
+      {{"pos_x"}, "Greater", {"x", "zero"}},
+      {{"safe_log"}, "Select", {"pos_x", "unsafe_log", "zeros"}}};
+    // clang-format on
+  }
+  nodes.insert(nodes.end(), log_x_handling.begin(), log_x_handling.end());
+  nodes.push_back({{"t4"}, "Mul", {"dz", "z"}});
+  nodes.push_back({{"gy"}, "Mul", {"safe_log", "t4"}});
+  return GradForBinaryCwise(g, nodes);
 }
 REGISTER_OP_GRADIENT("Pow", PowGrad);
 

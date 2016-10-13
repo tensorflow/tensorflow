@@ -689,8 +689,9 @@ TEST_F(SimplePlacerTest,
   Status s = Place(&g);
   EXPECT_TRUE(
       StringPiece(s.error_message())
-          .contains("Cannot assign a device to node 'var3': Node had no "
-                    "OpKernel registered"));
+          .contains("Cannot colocate nodes 'var3' and 'assign3' because no "
+                    "device type supports both of those nodes and the other "
+                    "nodes colocated with them."));
 }
 
 TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {
@@ -856,6 +857,8 @@ TEST_F(SimplePlacerTest, TestNoKernelsRegistered) {
       StringPiece(s.error_message())
           .contains(
               "No OpKernel was registered to support Op 'VariableNoKernels'"));
+  EXPECT_TRUE(
+      StringPiece(s.error_message()).contains("<no registered kernels>"));
 }
 
 // Test that placement fails when a kernel is registered but no known
@@ -878,6 +881,7 @@ TEST_F(SimplePlacerTest, TestNoDevicesRegistered) {
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("No OpKernel was registered to support "
                             "Op 'VariableGPU'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("device='GPU'"));
 }
 
 // Test that placement fails when a requested device is malformed.

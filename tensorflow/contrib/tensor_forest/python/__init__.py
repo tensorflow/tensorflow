@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.tensor_forest.python import constants
 from tensorflow.contrib.tensor_forest.python import tensor_forest
 from tensorflow.contrib.tensor_forest.python.ops import inference_ops
+from tensorflow.contrib.tensor_forest.python.ops import topn_ops
 from tensorflow.contrib.tensor_forest.python.ops import training_ops

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/lib/io/py_record_writer.h"
 
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_writer.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -25,15 +27,22 @@ namespace io {
 
 PyRecordWriter::PyRecordWriter() {}
 
-PyRecordWriter* PyRecordWriter::New(const string& filename) {
-  WritableFile* file;
+PyRecordWriter* PyRecordWriter::New(const string& filename,
+                                    const string& compression_type_string,
+                                    TF_Status* out_status) {
+  std::unique_ptr<WritableFile> file;
   Status s = Env::Default()->NewWritableFile(filename, &file);
   if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
     return nullptr;
   }
   PyRecordWriter* writer = new PyRecordWriter;
-  writer->file_ = file;
-  writer->writer_ = new RecordWriter(writer->file_);
+  writer->file_ = file.release();
+
+  RecordWriterOptions options =
+      RecordWriterOptions::CreateRecordWriterOptions(compression_type_string);
+
+  writer->writer_ = new RecordWriter(writer->file_, options);
   return writer;
 }
 

@@ -17,13 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import threading
 
-import tensorflow as tf
-
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
+
 
 INFERENCE_OPS_FILE = '_inference_ops.so'
 
@@ -31,17 +32,12 @@ _inference_ops = None
 _ops_lock = threading.Lock()
 
 
-ops.NoGradient('TreePredictions')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('TreePredictions')
 
 
-@ops.RegisterShape('TreePredictions')
-def TreePredictions(op):
-  """Shape function for TreePredictions Op."""
-  num_points = op.inputs[0].get_shape()[0].value
-  num_classes = op.inputs[3].get_shape()[1].value
-  # The output of TreePredictions is
-  # [node_pcw(evaluate_tree(x), c) for c in classes for x in input_data].
-  return [tensor_shape.TensorShape([num_points, num_classes - 1])]
+ops.RegisterShape('TreePredictions')(common_shapes.call_cpp_shape_fn)
 
 
 # Workaround for the fact that importing tensorflow imports contrib
@@ -49,16 +45,14 @@ def TreePredictions(op):
 # there's not yet any guarantee that the shared object exists.
 # In which case, "import tensorflow" will always crash, even for users that
 # never use contrib.
-def Load(library_base_dir=''):
+def Load():
   """Load the inference ops library and return the loaded module."""
   with _ops_lock:
     global _inference_ops
     if not _inference_ops:
-      data_files_path = os.path.join(library_base_dir,
-                                     tf.resource_loader.get_data_files_path())
-      tf.logging.info('data path: %s', data_files_path)
-      _inference_ops = tf.load_op_library(os.path.join(
-          data_files_path, INFERENCE_OPS_FILE))
+      ops_path = resource_loader.get_path_to_datafile(INFERENCE_OPS_FILE)
+      logging.info('data path: %s', ops_path)
+      _inference_ops = load_library.load_op_library(ops_path)
 
       assert _inference_ops, 'Could not load inference_ops.so'
   return _inference_ops

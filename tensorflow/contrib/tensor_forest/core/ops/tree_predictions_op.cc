@@ -20,6 +20,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
@@ -30,22 +31,52 @@ using tensorforest::LEAF_NODE;
 using tensorforest::FREE_NODE;
 
 using tensorforest::CheckTensorBounds;
-using tensorforest::DecideNode;
+using tensorforest::DataColumnTypes;
+using tensorforest::FeatureSpec;
 using tensorforest::Sum;
 
-REGISTER_OP("TreePredictions")
-  .Attr("valid_leaf_threshold: float")
-  .Input("input_data: float")
-  .Input("tree: int32")
-  .Input("tree_thresholds: float")
-  .Input("node_per_class_weights: float")
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
-  .Output("predictions: float")
-  .Doc(R"doc(
+REGISTER_OP("TreePredictions")
+    .Attr("valid_leaf_threshold: float")
+    .Input("input_data: float")
+    .Input("sparse_input_indices: int64")
+    .Input("sparse_input_values: float")
+    .Input("sparse_input_shape: int64")
+    .Input("input_spec: int32")
+
+    .Input("tree: int32")
+    .Input("tree_thresholds: float")
+    .Input("node_per_class_weights: float")
+
+    .Output("predictions: float")
+    .SetShapeFn([](InferenceContext* c) {
+      // The output of TreePredictions is
+      // [node_pcw(evaluate_tree(x), c) for c in classes for x in input_data].
+      DimensionHandle num_points = c->Dim(c->input(0), 0);
+      DimensionHandle num_classes = c->Dim(c->input(7), 1);
+
+      if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
+        num_points = c->UnknownDim();
+      }
+
+      TF_RETURN_IF_ERROR(c->Subtract(num_classes, 1, &num_classes));
+
+      c->set_output(0, c->Matrix(num_points, num_classes));
+      return Status::OK();
+    })
+    .Doc(R"doc(
   Returns the per-class probabilities for each input.
 
   input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
    gives the j-th feature of the i-th input.
+  sparse_input_indices: The indices tensor from the SparseTensor input.
+  sparse_input_values: The values tensor from the SparseTensor input.
+  sparse_input_shape: The shape tensor from the SparseTensor input.
+  input_spec: A 1-D tensor containing the type of each column in input_data,
+     (e.g. continuous float, categorical).
   tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
    of the i-th node, `tree[i][0] + 1` gives the index of the right child of
    the i-th node, and `tree[i][1]` gives the index of the feature used to
@@ -59,7 +90,6 @@ REGISTER_OP("TreePredictions")
     to be considered a valid leaf, otherwise use the parent.
 )doc");
 
-
 class TreePredictions : public OpKernel {
  public:
   explicit TreePredictions(OpKernelConstruction* context)
@@ -70,10 +100,42 @@ class TreePredictions : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(0);
+    const Tensor& sparse_input_indices = context->input(1);
+    const Tensor& sparse_input_values = context->input(2);
+    const Tensor& sparse_input_shape = context->input(3);
+    const Tensor& input_spec = context->input(4);
+    const Tensor& tree_tensor = context->input(5);
+    const Tensor& tree_thresholds = context->input(6);
+    const Tensor& node_per_class_weights = context->input(7);
 
-    const Tensor& tree_tensor = context->input(1);
-    const Tensor& tree_thresholds = context->input(2);
-    const Tensor& node_per_class_weights = context->input(3);
+    bool sparse_input = (sparse_input_indices.shape().dims() == 2);
+
+    if (sparse_input) {
+      OP_REQUIRES(context, sparse_input_values.shape().dims() == 1,
+                  errors::InvalidArgument(
+                      "sparse_input_values should be one-dimensional"));
+      OP_REQUIRES(context, sparse_input_shape.shape().dims() == 1,
+                  errors::InvalidArgument(
+                      "sparse_input_shape should be one-dimensional"));
+      OP_REQUIRES(context,
+                  sparse_input_indices.shape().dim_size(0) ==
+                  sparse_input_values.shape().dim_size(0),
+                  errors::InvalidArgument(
+                      "sparse_input_indices and sparse_input_values should "
+                      "agree on the number of non-zero values"));
+      OP_REQUIRES(context,
+                  sparse_input_indices.shape().dim_size(1) ==
+                  sparse_input_shape.shape().dim_size(0),
+                  errors::InvalidArgument(
+                      "sparse_input_indices and sparse_input_shape should "
+                      "agree on the dimensionality of data points"));
+    } else {
+      if (input_data.shape().dim_size(0) > 0) {
+        OP_REQUIRES(context, input_data.shape().dims() == 2,
+                    errors::InvalidArgument(
+                        "input_data should be two-dimensional"));
+      }
+    }
 
     OP_REQUIRES(context, tree_tensor.shape().dims() == 2,
                 errors::InvalidArgument(
@@ -85,11 +147,6 @@ class TreePredictions : public OpKernel {
                 errors::InvalidArgument(
                     "node_pcw should be two-dimensional"));
 
-    if (input_data.shape().dim_size(0) > 0) {
-      OP_REQUIRES(context, input_data.shape().dims() == 2,
-                  errors::InvalidArgument(
-                      "input_data should be two-dimensional"));
-    }
     OP_REQUIRES(
         context,
         tree_tensor.shape().dim_size(0) ==
@@ -102,16 +159,43 @@ class TreePredictions : public OpKernel {
 
     // Check tensor bounds.
     if (!CheckTensorBounds(context, input_data)) return;
+    if (!CheckTensorBounds(context, sparse_input_indices)) return;
+    if (!CheckTensorBounds(context, sparse_input_values)) return;
+    if (!CheckTensorBounds(context, sparse_input_shape)) return;
     if (!CheckTensorBounds(context, tree_tensor)) return;
     if (!CheckTensorBounds(context, tree_thresholds)) return;
     if (!CheckTensorBounds(context, node_per_class_weights)) return;
 
     const int32 num_classes = static_cast<int32>(
         node_per_class_weights.shape().dim_size(1));
-    const int32 num_data = static_cast<int32>(
-        input_data.shape().dim_size(0));
     const int32 num_nodes = static_cast<int32>(
         tree_tensor.shape().dim_size(0));
+    int32 num_data;
+    std::function<bool(int, int, float,
+                       tensorforest::DataColumnTypes)> decide_function;
+
+    if (sparse_input) {
+      num_data = sparse_input_shape.unaligned_flat<int64>()(0);
+      decide_function = [&sparse_input_indices, &sparse_input_values](
+          int32 i, int32 feature, float bias, DataColumnTypes type) {
+        const auto sparse_indices = sparse_input_indices.matrix<int64>();
+        const auto sparse_values = sparse_input_values.vec<float>();
+        return tensorforest::DecideSparseNode(
+            sparse_indices, sparse_values, i, feature, bias, type);
+      };
+    } else {
+      num_data = static_cast<int32>(input_data.shape().dim_size(0));
+      int32 num_features = 0;
+      if (num_data > 0) {
+        num_features = input_data.NumElements() / num_data;
+      }
+      decide_function = [&input_data](
+          int32 i, int32 feature, float bias, DataColumnTypes type) {
+        const auto input_matrix = input_data.matrix<float>();
+        return tensorforest::DecideDenseNode(
+            input_matrix, i, feature, bias, type);
+      };
+    }
 
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
@@ -127,7 +211,6 @@ class TreePredictions : public OpKernel {
     const auto thresholds = tree_thresholds.unaligned_flat<float>();
 
     for (int i = 0; i < num_data; i++) {
-      const Tensor point = input_data.Slice(i, i+1);
       int node_index = 0;
       int parent = -1;
       while (true) {
@@ -162,9 +245,10 @@ class TreePredictions : public OpKernel {
           return;
         }
         parent = node_index;
-        node_index = left_child +
-            DecideNode(point, tree(node_index, FEATURE_INDEX),
-                       thresholds(node_index));
+        const int32 feature = tree(node_index, FEATURE_INDEX);
+        node_index =
+            left_child + decide_function(i, feature, thresholds(node_index),
+                                         FeatureSpec(feature, input_spec));
       }
     }
 

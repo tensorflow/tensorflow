@@ -1,46 +1,128 @@
 Base class for all TensorFlow estimators.
-
-Parameters:
-  model_fn: Model function, that takes input X, y tensors and outputs
-    prediction and loss tensors.
-  n_classes: Number of classes in the target.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam",
-    "Adagrad".
-  learning_rate: If this is constant float value, no decay function is used.
-    Instead, a customized decay function can be passed that accepts
-    global_step as parameter and returns a Tensor.
-    e.g. exponential decay function:
-    def exp_decay(global_step):
-        return tf.train.exponential_decay(
-            learning_rate=0.1, global_step,
-            decay_steps=2, decay_rate=0.001)
-  clip_gradients: Clip norm of the gradients to this value to stop
-    gradient explosion.
-  class_weight: None or list of n_classes floats. Weight associated with
-    classes for loss computation. If not given, all classes are supposed to
-    have weight one.
-  continue_training: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
-    session, e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
-    0: the algorithm and debug information is muted.
-    1: trainer prints the progress.
-    2: log device placement is printed.
 - - -
 
 #### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
 
+Initializes a TensorFlowEstimator instance.
+
+##### Args:
+
+
+*  <b>`model_fn`</b>: Model function, that takes input `x`, `y` tensors and outputs
+    prediction and loss tensors.
+*  <b>`n_classes`</b>: Number of classes in the target.
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
+    "Adagrad".
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is used.
+    Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+
+    ````python
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+    ````
+
+
+*  <b>`clip_gradients`</b>: Clip norm of the gradients to this value to stop
+    gradient explosion.
+*  <b>`class_weight`</b>: None or list of n_classes floats. Weight associated with
+    classes for loss computation. If not given, all classes are supposed to
+    have weight one.
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
+    model will be continually trained on every call of fit.
+*  <b>`config`</b>: RunConfig object that controls the configurations of the
+    session, e.g. num_cores, gpu_memory_fraction, etc.
+*  <b>`verbose`</b>: Controls the verbosity, possible values:
+
+    * 0: the algorithm and debug information is muted.
+    * 1: trainer prints the progress.
+    * 2: log device placement is printed.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.__repr__()` {#TensorFlowEstimator.__repr__}
+
 
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowEstimator.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowEstimator.evaluate}
+#### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
 
-See base class.
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowEstimator.evaluate}
+
+Evaluates given model with provided evaluation data.
+
+See superclass Estimator for more details.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called.
+*  <b>`batch_size`</b>: minibatch size to use on the input.
+*  <b>`steps`</b>: Number of steps for which to evaluate model.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metrics are used.
+*  <b>`name`</b>: Name of the evaluation.
+
+##### Returns:
+
+  Returns `dict` with evaluation results.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.export(*args, **kwargs)` {#TensorFlowEstimator.export}
+
+Exports inference graph into given dir. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
+
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds toa
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input. Can only be `None` if you're using a custom `signature_fn` that
+        does not use the first arg (examples).
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -50,7 +132,7 @@ See base class.
 Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
+variables. Subsequently, it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
 To restart learning, create new estimator.
 
@@ -87,7 +169,8 @@ Get parameters for this estimator.
 
 
 *  <b>`deep`</b>: boolean, optional
-    If True, will return the parameters for this estimator and
+
+    If `True`, will return the parameters for this estimator and
     contained subobjects that are estimators.
 
 ##### Returns:
@@ -179,10 +262,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict(x, axis=1, batch_size=None)` {#TensorFlowEstimator.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -207,7 +290,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict_proba(x, batch_size=None)` {#TensorFlowEstimator.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 

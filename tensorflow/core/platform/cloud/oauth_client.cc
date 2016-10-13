@@ -22,7 +22,7 @@ limitations under the License.
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/cloud/base64.h"
+#include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -30,7 +30,7 @@ namespace tensorflow {
 
 namespace {
 
-// The requested lifetime of a auth bearer token.
+// The requested lifetime of an auth bearer token.
 constexpr int kRequestedTokenLifetimeSec = 3600;
 
 // The crypto algorithm to be used with OAuth.
@@ -213,7 +213,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
                                               kResponseBufferSize, &response));
   TF_RETURN_IF_ERROR(request->Send());
@@ -247,7 +247,7 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
                                               kResponseBufferSize, &response));
   TF_RETURN_IF_ERROR(request->Send());

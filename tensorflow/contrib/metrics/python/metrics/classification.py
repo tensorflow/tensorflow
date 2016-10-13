@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 # TODO(nsilberman): move into metrics/python/ops/
@@ -32,7 +33,7 @@ def accuracy(predictions, labels, weights=None):
     predictions: the predicted values, a `Tensor` whose dtype and shape
                  matches 'labels'.
     labels: the ground truth values, a `Tensor` of any shape and
-            integer or string dtype.
+            bool, integer, or string dtype.
     weights: None or `Tensor` of float values to reweight the accuracy.
 
   Returns:
@@ -40,18 +41,23 @@ def accuracy(predictions, labels, weights=None):
 
   Raises:
     ValueError: if dtypes don't match or
-                if dtype is not integer or string.
+                if dtype is not bool, integer, or string.
   """
-  if not (labels.dtype.is_integer or labels.dtype == dtypes.string):
-    raise ValueError('Labels should have integer or string dtype. '
-                     'Given: %s' % str(labels.dtype))
+  if not (labels.dtype.is_integer or
+          labels.dtype in (dtypes.bool, dtypes.string)):
+    raise ValueError(
+        'Labels should have bool, integer, or string dtype, not %r' %
+        labels.dtype)
   if not labels.dtype.is_compatible_with(predictions.dtype):
     raise ValueError('Dtypes of predictions and labels should match. '
-                     'Given: predictions (%s) and labels (%s)' %
-                     (str(predictions.dtype), str(labels.dtype)))
-  with ops.op_scope([predictions, labels], 'accuracy'):
+                     'Given: predictions (%r) and labels (%r)' %
+                     (predictions.dtype, labels.dtype))
+  with ops.name_scope('accuracy', values=[predictions, labels]):
     is_correct = math_ops.cast(
         math_ops.equal(predictions, labels), dtypes.float32)
     if weights is not None:
       is_correct = math_ops.mul(is_correct, weights)
+      num_values = math_ops.mul(weights, array_ops.ones_like(is_correct))
+      return math_ops.div(math_ops.reduce_sum(is_correct),
+                          math_ops.reduce_sum(num_values))
     return math_ops.reduce_mean(is_correct)

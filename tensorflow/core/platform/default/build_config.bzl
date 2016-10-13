@@ -3,8 +3,9 @@
 load("@protobuf//:protobuf.bzl", "cc_proto_library")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
 
-# configure may change the following line to True
+# configure may change the following lines to True
 WITH_GCP_SUPPORT = False
+WITH_HDFS_SUPPORT = False
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -89,16 +90,56 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
   )
 
-def tf_additional_lib_srcs():
+def tf_additional_lib_hdrs(exclude = []):
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/default/*.h",
+        "platform/windows/*.h",
+        "platform/posix/error.h",
+      ], exclude = exclude),
+    "//conditions:default" : native.glob([
+        "platform/default/*.h",
+        "platform/posix/*.h",
+      ], exclude = exclude),
+  })
+
+def tf_additional_lib_srcs(exclude = []):
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/default/*.cc",
+        "platform/windows/*.cc",
+        "platform/posix/error.cc",
+      ], exclude = exclude),
+    "//conditions:default" : native.glob([
+        "platform/default/*.cc",
+        "platform/posix/*.cc",
+      ], exclude = exclude),
+  })
+
+def tf_additional_minimal_lib_srcs():
   return [
-      "platform/default/*.h",
-      "platform/default/*.cc",
-      "platform/posix/*.h",
-      "platform/posix/*.cc",
+      "platform/default/integral_types.h",
+      "platform/default/mutex.h",
+  ]
+
+def tf_additional_proto_hdrs():
+  return [
+      "platform/default/integral_types.h",
+      "platform/default/logging.h",
+      "platform/default/protobuf.h"
+  ]
+
+def tf_additional_proto_srcs():
+  return [
+      "platform/default/logging.cc",
+      "platform/default/protobuf.cc",
   ]
 
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]
+
+def tf_additional_cupti_wrapper_deps():
+  return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
 def tf_additional_test_deps():
   return []
@@ -110,5 +151,9 @@ def tf_kernel_tests_linkstatic():
   return 0
 
 def tf_additional_lib_deps():
-  return (["//tensorflow/core/platform/cloud:gcs_file_system"]
-      if WITH_GCP_SUPPORT else [])
+  deps = []
+  if WITH_GCP_SUPPORT:
+    deps.append("//tensorflow/core/platform/cloud:gcs_file_system")
+  if WITH_HDFS_SUPPORT:
+    deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
+  return deps

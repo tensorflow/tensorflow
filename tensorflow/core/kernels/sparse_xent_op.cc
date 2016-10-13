@@ -17,16 +17,35 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/sparse_xent_op.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+template <typename Index>
+Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
+  if (labels.NumElements() == 0) return Status::OK();
+  const auto label_values = labels.vec<Index>();
+  int64 bad_index;
+  auto min_max_dim_value = std::minmax_element(
+      label_values.data(), label_values.data() + label_values.size());
+  if (*min_max_dim_value.first < 0 || *min_max_dim_value.second >= max_index) {
+    bad_index = (*min_max_dim_value.first < 0) ? *min_max_dim_value.first
+                                               : *min_max_dim_value.second;
+    return errors::InvalidArgument("Received a label value of ", bad_index,
+                                   " which is outside the valid range of [0, ",
+                                   max_index, ").  Label values: ",
+                                   labels.SummarizeValue(labels.NumElements()));
+  }
+  return Status::OK();
+}
 
 template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
@@ -35,38 +54,46 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    const Tensor& logits_in = context->input(0);
-    const Tensor& labels_in = context->input(1);
-    OP_REQUIRES(context, logits_in.shape().dim_size(0) == labels_in.NumElements(),
+    const Tensor& logits = context->input(0);
+    const Tensor& labels = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits.shape()),
+                errors::InvalidArgument("logits must be 2-D, but got shape ",
+                                        logits.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(labels.shape()),
+                errors::InvalidArgument("labels must be 1-D, but got shape ",
+                                        labels.shape().DebugString()));
+    OP_REQUIRES(context, logits.dim_size(0) == labels.dim_size(0),
                 errors::InvalidArgument(
-                    "logits first dimension must match labels size.  logits shape=",
-                    logits_in.shape().DebugString(), " labels shape=",
-                    labels_in.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits_in.shape()),
-                errors::InvalidArgument("logits must be 2-dimensional"));
-    // As we already tested that both inputs have the same shape no need to
-    // check that "labels" is a matrix too.
-
-    // loss is 1-D (one per example), and size is batch_size.
+                    "logits and labels must have the same first dimension, "
+                    "got logits shape ",
+                    logits.shape().DebugString(), " and labels shape ",
+                    labels.shape().DebugString()));
+    OP_REQUIRES(context, logits.dim_size(1) > 0,
+                errors::InvalidArgument(
+                    "Must have at least one class, but got logits shape ",
+                    logits.shape().DebugString()));
 
     Tensor scratch;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                        TensorShape({logits_in.dim_size(0)}),
-                                        &scratch));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   labels.shape(), &scratch));
 
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape({logits_in.dim_size(0)}), &loss_out));
+                   context->allocate_output(0, labels.shape(), &loss_out));
     Tensor* back_out = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(1, logits_in.shape(), &back_out));
+                   context->allocate_output(1, logits.shape(), &back_out));
 
-    functor::SparseXentFunctor<Device, T, Index> functor;
-    functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-            labels_in.vec<Index>(), scratch.vec<T>(), loss_out->vec<T>(),
-            back_out->matrix<T>());
+    if (logits.dim_size(0) > 0) {
+      if (std::is_same<Device, CPUDevice>::value) {
+        OP_REQUIRES_OK(
+            context, CheckInvalidLabelIndex<Index>(labels, logits.dim_size(1)));
+      }
+      functor::SparseXentFunctor<Device, T, Index> functor;
+      functor(context->eigen_device<Device>(), logits.matrix<T>(),
+              labels.vec<Index>(), scratch.vec<T>(), loss_out->vec<T>(),
+              back_out->matrix<T>());
+    }
   }
 };
 

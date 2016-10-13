@@ -20,6 +20,13 @@ operation. This corresponds to the `OpDef.name` field for the proto
 that defines the operation.
 - - -
 
+#### `tf.RegisterShape.__call__(f)` {#RegisterShape.__call__}
+
+Registers "f" as the shape function for "op_type".
+
+
+- - -
+
 #### `tf.RegisterShape.__init__(op_type)` {#RegisterShape.__init__}
 
 Saves the `op_type` as the `Operation` type.

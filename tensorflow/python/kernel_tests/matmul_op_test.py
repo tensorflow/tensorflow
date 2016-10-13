@@ -70,9 +70,9 @@ class MatMulTest(tf.test.TestCase):
   def _randMatrix(self, rows, cols, dtype):
     if dtype in (np.complex64, np.complex128):
       if dtype == np.complex64:
-          float_dtype = np.float32
+        float_dtype = np.float32
       else:
-          float_dtype = np.float64
+        float_dtype = np.float64
       real = self._randMatrix(rows, cols, float_dtype)
       imag = self._randMatrix(rows, cols, float_dtype)
       return real + 1j * imag
@@ -115,11 +115,66 @@ class MatMulTest(tf.test.TestCase):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex64)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex64)
     self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   def testComplex128Basic(self):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex128)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex128)
     self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
+
+  # Vector optimized tests
+  #   x            *  y
+  #   [1, 2, 3, 4] *  [[1, 2, 3, 4],
+  #                    [5, 6, 7, 8]]
+  #
+  # and y^T * x^T
+  def _vectorTest(self, dtype, gpu):
+    x = np.arange(1., 5.).reshape([1, 4]).astype(np.float32)
+    y = np.arange(1., 9.).reshape([4, 2]).astype(np.float32)
+    x_t = x.transpose()
+    y_t = y.transpose()
+    if gpu:
+      self._testGpuMatmul(x, y)
+      self._testGpuMatmul(x_t, y, transpose_x=True)
+      self._testGpuMatmul(x, y_t, transpose_y=True)
+      self._testGpuMatmul(y_t, x_t)
+      self._testGpuMatmul(y, x_t, transpose_x=True)
+      self._testGpuMatmul(y_t, x, transpose_y=True)
+    else:
+      self._testCpuMatmul(x, y)
+      self._testCpuMatmul(x_t, y, transpose_x=True)
+      self._testCpuMatmul(x, y_t, transpose_y=True)
+      self._testCpuMatmul(y_t, x_t)
+      self._testCpuMatmul(y, x_t, transpose_x=True)
+      self._testCpuMatmul(y_t, x, transpose_y=True)
+
+  def testFloatVector(self):
+    self._vectorTest(np.float32, gpu=False)
+    self._vectorTest(np.float32, gpu=True)
+
+  def testDoubleVector(self):
+    self._vectorTest(np.float64, gpu=False)
+    self._vectorTest(np.float64, gpu=True)
+
+  def testHalfVector(self):
+    self._vectorTest(np.float16, gpu=False)
+    if test_util.CudaSupportsHalfMatMulAndConv():
+      self._vectorTest(np.float16, gpu=True)
+    else:
+      print("Built without fp16 matmul support, skipping GPU test.")
+
+  def testInt32Vector(self):
+    self._vectorTest(np.int32, gpu=False)
+    self._vectorTest(np.int32, gpu=True)
+
+  def testComplex64Vector(self):
+    self._vectorTest(np.complex64, gpu=False)
+    self._vectorTest(np.complex64, gpu=True)
+
+  def testComplex128Vector(self):
+    self._vectorTest(np.complex128, gpu=False)
+    self._vectorTest(np.complex128, gpu=True)
 
   # Tests testing random sized matrices.
   def testFloatRandom(self):
@@ -162,6 +217,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(n, k, np.complex64)
       y = self._randMatrix(k, m, np.complex64)
       self._testCpuMatmul(x, y)
+      self._testGpuMatmul(x, y)
 
   def testComplex128Random(self):
     for _ in range(10):
@@ -169,6 +225,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(n, k, np.complex128)
       y = self._randMatrix(k, m, np.complex128)
       self._testCpuMatmul(x, y)
+      self._testGpuMatmul(x, y)
 
   # Test the cases that transpose the matrices before multiplying.
   # NOTE(keveman): The cases where only one of the inputs is
@@ -226,10 +283,34 @@ class MatMulTest(tf.test.TestCase):
     b = tf.placeholder(tf.float32, [36, 2])
     c = tf.placeholder(tf.float32, [37])
     with self.assertRaisesRegexp(
-        ValueError, "Dimensions 37 and 36 are not compatible"):
+        ValueError, "Dimensions must be equal, but are 37 and 36"):
       tf.matmul(a, b)
-    with self.assertRaisesRegexp(ValueError, "must have rank 2"):
+    with self.assertRaisesRegexp(ValueError, "must be rank 2"):
       tf.matmul(a, c)
+
+  def testShapeInference(self):
+    """Tests common_shapes.call_cpp_shape_fn."""
+    a = tf.constant([2] * 6, shape=[3, 2])
+    b = tf.constant([2] * 2, shape=[2, 1])
+    mm = tf.matmul(a, b)
+    self.assertEqual([3, 1], mm.get_shape())
+
+    # Transpose arguments are respected.
+    a = tf.constant([2] * 6, shape=[2, 3])
+    b = tf.constant([2] * 2, shape=[1, 2])
+    mm = tf.matmul(a, b, transpose_a=True, transpose_b=True)
+    self.assertEqual([3, 1], mm.get_shape())
+
+    # Unknown dims come through in output.
+    a = tf.placeholder(np.float32)
+    b = tf.placeholder(np.float32)
+    mm = tf.matmul(a, b)
+    self.assertEqual([None, None], mm.get_shape().as_list())
+
+    a = tf.constant([1] * 6, shape=[2, 3])
+    b = tf.constant([2] * 2, shape=[1, 2])
+    with self.assertRaisesRegexp(ValueError, ".*must be equal.*"):
+      tf.matmul(a, b, transpose_a=False, transpose_b=True)
 
 
 # TODO(zhifengc): Figures out how to test matmul gradients on GPU.

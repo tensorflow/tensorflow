@@ -235,6 +235,8 @@ bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   }
 
   if (on_disk_spec != nullptr) {
+    LOG(WARNING) << "loading CUDA kernel from disk is not supported";
+    return false;
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
@@ -906,7 +908,8 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   // could use the file::* utilities).
   FILE *file = fopen(filename.c_str(), "r");
   if (file == nullptr) {
-    LOG(ERROR) << "could not open file to read NUMA node: " << filename;
+    LOG(ERROR) << "could not open file to read NUMA node: " << filename
+               << "\nYour kernel may have been built without NUMA support.";
     return kUnknownNumaNode;
   }
 
@@ -922,8 +925,10 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value << "), but there must be at least one NUMA node"
                             ", so returning NUMA node zero";
+      fclose(file);
       return 0;
     }
+    fclose(file);
     return value;
   }
 
@@ -931,6 +936,7 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
       << "could not convert SysFS file contents to integral NUMA node value: "
       << content;
 
+  fclose(file);
   return kUnknownNumaNode;
 #endif
 }

@@ -49,9 +49,10 @@ def _SwitchGrad(op, *grad):
       # the non-exit branch of the Switch, so update the second input
       # to the Merge.
       # TODO: Perform shape inference with this new input.
-      # pylint: disable=protected-access
-      control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
-      # pylint: enable=protected-access
+      if grad[1] is not None:
+        # pylint: disable=protected-access
+        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
+        # pylint: enable=protected-access
       return None, None
     else:
       # This is the first time this Switch is visited. It always comes from
@@ -128,7 +129,7 @@ def _RefMergeGrad(op, grad, _):
 
 
 @ops.RegisterGradient("Exit")
-def _ExitGrad(_, grad):
+def _ExitGrad(op, grad):
   """Gradients for an exit op are calculated using an Enter op."""
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
@@ -139,6 +140,12 @@ def _ExitGrad(_, grad):
     # computation for this loop. If the attribute `back_prop` is false,
     # no gradient computation.
     return None
+
+  # pylint: disable=protected-access
+  if op._get_control_flow_context().grad_state:
+    raise TypeError("Second-order gradient for while loops not supported.")
+  # pylint: enable=protected-access
+
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)
   else:
@@ -190,14 +197,20 @@ def _EnterGrad(op, grad):
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if not grad_ctxt.back_prop:
-    # If the attribute `back_prop` is true, no gradient computation.
+    # Skip gradient computation, if the attribute `back_prop` is false.
+    return grad
+  if grad_ctxt.grad_state is None:
+    # Pass the gradient grough if we are not in a gradient while context.
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
-    if isinstance(grad, ops.IndexedSlices):
-      result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(grad)
+    if isinstance(grad, ops.Tensor):
+      result = grad_ctxt.AddBackPropAccumulator(op, grad)
+    elif isinstance(grad, ops.IndexedSlices):
+      result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(op, grad)
     else:
-      result = grad_ctxt.AddBackPropAccumulator(grad)
+      # TODO(yuanbyu, lukasr): Add support for SparseTensor.
+      raise TypeError("Type %s not supported" % type(grad))
   else:
     result = exit(grad)
     grad_ctxt.ExitResult([result])

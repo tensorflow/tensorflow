@@ -184,6 +184,25 @@ See also:  `is_non_decreasing`
 
 - - -
 
+### `tf.contrib.framework.is_tensor(x)` {#is_tensor}
+
+Check for tensor types.
+
+Check whether an object is a tensor. Equivalent to
+`isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+##### Args:
+
+
+*  <b>`x`</b>: An python object to check.
+
+##### Returns:
+
+  `True` if `x` is a tensor, `False` if not.
+
+
+- - -
+
 ### `tf.contrib.framework.reduce_sum_n(tensors, name=None)` {#reduce_sum_n}
 
 Reduce tensors to a scalar sum.
@@ -205,48 +224,6 @@ adds them via `tf.add_n`.
 
 
 *  <b>`ValueError`</b>: if `losses` is missing or empty.
-
-
-- - -
-
-### `tf.contrib.framework.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner='mean', default_id=None, name=None, partition_strategy='div')` {#safe_embedding_lookup_sparse}
-
-Lookup embedding results, accounting for invalid IDs and empty features.
-
-The partitioned embedding in `embedding_weights` must all be the same shape
-except for the first dimension. The first dimension is allowed to vary as the
-vocabulary size is not necessarily a multiple of `P`.
-
-Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
-with non-positive weight. For an entry with no features, the embedding vector
-for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
-
-##### Args:
-
-
-*  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
-      partitioned embedding tensors.
-*  <b>`sparse_ids`</b>: `SparseTensor` of shape `[batch_size, ?]` containing the ids.
-*  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing
-      float weights corresponding to `sparse_ids`, or `None` if all weights
-      are be assumed to be 1.0.
-*  <b>`combiner`</b>: A string specifying how to combine embedding results for each
-      entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
-      the default.
-*  <b>`default_id`</b>: The id to use for an entry with no features.
-*  <b>`name`</b>: A name for this operation (optional).
-*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy.
-      Currently `"div"` and `"mod"` are supported. Default is `"div"`.
-
-
-##### Returns:
-
-  Dense tensor of shape `[batch_size, embed_dim]`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `embedding_weights` is empty.
 
 
 - - -
@@ -294,6 +271,121 @@ Assert tensors are the same shape, from the same graph.
 
 
 
+## Deprecation
+- - -
+
+### `tf.contrib.framework.deprecated(date, instructions)` {#deprecated}
+
+Decorator for marking functions or methods deprecated.
+
+This decorator logs a deprecation warning whenever the decorated function is
+called. It has the following format:
+
+  <function> (from <module>) is deprecated and will be removed after <date>.
+  Instructions for updating:
+  <instructions>
+
+<function> will include the class name if it is a method.
+
+It also edits the docstring of the function: ' (deprecated)' is appended
+to the first line of the docstring and a deprecation notice is prepended
+to the rest of the docstring.
+
+##### Args:
+
+
+*  <b>`date`</b>: String. The date the function is scheduled to be removed. Must be
+    ISO 8601 (YYYY-MM-DD).
+*  <b>`instructions`</b>: String. Instructions on how to update code using the
+    deprecated function.
+
+##### Returns:
+
+  Decorated function or method.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If date is not in ISO 8601 format, or instructions are empty.
+
+
+- - -
+
+### `tf.contrib.framework.deprecated_args(date, instructions, *deprecated_arg_names)` {#deprecated_args}
+
+Decorator for marking specific function arguments as deprecated.
+
+This decorator logs a deprecation warning whenever the decorated function is
+called with the deprecated argument. It has the following format:
+
+  Calling <function> (from <module>) with <arg> is deprecated and will be
+  removed after <date>. Instructions for updating:
+    <instructions>
+
+<function> will include the class name if it is a method.
+
+It also edits the docstring of the function: ' (deprecated arguments)' is
+appended to the first line of the docstring and a deprecation notice is
+prepended to the rest of the docstring.
+
+##### Args:
+
+
+*  <b>`date`</b>: String. The date the function is scheduled to be removed. Must be
+    ISO 8601 (YYYY-MM-DD).
+*  <b>`instructions`</b>: String. Instructions on how to update code using the
+    deprecated function.
+*  <b>`*deprecated_arg_names`</b>: String. The deprecated arguments.
+
+##### Returns:
+
+  Decorated function or method.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If date is not in ISO 8601 format, instructions are empty, or
+    the deprecated arguments are not present in the function signature.
+
+
+- - -
+
+### `tf.contrib.framework.deprecated_arg_values(date, instructions, **deprecated_kwargs)` {#deprecated_arg_values}
+
+Decorator for marking specific function argument values as deprecated.
+
+This decorator logs a deprecation warning whenever the decorated function is
+called with the deprecated argument values. It has the following format:
+
+  Calling <function> (from <module>) with <arg>=<value> is deprecated and
+  will be removed after <date>. Instructions for updating:
+    <instructions>
+
+<function> will include the class name if it is a method.
+
+It also edits the docstring of the function: ' (deprecated arguments)' is
+appended to the first line of the docstring and a deprecation notice is
+prepended to the rest of the docstring.
+
+##### Args:
+
+
+*  <b>`date`</b>: String. The date the function is scheduled to be removed. Must be
+    ISO 8601 (YYYY-MM-DD).
+*  <b>`instructions`</b>: String. Instructions on how to update code using the
+    deprecated function.
+*  <b>`**deprecated_kwargs`</b>: The deprecated argument values.
+
+##### Returns:
+
+  Decorated function or method.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If date is not in ISO 8601 format, or instructions are empty.
+
+
 
 ## Arg_Scope
 - - -
@@ -308,9 +400,9 @@ For usage, please see examples at top of the file.
 
 
 *  <b>`list_ops_or_scope`</b>: List or tuple of operations to set argument scope for or
-    a dictionary containg the current scope. When list_ops_or_scope is a dict,
-    kwargs must be empty. When list_ops_or_scope is a list or tuple, then
-    every op in it need to be decorated with @add_arg_scope to work.
+    a dictionary containing the current scope. When list_ops_or_scope is a
+    dict, kwargs must be empty. When list_ops_or_scope is a list or tuple,
+    then every op in it need to be decorated with @add_arg_scope to work.
 *  <b>`**kwargs`</b>: keyword=value that will define the defaults for each op in
             list_ops. All the ops need to accept the given set of arguments.
 
@@ -379,7 +471,7 @@ Returns the list kwargs that arg_scope can set for a func.
 
 ### `tf.contrib.framework.add_model_variable(var)` {#add_model_variable}
 
-Adds a variable to the MODEL_VARIABLES collection.
+Adds a variable to the `GraphKeys.MODEL_VARIABLES` collection.
 
 ##### Args:
 
@@ -389,7 +481,7 @@ Adds a variable to the MODEL_VARIABLES collection.
 
 - - -
 
-### `tf.contrib.framework.assert_global_step(global_step_tensor)` {#assert_global_step}
+### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
 Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
@@ -424,6 +516,116 @@ tensor (using `assert_global_step`). Otherwise find a global step tensor using
 
 - - -
 
+### `tf.contrib.framework.assign_from_checkpoint(model_path, var_list)` {#assign_from_checkpoint}
+
+Creates an operation to assign specific variables from a checkpoint.
+
+##### Args:
+
+
+*  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
+      use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
+*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
+      checkpoint to the corresponding variables to initialize. If empty or
+      None, it would return  no_op(), None.
+
+##### Returns:
+
+  the restore_op and the feed_dict that need to be run to restore var_list.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the checkpoint specified at `model_path` is missing one of
+    the variables in `var_list`.
+
+
+- - -
+
+### `tf.contrib.framework.assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False, reshape_variables=False)` {#assign_from_checkpoint_fn}
+
+Returns a function that assigns specific variables from a checkpoint.
+
+##### Args:
+
+
+*  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
+      use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
+*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
+      checkpoint to the correspoing variables to initialize. If empty or None,
+      it would return  no_op(), None.
+*  <b>`ignore_missing_vars`</b>: Boolean, if True it would ignore variables missing in
+      the checkpoint with a warning instead of failing.
+*  <b>`reshape_variables`</b>: Boolean, if True it would automatically reshape variables
+      which are of different shape then the ones stored in the checkpoint but
+      which have the same number of elements.
+
+##### Returns:
+
+  A function that takes a single argument, a `tf.Session`, that applies the
+  assignment operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the checkpoint specified at `model_path` is missing one of
+    the variables in `var_list`.
+
+
+- - -
+
+### `tf.contrib.framework.assign_from_values(var_names_to_values)` {#assign_from_values}
+
+Creates an assignment operation from a given mapping.
+
+This function provides a mechanism for performing assignment of variables
+to values in a way that does not fill the graph with large assignment values.
+
+##### Args:
+
+
+*  <b>`var_names_to_values`</b>: A map from variable names to values.
+
+##### Returns:
+
+
+*  <b>`assign_op`</b>: An `Operation` that assigns each of the given variables to the
+    requested values.
+*  <b>`feed_dict`</b>: The feed dictionary to use when evaluating `assign_op`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if any of the given variable names were not found.
+
+
+- - -
+
+### `tf.contrib.framework.assign_from_values_fn(var_names_to_values)` {#assign_from_values_fn}
+
+Returns a function that assigns specific variables from the given values.
+
+This function provides a mechanism for performing assignment of variables
+to values in a way that does not fill the graph with large assignment values.
+
+##### Args:
+
+
+*  <b>`var_names_to_values`</b>: A map from variable names to values.
+
+##### Returns:
+
+  A function that takes a single argument, a `tf.Session`, that applies the
+  assignment operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if any of the given variable names were not found.
+
+
+- - -
+
 ### `tf.contrib.framework.create_global_step(graph=None)` {#create_global_step}
 
 Create global step tensor in graph.
@@ -446,7 +648,7 @@ Create global step tensor in graph.
 
 - - -
 
-### `tf.contrib.framework.get_global_step(graph=None)` {#get_global_step}
+### `tf.train.get_global_step(graph=None)` {#get_global_step}
 
 Get the global step tensor.
 
@@ -500,7 +702,7 @@ Gets the list of model variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 
 
 - - -
@@ -517,7 +719,7 @@ Gets the list of model variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 
 
 - - -
@@ -612,11 +814,12 @@ Gets the list of variables, filtered by scope and/or suffix.
 
 *  <b>`scope`</b>: an optional scope for filtering the variables to return.
 *  <b>`suffix`</b>: an optional suffix for filtering the variables to return.
-*  <b>`collection`</b>: in which collection search for. Defaults to GraphKeys.VARIABLES.
+*  <b>`collection`</b>: in which collection search for. Defaults to
+    `GraphKeys.VARIABLES`.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 
 
 - - -
@@ -654,10 +857,10 @@ Gets an existing model variable with these parameters or creates a new one.
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    Note that the variable is always also added to the tf.GraphKeys.VARIABLES
-    and MODEL_VARIABLES collections.
+    Note that the variable is always also added to the `GraphKeys.VARIABLES`
+    and `GraphKeys.MODEL_VARIABLES` collections.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
@@ -686,9 +889,9 @@ Gets an existing variable with these parameters or creates a new one.
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    If None it would default to tf.GraphKeys.VARIABLES.
+    If None it would default to `tf.GraphKeys.VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
@@ -708,6 +911,13 @@ Device chooser for variables.
 
 When using a parameter server it will assign them in a round-robin fashion.
 When not using a parameter server it allows GPU or CPU placement.
+- - -
+
+#### `tf.contrib.framework.VariableDeviceChooser.__call__(op)` {#VariableDeviceChooser.__call__}
+
+
+
+
 - - -
 
 #### `tf.contrib.framework.VariableDeviceChooser.__init__(num_tasks=0, job_name='ps', device_type='CPU', device_index=0)` {#VariableDeviceChooser.__init__}
@@ -732,5 +942,29 @@ Initialize VariableDeviceChooser.
 *  <b>`device_index`</b>: int.  Optional device index.  If left
     unspecified, device represents 'any' device_index.
 
+
+
+- - -
+
+### `tf.contrib.framework.zero_initializer(ref, use_locking=True, name='zero_initializer')` {#zero_initializer}
+
+Initialize 'ref' with all zeros, ref tensor should be uninitialized.
+If already initialized, you will get ValueError. This op is intended to
+save memory during initialization.
+
+##### Args:
+
+
+*  <b>`ref`</b>: ref of the tensor need to be zero initialized.
+*  <b>`name`</b>: optional name for this operation.
+
+##### Returns:
+
+  ref that initialized.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If ref tensor is initialized.
 
 

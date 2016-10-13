@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -55,13 +56,36 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
+  bool MatchPath(const string& path, const string& pattern) override {
+    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
+  }
+
   uint64 NowMicros() override {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
-  void SleepForMicroseconds(int micros) override { usleep(micros); }
+  void SleepForMicroseconds(int64 micros) override {
+    while (micros > 0) {
+      timespec sleep_time;
+      sleep_time.tv_sec = 0;
+      sleep_time.tv_nsec = 0;
+
+      if (micros >= 1e6) {
+        sleep_time.tv_sec =
+            std::min<int64>(micros / 1e6, std::numeric_limits<time_t>::max());
+        micros -= static_cast<int64>(sleep_time.tv_sec) * 1e6;
+      }
+      if (micros < 1e6) {
+        sleep_time.tv_nsec = 1000 * micros;
+        micros = 0;
+      }
+      while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {
+        // Ignore signals and wait for the full interval to elapse.
+      }
+    }
+  }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
@@ -76,7 +100,7 @@ class PosixEnv : public Env {
     closure_thread.detach();
   }
 
-  void SchedClosureAfter(int micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
     // TODO(b/27290852): Consuming a thread here is wasteful, but this
     // code is (currently) only used in the case where a step fails
     // (AbortStep). This could be replaced by a timer thread

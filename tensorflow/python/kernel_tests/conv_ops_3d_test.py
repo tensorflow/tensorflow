@@ -23,8 +23,8 @@ import tensorflow as tf
 
 class Conv3DTest(tf.test.TestCase):
 
-  def _VerifyValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
-                             padding, expected, use_gpu):
+  def _VerifyValues(
+      self, tensor_in_sizes, filter_in_sizes, stride, padding, expected):
     total_size_1 = 1
     total_size_2 = 1
     for s in tensor_in_sizes:
@@ -36,7 +36,7 @@ class Conv3DTest(tf.test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       t1 = tf.constant(x1, shape=tensor_in_sizes)
       t2 = tf.constant(x2, shape=filter_in_sizes)
       conv = tf.nn.conv3d(t1,
@@ -46,21 +46,6 @@ class Conv3DTest(tf.test.TestCase):
     print("expected = ", expected)
     print("actual = ", value)
     self.assertArrayNear(expected, value.flatten(), 1e-5)
-
-  def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
-                    expected):
-    self._VerifyValuesForDevice(tensor_in_sizes,
-                                filter_in_sizes,
-                                stride,
-                                padding,
-                                expected,
-                                use_gpu=False)
-    self._VerifyValuesForDevice(tensor_in_sizes,
-                                filter_in_sizes,
-                                stride,
-                                padding,
-                                expected,
-                                use_gpu=True)
 
   def testConv3D1x1x1Filter(self):
     expected_output = [30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0,
@@ -172,7 +157,7 @@ class Conv3DTest(tf.test.TestCase):
   def ConstructAndTestGradient(self, batch, input_planes, input_rows,
                                input_cols, filter_planes, filter_rows,
                                filter_cols, in_depth, out_depth, stride,
-                               padding, test_input, use_gpu):
+                               padding, test_input):
     input_shape = [batch, input_planes, input_rows, input_cols, in_depth]
     filter_shape = [filter_planes, filter_rows, filter_cols, in_depth,
                     out_depth]
@@ -194,13 +179,19 @@ class Conv3DTest(tf.test.TestCase):
       filter_size *= x
     input_data = [x * 1.0 / input_size for x in range(0, input_size)]
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
-    if use_gpu:
+    if tf.test.is_gpu_available():
       data_type = tf.float32
-      tolerance = 4e-3
+      if tf.test.is_gpu_available():
+        tolerance = 4e-3
+      else:
+        # As of Aug 2016, higher tolerance is needed for some CPU architectures.
+        # Runs on a single machine can also generate slightly different errors
+        # because of multithreading.
+        tolerance = 8e-3
     else:
       data_type = tf.float64
       tolerance = 1e-8
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=True):
       input_tensor = tf.constant(input_data,
                                  shape=input_shape,
                                  dtype=data_type,
@@ -224,196 +215,172 @@ class Conv3DTest(tf.test.TestCase):
     self.assertLess(err, tolerance)
 
   def testInputGradientValidPaddingStrideOne(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=3,
-                                    input_rows=5,
-                                    input_cols=4,
-                                    filter_planes=3,
-                                    filter_rows=3,
-                                    filter_cols=3,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=1,
-                                    padding="VALID",
-                                    test_input=True,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=3,
+                                  input_rows=5,
+                                  input_cols=4,
+                                  filter_planes=3,
+                                  filter_rows=3,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=1,
+                                  padding="VALID",
+                                  test_input=True)
 
   def testFilterGradientValidPaddingStrideOne(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=4,
-                                    input_planes=4,
-                                    input_rows=6,
-                                    input_cols=5,
-                                    filter_planes=2,
-                                    filter_rows=2,
-                                    filter_cols=2,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=1,
-                                    padding="VALID",
-                                    test_input=False,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=4,
+                                  input_planes=4,
+                                  input_rows=6,
+                                  input_cols=5,
+                                  filter_planes=2,
+                                  filter_rows=2,
+                                  filter_cols=2,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=1,
+                                  padding="VALID",
+                                  test_input=False)
 
   def testInputGradientValidPaddingStrideTwo(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=6,
-                                    input_rows=3,
-                                    input_cols=5,
-                                    filter_planes=3,
-                                    filter_rows=3,
-                                    filter_cols=3,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=2,
-                                    padding="VALID",
-                                    test_input=True,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=6,
+                                  input_rows=3,
+                                  input_cols=5,
+                                  filter_planes=3,
+                                  filter_rows=3,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=2,
+                                  padding="VALID",
+                                  test_input=True)
 
   def testFilterGradientValidPaddingStrideTwo(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=7,
-                                    input_rows=6,
-                                    input_cols=5,
-                                    filter_planes=2,
-                                    filter_rows=2,
-                                    filter_cols=2,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=2,
-                                    padding="VALID",
-                                    test_input=False,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=7,
+                                  input_rows=6,
+                                  input_cols=5,
+                                  filter_planes=2,
+                                  filter_rows=2,
+                                  filter_cols=2,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=2,
+                                  padding="VALID",
+                                  test_input=False)
 
   def testInputGradientValidPaddingStrideThree(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=3,
-                                    input_rows=7,
-                                    input_cols=6,
-                                    filter_planes=3,
-                                    filter_rows=3,
-                                    filter_cols=3,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=3,
-                                    padding="VALID",
-                                    test_input=True,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=3,
+                                  input_rows=7,
+                                  input_cols=6,
+                                  filter_planes=3,
+                                  filter_rows=3,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=3,
+                                  padding="VALID",
+                                  test_input=True)
 
   def testFilterGradientValidPaddingStrideThree(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=4,
-                                    input_rows=4,
-                                    input_cols=7,
-                                    filter_planes=4,
-                                    filter_rows=4,
-                                    filter_cols=4,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=3,
-                                    padding="VALID",
-                                    test_input=False,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=4,
+                                  input_rows=4,
+                                  input_cols=7,
+                                  filter_planes=4,
+                                  filter_rows=4,
+                                  filter_cols=4,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=3,
+                                  padding="VALID",
+                                  test_input=False)
 
   def testInputGradientSamePaddingStrideOne(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=3,
-                                    input_rows=2,
-                                    input_cols=2,
-                                    filter_planes=3,
-                                    filter_rows=2,
-                                    filter_cols=1,
-                                    in_depth=2,
-                                    out_depth=1,
-                                    stride=1,
-                                    padding="SAME",
-                                    test_input=True,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=3,
+                                  input_rows=2,
+                                  input_cols=2,
+                                  filter_planes=3,
+                                  filter_rows=2,
+                                  filter_cols=1,
+                                  in_depth=2,
+                                  out_depth=1,
+                                  stride=1,
+                                  padding="SAME",
+                                  test_input=True)
 
   def testFilterGradientSamePaddingStrideOne(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=3,
-                                    input_rows=6,
-                                    input_cols=5,
-                                    filter_planes=2,
-                                    filter_rows=2,
-                                    filter_cols=2,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=1,
-                                    padding="SAME",
-                                    test_input=False,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=3,
+                                  input_rows=6,
+                                  input_cols=5,
+                                  filter_planes=2,
+                                  filter_rows=2,
+                                  filter_cols=2,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=1,
+                                  padding="SAME",
+                                  test_input=False)
 
   def testInputGradientSamePaddingStrideTwo(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=6,
-                                    input_rows=3,
-                                    input_cols=4,
-                                    filter_planes=3,
-                                    filter_rows=3,
-                                    filter_cols=3,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=2,
-                                    padding="SAME",
-                                    test_input=True,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=6,
+                                  input_rows=3,
+                                  input_cols=4,
+                                  filter_planes=3,
+                                  filter_rows=3,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=2,
+                                  padding="SAME",
+                                  test_input=True)
 
   def testFilterGradientSamePaddingStrideTwo(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=4,
-                                    input_planes=7,
-                                    input_rows=3,
-                                    input_cols=5,
-                                    filter_planes=2,
-                                    filter_rows=2,
-                                    filter_cols=2,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=2,
-                                    padding="SAME",
-                                    test_input=False,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=4,
+                                  input_planes=7,
+                                  input_rows=3,
+                                  input_cols=5,
+                                  filter_planes=2,
+                                  filter_rows=2,
+                                  filter_cols=2,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=2,
+                                  padding="SAME",
+                                  test_input=False)
 
   def testInputGradientSamePaddingStrideThree(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=9,
-                                    input_rows=3,
-                                    input_cols=6,
-                                    filter_planes=3,
-                                    filter_rows=3,
-                                    filter_cols=3,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=3,
-                                    padding="SAME",
-                                    test_input=True,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=9,
+                                  input_rows=3,
+                                  input_cols=6,
+                                  filter_planes=3,
+                                  filter_rows=3,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=3,
+                                  padding="SAME",
+                                  test_input=True)
 
   def testFilterGradientSamePaddingStrideThree(self):
-    for use_gpu in [False, True]:
-      self.ConstructAndTestGradient(batch=2,
-                                    input_planes=9,
-                                    input_rows=4,
-                                    input_cols=7,
-                                    filter_planes=4,
-                                    filter_rows=4,
-                                    filter_cols=4,
-                                    in_depth=2,
-                                    out_depth=3,
-                                    stride=3,
-                                    padding="SAME",
-                                    test_input=False,
-                                    use_gpu=use_gpu)
+    self.ConstructAndTestGradient(batch=2,
+                                  input_planes=9,
+                                  input_rows=4,
+                                  input_cols=7,
+                                  filter_planes=4,
+                                  filter_rows=4,
+                                  filter_cols=4,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=3,
+                                  padding="SAME",
+                                  test_input=False)
 
 
 if __name__ == "__main__":

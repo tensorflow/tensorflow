@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <numeric>
 // TODO(ptucker): Consider switching back to hash_set - I had trouble getting it
 // to work with string values.
 #include <set>
@@ -213,7 +214,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
   result->clear();
   auto input_flat = input_tensor.flat<T>();
   const auto start = std::inner_product(
-      group_indices.begin(), group_indices.end(), input_strides.begin(), 0);
+      group_indices.begin(), group_indices.end(), input_strides.begin(), 0L);
   const TensorShape& input_shape = input_tensor.shape();
   const auto end = start + input_shape.dim_size(input_shape.dims() - 1);
   for (int64 i = start; i < end; ++i) {
@@ -273,7 +274,7 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
 
     const auto group_key = group.group();
     const auto output_index = std::inner_product(
-        group_key.begin(), group_key.end(), output_strides.begin(), 0);
+        group_key.begin(), group_key.end(), output_strides.begin(), 0L);
     out(output_index) = group_set.size();
   }
 }
@@ -415,6 +416,9 @@ template <typename T>
 void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   const Tensor& set1_t = ctx->input(0);
   const Tensor& set2_t = ctx->input(1);
+  // The following should stay in sync with `_dense_to_dense_shape` shape
+  // assertions in python/ops/set_ops.py, and `SetShapeFn` for
+  // `DenseToDenseSetOperation` in ops/set_ops.cc.
   const TensorShape group_shape =
       GroupShapeFromInputs(ctx, set1_t.shape(), set2_t.shape());
 
@@ -438,7 +442,7 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
 
     std::set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
-    if (group_set.size() > 0) {
+    if (!group_set.empty()) {
       group_sets[group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
@@ -462,6 +466,9 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
   const Tensor& set1_t = ctx->input(0);
   const sparse::SparseTensor set2_st =
       SparseTensorFromContext(ctx, 1, validate_indices_);
+  // The following should stay in sync with `_dense_to_sparse_shape` shape
+  // assertions in python/ops/set_ops.py, and `SetShapeFn` for
+  // `DenseToSparseSetOperation` in ops/set_ops.cc.
   const TensorShape group_shape =
       GroupShapeFromInputs(ctx, set1_t.shape(), set2_st.shape());
 
@@ -510,7 +517,7 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
     std::set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
-    if (group_set.size() > 0) {
+    if (!group_set.empty()) {
       group_sets[group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
@@ -569,6 +576,9 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
       SparseTensorFromContext(ctx, 0, validate_indices_);
   const sparse::SparseTensor set2_st =
       SparseTensorFromContext(ctx, 3, validate_indices_);
+  // The following should stay in sync with `_sparse_to_sparse_shape` shape
+  // assertions in python/ops/set_ops.py, and `SetShapeFn` for
+  // `SparseToSparseSetOperation` in ops/set_ops.cc.
   const TensorShape group_shape =
       GroupShapeFromInputs(ctx, set1_st.shape(), set2_st.shape());
 
@@ -623,7 +633,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
     std::set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
-    if (group_set.size() > 0) {
+    if (!group_set.empty()) {
       group_sets[*group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {

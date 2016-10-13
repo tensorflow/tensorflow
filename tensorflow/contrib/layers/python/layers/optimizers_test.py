@@ -35,8 +35,10 @@ def _setup_model():
 class OptimizersTest(tf.test.TestCase):
 
   def testSGDOptimizer(self):
-    optimizers = ["SGD", tf.train.GradientDescentOptimizer,
-                  tf.train.GradientDescentOptimizer(learning_rate=0.1)]
+    optimizers = [
+        "SGD", tf.train.GradientDescentOptimizer,
+        tf.train.GradientDescentOptimizer(learning_rate=0.1),
+        lambda lr: tf.train.GradientDescentOptimizer(learning_rate=lr)]
     for optimizer in optimizers:
       with tf.Graph().as_default() as g:
         with self.test_session(graph=g) as session:
@@ -51,8 +53,24 @@ class OptimizersTest(tf.test.TestCase):
           self.assertEqual(var_value, 9.5)
           self.assertEqual(global_step_value, 1)
 
+  def testNoLrCallable(self):
+    def optimizer_fn():
+      return tf.train.GradientDescentOptimizer(learning_rate=0.1)
+    with tf.Graph().as_default() as g:
+      with self.test_session(graph=g) as session:
+        x, var, loss, global_step = _setup_model()
+        train = tf.contrib.layers.optimize_loss(loss,
+                                                global_step,
+                                                learning_rate=None,
+                                                optimizer=optimizer_fn)
+        tf.initialize_all_variables().run()
+        session.run(train, feed_dict={x: 5})
+        var_value, global_step_value = session.run([var, global_step])
+        self.assertEqual(var_value, 9.5)
+        self.assertEqual(global_step_value, 1)
+
   def testWrongOptimizer(self):
-    optimizers = ["blah", tf.Variable, object()]
+    optimizers = ["blah", tf.Variable, object(), lambda x: None]
     for optimizer in optimizers:
       with tf.Graph().as_default() as g:
         with self.test_session(graph=g):
@@ -75,7 +93,8 @@ class OptimizersTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
-      self.assertAlmostEqual(var_value, 8.58150, 4)
+      # Due to randomness the following number may change if graph is different.
+      self.assertAlmostEqual(var_value, 8.5591021, 4)
       self.assertEqual(global_step_value, 1)
 
   def testGradientNoiseWithClipping(self):
@@ -127,10 +146,13 @@ class OptimizersTest(tf.test.TestCase):
   def testIgnoreVariablesWithNoGradients(self):
     _, _, loss, global_step = _setup_model()
 
-    unused_variable = tf.get_variable("ignore me", [])
+    unused_variable = tf.get_variable("ignore_me", [])
 
     tf.contrib.layers.optimize_loss(
-        loss, global_step, learning_rate=0.1, optimizer="SGD")
+        loss, global_step, learning_rate=0.1, optimizer="SGD",
+        gradient_noise_scale=10.0,
+        gradient_multipliers={unused_variable: 1.},
+        clip_gradients=10.0)
 
   def testUpdateOp(self):
     optimizers = ["SGD", tf.train.GradientDescentOptimizer,
@@ -139,7 +161,9 @@ class OptimizersTest(tf.test.TestCase):
       with tf.Graph().as_default() as g:
         with self.test_session(graph=g) as session:
           x, var, loss, global_step = _setup_model()
-          update_op = tf.assign(var, 20)
+          update_var = tf.get_variable(
+              "update", [], initializer=tf.constant_initializer(10))
+          update_op = tf.assign(update_var, 20)
           train = tf.contrib.layers.optimize_loss(loss,
                                                   global_step,
                                                   learning_rate=0.1,
@@ -147,11 +171,32 @@ class OptimizersTest(tf.test.TestCase):
                                                   update_ops=[update_op])
           tf.initialize_all_variables().run()
           session.run(train, feed_dict={x: 5})
-          var_value, global_step_value = session.run([var, global_step])
-          # 19.5, due to update of var to 20 before loss computation.
-          self.assertEqual(var_value, 19.5)
+          var_value, update_var_value, global_step_value = session.run(
+              [var, update_var, global_step])
+          self.assertEqual(var_value, 9.5)
+          self.assertEqual(update_var_value, 20)
+          self.assertEqual(global_step_value, 1)
+
+  def testUpdateOpFromCollection(self):
+    optimizers = ["SGD", tf.train.GradientDescentOptimizer,
+                  tf.train.GradientDescentOptimizer(learning_rate=0.1)]
+    for optimizer in optimizers:
+      with tf.Graph().as_default() as g:
+        with self.test_session(graph=g) as session:
+          x, var, loss, global_step = _setup_model()
+          update_var = tf.get_variable(
+              "update", [], initializer=tf.constant_initializer(10))
+          update_op = tf.assign(update_var, 20)
+          tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, update_op)
+          train = tf.contrib.layers.optimize_loss(
+              loss, global_step, learning_rate=0.1, optimizer=optimizer)
+          tf.initialize_all_variables().run()
+          session.run(train, feed_dict={x: 5})
+          var_value, update_var_value, global_step_value = session.run(
+              [var, update_var, global_step])
+          self.assertEqual(var_value, 9.5)
+          self.assertEqual(update_var_value, 20)
           self.assertEqual(global_step_value, 1)
 
 if __name__ == "__main__":
   tf.test.main()
-

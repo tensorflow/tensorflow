@@ -20,40 +20,29 @@ from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 
 
-@ops.RegisterShape('DecodeAudio')
-def _decode_audio_shape(op):
-  """Computes the shape of a DecodeAudio operation.
-
-  Args:
-    op: A DecodeAudio operation.
-
-  Returns:
-    A list of output shapes. There's exactly one output, the sampled audio.
-    This is a rank 2 tensor with an unknown number of samples and a
-    known number of channels.
-  """
-  try:
-    channels = op.get_attr('channel_count')
-  except ValueError:
-    channels = None
-  return [tensor_shape.TensorShape([None, channels])]
+ops.RegisterShape('DecodeAudio')(common_shapes.call_cpp_shape_fn)
 
 
 def decode_audio(contents, file_format=None, samples_per_second=None,
                  channel_count=None):
   """Create an op that decodes the contents of an audio file.
 
+  Note that ffmpeg is free to select the "best" audio track from an mp4.
+  https://trac.ffmpeg.org/wiki/Map
+
   Args:
     contents: The binary contents of the audio file to decode. This is a
         scalar.
     file_format: A string specifying which format the contents will conform
-        to. This can be mp3, ogg, or wav.
+        to. This can be mp3, mp4, ogg, or wav.
     samples_per_second: The number of samples per second that is assumed.
         In some cases, resampling will occur to generate the correct sample
         rate.
@@ -65,25 +54,18 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
   Returns:
     A rank 2 tensor that has time along dimension 0 and channels along
     dimension 1. Dimension 0 will be `samples_per_second * length` wide, and
-    dimension 1 will be `channel_count` wide.
+    dimension 1 will be `channel_count` wide. If ffmpeg fails to decode the
+    audio then an empty tensor will be returned.
   """
   return gen_decode_audio_op_py.decode_audio(
       contents, file_format=file_format, samples_per_second=samples_per_second,
       channel_count=channel_count)
 
 
-ops.NoGradient('DecodeAudio')
+ops.NotDifferentiable('DecodeAudio')
 
 
-@ops.RegisterShape('EncodeAudio')
-def _encode_audio_shape(unused_op):
-  """Computes the shape of an EncodeAudio operation.
-
-  Returns:
-    A list of output shapes. There's exactly one output, the formatted audio
-    file. This is a rank 0 tensor.
-  """
-  return [tensor_shape.TensorShape([])]
+ops.RegisterShape('EncodeAudio')(common_shapes.call_cpp_shape_fn)
 
 
 def encode_audio(audio, file_format=None, samples_per_second=None):
@@ -105,7 +87,7 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
       audio, file_format=file_format, samples_per_second=samples_per_second)
 
 
-ops.NoGradient('EncodeAudio')
+ops.NotDifferentiable('EncodeAudio')
 
 
 def _load_library(name, op_list=None):
@@ -119,15 +101,18 @@ def _load_library(name, op_list=None):
   Raises:
     NameError if one of the required ops is missing.
   """
-  filename = resource_loader.get_path_to_datafile(name)
-  library = load_library.load_op_library(filename)
-  for expected_op in (op_list or []):
-    for lib_op in library.OP_LIST.op:
-      if lib_op.name == expected_op:
-        break
-    else:
-      raise NameError('Could not find operator %s in dynamic library %s' %
-                      (expected_op, name))
+  try:
+    filename = resource_loader.get_path_to_datafile(name)
+    library = load_library.load_op_library(filename)
+    for expected_op in (op_list or []):
+      for lib_op in library.OP_LIST.op:
+        if lib_op.name == expected_op:
+          break
+      else:
+        raise NameError('Could not find operator %s in dynamic library %s' %
+                        (expected_op, name))
+  except errors.NotFoundError:
+    logging.warning('%s file could not be loaded.', name)
 
 
 _load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-#include <cmath>
 
 #include "third_party/eigen3/Eigen/Cholesky"
 #include "third_party/eigen3/Eigen/Core"
@@ -22,72 +21,68 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/binary_linalg_ops_common.h"
+#include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperationT>
-class MatrixSolveLsOp
-    : public BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+template <class Scalar>
+class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
  public:
-  explicit MatrixSolveLsOp(OpKernelConstruction* context)
-      : BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {
+  typedef LinearAlgebraOp<Scalar> Base;
+
+  explicit MatrixSolveLsOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("fast", &fast_));
   }
 
-  ~MatrixSolveLsOp() override {}
+  using TensorShapes = typename Base::TensorShapes;
+  using Matrix = typename Base::Matrix;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
-  TensorShape GetOutputMatrixShape(
-      const TensorShape& input_matrix_shape,
-      const TensorShape& rhs_matrix_shape) override {
-    CHECK_EQ(input_matrix_shape.dims(), rhs_matrix_shape.dims());
-    TensorShape output_matrix_shape = rhs_matrix_shape;
-    output_matrix_shape.set_dim(
-        output_matrix_shape.dims() - 2,
-        input_matrix_shape.dim_size(output_matrix_shape.dims() - 1));
-    return output_matrix_shape;
+  // Tell the base class to ignore the regularization parameter
+  // in context->input(2).
+  int NumMatrixInputs(const OpKernelContext* context) const final { return 2; }
+
+  virtual void ValidateInputMatrixShapes(
+      OpKernelContext* context,
+      const TensorShapes& input_matrix_shapes) const final {
+    Base::ValidateSolver(context, input_matrix_shapes);
   }
 
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape,
-                       const TensorShape& rhs_matrix_shape) override {
-    const int64 rows = input_matrix_shape.dim_size(0);
-    const int64 rhss = rhs_matrix_shape.dim_size(1);
-    if (rows > (1LL << 20)) {
-      // A big number to cap the cost in case overflow.
-      return kint32max;
-    } else {
-      return 2 * rows * rows * (rows + rhss);
-    }
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    return TensorShapes({TensorShape({input_matrix_shapes[0].dim_size(1),
+                                      input_matrix_shapes[1].dim_size(1)})});
   }
 
-  typedef
-      typename BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix
-          Matrix;
-  typedef
-      typename BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap
-          MatrixMap;
-  typedef typename BinaryLinearAlgebraOp<
-      Scalar, SupportsBatchOperationT>::ConstMatrixMap ConstMatrixMap;
+  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+    double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
+    double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
+    double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
+    double cost = std::max(m, n) * std::min(m, n) * (std::min(m, n) + num_rhss);
+    return cost >= static_cast<double>(kint64max) ? kint64max
+                                                  : static_cast<int64>(cost);
+  }
 
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& matrix,
-                     const ConstMatrixMap& rhs, MatrixMap* output) override {
-    const int64 rows = matrix.rows();
-    const int64 cols = matrix.cols();
-    OP_REQUIRES(
-        context, rows == rhs.rows(),
-        errors::InvalidArgument("Input matrix and rhs are incompatible."));
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& matrix = inputs[0];
+    const ConstMatrixMap& rhs = inputs[1];
     const auto& l2_regularizer_in = context->input(2);
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(l2_regularizer_in.shape()),
         errors::InvalidArgument("l2_regularizer must be scalar, got shape ",
                                 l2_regularizer_in.shape().DebugString()));
     const double l2_regularizer = l2_regularizer_in.scalar<double>()();
-
     OP_REQUIRES(context, l2_regularizer >= 0,
                 errors::InvalidArgument("l2_regularizer must be >= 0."));
+
+    const int64 rows = matrix.rows();
+    const int64 cols = matrix.cols();
     if (rows == 0 || cols == 0) {
       // The result is the empty matrix.
       return;
@@ -119,7 +114,7 @@ class MatrixSolveLsOp
             errors::InvalidArgument("Input matrix was rank deficient or "
                                     "ill-conditioned. Try setting fast=False "
                                     "or provide a larger l2_regularizer > 0."));
-        *output = llt.solve(matrix.transpose() * rhs);
+        outputs->at(0) = llt.solve(matrix.transpose() * rhs);
       } else {
         // Underdetermined case (rows < cols): Solves the minimum-norm problem
         //   min ||X||_F^2 s.t. A*X = RHS
@@ -139,7 +134,7 @@ class MatrixSolveLsOp
             errors::InvalidArgument("Input matrix was rank deficient or "
                                     "ill-conditioned. Try setting fast=False "
                                     "or provide an l2_regularizer > 0."));
-        *output = matrix.transpose() * llt.solve(rhs);
+        outputs->at(0) = matrix.transpose() * llt.solve(rhs);
       }
     } else {
       // Use complete orthogonal decomposition which is backwards stable and
@@ -152,7 +147,7 @@ class MatrixSolveLsOp
       //   the equivalent blocked LAPACK routine xGELSY (e.g. Eigen is ~3x
       //   slower for 4k x 4k matrices).
       //   See http://www.netlib.org/lapack/lawnspdf/lawn114.pdf
-      *output = matrix.completeOrthogonalDecomposition().solve(rhs);
+      outputs->at(0) = matrix.completeOrthogonalDecomposition().solve(rhs);
     }
   }
 
@@ -160,13 +155,9 @@ class MatrixSolveLsOp
   bool fast_;
 };
 
-REGISTER_BINARY_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<float, false>),
-                          float);
-REGISTER_BINARY_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<double, false>),
-                          double);
-REGISTER_BINARY_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<float, true>),
-                          float);
-REGISTER_BINARY_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<double, true>),
-                          double);
+REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<float>), float);
+REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<double>), double);
+REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<float>), float);
+REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<double>), double);
 
 }  // namespace tensorflow

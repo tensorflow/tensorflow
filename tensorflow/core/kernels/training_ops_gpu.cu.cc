@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_ops.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
@@ -84,12 +84,18 @@ struct ApplyMomentum<GPUDevice, T> {
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar momentum) {
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
     Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     accum.device(d) = accum * momentum.reshape(single).broadcast(bcast) + grad;
-    var.device(d) -= lr.reshape(single).broadcast(bcast) * accum;
+    if (use_nesterov) {
+      var.device(d) -= grad * lr.reshape(single).broadcast(bcast) +
+                       accum * momentum.reshape(single).broadcast(bcast) *
+                           lr.reshape(single).broadcast(bcast);
+    } else {
+      var.device(d) -= lr.reshape(single).broadcast(bcast) * accum;
+    }
   }
 };
 
@@ -148,6 +154,31 @@ struct ApplyRMSProp<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyCenteredRMSProp<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat mg, typename TTypes<T>::Flat ms,
+                  typename TTypes<T>::Flat mom,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar momentum,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    const auto one = static_cast<T>(1.0);
+    const auto one_minus_rho =
+        (rho.constant(one) - rho).reshape(single).broadcast(bcast);
+    ms.device(d) = ms + one_minus_rho * (grad.square() - ms);
+    mg.device(d) = mg + one_minus_rho * (grad - mg);
+    auto denom = (ms - mg.square()) + epsilon.reshape(single).broadcast(bcast);
+    mom.device(d) = mom * momentum.reshape(single).broadcast(bcast) +
+                    lr.reshape(single).broadcast(bcast) * grad / denom.sqrt();
+    var.device(d) -= mom;
+  }
+};
+
 }  // namespace functor
 
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
@@ -173,6 +204,10 @@ template struct functor::ApplyAdam<GPUDevice, double>;
 template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
+
+template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
+template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
+template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA

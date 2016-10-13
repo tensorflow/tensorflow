@@ -84,6 +84,11 @@ check_existence file "${SETUP_PY}"
 
 sed -i -e "s/^\_VERSION = [\'\"].*[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}\'/g" "${SETUP_PY}"
 
+# Update cmake setup.py
+CMAKE_SETUP_PY="${TF_SRC_DIR}/contrib/cmake/setup.py"
+check_existence file "${CMAKE_SETUP_PY}"
+
+sed -i -e "s/^\_VERSION = [\'\"].*-cmake-experimental[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}-cmake-experimental\'/g" "${CMAKE_SETUP_PY}"
 
 # Update Dockerfiles in tensorflow/tools/docker/
 TOOLS_DOCKER_DIR="${TF_SRC_DIR}/tools/docker"
@@ -101,8 +106,8 @@ OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
 check_existence file "${OS_SETUP}"
 
 sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
-
-sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
+sed -i -r -e "s/(.*export TF_BINARY_URL.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
+sed -i -r -e "s/(.*\`)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 
 
 # Update README.md
@@ -117,6 +122,12 @@ check_existence file "${DIST_TEST_DOCKER_FILE}"
 
 sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${DIST_TEST_DOCKER_FILE}"
 
+# Update tensorflow/tools/dist_test/Dockerfile.local
+DIST_TEST_LOCAL_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/Dockerfile.local"
+check_existence file "${DIST_TEST_LOCAL_DOCKER_FILE}"
+
+sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${DIST_TEST_LOCAL_DOCKER_FILE}"
+
 # Update tensorflow/tools/dist_test/server/Dockerfile
 SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile"
 
@@ -130,6 +141,13 @@ TEST_SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile.test"
 check_existence file "${TEST_SERVER_DOCKER_FILE}"
 
 sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${TEST_SERVER_DOCKER_FILE}"
+
+# Update tensorflow/tools/gcs_test/Dockerfile
+GCS_TEST_DOCKER_FILE="${TF_SRC_DIR}/tools/gcs_test/Dockerfile"
+
+check_existence file "${GCS_TEST_DOCKER_FILE}"
+
+sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${GCS_TEST_DOCKER_FILE}"
 
 
 # Updates to be made if there are major / minor version changes

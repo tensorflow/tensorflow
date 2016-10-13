@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 
 #include <atomic>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -26,7 +27,9 @@ namespace {
 
 struct RegistrationInfo {
   RegistrationInfo(DeviceType s, DeviceType r, CopyTensor::CopyFunction cf)
-      : sender_device_type(s), receiver_device_type(r), copy_function(cf) {}
+      : sender_device_type(std::move(s)),
+        receiver_device_type(std::move(r)),
+        copy_function(cf) {}
   DeviceType sender_device_type;
   DeviceType receiver_device_type;
   CopyTensor::CopyFunction copy_function;
@@ -43,8 +46,7 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 }  // namespace
 
 // static
-void CopyTensor::ViaDMA(const string& edge_name,
-                        DeviceContext* send_dev_context,
+void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         DeviceContext* recv_dev_context, Device* src,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,

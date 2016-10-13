@@ -93,9 +93,20 @@ except Exception:
 ```
 - - -
 
-#### `tf.train.Coordinator.__init__()` {#Coordinator.__init__}
+#### `tf.train.Coordinator.__init__(clean_stop_exception_types=None)` {#Coordinator.__init__}
 
 Create a new Coordinator.
+
+##### Args:
+
+
+*  <b>`clean_stop_exception_types`</b>: Optional tuple of Exception types that should
+    cause a clean stop of the coordinator. If an exception of one of these
+    types is reported to `request_stop(ex)` the coordinator will behave as
+    if `request_stop(None)` was called.  Defaults to
+    `(tf.errors.OutOfRangeError,)` which is used by input queues to signal
+    the end of input. When feeding training data from a Python iterator it
+    is common to add `StopIteration` to this list.
 
 
 - - -
@@ -109,11 +120,14 @@ After this is called, calls to `should_stop()` will return `False`.
 
 - - -
 
-#### `tf.train.Coordinator.join(threads, stop_grace_period_secs=120)` {#Coordinator.join}
+#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120)` {#Coordinator.join}
 
 Wait for threads to terminate.
 
-Blocks until all `threads` have terminated or `request_stop()` is called.
+This call blocks until a set of threads have terminated.  The set of thread
+is the union of the threads passed in the `threads` argument and the list
+of threads that registered with the coordinator by calling
+`Coordinator.register_thread()`.
 
 After the threads stop, if an `exc_info` was passed to `request_stop`, that
 exception is re-raised.
@@ -127,7 +141,8 @@ that `RuntimeError`.
 ##### Args:
 
 
-*  <b>`threads`</b>: List of `threading.Threads`. The started threads to join.
+*  <b>`threads`</b>: List of `threading.Threads`. The started threads to join in
+    addition to the registered threads.
 *  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
     `request_stop()` has been called.
 
@@ -136,6 +151,25 @@ that `RuntimeError`.
 
 *  <b>`RuntimeError`</b>: If any thread is still alive after `request_stop()`
     is called and the grace period expires.
+
+
+- - -
+
+#### `tf.train.Coordinator.joined` {#Coordinator.joined}
+
+
+
+
+- - -
+
+#### `tf.train.Coordinator.register_thread(thread)` {#Coordinator.register_thread}
+
+Register a thread to join.
+
+##### Args:
+
+
+*  <b>`thread`</b>: A Python thread to join.
 
 
 - - -

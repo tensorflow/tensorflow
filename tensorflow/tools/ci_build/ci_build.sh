@@ -67,12 +67,8 @@ if [ "$#" -lt 1 ] || [ ! -e "${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}" ]; then
   exit 1
 fi
 
-
 # Optional arguments - environment variables. For example:
 # CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
-if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
-  CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
-fi
 CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
@@ -80,6 +76,11 @@ CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tens
 if [[ ! -z "${TF_BUILD_DISABLE_GCP}" ]] &&
    [[ "${TF_BUILD_DISABLE_GCP}" != "0" ]]; then
   CI_COMMAND_PREFIX+=("--disable-gcp")
+fi
+
+# cmake (CPU) builds do not require configuration.
+if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
+  CI_COMMAND_PREFIX=""
 fi
 
 # Helper function to traverse directories up until given file is found.
@@ -119,7 +120,7 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | sed -e 's/=/_/g' -e 's/,/-/g')
 DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
-echo "WORKSAPCE: ${WORKSPACE}"
+echo "WORKSPACE: ${WORKSPACE}"
 echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
 echo "COMMAND: ${COMMAND[@]}"
 echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
@@ -142,7 +143,10 @@ fi
 # Run the command inside the container.
 echo "Running '${COMMAND[@]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
-docker run \
+# By default we cleanup - remove the container once it finish running (--rm)
+# and share the PID namespace (--pid=host) so the process inside does not have
+# pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
+docker run --rm --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=$(id -u --name)" \

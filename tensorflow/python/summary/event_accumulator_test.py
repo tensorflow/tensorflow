@@ -28,6 +28,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator as ea
+from tensorflow.python.training import saver
 
 
 class _EventGenerator(object):
@@ -136,6 +137,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
                   ea.HISTOGRAMS: [],
                   ea.COMPRESSED_HISTOGRAMS: [],
                   ea.GRAPH: False,
+                  ea.META_GRAPH: False,
                   ea.RUN_METADATA: []}
     self._real_constructor = ea.EventAccumulator
     self._real_generator = ea._GeneratorFromPath
@@ -176,6 +178,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
         ea.GRAPH: False,
+        ea.META_GRAPH: False,
         ea.RUN_METADATA: []
     })
 
@@ -200,6 +203,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
         ea.GRAPH: False,
+        ea.META_GRAPH: False,
         ea.RUN_METADATA: []
     })
 
@@ -307,91 +311,38 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         compressed_histogram_values=expected_vals2)
     self.assertEqual(acc.CompressedHistograms('hst2'), [expected_cmphst2])
 
-  def testPercentile(self):
-
-    def AssertExpectedForBps(bps, expected):
-      output = acc._Percentile(bps, bucket_limit, cumsum_weights, histo_min,
-                               histo_max, histo_num)
-      self.assertAlmostEqual(expected, output)
-
-    gen = _EventGenerator()
-    acc = ea.EventAccumulator(gen)
-
-    bucket_limit = [1, 2, 3, 4]
-    histo_num = 100
-
-    ## All weights in the first bucket
-    cumsum_weights = [10000, 10000, 10000, 10000]
-    histo_min = -1
-    histo_max = .9
-    AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, ea._Remap(2500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(5000, ea._Remap(5000, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(7500, ea._Remap(7500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(10000, histo_max)
-
-    ## All weights in second bucket
-    cumsum_weights = [0, 10000, 10000, 10000]
-    histo_min = 1.1
-    histo_max = 1.8
-    AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, ea._Remap(2500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(5000, ea._Remap(5000, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(7500, ea._Remap(7500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(10000, histo_max)
-
-    ## All weights in the last bucket
-    cumsum_weights = [0, 0, 0, 10000]
-    histo_min = 3.1
-    histo_max = 3.6
-    AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, ea._Remap(2500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(5000, ea._Remap(5000, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(7500, ea._Remap(7500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(10000, histo_max)
-
-    ## Weights distributed between two buckets
-    cumsum_weights = [0, 4000, 10000, 10000]
-    histo_min = 1.1
-    histo_max = 2.9
-    AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, ea._Remap(2500, 0, 4000, histo_min,
-                                         bucket_limit[1]))
-    AssertExpectedForBps(5000, ea._Remap(5000, 4000, 10000, bucket_limit[1],
-                                         histo_max))
-    AssertExpectedForBps(7500, ea._Remap(7500, 4000, 10000, bucket_limit[1],
-                                         histo_max))
-    AssertExpectedForBps(10000, histo_max)
-
-    ## Weights distributed between all buckets
-    cumsum_weights = [1000, 4000, 8000, 10000]
-    histo_min = -1
-    histo_max = 3.9
-    AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, ea._Remap(2500, 1000, 4000, bucket_limit[0],
-                                         bucket_limit[1]))
-    AssertExpectedForBps(5000, ea._Remap(5000, 4000, 8000, bucket_limit[1],
-                                         bucket_limit[2]))
-    AssertExpectedForBps(7500, ea._Remap(7500, 4000, 8000, bucket_limit[1],
-                                         bucket_limit[2]))
-    AssertExpectedForBps(9000, ea._Remap(9000, 8000, 10000, bucket_limit[2],
-                                         histo_max))
-    AssertExpectedForBps(10000, histo_max)
-
-    ## Most weight in first bucket
-    cumsum_weights = [9000, 10000, 10000, 10000]
-    histo_min = -1
-    histo_max = 1.1
-    AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, ea._Remap(2500, 0, 9000, histo_min,
-                                         bucket_limit[0]))
-    AssertExpectedForBps(5000, ea._Remap(5000, 0, 9000, histo_min,
-                                         bucket_limit[0]))
-    AssertExpectedForBps(7500, ea._Remap(7500, 0, 9000, histo_min,
-                                         bucket_limit[0]))
-    AssertExpectedForBps(9500, ea._Remap(9500, 9000, 10000, bucket_limit[0],
-                                         histo_max))
-    AssertExpectedForBps(10000, histo_max)
+  def testCompressHistogram_uglyHistogram(self):
+    bps = (0, 668, 1587, 3085, 5000, 6915, 8413, 9332, 10000)
+    vals = ea._CompressHistogram(
+        ea.HistogramValue(
+            min=0.0,
+            max=1.0,
+            num=960.0,
+            sum=64.0,
+            sum_squares=64.0,
+            bucket_limit=[
+                0.0,
+                1e-12,
+                0.917246389039776,
+                1.0089710279437536,
+                1.7976931348623157e+308],
+            bucket=[
+                0.0,
+                896.0,
+                0.0,
+                64.0,
+                0.0]),
+        bps)
+    self.assertEquals(tuple(v.basis_point for v in vals), bps)
+    self.assertAlmostEqual(vals[0].value, 0.0)
+    self.assertAlmostEqual(vals[1].value, 7.157142857142856e-14)
+    self.assertAlmostEqual(vals[2].value, 1.7003571428571426e-13)
+    self.assertAlmostEqual(vals[3].value, 3.305357142857143e-13)
+    self.assertAlmostEqual(vals[4].value, 5.357142857142857e-13)
+    self.assertAlmostEqual(vals[5].value, 7.408928571428571e-13)
+    self.assertAlmostEqual(vals[6].value, 9.013928571428571e-13)
+    self.assertAlmostEqual(vals[7].value, 9.998571428571429e-13)
+    self.assertAlmostEqual(vals[8].value, 1.0)
 
   def testImages(self):
     gen = _EventGenerator()
@@ -497,6 +448,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HISTOGRAMS: ['hst1'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
         ea.GRAPH: False,
+        ea.META_GRAPH: False,
         ea.RUN_METADATA: []
     })
 
@@ -684,6 +636,9 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       _ = tf.constant([2.0, 1.0])
     # Add a graph to the summary writer.
     writer.add_graph(graph)
+    meta_graph_def = saver.export_meta_graph(
+        graph_def=graph.as_graph_def(add_shapes=True))
+    writer.add_meta_graph(meta_graph_def)
 
     run_metadata = tf.RunMetadata()
     device_stats = run_metadata.step_stats.dev_stats.add()
@@ -710,6 +665,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
             ea.HISTOGRAMS: [],
             ea.COMPRESSED_HISTOGRAMS: [],
             ea.GRAPH: True,
+            ea.META_GRAPH: True,
             ea.RUN_METADATA: ['test run']
         })
     id_events = acc.Scalars('id')
@@ -732,6 +688,8 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
     # Verify we can now see all of the data
     acc.Reload()
+    id_events = acc.Scalars('id')
+    sq_events = acc.Scalars('sq')
     self.assertEqual(40, len(id_events))
     self.assertEqual(40, len(sq_events))
     for i in xrange(40):
@@ -740,6 +698,44 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(i, id_events[i].value)
       self.assertEqual(i * i, sq_events[i].value)
     self.assertProtoEquals(graph.as_graph_def(add_shapes=True), acc.Graph())
+    self.assertProtoEquals(meta_graph_def, acc.MetaGraph())
+
+  def testGraphFromMetaGraphBecomesAvailable(self):
+    """Test accumulator by writing values and then reading them."""
+
+    directory = os.path.join(self.get_temp_dir(), 'metagraph_test_values_dir')
+    if gfile.IsDirectory(directory):
+      gfile.DeleteRecursively(directory)
+    gfile.MkDir(directory)
+
+    writer = tf.train.SummaryWriter(directory, max_queue=100)
+
+    with tf.Graph().as_default() as graph:
+      _ = tf.constant([2.0, 1.0])
+    # Add a graph to the summary writer.
+    meta_graph_def = saver.export_meta_graph(
+        graph_def=graph.as_graph_def(add_shapes=True))
+    writer.add_meta_graph(meta_graph_def)
+
+    writer.flush()
+
+    # Verify that we can load those events properly
+    acc = ea.EventAccumulator(directory)
+    acc.Reload()
+    self.assertTagsEqual(
+        acc.Tags(),
+        {
+            ea.IMAGES: [],
+            ea.AUDIO: [],
+            ea.SCALARS: [],
+            ea.HISTOGRAMS: [],
+            ea.COMPRESSED_HISTOGRAMS: [],
+            ea.GRAPH: True,
+            ea.META_GRAPH: True,
+            ea.RUN_METADATA: []
+        })
+    self.assertProtoEquals(graph.as_graph_def(add_shapes=True), acc.Graph())
+    self.assertProtoEquals(meta_graph_def, acc.MetaGraph())
 
 
 if __name__ == '__main__':

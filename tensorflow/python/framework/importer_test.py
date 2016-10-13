@@ -341,6 +341,38 @@ class ImportGraphDefTest(tf.test.TestCase):
           "Cannot convert a tensor of type int32 to an input of type float" in
           str(e.exception))
 
+  def testShapeWhitelist(self):
+    # Barrier's shape is an output vector of 2, but the
+    # graph says it's a scalar.  This is currently whitelisted.
+    with tf.Graph().as_default():
+      _ = tf.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Barrier'
+                 attr { key: '_output_shapes'
+                        value { list { shape { } } } } }
+          """),
+          return_elements=["A"],
+          name="import")
+
+  def testShapeWhitelistViolation(self):
+    # L2 loss produces a scalar shape, but the graph
+    # has the wrong shape, so raise an error.
+    with tf.Graph().as_default():
+      with self.assertRaises(ValueError) as e:
+        _ = tf.import_graph_def(
+            self._MakeGraphDef("""
+              node { name: 'A' op: 'Of' }
+              node { name: 'B' op: 'L2Loss'
+                     input: 'A:0'
+                     attr { key: 'T' value { type: DT_FLOAT } }
+                     attr { key: '_output_shapes'
+                            value { list { shape { dim { size: 43 } } } } } }
+            """),
+            return_elements=["B"],
+            name="import")
+        self.assertTrue(
+            "Shapes () and (43,) are not compatible" in str(e.exception))
+
   def testInvalidSignatureTooManyInputsInGraphDef(self):
     with tf.Graph().as_default():
       with self.assertRaises(ValueError) as e:
@@ -579,6 +611,12 @@ class ImportGraphDefTest(tf.test.TestCase):
                             input_map=[tf.constant(5.0)])
       self.assertEqual("input_map must be a dictionary mapping strings to "
                        "Tensor objects.", str(e.exception))
+      with self.assertRaises(ValueError) as e:
+        tf.import_graph_def(self._MakeGraphDef(""),
+                            input_map={"a:0": tf.constant(5.0)},
+                            name="")
+      self.assertEqual("tf.import_graph_def() requires a non-empty `name` "
+                       "if `input_map` is used.", str(e.exception))
 
   def testInvalidInputForReturnOperations(self):
     with tf.Graph().as_default():
@@ -692,10 +730,10 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testLargeGraph(self):
     with self.test_session():
       # The default message byte limit is 64M. Ours is 2G with a warning at 512.
-      # Adding a 150M entries float32 tensor should blow through the warning,
-      # but not the hard limit.
-      input_shape = [150, 1024, 1024]
-      tensor_input = np.random.rand(*input_shape).astype(np.float32)
+      # Adding a 130M entries float32 tensor should exceed the warning, but not
+      # the hard limit.
+      input_shape = [130, 1000, 1000]
+      tensor_input = np.ones(input_shape, dtype=np.float32)
       t = tf.constant(tensor_input, shape=input_shape)
       g = tf.identity(t)
       g.eval()
@@ -774,7 +812,6 @@ class ImportGraphDefTest(tf.test.TestCase):
           """),
           return_elements=["A"], producer_op_list=producer_op_list)
       self.assertEqual(987, a[0].get_attr("default_int"))
-
 
 if __name__ == "__main__":
   tf.test.main()

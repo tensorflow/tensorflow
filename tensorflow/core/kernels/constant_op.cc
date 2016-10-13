@@ -57,6 +57,7 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
 REGISTER_KERNEL(GPU, Eigen::half);
+REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -65,6 +66,7 @@ REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
+REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support string constants on GPU
 #undef REGISTER_KERNEL
@@ -113,37 +115,6 @@ struct FillFunctor<CPUDevice, T> {
     out.device(d) = out.constant(in());
   }
 };
-
-// Partial specialization of SetZeroFunctor<Device=CPUDevice, T>.
-template <typename T>
-struct SetZeroFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(T(0));
-  }
-};
-
-// Specialization of SetZeroFunctor<Device=CPUDevice, T=string>.
-template <>
-struct SetZeroFunctor<CPUDevice, string> {
-  void operator()(const CPUDevice& d, typename TTypes<string>::Flat out) {
-    out.device(d) = out.constant(string());
-  }
-};
-
-#define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>;
-DEFINE_SETZERO_CPU(Eigen::half);
-DEFINE_SETZERO_CPU(float);
-DEFINE_SETZERO_CPU(double);
-DEFINE_SETZERO_CPU(uint8);
-DEFINE_SETZERO_CPU(int8);
-DEFINE_SETZERO_CPU(uint16);
-DEFINE_SETZERO_CPU(int16);
-DEFINE_SETZERO_CPU(int32);
-DEFINE_SETZERO_CPU(int64);
-DEFINE_SETZERO_CPU(complex64);
-DEFINE_SETZERO_CPU(complex128);
-DEFINE_SETZERO_CPU(string);
-#undef DEFINE_SETZERO_CPU
 
 }  // end namespace functor
 
@@ -238,6 +209,8 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(complex64, GPU);
+REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
@@ -273,5 +246,10 @@ class PlaceholderOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
+// The following GPU kernel registration is used to address the situation that
+// a placeholder is added in a GPU device context and soft placement is false.
+// Since a placeholder should never be executed, adding these GPU kernels has
+// no effect on graph execution.
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
 
 }  // namespace tensorflow

@@ -37,6 +37,18 @@ class ClassificationTest(tf.test.TestCase):
                            })
       self.assertEqual(result, 0.5)
 
+  def testAccuracy1DBool(self):
+    with self.test_session() as session:
+      pred = tf.placeholder(tf.bool, shape=[None])
+      labels = tf.placeholder(tf.bool, shape=[None])
+      acc = classification.accuracy(pred, labels)
+      result = session.run(acc,
+                           feed_dict={
+                               pred: [1, 0, 1, 0],
+                               labels: [1, 1, 0, 0]
+                           })
+      self.assertEqual(result, 0.5)
+
   def testAccuracy1DInt64(self):
     with self.test_session() as session:
       pred = tf.placeholder(tf.int64, shape=[None])
@@ -72,6 +84,34 @@ class ClassificationTest(tf.test.TestCase):
       pred = tf.placeholder(tf.int32, shape=[None])
       labels = tf.placeholder(tf.float32, shape=[None])
       classification.accuracy(pred, labels)
+
+  def testAccuracy1DWeighted(self):
+    with self.test_session() as session:
+      pred = tf.placeholder(tf.int32, shape=[None])
+      labels = tf.placeholder(tf.int32, shape=[None])
+      weights = tf.placeholder(tf.float32, shape=[None])
+      acc = classification.accuracy(pred, labels)
+      result = session.run(acc,
+                           feed_dict={
+                               pred: [1, 0, 1, 1],
+                               labels: [1, 1, 0, 1],
+                               weights: [3.0, 1.0, 2.0, 0.0]
+                           })
+      self.assertEqual(result, 0.5)
+
+  def testAccuracy1DWeightedBroadcast(self):
+    with self.test_session() as session:
+      pred = tf.placeholder(tf.int32, shape=[None])
+      labels = tf.placeholder(tf.int32, shape=[None])
+      weights = tf.placeholder(tf.float32, shape=[])
+      acc = classification.accuracy(pred, labels)
+      result = session.run(acc,
+                           feed_dict={
+                               pred: [1, 0, 1, 0],
+                               labels: [1, 1, 0, 0],
+                               weights: 3.0,
+                           })
+      self.assertEqual(result, 0.5)
 
 
 if __name__ == '__main__':

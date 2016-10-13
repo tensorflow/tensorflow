@@ -1,7 +1,7 @@
 A training helper that checkpoints models and computes summaries.
 
 The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
-and a `SessionManager` that takes care of common needs of Tensorflow
+and a `SessionManager` that takes care of common needs of TensorFlow
 training programs.
 
 #### Use for a single program
@@ -11,7 +11,7 @@ with tf.Graph().as_default():
   ...add operations to the graph...
   # Create a Supervisor that will checkpoint the model in '/tmp/mydir'.
   sv = Supervisor(logdir='/tmp/mydir')
-  # Get a Tensorflow session managed by the supervisor.
+  # Get a TensorFlow session managed by the supervisor.
   with sv.managed_session(FLAGS.master) as sess:
     # Use the session to train the graph.
     while not sv.should_stop():
@@ -66,8 +66,8 @@ with tf.Graph().as_default():
 
 In the *chief* task, the `Supervisor` works exactly as in the first example
 above.  In the other tasks `sv.managed_session()` waits for the Model to have
-been intialized before returning a session to the training code.  The
-non-chief tasks depend on the chief taks for initializing the model.
+been initialized before returning a session to the training code.  The
+non-chief tasks depend on the chief task for initializing the model.
 
 If one of the tasks crashes and restarts, `managed_session()`
 checks if the Model is initialized.  If yes, it just creates a session and
@@ -153,7 +153,7 @@ session and check if it could be initialized automatically.
 
 - - -
 
-#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
+#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, ready_for_local_init_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
 
 Create a `Supervisor`.
 
@@ -169,6 +169,13 @@ Create a `Supervisor`.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from `tf.report_uninitialized_variables()`  If
     `None`, the model is not checked for readiness.
+*  <b>`ready_for_local_init_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by
+    supervisors in `prepare_or_wait_for_session()` to check if the model is
+    ready to run the local_init_op.
+    The model is considered ready if it returns an empty array.  Defaults to
+    the tensor returned from
+    `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+    model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
@@ -196,7 +203,7 @@ Create a `Supervisor`.
 *  <b>`global_step`</b>: An integer Tensor of size 1 that counts steps.  The value
     from 'global_step' is used in summaries and checkpoint filenames.
     Default to the op named 'global_step' in the graph if it exists, is of
-    rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+    rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
     step is not recorded in summaries and checkpoint files.  Used by chief
     supervisors if a `logdir` was specified.
 *  <b>`save_summaries_secs`</b>: Number of seconds between the computation of
@@ -360,7 +367,7 @@ Start threads for `QueueRunners`.
 Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
 are already started automatically when you create a session with the
 supervisor, so unless you have non-collected queue runners to start
-you do not need to call this explicitely.
+you do not need to call this explicitly.
 
 ##### Args:
 
@@ -562,7 +569,7 @@ Start threads for `QueueRunners`.
 Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
 are already started automatically when you create a session with the
 supervisor, so unless you have non-collected queue runners to start
-you do not need to call this explicitely.
+you do not need to call this explicitly.
 
 ##### Args:
 
@@ -753,6 +760,13 @@ so it does not need to be passed to the `stop()` method.
 ##### Returns:
 
   The started thread.
+
+
+- - -
+
+#### `tf.train.Supervisor.ready_for_local_init_op` {#Supervisor.ready_for_local_init_op}
+
+
 
 
 - - -

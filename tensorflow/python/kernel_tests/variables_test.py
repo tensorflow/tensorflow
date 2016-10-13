@@ -25,6 +25,8 @@ import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 
 
 class VariablesTestCase(tf.test.TestCase):
@@ -195,6 +197,17 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertAllClose(2.0, var_x.eval())
       self.assertAllClose(3.0, var_y.eval())
       self.assertAllClose(5.0, tf.add(var_x, var_y).eval())
+
+  def testZeroSizeVarSameAsConst(self):
+    with self.test_session():
+      zero_size_var = tf.Variable(tf.zeros([0, 2]))
+      zero_size_const = tf.ones([2, 0])
+      variable_mul = tf.matmul(zero_size_const, zero_size_var)
+      const_mul = tf.matmul(zero_size_const, zero_size_const, transpose_b=True)
+      tf.initialize_all_variables().run()
+      variable_output = variable_mul.eval()
+      self.assertAllClose(const_mul.eval(), variable_output)
+      self.assertAllClose([[0., 0.], [0., 0.]], variable_output)
 
   def testCachingDevice(self):
     with self.test_session():
@@ -386,6 +399,23 @@ class IsInitializedTest(tf.test.TestCase):
       v.initializer.run()
       self.assertEqual(0, sess.run(uninited).size)
 
+  def testZeroSizeVarInitialized(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      v = tf.Variable(tf.zeros([0, 2]), name="v")
+      uninited = tf.report_uninitialized_variables()
+      v.initializer.run()  # not strictly necessary
+      self.assertEqual(0, sess.run(uninited).size)
+
+  def testTrainingWithZeroSizeVar(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      a = tf.Variable(tf.zeros([0, 2]))
+      b = tf.Variable(tf.ones([2, 2]))
+      objective = tf.reduce_sum(b + tf.matmul(a, a, transpose_a=True))
+      tf.initialize_all_variables().run()
+      do_opt = tf.train.GradientDescentOptimizer(0.1).minimize(objective)
+      sess.run([do_opt])
+      self.assertAllClose([[0.9, 0.9], [0.9, 0.9]], b.eval())
+
 
 class ObsoleteIsInitializedTest(tf.test.TestCase):
 
@@ -416,6 +446,105 @@ class ObsoleteIsInitializedTest(tf.test.TestCase):
         inited.op.run()
       v.initializer.run()
       inited.op.run()
+
+
+class PartitionedVariableTest(tf.test.TestCase):
+
+  def testPartitionedVariable(self):
+    with tf.Graph().as_default():
+      v0 = tf.Variable([0])
+      v1 = tf.Variable([1])
+      v0._set_save_slice_info(variables.Variable.SaveSliceInfo(
+          v0.name, [2], [0], [1]))
+      v1._set_save_slice_info(variables.Variable.SaveSliceInfo(
+          v0.name, [2], [1], [1]))
+      partitions = [2]
+
+      # Pass variable_list as [v1, v0] to ensure they are properly
+      # re-sorted to [v0, v1] based on their slice info offsets.
+      partitioned_variable = variables.PartitionedVariable(
+          name="two_vars",
+          shape=[2],
+          dtype=v0.dtype,
+          variable_list=[v1, v0],
+          partitions=partitions)
+
+      concatenated = tf.convert_to_tensor(partitioned_variable)
+      num_partitions = len(partitioned_variable)
+      iterated_partitions = list(partitioned_variable)
+      self.assertEqual(2, num_partitions)
+      self.assertEqual([v0, v1], iterated_partitions)
+      self.assertEqual([2], concatenated.get_shape())
+
+  def testPartitionedVariableFailures(self):
+    with tf.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, "empty"):
+        variables.PartitionedVariable(
+            name="fail",
+            shape=2,
+            dtype=tf.int32,
+            variable_list=[],
+            partitions=[])
+
+      with self.assertRaisesRegexp(ValueError, "must have a save_slice_info"):
+        v0 = tf.Variable([0])
+        partitions = [1]
+        variables.PartitionedVariable(
+            name="two_vars",
+            shape=[1],
+            dtype=v0.dtype,
+            variable_list=[v0],
+            partitions=partitions)
+
+      with self.assertRaisesRegexp(ValueError, "full shapes must match"):
+        v0 = tf.Variable([0])
+        v1 = tf.Variable([1])
+        v0._set_save_slice_info(variables.Variable.SaveSliceInfo(
+            v0.name, [2], [0], [1]))
+        v1._set_save_slice_info(variables.Variable.SaveSliceInfo(
+            v0.name, [2], [1], [1]))
+        partitions = [2]
+
+        variables.PartitionedVariable(
+            name="two_vars",
+            shape=[3],
+            dtype=v0.dtype,
+            variable_list=[v1, v0],
+            partitions=partitions)
+
+      with self.assertRaisesRegexp(ValueError, "must be positive"):
+        v0 = tf.Variable([0])
+        v0._set_save_slice_info(variables.Variable.SaveSliceInfo(
+            v0.name, [2], [0], [1]))
+        partitions = [0]
+
+        variables.PartitionedVariable(
+            name="two_vars",
+            shape=[2],
+            dtype=v0.dtype,
+            variable_list=[v0],
+            partitions=partitions)
+
+
+class VariableContainerTest(tf.test.TestCase):
+
+  def testContainer(self):
+    with tf.Graph().as_default():
+      v0 = tf.Variable([0])
+      with tf.container("l1"):
+        v1 = tf.Variable([1])
+        with tf.container("l2"):
+          v2 = tf.Variable([2])
+          special_v = state_ops.variable_op([1], tf.float32, container="l3")
+        v3 = tf.Variable([3])
+      v4 = tf.Variable([4])
+    self.assertEqual(tf.compat.as_bytes(""), v0.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l1"), v1.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l2"), v2.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l3"),
+                     special_v.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l1"), v3.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes(""), v4.op.get_attr("container"))
 
 
 if __name__ == "__main__":

@@ -21,13 +21,23 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+
+// Name of the attribute used to encode node colocation constraints.
+//
+// Nodes can be co-located on the same device. Desire for explicit co-location
+// is described by list(string) attribute containing the name of colocation
+// groups.
+extern const char* const kColocationAttrName;
+
+// String prefix applied to the operation name for colocation constraints.
+extern const char* const kColocationGroupPrefix;
 
 // Produce a human-readable version of a NodeDef that is more concise
 // than a text-format proto.

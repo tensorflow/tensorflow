@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -29,6 +30,21 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+Rendezvous::ParsedKey& Rendezvous::ParsedKey::operator=(const ParsedKey& b) {
+  const char* b_base = b.buf_.data();
+  buf_ = b.buf_;
+  src_device.set(buf_.data() + (b.src_device.data() - b_base),
+                 b.src_device.size());
+  src = b.src;
+  src_incarnation = b.src_incarnation;
+  dst_device.set(buf_.data() + (b.dst_device.data() - b_base),
+                 b.dst_device.size());
+  dst = b.dst;
+  edge_name.set(buf_.data() + (b.edge_name.data() - b_base),
+                b.edge_name.size());
+  return *this;
+}
 
 /*  static */
 string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
@@ -65,8 +81,17 @@ static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
 }
 
 /* static */
-Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
-  StringPiece s(key);
+Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
+  if (key.data() == out->buf_.data()) {
+    // Caller used our buf_ string directly, so we don't need to copy.  (The
+    // SendOp and RecvOp implementations do this, for example).
+    DCHECK_EQ(key.size(), out->buf_.size());
+  } else {
+    // Make a copy that our StringPieces can point at a copy that will persist
+    // for the lifetime of the ParsedKey object.
+    out->buf_.assign(key.data(), key.size());
+  }
+  StringPiece s(out->buf_);
   StringPiece parts[5];
   for (int i = 0; i < 5; i++) {
     parts[i] = ConsumeNextPart(&s, ';');
@@ -77,18 +102,18 @@ Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
       strings::HexStringToUint64(parts[1], &out->src_incarnation) &&
       DeviceNameUtils::ParseFullName(parts[2], &out->dst) &&
       !parts[3].empty()) {
-    out->src_device.assign(parts[0].data(), parts[0].size());
-    out->dst_device.assign(parts[2].data(), parts[2].size());
-    out->edge_name.assign(parts[3].data(), parts[3].size());
+    out->src_device.set(parts[0].data(), parts[0].size());
+    out->dst_device.set(parts[2].data(), parts[2].size());
+    out->edge_name.set(parts[3].data(), parts[3].size());
     return Status::OK();
   }
-  return errors::InvalidArgument("Invalid rendezvous key: ", key);
+  return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }
 
 Rendezvous::~Rendezvous() {}
 
-Status Rendezvous::Recv(const string& key, const Args& recv_args, Tensor* val,
-                        bool* is_dead) {
+Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
+                        Tensor* val, bool* is_dead) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -109,18 +134,19 @@ class LocalRendezvousImpl : public Rendezvous {
   explicit LocalRendezvousImpl(bool tolerate_dup_recv)
       : tolerate_dup_recv_(tolerate_dup_recv) {}
 
-  Status Send(const string& key, const Args& send_args, const Tensor& val,
+  Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
               const bool is_dead) override {
-    VLOG(2) << "Send " << this << " " << key;
     DoneCallback waiter = nullptr;
     Args recv_args;
+    uint64 key_hash = KeyHash(key.FullKey());
+    VLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
     {
       mutex_lock l(mu_);
       if (!status_.ok()) {
         return status_;
       }
       Item* item = nullptr;
-      Table::iterator iter = table_.find(key);
+      Table::iterator iter = table_.find(key_hash);
       if (iter == table_.end()) {
         // There is no waiter for this message. Insert the message
         // into the waiters table. The waiter will pick it up when
@@ -138,19 +164,24 @@ class LocalRendezvousImpl : public Rendezvous {
         // The allocator attributes of item->value.
         item->send_alloc_attrs = send_args.alloc_attrs;
 
-        CHECK(table_.insert({key, item}).second);
+        CHECK(table_.insert({key_hash, item}).second);
         return Status::OK();
       } else {
         item = iter->second;
+
         if (item->waiter == nullptr) {
           // There is already a message in the table under the key.
           // Should not happen unless it has a waiter.
-          return errors::Aborted("Duplicated send: ", key);
+          return errors::Aborted("Duplicated send: ", key.FullKey());
         }
         // Mark item as complete.
         item->has_been_recvd = true;
-        waiter = item->waiter;
-        item->waiter = nullptr;
+
+        // Get item->waiter function into waiter and set item->waiter to null
+        std::swap(item->waiter, waiter);
+        DCHECK(item->waiter == nullptr);
+        DCHECK(waiter != nullptr);
+
         // The ref on recv_dev_context transfers below.
         recv_args.device_context = item->recv_dev_context;
         recv_args.alloc_attrs = item->recv_alloc_attrs;
@@ -173,9 +204,10 @@ class LocalRendezvousImpl : public Rendezvous {
     return Status::OK();
   }
 
-  void RecvAsync(const string& key, const Args& recv_args,
+  void RecvAsync(const ParsedKey& key, const Args& recv_args,
                  DoneCallback done) override {
-    VLOG(2) << "Recv " << this << " " << key;
+    uint64 key_hash = KeyHash(key.FullKey());
+    VLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
     mu_.lock();
     if (!status_.ok()) {
       // Rendezvous has been aborted.
@@ -184,13 +216,13 @@ class LocalRendezvousImpl : public Rendezvous {
       done(s, Args(), recv_args, Tensor(), false);
       return;
     }
-    Table::iterator iter = table_.find(key);
+    Table::iterator iter = table_.find(key_hash);
     if (iter != table_.end()) {
       Item* item = iter->second;
       if (item->has_been_recvd && !tolerate_dup_recv_) {
         mu_.unlock();
-        done(errors::Aborted("Duplicated recv: ", key), Args(), recv_args,
-             Tensor(), false);
+        done(errors::Aborted("Duplicated recv: ", key.FullKey()), Args(),
+             recv_args, Tensor(), false);
       } else if (item->waiter == nullptr || tolerate_dup_recv_) {
         // A message has already arrived and is stored in the table
         // under this key.  Consumes the message and invokes the done
@@ -208,18 +240,18 @@ class LocalRendezvousImpl : public Rendezvous {
         DeviceContext* send_dev_context = item->send_dev_context;
         if (send_dev_context) send_dev_context->Ref();
         bool is_dead = item->is_dead;
-        mu_.unlock();
         Args send_args;
         send_args.device_context = item->send_dev_context;
         send_args.alloc_attrs = item->send_alloc_attrs;
+        mu_.unlock();
         done(Status::OK(), send_args, recv_args, v, is_dead);
         if (send_dev_context) send_dev_context->Unref();
       } else {
         // Already have a waiter in the waiters table under this key,
         // which should not happen.
         mu_.unlock();
-        done(errors::Aborted("Duplicated recv: ", key), Args(), recv_args,
-             Tensor(), false);
+        done(errors::Aborted("Duplicated recv: ", key.FullKey()), Args(),
+             recv_args, Tensor(), false);
       }
       return;
     }
@@ -227,13 +259,13 @@ class LocalRendezvousImpl : public Rendezvous {
     // waiting table. The done closure will be invoked when the
     // message arrives.
     Item* item = new Item;
-    item->waiter = done;
+    item->waiter = std::move(done);
     item->recv_alloc_attrs = recv_args.alloc_attrs;
     if (recv_args.device_context) {
       item->recv_dev_context = recv_args.device_context;
       item->recv_dev_context->Ref();
     }
-    CHECK(table_.insert({key, item}).second);
+    CHECK(table_.insert({key_hash, item}).second);
     mu_.unlock();
     return;
   }
@@ -280,7 +312,12 @@ class LocalRendezvousImpl : public Rendezvous {
       }
     }
   };
-  typedef std::unordered_map<string, Item*> Table;
+  // We key the hash table by KeyHash of the Rendezvous::CreateKey string
+  static uint64 KeyHash(const StringPiece& k) {
+    return Hash64(k.data(), k.size());
+  }
+
+  typedef std::unordered_map<uint64, Item*> Table;
 
   // TODO(zhifengc): shard table_.
   mutex mu_;

@@ -1,4 +1,4 @@
-### `tf.py_func(func, inp, Tout, name=None)` {#py_func}
+### `tf.py_func(func, inp, Tout, stateful=True, name=None)` {#py_func}
 
 Wraps a python function and uses it as a tensorflow op.
 
@@ -21,11 +21,16 @@ sinh(x) as an op in the graph.
 
 *  <b>`func`</b>: A python function.
 *  <b>`inp`</b>: A list of `Tensor`.
-*  <b>`Tout`</b>: A list of tensorflow data types indicating what `func`
-        returns.
+*  <b>`Tout`</b>: A list or tuple of tensorflow data types or a single tensorflow data
+        type if there is only one, indicating what `func` returns.
+*  <b>`stateful`</b>: A boolean indicating whether the function should be considered
+            stateful or stateless. I.e. whether it, given the same input, will
+            return the same output and at the same time does not change state
+            in an observable way. Optimizations such as common subexpression
+            elimination are only possible when operations are stateless.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A list of `Tensor` which `func` computes.
+  A list of `Tensor` or a single `Tensor` which `func` computes.
 

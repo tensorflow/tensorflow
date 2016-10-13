@@ -111,5 +111,112 @@ class LBetaTestGpu(LBetaTest):
   _use_gpu = True
 
 
+class EinsumTest(tf.test.TestCase):
+
+  # standard cases
+  simple_cases = [
+    'ij,jk->ik',
+    'ijk,jklm->il',
+    'ij,jk,kl->il',
+    'ijk->i',
+  ]
+
+  # where axes are not in order
+  misordered_cases = [
+    'ji,kj->ik',
+    'ikl,kji->kl',
+    'klj,lki->ij',
+  ]
+
+  # more than two arguments
+  multiarg_cases = [
+    'ijk,ijl,ikl->i',
+    'i,ijk,j->k',
+    'ij,ij,jk,kl->il',
+  ]
+
+  invalid_cases = [
+    # bad formats
+    'ijk ijk',
+    'ij,jk,kl'
+    'ij->',
+
+    # axis in output that does not exist
+    'ij,jk->im',
+
+    # incorrect number of dimensions
+    'ij,jkl->kl',
+  ]
+
+  dim_mismatch_cases = [
+    ('ijk,jkl->il',
+     [(2,3,4), (3,5,6)]),
+
+  ]
+
+  def test_simple(self):
+    for case in self.simple_cases:
+      self.run_test(case)
+
+  def test_misordered(self):
+    for case in self.misordered_cases:
+      self.run_test(case)
+
+  def test_multiarg(self):
+    for case in self.multiarg_cases:
+      self.run_test(case)
+
+  def test_invalid(self):
+    for axes in self.invalid_cases:
+      result = None
+      inputs = [
+        tf.placeholder(tf.float32, shape=(3,4)),
+        tf.placeholder(tf.float32, shape=(3,4)),
+      ]
+
+      try:
+        result = tf.einsum(axes, *inputs)
+      except AssertionError as e:
+        print(e)
+      assert result is None, \
+        "An exception should have been thrown."
+
+  def test_dim_mismatch(self):
+    for axes, input_shapes in self.dim_mismatch_cases:
+      inputs = [
+        tf.placeholder(tf.float32, shape=shape)
+        for shape in input_shapes
+      ]
+      result = None
+      try:
+        result = tf.einsum(axes, *inputs)
+      except AssertionError:
+        pass
+      assert result is None, "An exception should have been thrown."
+
+  def run_test(self, axes):
+    all_axes = {ax: np.random.randint(4, 12)
+                for ax in axes if ax.isalpha()}
+
+    input_vals = []
+    input_axes, _, _ = axes.partition('->')
+
+    for idx in input_axes.split(','):
+      shape = [all_axes[ax] for ax in idx]
+      input_vals.append(np.random.random(shape))
+
+    input_tensors = [tf.constant(val) for val in input_vals]
+    output_tensor = tf.einsum(axes, *input_tensors)
+
+    with self.test_session():
+      output_value = output_tensor.eval()
+
+    correct_value = np.einsum(axes, *input_vals)
+
+    err = np.abs(correct_value - output_value).max()
+    print(axes, err)
+    assert err < 1e-8
+
+
 if __name__ == '__main__':
   tf.test.main()

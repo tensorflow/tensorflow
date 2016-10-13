@@ -5,27 +5,25 @@ Computes the (weighted) mean of the given values.
 The `streaming_mean` function creates two local variables, `total` and `count`
 that are used to compute the average of `values`. This average is ultimately
 returned as `mean` which is an idempotent operation that simply divides
-`total` by `count`. To facilitate the estimation of a mean over a stream
-of data, the function creates an `update_op` operation whose behavior is
-dependent on the value of `weights`. If `weights` is None, then `update_op`
-increments `total` with the reduced sum of `values` and increments `count`
-with the number of elements in `values`. If `weights` is not `None`, then
+`total` by `count`.
+
+For estimation of the metric  over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the `mean`.
 `update_op` increments `total` with the reduced sum of the product of `values`
-and `weights` and increments `count` with the reduced sum of weights.
-In addition to performing the updates, `update_op` also returns the
-`mean`.
+and `weights`, and it increments `count` with the reduced sum of `weights`.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 ##### Args:
 
 
 *  <b>`values`</b>: A `Tensor` of arbitrary dimensions.
-*  <b>`weights`</b>: An optional set of weights of the same shape as `values`. If
-    `weights` is not None, the function computes a weighted mean.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`
     should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -38,7 +36,7 @@ In addition to performing the updates, `update_op` also returns the
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match `values`
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match `values`,
     or if either `metrics_collections` or `updates_collections` are not a list
     or tuple.
 

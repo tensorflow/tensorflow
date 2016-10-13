@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/env.h"
+#include <deque>
+#include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -65,8 +69,9 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
-  string scheme = GetSchemeFromURI(fname);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  StringPiece scheme, host, path;
+  ParseURI(fname, &scheme, &host, &path);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
                                  " not implemented");
@@ -85,29 +90,31 @@ Status Env::RegisterFileSystem(const string& scheme,
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
-                                RandomAccessFile** result) {
+                                std::unique_ptr<RandomAccessFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewRandomAccessFile(fname, result);
 }
 
-Status Env::NewWritableFile(const string& fname, WritableFile** result) {
+Status Env::NewReadOnlyMemoryRegionFromFile(
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
+}
+
+Status Env::NewWritableFile(const string& fname,
+                            std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewWritableFile(fname, result);
 }
 
-Status Env::NewAppendableFile(const string& fname, WritableFile** result) {
+Status Env::NewAppendableFile(const string& fname,
+                              std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewAppendableFile(fname, result);
-}
-
-Status Env::NewReadOnlyMemoryRegionFromFile(const string& fname,
-                                            ReadOnlyMemoryRegion** result) {
-  FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
 }
 
 bool Env::FileExists(const string& fname) {
@@ -124,10 +131,23 @@ Status Env::GetChildren(const string& dir, std::vector<string>* result) {
   return fs->GetChildren(dir, result);
 }
 
+Status Env::GetMatchingPaths(const string& pattern,
+                             std::vector<string>* results) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
+  return fs->GetMatchingPaths(pattern, results);
+}
+
 Status Env::DeleteFile(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->DeleteFile(fname);
+}
+
+Status Env::RecursivelyCreateDir(const string& dirname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->RecursivelyCreateDir(dirname);
 }
 
 Status Env::CreateDir(const string& dirname) {
@@ -140,6 +160,25 @@ Status Env::DeleteDir(const string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteDir(dirname);
+}
+
+Status Env::Stat(const string& fname, FileStatistics* stat) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->Stat(fname, stat);
+}
+
+Status Env::IsDirectory(const string& fname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->IsDirectory(fname);
+}
+
+Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
+                              int64* undeleted_dirs) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->DeleteRecursively(dirname, undeleted_files, undeleted_dirs);
 }
 
 Status Env::GetFileSize(const string& fname, uint64* file_size) {
@@ -170,7 +209,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   if (!s.ok()) {
     return s;
   }
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   s = env->NewRandomAccessFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -190,13 +229,12 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   } else {
     memmove(p, result.data(), result.size());
   }
-  delete file;
   return s;
 }
 
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data) {
-  WritableFile* file;
+  std::unique_ptr<WritableFile> file;
   Status s = env->NewWritableFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -205,7 +243,6 @@ Status WriteStringToFile(Env* env, const string& fname,
   if (s.ok()) {
     s = file->Close();
   }
-  delete file;
   return s;
 }
 
@@ -220,7 +257,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  int64 ByteCount() const override { return pos_; }
+  protobuf_int64 ByteCount() const override { return pos_; }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {
@@ -247,15 +284,18 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 
 }  // namespace
 
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto) {
+  string serialized;
+  proto.AppendToString(&serialized);
+  return WriteStringToFile(env, fname, serialized);
+}
+
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {
-  RandomAccessFile* file;
-  auto s = env->NewRandomAccessFile(fname, &file);
-  if (!s.ok()) {
-    return s;
-  }
-  std::unique_ptr<RandomAccessFile> file_holder(file);
-  std::unique_ptr<FileStream> stream(new FileStream(file));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   // TODO(jiayq): the following coded stream is for debugging purposes to allow
   // one to parse arbitrarily large messages for MessageLite. One most likely
@@ -267,12 +307,23 @@ Status ReadBinaryProto(Env* env, const string& fname,
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
   if (!proto->ParseFromCodedStream(&coded_stream)) {
-    s = stream->status();
-    if (s.ok()) {
-      s = Status(error::DATA_LOSS, "Parse error");
-    }
+    TF_RETURN_IF_ERROR(stream->status());
+    return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
-  return s;
+  return Status::OK();
+}
+
+Status ReadTextProto(Env* env, const string& fname,
+                     ::tensorflow::protobuf::Message* proto) {
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  std::unique_ptr<FileStream> stream(new FileStream(file.get()));
+
+  if (!::tensorflow::protobuf::TextFormat::Parse(stream.get(), proto)) {
+    TF_RETURN_IF_ERROR(stream->status());
+    return errors::DataLoss("Can't parse ", fname, " as text proto");
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

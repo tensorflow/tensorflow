@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,13 +28,13 @@ def setup_test_df():
   """Create a dataframe populated with some test columns."""
   df = learn.DataFrame()
   df["a"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", [])],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor a", tf.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   df["b"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", [])],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor b", tf.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out2")
   df["c"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", [])],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor c", tf.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   return df
 
@@ -47,20 +46,33 @@ class DataFrameTest(tf.test.TestCase):
     df = setup_test_df()
     self.assertEqual(df.columns(), frozenset(["a", "b", "c"]))
 
-  def test_select(self):
+  def test_select_columns(self):
     df = setup_test_df()
-    df2 = df.select(["a", "c"])
+    df2 = df.select_columns(["a", "c"])
     self.assertEqual(df2.columns(), frozenset(["a", "c"]))
+
+  def test_exclude_columns(self):
+    df = setup_test_df()
+    df2 = df.exclude_columns(["a", "c"])
+    self.assertEqual(df2.columns(), frozenset(["b"]))
 
   def test_get_item(self):
     df = setup_test_df()
     c1 = df["b"]
-    self.assertEqual("Fake Tensor 2", c1.build())
+    self.assertEqual(mocks.MockTensor("Mock Tensor 2", tf.int32), c1.build())
+
+  def test_del_item_column(self):
+    df = setup_test_df()
+    self.assertEqual(3, len(df))
+    del df["b"]
+    self.assertEqual(2, len(df))
+    self.assertEqual(df.columns(), frozenset(["a", "c"]))
 
   def test_set_item_column(self):
     df = setup_test_df()
     self.assertEqual(3, len(df))
-    col1 = mocks.MockSeries("QuackColumn", [])
+    col1 = mocks.MockSeries("QuackColumn",
+                            mocks.MockTensor("Tensor ", tf.int32))
     df["quack"] = col1
     self.assertEqual(4, len(df))
     col2 = df["quack"]
@@ -89,60 +101,10 @@ class DataFrameTest(tf.test.TestCase):
   def test_build(self):
     df = setup_test_df()
     result = df.build()
-    expected = {"a": "Fake Tensor 1",
-                "b": "Fake Tensor 2",
-                "c": "Fake Tensor 1"}
+    expected = {"a": mocks.MockTensor("Mock Tensor 1", tf.int32),
+                "b": mocks.MockTensor("Mock Tensor 2", tf.int32),
+                "c": mocks.MockTensor("Mock Tensor 1", tf.int32)}
     self.assertEqual(expected, result)
-
-  def test_to_input_fn_all_features(self):
-    df = setup_test_df()
-    input_fn = df.to_input_fn()
-    f, t = input_fn()
-    expected_f = {"a": "Fake Tensor 1",
-                  "b": "Fake Tensor 2",
-                  "c": "Fake Tensor 1"}
-    self.assertEqual(expected_f, f)
-
-    expected_t = {}
-    self.assertEqual(expected_t, t)
-
-  def test_to_input_fn_features_only(self):
-    df = setup_test_df()
-    input_fn = df.to_input_fn(["b", "c"])
-    f, t = input_fn()
-    expected_f = {"b": "Fake Tensor 2", "c": "Fake Tensor 1"}
-    self.assertEqual(expected_f, f)
-
-    expected_t = {}
-    self.assertEqual(expected_t, t)
-
-  def test_to_input_fn_targets_only(self):
-    df = setup_test_df()
-    input_fn = df.to_input_fn(target_keys=["b", "c"])
-    f, t = input_fn()
-    expected_f = {"a": "Fake Tensor 1"}
-    self.assertEqual(expected_f, f)
-
-    expected_t = {"b": "Fake Tensor 2", "c": "Fake Tensor 1"}
-    self.assertEqual(expected_t, t)
-
-  def test_to_input_fn_both(self):
-    df = setup_test_df()
-    input_fn = df.to_input_fn(feature_keys=["a"], target_keys=["b"])
-    f, t = input_fn()
-    expected_f = {"a": "Fake Tensor 1"}
-    self.assertEqual(expected_f, f)
-
-    expected_t = {"b": "Fake Tensor 2"}
-    self.assertEqual(expected_t, t)
-
-  def test_to_input_fn_not_disjoint(self):
-    df = setup_test_df()
-
-    def get_not_disjoint():
-      df.to_input_fn(feature_keys=["a", "b"], target_keys=["b"])
-
-    self.assertRaises(ValueError, get_not_disjoint)
 
 
 if __name__ == "__main__":

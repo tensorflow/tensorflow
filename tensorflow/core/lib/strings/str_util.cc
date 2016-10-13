@@ -18,6 +18,7 @@ limitations under the License.
 #include <ctype.h>
 #include <vector>
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
 namespace str_util {
@@ -83,8 +84,8 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
-                       string* error) {
+bool CUnescapeInternal(StringPiece source, char* dest,
+                       string::size_type* dest_len, string* error) {
   char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
@@ -199,7 +200,7 @@ bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
-  int dest_size;
+  string::size_type dest_size;
   if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
                          error)) {
     return false;
@@ -278,6 +279,14 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
   return false;
 }
 
+bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
+  if (s->ends_with(expected)) {
+    s->remove_suffix(expected.size());
+    return true;
+  }
+  return false;
+}
+
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
@@ -286,7 +295,7 @@ bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
     const char c = *p;
     if (c < '0' || c > '9') break;
     uint64 new_v = (v * 10) + (c - '0');
-    if (new_v < v) {
+    if (new_v / 8 < v) {
       // Overflow occurred
       return false;
     }

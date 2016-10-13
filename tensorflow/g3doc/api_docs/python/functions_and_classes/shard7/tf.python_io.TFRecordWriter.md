@@ -5,7 +5,7 @@ in `with` blocks like a normal file.
 
 - - -
 
-#### `tf.python_io.TFRecordWriter.__init__(path)` {#TFRecordWriter.__init__}
+#### `tf.python_io.TFRecordWriter.__init__(path, options=None)` {#TFRecordWriter.__init__}
 
 Opens file `path` and creates a `TFRecordWriter` writing to it.
 
@@ -13,6 +13,7 @@ Opens file `path` and creates a `TFRecordWriter` writing to it.
 
 
 *  <b>`path`</b>: The path to the TFRecords file.
+*  <b>`options`</b>: (optional) A TFRecordOptions object.
 
 ##### Raises:
 
@@ -37,5 +38,21 @@ Write a string record to the file.
 #### `tf.python_io.TFRecordWriter.close()` {#TFRecordWriter.close}
 
 Close the file.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.python_io.TFRecordWriter.__enter__()` {#TFRecordWriter.__enter__}
+
+Enter a `with` block.
+
+
+- - -
+
+#### `tf.python_io.TFRecordWriter.__exit__(unused_type, unused_value, unused_traceback)` {#TFRecordWriter.__exit__}
+
+Exit a `with` block, closing the file.
 
 

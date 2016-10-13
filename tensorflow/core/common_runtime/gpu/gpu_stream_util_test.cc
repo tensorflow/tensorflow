@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_stream_util.h"
 
-#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/op.h"
@@ -35,9 +34,9 @@ class GpuStreamUtilTest : public OpsTestBase {
 };
 
 TEST_F(GpuStreamUtilTest, BogusOpts) {
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  auto root = Scope::NewRootScope().ExitOnError();
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  root.ToGraph(&g);
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
   Status status;
@@ -55,9 +54,9 @@ TEST_F(GpuStreamUtilTest, BogusOpts) {
 }
 
 TEST_F(GpuStreamUtilTest, EmptyGraph) {
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  auto root = Scope::NewRootScope().ExitOnError();
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  root.ToGraph(&g);
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
   TF_ASSERT_OK(gpu_stream_util::AssignStreams(&g, opts, &node_to_stream_id));
@@ -65,11 +64,10 @@ TEST_F(GpuStreamUtilTest, EmptyGraph) {
 }
 
 TEST_F(GpuStreamUtilTest, SimpleGraphOneStream) {
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  ops::MatMul(ops::Const(Tensor(DT_FLOAT), b.opts()),
-              ops::Const(Tensor(DT_FLOAT), b.opts()), b.opts());
+  auto root = Scope::NewRootScope().ExitOnError();
+  ops::MatMul(root, {}, {});
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(root.ToGraph(&g));
 
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
@@ -85,11 +83,10 @@ TEST_F(GpuStreamUtilTest, SimpleGraphOneStream) {
 }
 
 TEST_F(GpuStreamUtilTest, SimpleGraphManyStreams) {
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  ops::MatMul(ops::Const(Tensor(DT_FLOAT), b.opts()),
-              ops::Const(Tensor(DT_FLOAT), b.opts()), b.opts());
+  auto root = Scope::NewRootScope().ExitOnError();
+  ops::MatMul(root, {}, {});
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(root.ToGraph(&g));
 
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
@@ -107,14 +104,13 @@ TEST_F(GpuStreamUtilTest, SimpleGraphManyStreams) {
 }
 
 TEST_F(GpuStreamUtilTest, StreamOverrides) {
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  ops::_Recv(DT_FLOAT, "input", "/cpu:0", 0, "/gpu:0",
-             b.opts().WithName("input"));
-  auto n = ops::MatMul(ops::Const(Tensor(DT_FLOAT), b.opts()),
-                       ops::Const(Tensor(DT_FLOAT), b.opts()), b.opts());
-  ops::_Send(n, "output", "/gpu:0", 0, "/cpu:0", b.opts().WithName("output"));
+  auto root = Scope::NewRootScope().ExitOnError();
+  ops::_Recv(root.WithOpName("input"), DT_FLOAT, "input", "/cpu:0", 0,
+             "/gpu:0");
+  ops::Output n = ops::MatMul(root, {}, {});
+  ops::_Send(root.WithOpName("output"), n, "output", "/gpu:0", 0, "/cpu:0");
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(root.ToGraph(&g));
 
   // Perform stream assignment using a large number of streams, but with
   // op types constrained to specific streams.
@@ -133,7 +129,7 @@ TEST_F(GpuStreamUtilTest, StreamOverrides) {
   // Nodes should be assigned to streams by op type.
   for (const auto& it : node_to_stream_id) {
     Node* n = g.FindNodeId(it.first);
-    const string op = n->type_string();
+    const string& op = n->type_string();
     const int stream = it.second;
     if (op == "Const") {
       EXPECT_EQ(stream, 90);

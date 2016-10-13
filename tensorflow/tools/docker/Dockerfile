@@ -3,15 +3,18 @@ FROM ubuntu:14.04
 MAINTAINER Craig Citro <craigcitro@google.com>
 
 # Pick up some TF dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
         curl \
         libfreetype6-dev \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
-        python-numpy \
-        python-pip \
-        python-scipy \
+        python \
+        python-dev \
+        rsync \
+        software-properties-common \
+        unzip \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -24,10 +27,12 @@ RUN pip --no-cache-dir install \
         ipykernel \
         jupyter \
         matplotlib \
+        numpy \
+        scipy \
         && \
     python -m ipykernel.kernelspec
 
-ENV TENSORFLOW_VERSION 0.8.0
+ENV TENSORFLOW_VERSION 0.11.0rc0
 
 # --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 # These lines will be edited automatically by parameterized_docker_build.sh. #

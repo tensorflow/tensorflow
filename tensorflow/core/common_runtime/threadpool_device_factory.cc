@@ -26,8 +26,8 @@ namespace tensorflow {
 // TODO(zhifengc/tucker): Figure out the bytes of available RAM.
 class ThreadPoolDeviceFactory : public DeviceFactory {
  public:
-  void CreateDevices(const SessionOptions& options, const string& name_prefix,
-                     std::vector<Device*>* devices) override {
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override {
     // TODO(zhifengc/tucker): Figure out the number of available CPUs
     // and/or NUMA configuration.
     int n = 1;
@@ -40,6 +40,8 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
       devices->push_back(new ThreadPoolDevice(options, name, Bytes(256 << 20),
                                               BUS_ANY, cpu_allocator()));
     }
+
+    return Status::OK();
   }
 };
 REGISTER_LOCAL_DEVICE_FACTORY("CPU", ThreadPoolDeviceFactory);

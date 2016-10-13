@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
-#include <unistd.h>
 
 #include <limits>
 
@@ -188,19 +187,6 @@ class Allocator {
     return 0;
   }
 
-  // is_simple<T>::value if T[] can be safely constructed and destructed
-  // without running T() and ~T().  We do not use std::is_trivial<T>
-  // directly because std::complex<float> and std::complex<double> are
-  // not trival, but their arrays can be constructed and destructed
-  // without running their default ctors and dtors.
-  template <typename T>
-  struct is_simple {
-    static constexpr bool value =
-        std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
-        std::is_same<T, complex64>::value ||
-        std::is_same<T, complex128>::value || is_quantized<T>::value;
-  };
-
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
@@ -208,7 +194,7 @@ class Allocator {
   // No constructors or destructors are run for simple types
   template <typename T>
   void RunCtor(T* p, size_t n) {
-    static_assert(is_simple<T>::value, "T is not a simple type.");
+    static_assert(is_simple_type<T>::value, "T is not a simple type.");
   }
 
   template <typename T>
@@ -230,11 +216,6 @@ class Allocator {
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
-};
-
-template <>
-struct Allocator::is_simple<bfloat16> {
-  static const bool value = true;
 };
 
 // Allocator-specific constructors and destructors are used for

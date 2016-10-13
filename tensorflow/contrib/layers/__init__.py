@@ -20,8 +20,21 @@ This package provides several ops that take care of creating variables that are
 used internally in a consistent way and provide the building blocks for many
 common machine learning algorithms.
 
+@@avg_pool2d
+@@batch_norm
 @@convolution2d
+@@convolution2d_in_plane
+@@convolution2d_transpose
+@@flatten
 @@fully_connected
+@@layer_norm
+@@max_pool2d
+@@one_hot_encoding
+@@repeat
+@@safe_embedding_lookup_sparse
+@@separable_convolution2d
+@@stack
+@@unit_norm
 
 Aliases for fully_connected which set a default activation function are
 available: `relu`, `relu6` and `linear`.
@@ -29,7 +42,8 @@ available: `relu`, `relu6` and `linear`.
 ## Regularizers
 
 Regularization can help prevent overfitting. These have the signature
-`fn(weights)`. The loss is typically added to `tf.GraphKeys.REGULARIZATION_LOSS`
+`fn(weights)`. The loss is typically added to
+`tf.GraphKeys.REGULARIZATION_LOSSES`.
 
 @@apply_regularization
 @@l1_regularizer

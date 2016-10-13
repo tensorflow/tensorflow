@@ -7,11 +7,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-filegroup(
-    name = "datasets",
-    srcs = glob(["**/*.csv"]),
-)
-
 py_library(
     name = "learn",
     srcs = glob([
@@ -20,9 +15,13 @@ py_library(
         "__init__.py",
         "python/__init__.py",
     ],
-    data = [":datasets"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:framework"],
+    deps = [
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/contrib/session_bundle:exporter",
+        "//tensorflow/contrib/tensor_forest:client_lib",
+        "//tensorflow/python:framework",
+    ],
 )
 
 py_test(
@@ -38,9 +37,35 @@ py_test(
 )
 
 py_test(
+    name = "load_csv_test",
+    size = "small",
+    srcs = ["python/learn/tests/load_csv_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "data_feeder_test",
     size = "small",
     srcs = ["python/learn/tests/data_feeder_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "feeding_functions_test",
+    size = "small",
+    srcs = [
+        "python/learn/tests/dataframe/feeding_functions_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -65,8 +90,20 @@ py_test(
 
 py_test(
     name = "dataframe_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/tests/dataframe/dataframe_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "estimator_utils_test",
+    size = "medium",
+    srcs = ["python/learn/tests/dataframe/estimator_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -162,9 +199,70 @@ py_test(
 )
 
 py_test(
-    name = "early_stopping_test",
-    size = "medium",
-    srcs = ["python/learn/tests/early_stopping_test.py"],
+    name = "sparsify_densify_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/sparsify_densify_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "tensorflow_dataframe_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/tensorflow_dataframe_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "arithmetic_transform_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/arithmetic_transform_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "unary_transform_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/unary_transform_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "binary_transform_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/binary_transform_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "boolean_mask_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/boolean_mask_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -186,6 +284,91 @@ py_test(
 )
 
 py_test(
+    name = "metric_spec_test",
+    size = "small",
+    srcs = ["python/learn/tests/metric_spec_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "experiment_test",
+    size = "small",
+    srcs = ["python/learn/tests/experiment_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "graph_actions_test",
+    size = "small",
+    srcs = ["python/learn/tests/graph_actions_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "learn_runner_test",
+    size = "small",
+    srcs = ["python/learn/tests/learn_runner_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "monitors_test",
+    size = "small",
+    srcs = ["python/learn/tests/monitors_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "run_config_test",
+    size = "small",
+    srcs = [
+        "python/learn/tests/run_config_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "basic_session_run_hooks_test",
+    size = "small",
+    srcs = ["python/learn/tests/basic_session_run_hooks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "tensor_signature_test",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
@@ -198,7 +381,7 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -213,6 +396,19 @@ py_test(
     size = "small",
     srcs = ["python/learn/estimators/classifier_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/31032996
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "logistic_regressor_test",
+    size = "small",
+    srcs = ["python/learn/estimators/logistic_regressor_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -224,6 +420,7 @@ py_test(
     name = "dnn_linear_combined_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -234,8 +431,65 @@ py_test(
 
 py_test(
     name = "dnn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/dnn_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # http://b/31934515
+        "notap",
+    ],
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "dnn_sampled_softmax_classifier_test",
+    size = "large",
+    srcs = ["python/learn/estimators/dnn_sampled_softmax_classifier_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # http://b/31934515
+        "notap",
+    ],
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "random_forest_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/random_forest_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "rnn_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/rnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "dynamic_rnn_estimator_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/dynamic_rnn_estimator_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -246,8 +500,33 @@ py_test(
 
 py_test(
     name = "linear_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "composable_model_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/composable_model_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "svm_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/svm_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -317,33 +596,9 @@ py_test(
 )
 
 py_test(
-    name = "saver_test",
-    size = "small",
-    srcs = ["python/learn/tests/saver_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "ops_test",
     size = "small",
     srcs = ["python/learn/ops/tests/ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "dropout_ops_test",
-    size = "small",
-    srcs = ["python/learn/ops/tests/dropout_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -401,9 +656,9 @@ py_test(
 )
 
 py_test(
-    name = "checkpoints_test",
+    name = "graph_io_test",
     size = "small",
-    srcs = ["python/learn/utils/checkpoints_test.py"],
+    srcs = ["python/learn/learn_io/graph_io_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -414,9 +669,25 @@ py_test(
 )
 
 py_test(
-    name = "graph_io_test",
+    name = "export_test",
     size = "small",
-    srcs = ["python/learn/io/graph_io_test.py"],
+    srcs = ["python/learn/utils/export_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # http://b/31032996
+    ],
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "stability_test",
+    size = "small",
+    srcs = ["python/learn/tests/stability_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",

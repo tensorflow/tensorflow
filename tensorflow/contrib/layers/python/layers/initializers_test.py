@@ -64,6 +64,11 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
         TypeError,
         'Cannot create initializer for non-floating point type.'):
       tf.contrib.layers.variance_scaling_initializer(dtype=tf.int32)
+    initializer = tf.contrib.layers.variance_scaling_initializer()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Cannot create initializer for non-floating point type.'):
+      initializer([], dtype=tf.int32)
 
   def _test_variance(self, initializer, shape, variance, factor, mode, uniform):
     with tf.Graph().as_default() as g:
@@ -162,6 +167,33 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
                         factor=1.0,
                         mode='FAN_AVG',
                         uniform=True)
+
+  def test_1d_shape_fan_in(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100],
+                          variance=2. / 100.,
+                          factor=2.0,
+                          mode='FAN_IN',
+                          uniform=uniform)
+
+  def test_1d_shape_fan_out(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100],
+                          variance=2. / 100.,
+                          factor=2.0,
+                          mode='FAN_OUT',
+                          uniform=uniform)
+
+  def test_1d_shape_fan_avg(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100],
+                          variance=4. / (100. + 100.),
+                          factor=2.0,
+                          mode='FAN_AVG',
+                          uniform=uniform)
 
 if __name__ == '__main__':
   tf.test.main()

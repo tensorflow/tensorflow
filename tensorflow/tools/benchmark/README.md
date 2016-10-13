@@ -1,4 +1,4 @@
-# Tensorflow Model Benchmark Tool
+# TensorFlow Model Benchmark Tool
 
 ## Description
 

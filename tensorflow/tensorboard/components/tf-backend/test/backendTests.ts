@@ -97,7 +97,7 @@ module TF.Backend {
         assert.isNumber(image.width);
         assert.isNumber(image.height);
         let nonDemoQuery = 'index=0&tag=im1&run=run1';
-        let expectedUrl = demoRouter.individualImage(nonDemoQuery);
+        let expectedUrl = demoRouter.individualImage(nonDemoQuery, 10.0);
         assert.equal(image.url, expectedUrl);
         done();
       });
@@ -191,13 +191,16 @@ module TF.Backend {
     it('Throws and error if the inputs are of different lengths', function() {
       assert.throws(function() {
         convertBins(
-            {bucketRightEdges: [0], bucketCounts: [1, 2], min: 1, max: 2});
+            {bucketRightEdges: [0], bucketCounts: [1, 2], min: 1, max: 2}, 1, 2,
+            2);
       }, 'Edges and counts are of different lengths.');
     });
 
     it('Handles data with no bins', function() {
       assert.deepEqual(
-          convertBins({bucketRightEdges: [], bucketCounts: [], min: 0, max: 0}),
+          convertBins(
+              {bucketRightEdges: [], bucketCounts: [], min: 0, max: 0}, 0, 0,
+              0),
           []);
     });
 
@@ -205,12 +208,14 @@ module TF.Backend {
       let counts = [1];
       let rightEdges = [1.21e-12];
       let histogram = [{x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 1}];
-      let newHistogram = convertBins({
-        bucketRightEdges: rightEdges,
-        bucketCounts: counts,
-        min: 1.1e-12,
-        max: 1.21e-12
-      });
+      let newHistogram = convertBins(
+          {
+            bucketRightEdges: rightEdges,
+            bucketCounts: counts,
+            min: 1.1e-12,
+            max: 1.21e-12
+          },
+          1.1e-12, 1.21e-12, 1);
       assertHistogramEquality(newHistogram, histogram);
     });
 
@@ -218,15 +223,17 @@ module TF.Backend {
       let counts = [1, 2];
       let rightEdges = [1.1e-12, 1.21e-12];
       let histogram = [
-        {x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 1},
-        {x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 2}
+        {x: 1.0e-12, dx: 1.05e-13, y: 1.09090909090909},
+        {x: 1.105e-12, dx: 1.05e-13, y: 1.9090909090909}
       ];
-      let newHistogram = convertBins({
-        bucketRightEdges: rightEdges,
-        bucketCounts: counts,
-        min: 1.0e-12,
-        max: 1.21e-12
-      });
+      let newHistogram = convertBins(
+          {
+            bucketRightEdges: rightEdges,
+            bucketCounts: counts,
+            min: 1.0e-12,
+            max: 1.21e-12
+          },
+          1.0e-12, 1.21e-12, 2);
       assertHistogramEquality(newHistogram, histogram);
     });
 
@@ -236,15 +243,17 @@ module TF.Backend {
          let counts = [1, 2];
          let rightEdges = [-1.0e-12, 1.0e-12];
          let histogram = [
-           {x: -1.1e-12, dx: 1.1e-12 - 1.0e-12, y: 1},
-           {x: -1.0e-12, dx: 2.0e-12, y: 2}
+           {x: -1.1e-12, dx: 1.05e-12, y: 1.95},
+           {x: -0.5e-13, dx: 1.05e-12, y: 1.05}
          ];
-         let newHistogram = convertBins({
-           bucketRightEdges: rightEdges,
-           bucketCounts: counts,
-           min: -1.1e-12,
-           max: 1.0e-12
-         });
+         let newHistogram = convertBins(
+             {
+               bucketRightEdges: rightEdges,
+               bucketCounts: counts,
+               min: -1.1e-12,
+               max: 1.0e-12
+             },
+             -1.1e-12, 1.0e-12, 2);
          assertHistogramEquality(newHistogram, histogram);
        });
 
@@ -253,15 +262,18 @@ module TF.Backend {
          let counts = [1, 2, 3];
          let rightEdges = [0, 1.0e-12, 1.0e14];
          let histogram = [
-           {x: -1.0e-12, dx: 1.0e-12, y: 1}, {x: 0, dx: 1.0e-12, y: 2},
-           {x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 3}
+           {x: -1.0e-12, dx: 0.7e-12, y: 0.7},
+           {x: -0.3e-12, dx: 0.7e-12, y: 1.1},
+           {x: 0.4e-12, dx: 0.7e-12, y: 4.2}
          ];
-         let newHistogram = convertBins({
-           bucketRightEdges: rightEdges,
-           bucketCounts: counts,
-           min: -1.0e-12,
-           max: 1.1e-12
-         });
+         let newHistogram = convertBins(
+             {
+               bucketRightEdges: rightEdges,
+               bucketCounts: counts,
+               min: -1.0e-12,
+               max: 1.1e-12
+             },
+             -1.0e-12, 1.1e-12, 3);
          assertHistogramEquality(newHistogram, histogram);
        });
   });

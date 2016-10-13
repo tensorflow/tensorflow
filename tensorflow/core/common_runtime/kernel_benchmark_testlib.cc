@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -39,7 +39,6 @@ namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init) {
-
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -136,25 +135,35 @@ void Benchmark::RunWithArgs(
   args.runner = [this](std::function<void()> closure) {
     pool_->Schedule(closure);
   };
-  for (int i = 0; i < 3; ++i) {
+  static const int kWarmupRuns = 3;
+  for (int i = 0; i < kWarmupRuns; ++i) {
     for (const auto& p : in) {
-      rendez_->Send(p.first, Rendezvous::Args(), p.second, false);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      rendez_->Send(parsed, Rendezvous::Args(), p.second, false);
     }
     TF_CHECK_OK(exec_->Run(args));
     for (const string& key : out) {
-      rendez_->Recv(key, Rendezvous::Args(), &unused, &is_dead);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead);
     }
   }
   TF_CHECK_OK(device_->Sync());
+  VLOG(3) << kWarmupRuns << " warmup runs done.";
 
   testing::StartTiming();
   while (iters-- > 0) {
     for (const auto& p : in) {
-      rendez_->Send(p.first, Rendezvous::Args(), p.second, false);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      rendez_->Send(parsed, Rendezvous::Args(), p.second, false);
     }
     TF_CHECK_OK(exec_->Run(args));
     for (const string& key : out) {
-      rendez_->Recv(key, Rendezvous::Args(), &unused, &is_dead);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead);
     }
   }
 

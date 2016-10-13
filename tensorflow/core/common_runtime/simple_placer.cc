@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -41,7 +42,7 @@ std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
   std::vector<Device*> filtered_devices;
-  for (DeviceType d : supported_device_types) {
+  for (const DeviceType& d : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) == d) {
         filtered_devices.emplace_back(device);
@@ -63,33 +64,31 @@ std::vector<Device*> FilterSupportedDevices(
 }
 
 // Returns the name of the colocation group of the node by inspecting
-// the "_class" attribute of the NodeDef.  Returns "" if it doesn't
-// exist.
-Status ColocationGroups(const Node& node,
-                        std::vector<string>* colocation_groups) {
+// the kColocationAttrName attribute of the NodeDef.
+void ColocationGroups(const Node& node,
+                      std::vector<string>* colocation_groups) {
   std::vector<string> class_specs;
   // TODO(vrv): We should consider adding a GetNodeAttr that returns a
   // StringPiece, to avoid a copy.
-  Status s = GetNodeAttr(node.def(), "_class", &class_specs);
+  Status s = GetNodeAttr(node.def(), kColocationAttrName, &class_specs);
   if (!s.ok()) {
-    // No "_class" attribute is equivalent to the empty colocation_group.
-    *colocation_groups = {strings::StrCat("loc:@", node.name())};
-    return Status::OK();
+    // No attribute value is equivalent to the empty colocation_group.
+    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
+    return;
   }
 
   bool found_spec = false;
   for (const string& class_spec : class_specs) {
     StringPiece spec(class_spec);
-    if (spec.Consume("loc:@")) {
+    if (spec.Consume(kColocationGroupPrefix)) {
       found_spec = true;
       colocation_groups->emplace_back(class_spec);
     }
   }
 
   if (!found_spec) {
-    *colocation_groups = {strings::StrCat("loc:@", node.name())};
+    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
   }
-  return Status::OK();
 }
 
 // This class maintains the connected components of a colocation
@@ -147,7 +146,7 @@ class ColocationGraph {
     // When adding the node, identify whether it is part of a
     // colocation group.
     std::vector<string> colocation_groups;
-    TF_RETURN_IF_ERROR(ColocationGroups(node, &colocation_groups));
+    ColocationGroups(node, &colocation_groups);
     Status s;
     for (const string& colocation_group : colocation_groups) {
       auto it = colocation_group_root_.find(colocation_group);
@@ -237,11 +236,15 @@ class ColocationGraph {
       // members_[old_root].supported_device_types.
       MergeSupportedDevices(&members_[new_root].supported_device_types,
                             members_[old_root].supported_device_types);
-      if (members_[x_root].supported_device_types.size() == 0) {
+      if (members_[new_root].supported_device_types.size() == 0) {
+        string debug_info;
+        AddDebugInfo(x_root, &debug_info);
+        AddDebugInfo(y_root, &debug_info);
         return errors::InvalidArgument(
             "Cannot colocate nodes '", x.name(), "' and '", y.name(),
             "' because no device type supports both of those nodes and the "
-            "other nodes colocated with them");
+            "other nodes colocated with them.",
+            debug_info);
       }
     }
     return Status::OK();
@@ -494,7 +497,7 @@ class ColocationGraph {
                                 "' does not match any device");
       }
 
-      for (DeviceType d : member->supported_device_types) {
+      for (const DeviceType& d : member->supported_device_types) {
         if (DeviceType(assigned_device->attributes().device_type()) == d) {
           return Status::OK();
         }
@@ -513,9 +516,9 @@ class ColocationGraph {
       // If no kernels are registered for this op type, fail with an error.
       if (member->supported_device_types.empty()) {
         return errors::InvalidArgument(
-            "No OpKernel was registered to support "
-            "Op '",
-            node.def().op(), "' with these attrs");
+            "No OpKernel was registered to support Op '", node.def().op(),
+            "' with these attrs.  Registered kernels:\n",
+            KernelsRegisteredForOp(node.def().op()));
       }
 
       // If the NodeDef contains a device, then we interpret it as a
@@ -544,9 +547,9 @@ class ColocationGraph {
     target->clear();
 
     // Iterate in priority order.
-    for (DeviceType device_type : temp) {
+    for (const DeviceType& device_type : temp) {
       bool found = false;
-      for (DeviceType other_device_type : other) {
+      for (const DeviceType& other_device_type : other) {
         if (device_type == other_device_type) {
           found = true;
           break;
@@ -602,9 +605,7 @@ bool IsGeneratorNode(const Node* node) {
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
                            const SessionOptions* options)
-    : graph_(graph),
-      devices_(devices),
-      options_(options) {}
+    : graph_(graph), devices_(devices), options_(options) {}
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices)
     : graph_(graph), devices_(devices) {

@@ -20,11 +20,10 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
@@ -43,6 +42,13 @@ OPTIMIZER_CLS_NAMES = {
     "SGD": train.GradientDescentOptimizer,
 }
 
+OPTIMIZER_SUMMARIES = [
+    "learning_rate",
+    "loss",
+    "gradients",
+    "gradient_norm",
+]
+
 
 def optimize_loss(loss,
                   global_step,
@@ -51,12 +57,29 @@ def optimize_loss(loss,
                   gradient_noise_scale=None,
                   gradient_multipliers=None,
                   clip_gradients=None,
-                  moving_average_decay=0.9,
                   learning_rate_decay_fn=None,
                   update_ops=None,
                   variables=None,
-                  name=None):
+                  name=None,
+                  summaries=None,
+                  colocate_gradients_with_ops=False):
   """Given loss and parameters for optimizer, returns a training op.
+
+  Various ways of passing optimizers, include:
+
+  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+      for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+  - function, takes learning rate `Tensor` as argument and must return
+      `Optimizer` instance. E.g. `optimize_loss(...,
+      optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+    Alternatively, if `learning_rate` is `None`, the function takes no
+    arguments. E.g. `optimize_loss(..., learning_rate=None,
+      optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+  - class, subclass of `Optimizer` that takes only one required argument -
+      learning rate, such as AdamOptimizer, AdagradOptimizer.
+      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+  - object, instance of subclass of `Optimizer`.
+      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
     loss: Tensor, 0 dimensional.
@@ -65,28 +88,33 @@ def optimize_loss(loss,
     optimizer: string, class or optimizer instance, used as trainer.
                string should be name of optimizer, like 'SGD',
                  'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
-               class should be sub-class of tf.Optimizer that implements
+               class should be sub-class of `tf.Optimizer` that implements
                  `compute_gradients` and `apply_gradients` functions.
-               optimizer instance should be instantion of tf.Optimizer sub-class
-                 and have `compute_gradients` and `apply_gradients` functions.
+               optimizer instance should be instantiation of `tf.Optimizer`
+                 sub-class and have `compute_gradients` and `apply_gradients`
+                 functions.
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
                           value.
     gradient_multipliers: dict of variables or variable names to floats.
                           If present, gradients for specified
                           variables will be multiplied by given constant.
     clip_gradients: float or `None`, clips gradients by this value.
-    moving_average_decay: float or None, takes into account previous loss
-                          to make learning smoother due to outliers.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
                             `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
                             functions.
-                            For example: tf.train.exponential_decay.
+                            For example: `tf.train.exponential_decay`.
     update_ops: list of update `Operation`s to execute at each step. If `None`,
-                uses elements of UPDATE_OPS collection.
+                uses elements of UPDATE_OPS collection. The order of execution
+                between `update_ops` and `loss` is non-deterministic.
     variables: list of variables to optimize or
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
+    summaries: List of internal quantities to visualize on tensorboard. If not
+               set only the loss and the learning rate will be reported. The
+               complete list is in OPTIMIZER_SUMMARIES.
+    colocate_gradients_with_ops: If True, try colocating gradients with the 
+                                 corresponding op.
 
   Returns:
     Training op.
@@ -94,63 +122,74 @@ def optimize_loss(loss,
   Raises:
     ValueError: if optimizer is wrong type.
   """
-  with vs.variable_op_scope([loss, global_step], name, "OptimizeLoss"):
+  with vs.variable_scope(name, "OptimizeLoss", [loss, global_step]):
     # Update ops take UPDATE_OPS collection if not provided.
-    update_ops = (set(update_ops or []) or
-                  set(ops.get_collection(ops.GraphKeys.UPDATE_OPS)))
+    if update_ops is None:
+      update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
     # Make sure update ops are ran before computing loss.
     if update_ops:
-      with ops.control_dependencies(update_ops):
-        barrier = control_flow_ops.no_op(name="update_barrier")
-      loss = control_flow_ops.with_dependencies([barrier], loss)
-
-    # Moving average of the loss with decay.
-    if moving_average_decay is not None:
-      # Generate moving averages of the loss.
-      loss_averages = train.ExponentialMovingAverage(moving_average_decay,
-                                                     name="avg")
-      loss_averages_op = loss_averages.apply([loss])
-      logging_ops.scalar_summary("loss/mean", loss_averages.average(loss))
-      loss = control_flow_ops.with_dependencies([loss_averages_op], loss)
+      loss = control_flow_ops.with_dependencies(list(update_ops), loss)
 
     # Learning rate variable, with possible decay.
-    if (isinstance(learning_rate, ops.Tensor)
-        and learning_rate.get_shape().ndims == 0):
-      lr = learning_rate
-    elif isinstance(learning_rate, float):
-      lr = vs.get_variable(
-          "learning_rate", [], trainable=False,
-          initializer=init_ops.constant_initializer(learning_rate))
-    else:
-      raise ValueError("Learning rate should be 0d Tensor or float. "
-                       "Got %s of type %s" % (
-                           str(learning_rate), str(type(learning_rate))))
-    if learning_rate_decay_fn is not None:
+    lr = None
+    if learning_rate is not None:
+      if (isinstance(learning_rate, ops.Tensor)
+          and learning_rate.get_shape().ndims == 0):
+        lr = learning_rate
+      elif isinstance(learning_rate, float):
+        lr = vs.get_variable(
+            "learning_rate", [], trainable=False,
+            initializer=init_ops.constant_initializer(learning_rate))
+      else:
+        raise ValueError("Learning rate should be 0d Tensor or float. "
+                         "Got %s of type %s" % (
+                             str(learning_rate), str(type(learning_rate))))
+    if summaries is None:
+      summaries = ["loss", "learning_rate"]
+    if learning_rate is not None and learning_rate_decay_fn is not None:
       lr = learning_rate_decay_fn(lr, global_step)
+      if "learning_rate" in summaries:
+        logging_ops.scalar_summary("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
+      if lr is None:
+        raise ValueError("Learning rate is None, but should be specified if "
+                         "optimizer is string (%s)." % optimizer)
       if optimizer not in OPTIMIZER_CLS_NAMES:
         raise ValueError(
             "Optimizer name should be one of [%s], you provided %s."
             % (", ".join(OPTIMIZER_CLS_NAMES), optimizer))
       opt = OPTIMIZER_CLS_NAMES[optimizer](learning_rate=lr)
-    elif isinstance(optimizer, type) and issubclass(optimizer,
-                                                    optimizer_.Optimizer):
+    elif (isinstance(optimizer, type)
+          and issubclass(optimizer, optimizer_.Optimizer)):
+      if lr is None:
+        raise ValueError("Learning rate is None, but should be specified if "
+                         "optimizer is class (%s)." % optimizer)
       opt = optimizer(learning_rate=lr)
     elif isinstance(optimizer, optimizer_.Optimizer):
       opt = optimizer
+    elif callable(optimizer):
+      if learning_rate is not None:
+        opt = optimizer(lr)
+      else:
+        opt = optimizer()
+      if not isinstance(opt, optimizer_.Optimizer):
+        raise ValueError("Unrecognized optimizer: function should return "
+                         "subclass of Optimizer. Got %s." % str(opt))
     else:
       raise ValueError("Unrecognized optimizer: should be string, "
-                       "subclass of Optimizer or instance of "
-                       "subclass of Optimizer. Got %s." % str(optimizer))
+                       "subclass of Optimizer, instance of "
+                       "subclass of Optimizer or function with one argument. "
+                       "Got %s." % str(optimizer))
 
     # All trainable variables, if specific variables are not specified.
     if variables is None:
       variables = vars_.trainable_variables()
 
     # Compute gradients.
-    gradients = opt.compute_gradients(loss, variables)
+    gradients = opt.compute_gradients(loss, variables,
+                                      colocate_gradients_with_ops=colocate_gradients_with_ops)
 
     # Optionally add gradient noise.
     if gradient_noise_scale is not None:
@@ -166,7 +205,8 @@ def optimize_loss(loss,
       gradients = _clip_gradients_by_norm(gradients, clip_gradients)
 
     # Add scalar summary for loss.
-    logging_ops.scalar_summary("loss", loss)
+    if "loss" in summaries:
+      logging_ops.scalar_summary("loss", loss)
 
     # Add histograms for variables, gradients and gradient norms.
     for gradient, variable in gradients:
@@ -176,21 +216,20 @@ def optimize_loss(loss,
         grad_values = gradient
 
       if grad_values is not None:
-        logging_ops.histogram_summary(variable.name, variable)
-        logging_ops.histogram_summary(variable.name + "/gradients", grad_values)
-        logging_ops.histogram_summary(variable.name + "/gradient_norm",
-                                      clip_ops.global_norm([grad_values]))
+        if "gradients" in summaries:
+          logging_ops.histogram_summary(variable.name + "/gradients",
+                                        grad_values)
+        if "gradient_norm" in summaries:
+          logging_ops.histogram_summary(variable.name + "/gradient_norm",
+                                        clip_ops.global_norm([grad_values]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(gradients,
                                        global_step=global_step,
                                        name="train")
-    # Make sure total_loss is valid.
-    final_loss = array_ops.check_numerics(loss, "Loss is inf or nan")
 
     # Ensure the train_tensor computes grad_updates.
-    train_tensor = control_flow_ops.with_dependencies(
-        [grad_updates], final_loss)
+    train_tensor = control_flow_ops.with_dependencies([grad_updates], loss)
 
     return train_tensor
 
@@ -208,6 +247,9 @@ def _add_scaled_noise_to_gradients(grads_and_vars, gradient_noise_scale):
   gradients, variables = zip(*grads_and_vars)
   noisy_gradients = []
   for gradient in gradients:
+    if gradient is None:
+      noisy_gradients.append(None)
+      continue
     if isinstance(gradient, ops.IndexedSlices):
       gradient_shape = gradient.dense_shape
     else:
@@ -221,9 +263,15 @@ def _multiply_gradients(grads_and_vars, gradient_multipliers):
   """Multiply specified gradients."""
   multiplied_grads_and_vars = []
   for grad, var in grads_and_vars:
-    if var in gradient_multipliers or var.name in gradient_multipliers:
+    if (grad is not None and
+        (var in gradient_multipliers or var.name in gradient_multipliers)):
       key = var if var in gradient_multipliers else var.name
-      grad *= constant_op.constant(
+      multiplier = constant_op.constant(
           gradient_multipliers[key], dtype=dtypes.float32)
+      if isinstance(grad, ops.IndexedSlices):
+        grad_values = grad.values * multiplier
+        grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
+      else:
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars

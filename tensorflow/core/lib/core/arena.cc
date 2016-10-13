@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/arena.h"
 
 #include <assert.h>
-#include <unistd.h>
 
 #include <vector>
 
@@ -34,8 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace core {
-
-static const int kPageSize = getpagesize();
 
 // ----------------------------------------------------------------------
 // Arena::Arena()

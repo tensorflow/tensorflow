@@ -21,26 +21,36 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 using std::placeholders::_1;
 using tensorforest::BestFeatureClassification;
 using tensorforest::BestFeatureRegression;
 using tensorforest::CheckTensorBounds;
 
-
 REGISTER_OP("BestSplits")
-  .Attr("regression: bool = false")
-  .Input("finished_nodes: int32")
-  .Input("node_to_accumulator: int32")
-  .Input("split_sums: float")
-  .Input("split_squares: float")
-  .Input("accumulator_sums: float")
-  .Input("accumulator_sqaures: float")
-  .Output("split_indices: int32")
-  .Doc(R"doc(
+    .Attr("regression: bool = false")
+    .Input("finished_nodes: int32")
+    .Input("node_to_accumulator: int32")
+    .Input("split_sums: float")
+    .Input("split_squares: float")
+    .Input("accumulator_sums: float")
+    .Input("accumulator_sqaures: float")
+    .Output("split_indices: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle finished_nodes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &finished_nodes));
+      c->set_output(0, c->Vector(c->Dim(finished_nodes, 0)));
+      return Status::OK();
+    })
+    .Doc(R"doc(
   Returns the index of the best split for each finished node.
 
   For classification, the best split is the split with the lowest weighted
@@ -71,7 +81,6 @@ REGISTER_OP("BestSplits")
   split_indices: `split_indices[i]` contains the index of the split to use for
     `finished_nodes[i]`.
 )doc");
-
 
 class BestSplits : public OpKernel {
  public:

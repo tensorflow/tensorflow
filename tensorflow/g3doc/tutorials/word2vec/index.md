@@ -106,7 +106,7 @@ P(w_t | h) &= \text{softmax}(\text{score}(w_t, h)) \\
 \end{align}
 $$
 
-where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
+where \\(\text{score}(w_t, h)\\) computes the compatibility of word \\(w_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
 by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
 on the training set, i.e. by maximizing
@@ -227,7 +227,7 @@ When we inspect these visualizations it becomes apparent that the vectors
 capture some general, and in fact quite useful, semantic information about
 words and their relationships to one another. It was very interesting when we
 first discovered that certain directions in the induced vector space specialize
-towards certain semantic relationships, e.g. *male-female*, *gender* and
+towards certain semantic relationships, e.g. *male-female*, *verb tense* and
 even *country-capital* relationships between words, as illustrated in the figure
 below (see also for example
 [Mikolov et al., 2013](http://www.aclweb.org/anthology/N13-1090)).
@@ -346,9 +346,10 @@ training a full-blown part-of-speech model or named-entity model, one simple way
 to evaluate embeddings is to directly use them to predict syntactic and semantic
 relationships like `king is to queen as father is to ?`. This is called
 *analogical reasoning* and the task was introduced by
-[Mikolov and colleagues](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf),
-and the dataset can be downloaded from here:
-https://word2vec.googlecode.com/svn/trunk/questions-words.txt.
+[Mikolov and colleagues
+](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf).
+Download the dataset for this task from
+[download.tensorflow.org](http://download.tensorflow.org/data/questions-words.txt).
 
 To see how we do this evaluation, have a look at the `build_eval_graph()` and
 `eval()` functions in

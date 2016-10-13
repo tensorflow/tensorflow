@@ -17,6 +17,8 @@
 TensorFlow provides allows you to wrap python/numpy functions as
 TensorFlow operators.
 
+@@py_func
+
 """
 
 # pylint: disable=g-bad-name
@@ -27,8 +29,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_script_ops
 
 
@@ -53,6 +55,26 @@ class FuncRegistry(object):
     """Removes the registered function corresponding to `token`."""
     self._funcs.pop(token, None)
 
+  @staticmethod
+  def _convert(value):
+    """Converts an arg to numpy, avoiding dangerous string and unicode dtypes.
+
+    Numpy pads with zeros when using string and unicode dtypes if different
+    components of a tensor have different lengths.  This is bad: ignoring the
+    padding is wrong for text data, and removing the padding is wrong for binary
+    data.  To avoid this bug, we redo the conversion using an object dtype.
+
+    Args:
+      value: Value to convert to a numpy array.
+
+    Returns:
+      A numpy array.
+    """
+    result = np.asarray(value, order="C")
+    if result.dtype.char in "SU" and result is not value:
+      return np.asarray(value, order="C", dtype=object)
+    return result
+
   def __call__(self, token, args):
     """Calls the registered function for `token` with args."""
     func = self._funcs[token]
@@ -62,10 +84,9 @@ class FuncRegistry(object):
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):
-      ret = [np.array(x, order="C") for x in ret]
+      return [self._convert(x) for x in ret]
     else:
-      ret = np.array(ret, order="C")
-    return ret
+      return self._convert(ret)
 
   def size(self):
     """Returns how many functions are currently registered."""
@@ -93,7 +114,7 @@ class CleanupFunc(object):
     _py_funcs.remove(self._token)
 
 
-def py_func(func, inp, Tout, name=None):
+def py_func(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a tensorflow op.
 
   Given a python function `func`, which takes numpy arrays as its
@@ -113,12 +134,17 @@ def py_func(func, inp, Tout, name=None):
   Args:
     func: A python function.
     inp: A list of `Tensor`.
-    Tout: A list of tensorflow data types indicating what `func`
-          returns.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+          type if there is only one, indicating what `func` returns.
+    stateful: A boolean indicating whether the function should be considered
+              stateful or stateless. I.e. whether it, given the same input, will
+              return the same output and at the same time does not change state
+              in an observable way. Optimizations such as common subexpression
+              elimination are only possible when operations are stateless.
     name: A name for the operation (optional).
 
   Returns:
-    A list of `Tensor` which `func` computes.
+    A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   token = _py_funcs.insert(func)
   # We tie the registered function's life-time with the current
@@ -138,10 +164,24 @@ def py_func(func, inp, Tout, name=None):
   # the funcs registry.
   g._cleanup_py_funcs_used_in_graph.append(cleanup)
 
-  return gen_script_ops._py_func(input=inp, token=token, Tout=Tout, name=name)
-  # pylint: enable=protected-access
+  if isinstance(Tout, (list, tuple)):
+    is_list_or_tuple = True
+  else:
+    Tout = [Tout]
+    is_list_or_tuple = False
+  if stateful:
+    result = gen_script_ops._py_func(
+        input=inp, token=token, Tout=Tout, name=name)
+    # pylint: enable=protected-access
+  else:
+    result = gen_script_ops._py_func_stateless(
+        input=inp, token=token, Tout=Tout, name=name)
+    # pylint: enable=protected-access
+  return result if is_list_or_tuple else result[0]
 
 
-ops.RegisterShape("PyFunc")(common_shapes.unknown_shape)
+ops.RegisterShape("PyFunc")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PyFuncStateless")(common_shapes.call_cpp_shape_fn)
 
-ops.NoGradient("PyFunc")
+ops.NotDifferentiable("PyFunc")
+ops.NotDifferentiable("PyFuncStateless")

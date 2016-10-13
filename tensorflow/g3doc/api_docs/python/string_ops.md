@@ -53,7 +53,7 @@ additional components. Adversaries could try to make their inputs hash to the
 same bucket for a denial-of-service attack or to skew the results. A strong
 hash prevents this by making it dificult, if not infeasible, to compute inputs
 that hash to the same bucket. This comes at a cost of roughly 4x higher compute
-time than tf.string_to_hash_bucket_fast.
+time than `tf.string_to_hash_bucket_fast`.
 
 ##### Args:
 
@@ -81,6 +81,8 @@ The hash function is deterministic on the content of the string within the
 process.
 
 Note that the hash function may change from time to time.
+This functionality will be deprecated and it's recommended to use
+`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
 
 ##### Args:
 
@@ -116,6 +118,7 @@ a scalar string.
 
 
 For example:
+
 ```
 # tensor `a` is [["a", "b"], ["c", "d"]]
 tf.reduce_join(a, 0) ==> ["ac", "bd"]
@@ -137,8 +140,7 @@ tf.reduce_join(a, []) ==> ["abcd"]
     The input to be joined.  All reduced indices must have non-zero size.
 *  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
-    order specified.  If `reduction_indices` has higher rank than `1`, it is
-    flattened.  Omitting `reduction_indices` is equivalent to passing
+    order specified.  Omitting `reduction_indices` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 *  <b>`keep_dims`</b>: An optional `bool`. Defaults to `False`.
     If `True`, retain reduced dimensions with length `1`.
@@ -151,5 +153,159 @@ tf.reduce_join(a, []) ==> ["abcd"]
   A `Tensor` of type `string`.
   Has shape equal to that of the input with reduced dimensions removed or
   set to `1` depending on `keep_dims`.
+
+
+- - -
+
+### `tf.string_join(inputs, separator=None, name=None)` {#string_join}
+
+Joins the strings in the given list of string tensors into one tensor;
+
+with the given separator (default is an empty separator).
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of type `string`.
+    A list of string tensors.  The tensors must all have the same shape,
+    or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
+    of non-scalar inputs.
+*  <b>`separator`</b>: An optional `string`. Defaults to `""`.
+    string, an optional join separator.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`.
+
+
+
+## Splitting
+
+- - -
+
+### `tf.string_split(source, delimiter=' ')` {#string_split}
+
+Split elements of `source` based on `delimiter` into a `SparseTensor`.
+
+Let N be the size of source (typically N will be the batch size). Split each
+element of `source` based on `delimiter` and return a `SparseTensor`
+containing the splitted tokens. Empty tokens are ignored.
+
+If `delimiter` is an empty string, each element of the `source` is split
+into individual 1 character strings.
+
+For example:
+N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
+will be
+
+st.indices = [0, 0;
+              0, 1;
+              1, 0;
+              1, 1;
+              1, 2]
+st.shape = [2, 3]
+st.values = ['hello', 'world', 'a', 'b', 'c']
+
+##### Args:
+
+
+*  <b>`source`</b>: `1-D` string `Tensor`, the strings to split.
+*  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
+    be length 0 or 1.
+
+##### Returns:
+
+  A `SparseTensor` of rank `2`, the strings split according to the delimiter.
+  The first column of the indices corresponds to the row in `source` and the
+  second column corresponds to the index of the split component in this row.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If delimiter is not a character.
+
+
+
+## Conversion
+
+- - -
+
+### `tf.as_string(input, precision=None, scientific=None, shortest=None, width=None, fill=None, name=None)` {#as_string}
+
+Converts each entry in the given tensor to strings.  Supports many numeric
+
+types and boolean.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `complex64`, `float32`, `float64`, `bool`, `int8`.
+*  <b>`precision`</b>: An optional `int`. Defaults to `-1`.
+    The post-decimal precision to use for floating point numbers.
+    Only used if precision > -1.
+*  <b>`scientific`</b>: An optional `bool`. Defaults to `False`.
+    Use scientific notation for floating point numbers.
+*  <b>`shortest`</b>: An optional `bool`. Defaults to `False`.
+    Use shortest representation (either scientific or standard) for
+    floating point numbers.
+*  <b>`width`</b>: An optional `int`. Defaults to `-1`.
+    Pad pre-decimal numbers to this width.
+    Applies to both floating point and integer numbers.
+    Only used if width > -1.
+*  <b>`fill`</b>: An optional `string`. Defaults to `""`.
+    The value to pad if width > -1.  If empty, pads with spaces.
+    Another typical value is '0'.  String cannot be longer than 1 character.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`.
+
+
+- - -
+
+### `tf.encode_base64(input, pad=None, name=None)` {#encode_base64}
+
+Encode strings into web-safe base64 format.
+
+Refer to the following article for more information on base64 format:
+en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
+end so that the encoded has length multiple of 4. See Padding section of the
+link above.
+
+Web-safe means that the encoder uses - and _ instead of + and /.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor` of type `string`. Strings to be encoded.
+*  <b>`pad`</b>: An optional `bool`. Defaults to `False`.
+    Bool whether padding is applied at the ends.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`. Input strings encoded in base64.
+
+
+- - -
+
+### `tf.decode_base64(input, name=None)` {#decode_base64}
+
+Decode web-safe base64-encoded strings.
+
+Input may or may not have padding at the end. See EncodeBase64 for padding.
+Web-safe means that input must use - and _ instead of + and /.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor` of type `string`. Base64 strings to decode.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`. Decoded strings.
 
 

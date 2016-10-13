@@ -27,6 +27,7 @@ class ContribTest(googletest.TestCase):
   def testContrib(self):
     # pylint: disable=g-import-not-at-top
     import tensorflow as tf
+    _ = tf.contrib.layers  # `tf.contrib` is loaded lazily on first use.
     assert inspect.ismodule(tf.contrib)
 
   def testLayers(self):

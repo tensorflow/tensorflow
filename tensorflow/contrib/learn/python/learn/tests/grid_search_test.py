@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,12 +43,14 @@ class GridSearchTest(tf.test.TestCase):
     if HAS_SKLEARN:
       random.seed(42)
       iris = datasets.load_iris()
-      classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                                 n_classes=3,
-                                                 steps=50)
+      feature_columns = learn.infer_real_valued_columns_from_input(iris.data)
+      classifier = learn.DNNClassifier(
+          feature_columns=feature_columns, hidden_units=[10, 20, 10],
+          n_classes=3)
       grid_search = GridSearchCV(classifier,
-                                 {'hidden_units': [[5, 5], [10, 10]],
-                                  'learning_rate': [0.1, 0.01]})
+                                 {'hidden_units': [[5, 5], [10, 10]]},
+                                 scoring='accuracy',
+                                 fit_params={'steps': [50]})
       grid_search.fit(iris.data, iris.target)
       score = accuracy_score(iris.target, grid_search.predict(iris.data))
       self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))

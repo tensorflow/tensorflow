@@ -10,6 +10,7 @@ Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
 
 `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
 shapes:
+
   * In all generality, they can have the same number of dimensions as the
     input `x`, with identical sizes as `x` for the dimensions that are not
     normalized over (the 'depth' dimension(s)), and dimension 1 for the

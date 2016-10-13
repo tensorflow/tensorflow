@@ -93,7 +93,8 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options, Item* item) {
   item->session = session;
-  item->lib_def = new FunctionLibraryDefinition(gdef.library());
+  item->lib_def =
+      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library());
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
@@ -118,7 +119,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     mutex_lock l(mu_);
     return strings::StrCat(prefix, "_G", next_id_++);
   };
-  popts.get_incarnation = [this](const string& name) {
+  popts.get_incarnation = [this](const string& name) -> int64 {
     Device* device = nullptr;
     Status s = worker_env_->device_mgr->LookupDevice(name, &device);
     if (s.ok()) {
@@ -167,8 +168,9 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
     // Function library runtime.
     unit->lib = NewFunctionLibraryRuntime(
-        worker_env_->device_mgr, unit->device, def->versions().producer(),
-        item->lib_def, graph_options.optimizer_options());
+        worker_env_->device_mgr, worker_env_->env, unit->device,
+        def->versions().producer(), item->lib_def,
+        graph_options.optimizer_options());
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
@@ -195,7 +197,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       }
     };
 
-    optimizer.Optimize(lib, params.device, &subgraph);
+    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
     s = EnsureMemoryTypes(DeviceType(unit->device->device_type()),
                           unit->device->name(), subgraph);
     if (!s.ok()) {
@@ -306,10 +308,15 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
 
   // Sends values specified by the caller.
+  Rendezvous::ParsedKey parsed;
   for (const auto& p : in) {
     const string& key = p.first;
     const Tensor& val = p.second;
-    const Status s = rendezvous->Send(key, Rendezvous::Args(), val, false);
+
+    Status s = Rendezvous::ParseKey(key, &parsed);
+    if (s.ok()) {
+      s = rendezvous->Send(parsed, Rendezvous::Args(), val, false);
+    }
     if (!s.ok()) {
       done(s);
       item->Unref();
@@ -322,9 +329,13 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   //
   // NOTE: Transfer one ref of rendezvous and one ref of item to
   // RunAllDone.
+  ResourceMgr* step_resource_manager = new ResourceMgr;
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, std::bind(&ME::RunAllDone, this, item, rendezvous,
-                                       out, done, std::placeholders::_1));
+      num_units, rendezvous, [this, item, rendezvous, out, done,
+                              step_resource_manager](const Status& status) {
+        RunAllDone(item, rendezvous, out, done, status);
+        delete step_resource_manager;
+      });
   Executor::Args args;
   {
     mutex_lock l(mu_);
@@ -333,11 +344,15 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   args.rendezvous = rendezvous;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
+  args.step_resource_manager = step_resource_manager;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }
   thread::ThreadPool* pool = worker_env_->compute_pool;
-  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
+  using namespace std::placeholders;
+  // Line below is equivalent to this code, but does one less indirect call:
+  //  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
+  args.runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
   for (const auto& unit : item->units) {
     unit.root->RunAsync(args, barrier->Get());
   }
@@ -347,11 +362,15 @@ void GraphMgr::RunAllDone(Item* item, Rendezvous* rendezvous, NamedTensors* out,
                           StatusCallback done, Status s) {
   if (s.ok()) {
     // Receives values requested by the caller.
+    Rendezvous::ParsedKey parsed;
     for (auto& p : *out) {
       const string& key = p.first;
       Tensor* val = &p.second;
       bool is_dead = false;
-      s = rendezvous->Recv(key, Rendezvous::Args(), val, &is_dead);
+      s = Rendezvous::ParseKey(key, &parsed);
+      if (s.ok()) {
+        s = rendezvous->Recv(parsed, Rendezvous::Args(), val, &is_dead);
+      }
       if (is_dead) {
         s = errors::InvalidArgument("The tensor returned for ", key,
                                     " was not valid.");

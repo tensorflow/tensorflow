@@ -25,6 +25,7 @@ import six
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import io_wrapper
 
 
@@ -69,8 +70,10 @@ class EventMultiplexer(object):
   @@AddRunsFromDirectory
   @@Reload
   @@Runs
+  @@RunPaths
   @@Scalars
   @@Graph
+  @@MetaGraph
   @@Histograms
   @@CompressedHistograms
   @@Images
@@ -89,7 +92,7 @@ class EventMultiplexer(object):
         None, then the EventMultiplexer initializes without any runs.
       size_guidance: A dictionary mapping from `tagType` to the number of items
         to store for each tag of that type. See
-        `event_ccumulator.EventAccumulator` for details.
+        `event_accumulator.EventAccumulator` for details.
       purge_orphaned_data: Whether to discard any events that were "orphaned" by
         a TensorFlow restart.
     """
@@ -181,11 +184,24 @@ class EventMultiplexer(object):
   def Reload(self):
     """Call `Reload` on every `EventAccumulator`."""
     self._reload_called = True
+    # Build a list so we're safe even if the list of accumulators is modified
+    # even while we're reloading.
     with self._accumulators_mutex:
-      loaders = list(self._accumulators.values())
+      items = list(self._accumulators.items())
 
-    for l in loaders:
-      l.Reload()
+    names_to_delete = set()
+    for name, accumulator in items:
+      try:
+        accumulator.Reload()
+      except (OSError, IOError) as e:
+        logging.error("Unable to reload accumulator '%s': %s", name, e)
+      except directory_watcher.DirectoryDeletedError:
+        names_to_delete.add(name)
+
+    with self._accumulators_mutex:
+      for name in names_to_delete:
+        logging.warning("Deleting accumulator '%s'", name)
+        del self._accumulators[name]
     return self
 
   def FirstEventTimestamp(self, run):
@@ -236,10 +252,26 @@ class EventMultiplexer(object):
       ValueError: If the run does not have an associated graph.
 
     Returns:
-      The `graph_def` protobuf data structure.
+      The `GraphDef` protobuf data structure.
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def MetaGraph(self, run):
+    """Retrieve the metagraph associated with the provided run.
+
+    Args:
+      run: A string name of a run to load the graph for.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run does not have an associated graph.
+
+    Returns:
+      The `MetaGraphDef` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.MetaGraph()
 
   def RunMetadata(self, run, tag):
     """Get the session.run() metadata associated with a TensorFlow run and tag.
@@ -335,13 +367,17 @@ class EventMultiplexer(object):
                   scalarValues: [tagA, tagB, tagC],
                   histograms: [tagX, tagY, tagZ],
                   compressedHistograms: [tagX, tagY, tagZ],
-                  graph: true}}
+                  graph: true, meta_graph: true}}
     ```
     """
     with self._accumulators_mutex:
       # To avoid nested locks, we construct a copy of the run-accumulator map
       items = list(six.iteritems(self._accumulators))
     return {run_name: accumulator.Tags() for run_name, accumulator in items}
+
+  def RunPaths(self):
+    """Returns a dict mapping run names to event file paths."""
+    return self._paths
 
   def _GetAccumulator(self, run):
     with self._accumulators_mutex:

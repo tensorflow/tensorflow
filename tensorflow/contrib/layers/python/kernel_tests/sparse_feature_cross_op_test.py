@@ -293,10 +293,8 @@ class SparseCrossOpTest(tf.test.TestCase):
             ])
         ],
         hashed_output=True)
-    # Hash64("batch1-FC3-F1",
-    #         Hash64("batch1-FC2-F1",
-    #                 Hash64("batch1-FC1-F1"))) = 571927800417497063
-    expected_out = self._sparse_tensor([[571927800417497063]])
+    # Check actual hashed output to prevent unintentional hashing changes.
+    expected_out = self._sparse_tensor([[3735511728867393167]])
     with self.test_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
 
@@ -316,11 +314,8 @@ class SparseCrossOpTest(tf.test.TestCase):
         ],
         hashed_output=True,
         num_buckets=100)
-    # Hash64("batch1-FC3-F1",
-    #         Hash64("batch1-FC2-F1",
-    #                 Hash64("batch1-FC1-F1"))) = 571927800417497063
-    # 571927800417497063 % 100 = 63
-    expected_out = self._sparse_tensor([[63]])
+    # Check actual hashed output to prevent unintentional hashing changes.
+    expected_out = self._sparse_tensor([[74]])
     with self.test_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
 

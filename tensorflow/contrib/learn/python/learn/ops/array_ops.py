@@ -24,35 +24,6 @@ from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
 
 
-def split_squeeze(dim, num_split, tensor_in):
-  """Splits input on given dimension and then squeezes that dimension.
-
-  Args:
-    dim: Dimension to split and squeeze on.
-    num_split: integer, the number of ways to split.
-    tensor_in: Input tensor of shape [N1, N2, .. Ndim, .. Nx].
-
-  Returns:
-    List of tensors [N1, N2, .. Ndim-1, Ndim+1, .. Nx].
-  """
-  return [array_ops_.squeeze(t, squeeze_dims=[dim])
-          for t in array_ops_.split(dim, num_split, tensor_in)]
-
-
-def expand_concat(dim, inputs):
-  """Expands inputs on given dimension and then concatenates them.
-
-  Args:
-    dim: Dimension to expand and concatenate on.
-    inputs: List of tensors of the same shape [N1, ... Nx].
-
-  Returns:
-    A tensor of shape [N1, .. Ndim, ... Nx]
-  """
-  return array_ops_.concat(dim, [array_ops_.expand_dims(t, dim)
-                                 for t in inputs])
-
-
 def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
   """Encodes indices from given tensor as one-hot tensor.
 

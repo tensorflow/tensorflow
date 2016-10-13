@@ -420,15 +420,25 @@ class NormalizeMomentsTest(tf.test.TestCase):
 
 class MomentsTest(tf.test.TestCase):
 
-  def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims):
+  def _unweighted_moments(self, x, axes, keep_dims=False, extra_out_grads=None):
+    # Method to compute moments of `x` wrt `axes`.
+    #
+    # This is exposed so WeightedMomentsTest can inherit the tests and
+    # assertions from MomentsTest; the extra_out_grads argument allows
+    # its inherited gradient tests to assert gradients against the
+    # weights as well as the input values.
+
+    return tf.nn.moments(x, axes, keep_dims=keep_dims)
+
+  def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims, dtype):
     with self.test_session():
       # shape = [batch, width, height, depth]
       assert len(shape) == 4
 
       x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = tf.placeholder(tf.float32, shape=[None] * len(shape))
+      x = tf.placeholder(dtype, shape=[None] * len(shape))
 
-      mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
+      mean, var = self._unweighted_moments(x, axes, keep_dims=keep_dims)
 
       num_elements = np.prod([shape[i] for i in axes])
 
@@ -443,18 +453,24 @@ class MomentsTest(tf.test.TestCase):
       expected_variance = expected_x_squared - expected_mean_squared
 
       # Check that the moments are correct.
-      self.assertAllClose(expected_mean, mean.eval(feed_dict={x: x_numpy}))
-      self.assertAllClose(expected_variance, var.eval(feed_dict={x: x_numpy}))
+      self.assertAllCloseAccordingToType(expected_mean,
+                                         mean.eval(feed_dict={x: x_numpy}))
+      self.assertAllCloseAccordingToType(expected_variance,
+                                         var.eval(feed_dict={x: x_numpy}))
 
-  def RunMomentTest(self, shape, axes, keep_dims):
+  def RunMomentTest(self, shape, axes, keep_dims, dtype):
     with self.test_session():
       # shape = [batch, width, height, depth]
       assert len(shape) == 4
 
       x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = tf.constant(x_numpy)
+      x = tf.cast(tf.constant(x_numpy), dtype=dtype)
 
-      mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
+      # Compute the expected values at high precision since the method
+      # is prone to catastrophic cancellation:
+      x_numpy = x_numpy.astype(np.float128)
+
+      mean, var = self._unweighted_moments(x, axes, keep_dims=keep_dims)
 
       num_elements = np.prod([shape[i] for i in axes])
 
@@ -469,28 +485,44 @@ class MomentsTest(tf.test.TestCase):
       expected_variance = expected_x_squared - expected_mean_squared
 
       # Check that the moments are correct.
-      self.assertAllClose(expected_mean, mean.eval())
-      self.assertAllClose(expected_variance, var.eval())
+      self.assertAllCloseAccordingToType(expected_mean, mean.eval())
+      self.assertAllCloseAccordingToType(expected_variance, var.eval())
 
   def testBasic(self):
     for keep_dims in [False, True]:
-      self.RunMomentTest(shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
+      for dtype in [tf.float32, tf.float16]:
+        self.RunMomentTest(shape=[2, 3, 5, 4],
+                           axes=[0],
+                           keep_dims=keep_dims,
+                           dtype=dtype)
+        self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4],
+                                           axes=[0],
+                                           keep_dims=keep_dims,
+                                           dtype=dtype)
 
   def testGlobalNormalization(self):
     for keep_dims in [False, True]:
-      self.RunMomentTest(
-          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
+      for dtype in [tf.float32, tf.float16]:
+        self.RunMomentTest(shape=[2, 3, 5, 4],
+                           axes=[0, 1, 2],
+                           keep_dims=keep_dims,
+                           dtype=dtype)
+        self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4],
+                                           axes=[0, 1, 2],
+                                           keep_dims=keep_dims,
+                                           dtype=dtype)
 
   def testAxes(self):
     for keep_dims in [False, True]:
-      self.RunMomentTest(
-          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
+      for dtype in [tf.float32, tf.float16]:
+        self.RunMomentTest(shape=[2, 3, 5, 4],
+                           axes=[1, 2, 3],
+                           keep_dims=keep_dims,
+                           dtype=dtype)
+        self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4],
+                                           axes=[1, 2, 3],
+                                           keep_dims=keep_dims,
+                                           dtype=dtype)
 
   def _testGlobalGradient(self, from_y="mean"):
     with self.test_session():
@@ -501,14 +533,21 @@ class MomentsTest(tf.test.TestCase):
 
       axes = [0, 1, 2]
       y_shape = [2]  # Depth of x
-      out_mean, out_var = tf.nn.moments(x, axes)
+
+      inputs_to_compute_gradients_for = [x]
+
+      out_mean, out_var = self._unweighted_moments(
+          x, axes, extra_out_grads=inputs_to_compute_gradients_for)
       if from_y == "mean":
         y = out_mean
       elif from_y == "var":
         y = out_var
-      err = tf.test.compute_gradient_error(x, x_shape, y, y_shape)
-      print("Moments %s gradient err = %g" % (from_y, err))
-      self.assertLess(err, 1e-11)
+
+      for (i, v) in enumerate(inputs_to_compute_gradients_for):
+        err = tf.test.compute_gradient_error(v, v.get_shape().as_list(),
+                                             y, y_shape)
+        print("Moments %s gradient err vs input %d = %g" % (from_y, i, err))
+        self.assertLess(err, 1e-11)
 
   def testMeanGlobalGradient(self):
     self._testGlobalGradient(from_y="mean")
@@ -516,19 +555,101 @@ class MomentsTest(tf.test.TestCase):
   def testVarGlobalGradient(self):
     self._testGlobalGradient(from_y="var")
 
-  def testOutputNamesNoKeep(self):
-    """Make sure the output names are stable."""
-    with self.test_session():
-      mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=False)
-      self.assertEquals(mean.op.name, "moments/normalize/mean")
-      self.assertEquals(var.op.name, "moments/normalize/variance")
 
-  def testOutputNamesKeep(self):
-    """Make sure the output names are stable."""
-    with self.test_session():
-      mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=True)
-      self.assertEquals(mean.op.name, "moments/normalize/mean")
-      self.assertEquals(var.op.name, "moments/normalize/variance")
+class WeightedMomentsTest(MomentsTest):
+  """Tests for nn.weighted_moments.
+
+  Note that this test inherits from MomentsTest, inheriting all its
+  test methods!
+
+  It modifies MomentsTest in two ways:
+
+  a) By overriding _unweighted_moments, all the codepaths in
+     MomentsTest are executed, but with calls to tf.nn.moments()
+     replaced by calls to tf.nn.weighted_moments() with a constant
+     weight of 1.
+
+  b) By overriding RunMomentTest and RunMomentTestWithDynamicShape,
+     this test adds multiple additional calls to
+     RunWeightedMomentsTest() to exercise correctness with
+     non-constant weights and varying broadcasting situations. (It
+     also continues to call MomentsTest.Run(Weighted)?MomentsTest as
+     well.)
+
+  """
+
+  def _unweighted_moments(self, x, axes, keep_dims=False, extra_out_grads=None):
+    weights = tf.constant(1, dtype=x.dtype)
+    if extra_out_grads is not None:
+      # We want to assert gradients WRT weights as well as X!
+      extra_out_grads.append(weights)
+    return tf.nn.weighted_moments(
+        x, axes, weights, keep_dims=keep_dims)
+
+  def RunMomentTest(self, shape, axes, keep_dims, dtype, dynshapes=False):
+    if not dynshapes:
+      super(WeightedMomentsTest, self).RunMomentTest(
+          shape, axes, keep_dims, dtype)
+    else:
+      super(WeightedMomentsTest, self).RunMomentTestWithDynamicShape(
+          shape, axes, keep_dims, dtype)
+
+    # 1:1 weights and inputs
+    self.RunWeightedMomentTest(shape, shape, axes, keep_dims, dtype)
+
+    # Various broadcasting combinations
+    for idx in range(len(shape)):
+      # try broadcasting weights in all positions
+      weight_shape = [1] * len(shape)
+      weight_shape[idx] = shape[idx]
+
+      self.RunWeightedMomentTest(shape, weight_shape, axes, keep_dims, dtype)
+
+      # Also try broadcasting with a suffix of length n
+      weight_shape = shape[-(idx+1):]
+      self.RunWeightedMomentTest(
+          shape, weight_shape, axes, keep_dims, dtype, dynshapes=dynshapes)
+
+  def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims, dtype):
+    self.RunMomentTest(shape, axes, keep_dims, dtype, dynshapes=True)
+
+  def RunWeightedMomentTest(
+      self, shape, weights_shape, axes, keep_dims, dtype, dynshapes=False):
+    with self.test_session() as s:
+      x_numpy = np.random.normal(size=shape).astype(np.float32)
+      weights_numpy = np.absolute(  # weights must be positive
+          np.random.normal(size=weights_shape, loc=1.0).astype(np.float32))
+
+      # Expand the numpy version to higher precision
+      x_numpy = x_numpy.astype(np.float128)
+      weights_numpy = weights_numpy.astype(np.float128)
+
+      x_shape = [None] * len(shape) if dynshapes else shape
+      weights_shape = (
+          [None] * len(weights_shape) if dynshapes else weights_shape)
+
+      x = tf.placeholder(dtype, shape=x_shape)
+      weights = tf.placeholder(dtype, shape=weights_shape)
+
+      mean, var = tf.nn.weighted_moments(x, axes, weights, keep_dims=keep_dims)
+
+      ax = tuple(axes)
+
+      def _np_weighted_sum(v):
+        return np.sum(weights_numpy * v, axis=ax, keepdims=keep_dims)
+
+      weight_sum = _np_weighted_sum(np.ones_like(x_numpy))
+      expected_mean = _np_weighted_sum(x_numpy) / weight_sum
+      expected_mean_squared = np.multiply(expected_mean, expected_mean)
+      expected_x_squared = (
+          _np_weighted_sum(np.multiply(x_numpy, x_numpy)) / weight_sum)
+      expected_variance = expected_x_squared - expected_mean_squared
+
+      mean_v, var_v = s.run([mean, var],
+                            feed_dict={x: x_numpy, weights: weights_numpy})
+
+      self.assertAllCloseAccordingToType(expected_mean, mean_v)
+      self.assertAllCloseAccordingToType(expected_variance, var_v)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Generates YAML configuration files for distributed Tensorflow workers.
+"""Generates YAML configuration files for distributed TensorFlow workers.
 
 The workers will be run in a Kubernetes (k8s) container cluster.
 """
@@ -34,6 +34,9 @@ DEFAULT_DOCKER_IMAGE = 'tensorflow/tf_grpc_test_server'
 DEFAULT_PORT = 2222
 
 # TODO(cais): Consider adding resource requests/limits to the pods.
+
+# Worker pods will mount host volume /shared, as a convenient way to create
+# shared storage among workers during local tests.
 WORKER_RC = (
     """apiVersion: v1
 kind: ReplicationController
@@ -55,6 +58,13 @@ spec:
           - --task_id={worker_id}
         ports:
         - containerPort: {port}
+        volumeMounts:
+        - name: shared
+          mountPath: /shared
+      volumes:
+      - name: shared
+        hostPath:
+          path: /shared
 """)
 WORKER_SVC = (
     """apiVersion: v1
@@ -105,6 +115,13 @@ spec:
           - --task_id={param_server_id}
         ports:
         - containerPort: {port}
+        volumeMounts:
+        - name: shared
+          mountPath: /shared
+      volumes:
+      - name: shared
+        hostPath:
+          path: /shared
 """)
 PARAM_SERVER_SVC = (
     """apiVersion: v1
@@ -114,6 +131,19 @@ metadata:
   labels:
     tf-ps: "{param_server_id}"
 spec:
+  ports:
+  - port: {port}
+  selector:
+    tf-ps: "{param_server_id}"
+""")
+PARAM_LB_SVC = ("""apiVersion: v1
+kind: Service
+metadata:
+  name: tf-ps{param_server_id}
+  labels:
+    tf-ps: "{param_server_id}"
+spec:
+  type: LoadBalancer
   ports:
   - port: {port}
   selector:
@@ -201,8 +231,10 @@ def GenerateConfig(num_workers,
                                                   num_param_servers,
                                                   port))
     config += '---\n'
-    config += PARAM_SERVER_SVC.format(port=port,
-                                      param_server_id=param_server)
+    if request_load_balancer:
+      config += PARAM_LB_SVC.format(port=port, param_server_id=param_server)
+    else:
+      config += PARAM_SERVER_SVC.format(port=port, param_server_id=param_server)
     config += '---\n'
 
   return config

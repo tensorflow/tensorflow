@@ -33,23 +33,22 @@ class SquaredDifferenceOpTest(tf.test.TestCase):
     l = np.random.randn(*left_shape)
     r = np.random.randn(*right_shape)
 
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        left_tensor = tf.constant(l, shape=left_shape)
-        right_tensor = tf.constant(r, shape=right_shape)
-        output = tf.squared_difference(left_tensor, right_tensor)
-        left_err = tf.test.compute_gradient_error(left_tensor,
-                                                  left_shape,
-                                                  output,
-                                                  output_shape,
-                                                  x_init_value=l)
-        right_err = tf.test.compute_gradient_error(right_tensor,
-                                                   right_shape,
-                                                   output,
-                                                   output_shape,
-                                                   x_init_value=r)
-      self.assertLess(left_err, 1e-10)
-      self.assertLess(right_err, 1e-10)
+    with self.test_session(use_gpu=True):
+      left_tensor = tf.constant(l, shape=left_shape)
+      right_tensor = tf.constant(r, shape=right_shape)
+      output = tf.squared_difference(left_tensor, right_tensor)
+      left_err = tf.test.compute_gradient_error(left_tensor,
+                                                left_shape,
+                                                output,
+                                                output_shape,
+                                                x_init_value=l)
+      right_err = tf.test.compute_gradient_error(right_tensor,
+                                                 right_shape,
+                                                 output,
+                                                 output_shape,
+                                                 x_init_value=r)
+    self.assertLess(left_err, 1e-10)
+    self.assertLess(right_err, 1e-10)
 
   def testGrad(self):
     self._testGrad([1, 2, 3, 2], [3, 2])
@@ -72,14 +71,13 @@ class AbsOpTest(tf.test.TestCase):
       value = tf.convert_to_tensor(self._biasedRandN(shape, bias=bias),
                                    dtype=dtype)
 
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        if dtype in (tf.complex64, tf.complex128):
-          output = tf.complex_abs(value)
-        else:
-          output = tf.abs(value)
-        error = tf.test.compute_gradient_error(
-            value, shape, output, output.get_shape().as_list())
+    with self.test_session(use_gpu=True):
+      if dtype in (tf.complex64, tf.complex128):
+        output = tf.complex_abs(value)
+      else:
+        output = tf.abs(value)
+      error = tf.test.compute_gradient_error(
+          value, shape, output, output.get_shape().as_list())
     self.assertLess(error, max_error)
 
   def testComplexAbs(self):

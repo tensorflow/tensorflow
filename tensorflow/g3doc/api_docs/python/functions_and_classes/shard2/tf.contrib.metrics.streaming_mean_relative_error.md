@@ -4,19 +4,19 @@ Computes the mean relative error by normalizing with the given values.
 
 The `streaming_mean_relative_error` function creates two local variables,
 `total` and `count` that are used to compute the mean relative absolute error.
-This average is ultimately returned as `mean_relative_error`: an idempotent
-operation that simply divides `total` by `count`. To facilitate the estimation
-of the mean relative error over a stream of data, the function utilizes two
-operations. First, a `relative_errors` operation divides the absolute value
-of the differences between `predictions` and `labels` by the `normalizer`.
-Second, an `update_op` operation whose behavior is dependent on the value of
-`weights`. If `weights` is None, then `update_op` increments `total` with the
-reduced sum of `relative_errors` and increments `count` with the number of
-elements in `relative_errors`. If `weights` is not `None`, then `update_op`
-increments `total` with the reduced sum of the product of `weights` and
-`relative_errors` and increments `count` with the reduced sum of `weights`. In
-addition to performing the updates, `update_op` also returns the
-`mean_relative_error` value.
+This average is weighted by `weights`, and it is ultimately returned as
+`mean_relative_error`: an idempotent operation that simply divides `total` by
+`count`.
+
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`mean_reative_error`. Internally, a `relative_errors` operation divides the
+absolute value of the differences between `predictions` and `labels` by the
+`normalizer`. Then `update_op` increments `total` with the reduced sum of the
+product of `weights` and `relative_errors`, and it increments `count` with the
+reduced sum of `weights`.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 ##### Args:
 
@@ -24,13 +24,12 @@ addition to performing the updates, `update_op` also returns the
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
 *  <b>`normalizer`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional set of weights of the same shape as `predictions`. If
-    `weights` is not None, the function computes a weighted mean.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_relative_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -43,7 +42,8 @@ addition to performing the updates, `update_op` also returns the
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match
-    `predictions` or if either `metrics_collections` or `updates_collections`
-    are not a list or tuple.
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 

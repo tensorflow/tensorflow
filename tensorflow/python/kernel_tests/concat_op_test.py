@@ -131,6 +131,7 @@ class ConcatOpTest(tf.test.TestCase):
 
   def testRandom(self):
     self._testRandom(tf.float32)
+    self._testRandom(tf.float32, use_gpu=True)
     self._testRandom(tf.int16)
     self._testRandom(tf.int32, use_gpu=True)
     self._testRandom(tf.bfloat16)
@@ -238,7 +239,7 @@ class ConcatOpTest(tf.test.TestCase):
     # Random dims of rank 5
     input_shape = np.random.randint(1, 5, size=5)
     # Random number of tensors
-    num_tensors = np.random.randint(1, 10)
+    num_tensors = np.random.randint(12, 20)
     # Random dim to concat on
     concat_dim = np.random.randint(5)
     concat_dim_sizes = np.random.randint(1, 5, size=num_tensors)
@@ -274,17 +275,22 @@ class ConcatOpTest(tf.test.TestCase):
     # Rank doesn't match.
     with self.assertRaises(ValueError):
       tf.concat(1, [tf.constant(10.0, shape=[4, 4, 4, 4]),
-                           tf.constant(20.0, shape=[4, 4, 4])])
+                    tf.constant(20.0, shape=[4, 4, 4])])
 
     # Dimensions don't match in a non-concat dim.
     with self.assertRaises(ValueError):
       tf.concat(1, [tf.constant(10.0, shape=[1, 2, 1]),
-                           tf.constant(20.0, shape=[3, 2, 1])])
+                    tf.constant(20.0, shape=[3, 2, 1])])
 
     # concat_dim out of range.
     with self.assertRaises(ValueError):
       tf.concat(3, [tf.constant(10.0, shape=[4, 4, 4]),
-                           tf.constant(20.0, shape=[4, 4, 4])])
+                    tf.constant(20.0, shape=[4, 4, 4])])
+
+    # concat_dim < 0
+    with self.assertRaises(ValueError):
+      tf.concat(-1, [tf.constant(10.0, shape=[4, 4, 4]),
+                     tf.constant(20.0, shape=[4, 4, 4])])
 
   def testShapeWithUnknownConcatDim(self):
     p1 = tf.placeholder(tf.float32)
@@ -409,7 +415,7 @@ class ConcatOpTest(tf.test.TestCase):
       before = len(g.get_operations())
       _ = tf.gradients([y], [x], [y])
       after = len(g.get_operations())
-      self.assertEqual(n + 3, after - before)
+      self.assertEqual(2 * n + 2, after - before)
       print("graph = ", [x.name for x in g.get_operations()])
 
   def testConcatLargeTensors(self):
@@ -422,6 +428,42 @@ class ConcatOpTest(tf.test.TestCase):
       # TODO(dga):  Add more depth to this test to validate correctness,
       # not just non-crashingness, once other large tensor fixes have gone in.
       _ = onezeros.eval()
+
+  # important as gpu implementation could fail if
+  # shared memory is not large for all the inputs
+  def testConcatLargeNumberOfTensors(self):
+    with self.test_session(use_gpu=True):
+      for concat_dim in range(2):
+        params = {}
+        p = []
+        shape = np.array([7, 13])
+        if tf.test.is_gpu_available():
+          num_tensors = 10000
+        else:
+          num_tensors = 1000
+        for i in np.arange(num_tensors):
+          input_shape = shape
+          placeholder = tf.placeholder(tf.float32, shape=input_shape)
+          p.append(placeholder)
+
+          params[placeholder] = np.random.rand(*input_shape).astype(np.float32)
+
+        concat_inputs = p
+        c = tf.concat(concat_dim, concat_inputs)
+        result = c.eval(feed_dict=params)
+
+        self.assertEqual(result.shape, c.get_shape())
+        cur_offset = 0
+
+        for i in np.arange(num_tensors):
+          # The index into the result is the ':' along all dimensions
+          # except the concat_dim. slice(0, size) is used for ':', and
+          # a list of slices is used to index into result.
+          index = [slice(0, params[p[i]].shape[j]) for j in np.arange(2)]
+          index[concat_dim] = slice(cur_offset,
+                                    cur_offset + params[p[i]].shape[concat_dim])
+          cur_offset += params[p[i]].shape[concat_dim]
+          self.assertAllEqual(result[index], params[p[i]])
 
 
 class ConcatOffsetTest(tf.test.TestCase):

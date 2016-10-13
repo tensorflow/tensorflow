@@ -298,19 +298,23 @@ class ZerosTest(tf.test.TestCase):
       z = tf.zeros([2, 3])
       self.assertEqual(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
+      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
       z = tf.zeros(tf.shape(d))
       self.assertEqual(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
+      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
       # Test explicit type control
       for dtype in [tf.float32, tf.float64, tf.int32,
                     tf.uint8, tf.int16, tf.int8,
-                    tf.complex64, tf.complex128, tf.int64]:
+                    tf.complex64, tf.complex128, tf.int64, tf.bool]:
         z = tf.zeros([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
+        self.assertAllEqual(z.eval(), np.zeros([2, 3]))
         z = tf.zeros(tf.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
+        self.assertAllEqual(z.eval(), np.zeros([2, 3]))
 
 
 class ZerosLikeTest(tf.test.TestCase):
@@ -404,19 +408,23 @@ class OnesTest(tf.test.TestCase):
       z = tf.ones([2, 3])
       self.assertEqual(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
+      self.assertAllEqual(z.eval(), np.ones([2, 3]))
       z = tf.ones(tf.shape(d))
       self.assertEqual(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
+      self.assertAllEqual(z.eval(), np.ones([2, 3]))
       # Test explicit type control
       for dtype in (tf.float32, tf.float64, tf.int32,
                     tf.uint8, tf.int16, tf.int8,
-                    tf.complex64, tf.complex128, tf.int64):
+                    tf.complex64, tf.complex128, tf.int64, tf.bool):
         z = tf.ones([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
+        self.assertAllEqual(z.eval(), np.ones([2, 3]))
         z = tf.ones(tf.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
+        self.assertAllEqual(z.eval(), np.ones([2, 3]))
 
 
 class OnesLikeTest(tf.test.TestCase):
@@ -515,6 +523,9 @@ class FillTest(tf.test.TestCase):
     f = tf.fill(
         tf.placeholder(tf.int32, shape=(4,)), 3.0)
     self.assertEqual([None, None, None, None], f.get_shape().as_list())
+
+    f = tf.fill([tf.placeholder(tf.int32, shape=()), 17], 1.0)
+    self.assertEqual([None, 17], f.get_shape().as_list())
 
   def testGradient(self):
     with self.test_session():

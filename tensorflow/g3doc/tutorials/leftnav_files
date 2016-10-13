@@ -1,13 +1,24 @@
+### Basic Neural Networks
 mnist/beginners/index.md
 mnist/pros/index.md
 mnist/tf/index.md
+### Easy ML with tf.contrib.learn
+tflearn/index.md
+linear/overview.md
+wide/index.md
+wide_and_deep/index.md
+monitors/index.md
+input_fn/index.md
+### TensorFlow Serving
 tfserve/index.md
+### Image Processing
 deep_cnn/index.md
+image_recognition/index.md
+### Language and Sequence Processing
 word2vec/index.md
 recurrent/index.md
 seq2seq/index.md
 syntaxnet/index.md
+### Non-ML Applications
 mandelbrot/index.md
 pdes/index.md
-mnist/download/index.md
-image_recognition/index.md

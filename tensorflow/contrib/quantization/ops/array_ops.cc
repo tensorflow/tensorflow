@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
-// --------------------------------------------------------------------------
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("QuantizeV2")
     .Input("input: float")
@@ -28,6 +31,15 @@ REGISTER_OP("QuantizeV2")
     .Output("output_max: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
 
@@ -96,6 +108,13 @@ REGISTER_OP("Dequantize")
     .Output("output: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Dequantize the 'input' tensor into a float Tensor.
 
@@ -127,7 +146,7 @@ If the mode is 'MIN_FIRST', then this approach is used:
 number_of_steps = 1 << (# of bits in T)
 range_adjust = number_of_steps / (number_of_steps - 1)
 range = (range_max - range_min) * range_adjust
-range_scale = number_of_steps / range
+range_scale = range / number_of_steps
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 ```
@@ -147,6 +166,16 @@ REGISTER_OP("QuantizedConcat")
     .Output("output_max: float")
     .Attr("N: int >= 2")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c));
+      ShapeHandle unused;
+      for (int i = 2; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
+      }
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Concatenates quantized tensors along one dimension.
 

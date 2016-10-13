@@ -1,3 +1,20 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="tf-graph-minimap.html">
@@ -18,6 +35,8 @@
 ::content #svg {
   overflow: hidden;
   flex: 1;
+  height: 100%;
+  width: 100%;
 }
 
 ::content #hidden {
@@ -56,8 +75,8 @@
   stroke-width: 3;
 }
 
-:content .annotation.meta.selected > .nodeshape > rect,
-:content .annotation.meta.selected > .annotation-node > rect {
+::content .annotation.meta.selected > .nodeshape > rect,
+::content .annotation.meta.selected > .annotation-node > rect {
   stroke: red;
   stroke-width: 2;
 }
@@ -72,6 +91,7 @@
 ::content .faded rect,
 ::content .faded ellipse,
 ::content .faded path,
+::content .faded use,
 ::content #rectHatch line,
 ::content #ellipseHatch line {
   color: #e0d4b3 !important;
@@ -88,7 +108,8 @@
   fill: url(#rectHatch) !important;
 }
 
-::content .faded ellipse {
+::content .faded ellipse,
+::content .faded use {
   fill: url(#ellipseHatch) !important;
 }
 
@@ -96,6 +117,81 @@
   opacity: 0;
 }
 
+/* Rules used for input-tracing. */
+::content .input-highlight > * > rect,
+::content .input-highlight > * > ellipse,
+::content .input-highlight > * > use
+{
+  fill: white;
+  stroke: #ff9800 !important;
+}
+
+/*  - Faded non-input styling */
+::content .non-input > * > rect,
+::content .non-input > * > ellipse,
+::content .non-input > * > use,
+/* For Const nodes. */
+::content .non-input > * > .constant:not([class*="input-highlight"]) >
+  .annotation-node > ellipse,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect {
+  stroke: #e0d4b3 !important;
+  stroke-width: inherit;
+  stroke-dasharray: inherit;
+}
+
+
+::content .non-input path {
+  visibility: hidden;
+}
+
+::content .non-input > .nodeshape > rect,
+::content .non-input > .annotation-node > rect,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect
+{
+  fill: url(#rectHatch) !important;
+}
+
+::content .non-input ellipse,
+::content .non-input use {
+  fill: url(#ellipseHatch) !important;
+}
+
+::content .non-input > text {
+  opacity: 0;
+}
+
+::content .non-input .annotation > .annotation-edge {
+  marker-end: url(#annotation-arrowhead-faded);
+}
+
+::content .non-input .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead-faded);
+}
+
+/* Input edges. */
+::content .input-edge-highlight > text {
+  fill: black !important;
+}
+::content .input-edge-highlight > path,
+::content .input-highlight > .in-annotations > .annotation > .annotation-edge,
+::content .input-highlight-selected > .in-annotations > .annotation >
+.annotation-edge {
+  stroke: #999 !important;
+}
+
+/* Non-input edges. */
+::content .non-input-edge-highlight,
+::content .non-input > g > .annotation > path,
+/* Annotation styles (label and edges respectively). */
+::content .non-input > g >
+.annotation:not(.input-highlight):not(.input-highlight-selected) >
+.annotation-label
+/*.annotation-edge*/
+{
+  visibility: hidden;
+}
 
 /* --- Op Node --- */
 
@@ -385,6 +481,7 @@
 
 .titleContainer {
   position: relative;
+  top: 20px;
 }
 
 .title {
@@ -403,7 +500,7 @@
 </style>
 <div class="titleContainer">
   <div id="title" class="title">Main Graph</div>
-  <div id="auxTitle" class="auxTitle">Auxiliary nodes</div>
+  <div id="auxTitle" class="auxTitle">Auxiliary Nodes</div>
 </div>
 <svg id="svg">
   <defs>
@@ -638,6 +735,7 @@ Polymer({
     tf.graph.util.time('tf-graph-scene (build scene):', function() {
       tf.graph.scene.buildGroup(d3.select(this.$.root), renderHierarchy.root, this);
       tf.graph.scene.addGraphClickListener(this.$.svg, this);
+      tf.graph.scene.node.traceInputs(renderHierarchy);
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
@@ -706,7 +804,8 @@ Polymer({
     setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
   _updateLabels: function(showLabels) {
-    var titleStyle = this.getElementsByClassName('title')[0].style;
+    var mainGraphTitleElement = this.getElementsByClassName('title')[0];
+    var titleStyle = mainGraphTitleElement.style;
     var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
     var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
       tf.graph.scene.Class.Scene.CORE)[0][0];
@@ -723,6 +822,12 @@ Polymer({
       titleStyle.left = coreX + 'px';
       if (auxX !== null && auxX !== coreX) {
         auxTitleStyle.display = 'inline';
+
+        // Make sure that the aux title is positioned rightwards enough so as to
+        // prevent overlap with the main graph title.
+        auxX = Math.max(
+            coreX + mainGraphTitleElement.getBoundingClientRect().width, auxX);
+
         auxTitleStyle.left = auxX + 'px';
       } else {
         auxTitleStyle.display = 'none';
@@ -802,6 +907,13 @@ Polymer({
     }, this);
   },
 
+  /**
+   * Handles new node selection. 1) Updates the selected-state of each node,
+   * 2) triggers input tracing.
+   * @param selectedNode {string} The name of the newly selected node.
+   * @param oldSelectedNode {string} The name of the previously selected node.
+   * @private
+   */
   _selectedNodeChanged: function(selectedNode, oldSelectedNode) {
     if (selectedNode === oldSelectedNode) {
       return;
@@ -814,9 +926,13 @@ Polymer({
       this._updateNodeState(oldSelectedNode);
     }
 
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
+
     if (!selectedNode) {
       return;
     }
+
+
     // Update the minimap to reflect the highlighted (selected) node.
     this.minimap.update();
     var node = this.renderHierarchy.hierarchy.node(selectedNode);

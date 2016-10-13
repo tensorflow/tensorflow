@@ -1,4 +1,4 @@
-# Tensorflow C++ Image Recognition Demo
+# TensorFlow C++ Image Recognition Demo
 
 This example shows how you can load a pre-trained TensorFlow network and use it
 to recognize objects in images.

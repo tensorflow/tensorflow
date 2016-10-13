@@ -11,7 +11,7 @@ A default `Graph` is always registered, and accessible by calling
 To add an operation to the default graph, simply call one of the functions
 that defines a new `Operation`:
 
-```
+```python
 c = tf.constant(4.0)
 assert c.graph is tf.get_default_graph()
 ```
@@ -347,6 +347,12 @@ with g.name_scope('my_layer') as scope:
   output = tf.nn.relu(affine, name=scope)
 ```
 
+NOTE: This constructor validates the given `name`. Valid scope
+names match one of the following regular expressions:
+
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+    [A-Za-z0-9_.\\-/]* (for other scopes)
+
 ##### Args:
 
 
@@ -355,6 +361,11 @@ with g.name_scope('my_layer') as scope:
 ##### Returns:
 
   A context manager that installs `name` as a new name scope.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `name` is not a valid scope name. The rules are the
 
 
 
@@ -621,8 +632,8 @@ Note that this is unrelated to the
 
 The GraphDef version information of this graph.
 
-For details on the meaning of each version, see [`GraphDef`]
-(https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+For details on the meaning of each version, see
+[`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
 ##### Returns:
 
@@ -723,6 +734,13 @@ with tf.Graph().as_default() as g:
 #### Other Methods
 - - -
 
+#### `tf.Graph.building_function` {#Graph.building_function}
+
+Returns True iff this graph represents a function.
+
+
+- - -
+
 #### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}
 
 Returns a context manager that specifies an op to colocate with.
@@ -758,6 +776,57 @@ is eventually placed.
 
   A context manager that specifies the op with which to colocate
   newly created ops.
+
+
+- - -
+
+#### `tf.Graph.container(container_name)` {#Graph.container}
+
+Returns a context manager that specifies the resource container to use.
+
+Stateful operations, such as variables and queues, can maintain their
+states on devices so that they can be shared by multiple processes.
+A resource container is a string name under which these stateful
+operations are tracked. These resources can be released or cleared
+with `tf.Session.reset()`.
+
+For example:
+
+```python
+with g.container('experiment0'):
+  # All stateful Operations constructed in this context will be placed
+  # in resource container "experiment0".
+  v1 = tf.Variable([1.0])
+  v2 = tf.Variable([2.0])
+  with g.container("experiment1"):
+    # All stateful Operations constructed in this context will be
+    # placed in resource container "experiment1".
+    v3 = tf.Variable([3.0])
+    q1 = tf.FIFOQueue(10, tf.float32)
+  # All stateful Operations constructed in this context will be
+  # be created in the "experiment0".
+  v4 = tf.Variable([4.0])
+  q1 = tf.FIFOQueue(20, tf.float32)
+  with g.container(""):
+    # All stateful Operations constructed in this context will be
+    # be placed in the default resource container.
+    v5 = tf.Variable([5.0])
+    q3 = tf.FIFOQueue(30, tf.float32)
+
+# Resets container "experiment0", after which the state of v1, v2, v4, q1
+# will become undefined (such as uninitialized).
+tf.Session.reset(target, ["experiment0"])
+```
+
+##### Args:
+
+
+*  <b>`container_name`</b>: container name string.
+
+##### Returns:
+
+  A context manager for defining resource containers for stateful ops,
+    yields the container name.
 
 
 - - -

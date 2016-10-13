@@ -25,106 +25,113 @@ import tensorflow as tf
 
 class SliceTest(tf.test.TestCase):
 
-  def _testEmpty(self, use_gpu):
+  def testEmpty(self):
     inp = np.random.rand(4, 4).astype("f")
     for k in xrange(4):
-      with self.test_session(use_gpu=use_gpu):
+      with self.test_session(use_gpu=True):
         a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[2, k:k])
 
-  def testEmptyAll(self):
-    self._testEmpty(use_gpu=False)
-    self._testEmpty(use_gpu=True)
-
-  def _testInt32(self, use_gpu):
+  def testInt32(self):
     inp = np.random.rand(4, 4).astype("i")
     for k in xrange(4):
-      with self.test_session(use_gpu=use_gpu):
+      with self.test_session(use_gpu=True):
         a = tf.constant(inp, shape=[4, 4], dtype=tf.int32)
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[2, k:k])
 
-  def testInt32(self):
-    self._testEmpty(use_gpu=False)
-    self._testEmpty(use_gpu=True)
-
-  def _testSelectAll(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
-      inp = np.random.rand(4, 4, 4, 4).astype("f")
-      a = tf.constant(inp, shape=[4, 4, 4, 4],
-                               dtype=tf.float32)
-
-      slice_explicit_t = tf.slice(a, [0, 0, 0, 0], [-1, -1, -1, -1])
-      slice_implicit_t = a[:, :, :, :]
-
-      self.assertAllEqual(inp, slice_explicit_t.eval())
-      self.assertAllEqual(inp, slice_implicit_t.eval())
-      self.assertEqual(inp.shape, slice_explicit_t.get_shape())
-      self.assertEqual(inp.shape, slice_implicit_t.get_shape())
-
   def testSelectAll(self):
     for _ in range(10):
-      self._testSelectAll(use_gpu=False)
-      self._testSelectAll(use_gpu=True)
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(4, 4, 4, 4).astype("f")
+        a = tf.constant(inp, shape=[4, 4, 4, 4],
+                        dtype=tf.float32)
 
-  def _testSingleDimension(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
-      inp = np.random.rand(10).astype("f")
-      a = tf.constant(inp, shape=[10], dtype=tf.float32)
+        slice_explicit_t = tf.slice(a, [0, 0, 0, 0], [-1, -1, -1, -1])
+        slice_implicit_t = a[:, :, :, :]
 
-      hi = np.random.randint(0, 9)
-      scalar_t = a[hi]
-      scalar_val = scalar_t.eval()
-      self.assertAllEqual(scalar_val, inp[hi])
-
-      if hi > 0:
-        lo = np.random.randint(0, hi)
-      else:
-        lo = 0
-      slice_t = a[lo:hi]
-      slice_val = slice_t.eval()
-      self.assertAllEqual(slice_val, inp[lo:hi])
+        self.assertAllEqual(inp, slice_explicit_t.eval())
+        self.assertAllEqual(inp, slice_implicit_t.eval())
+        self.assertEqual(inp.shape, slice_explicit_t.get_shape())
+        self.assertEqual(inp.shape, slice_implicit_t.get_shape())
 
   def testSingleDimension(self):
     for _ in range(10):
-      self._testSingleDimension(use_gpu=False)
-      self._testSingleDimension(use_gpu=True)
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(10).astype("f")
+        a = tf.constant(inp, shape=[10], dtype=tf.float32)
 
-  def _testSliceMatrixDim0(self, x, begin, size, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+        hi = np.random.randint(0, 9)
+        scalar_t = a[hi]
+        scalar_val = scalar_t.eval()
+        self.assertAllEqual(scalar_val, inp[hi])
+
+        if hi > 0:
+          lo = np.random.randint(0, hi)
+        else:
+          lo = 0
+        slice_t = a[lo:hi]
+        slice_val = slice_t.eval()
+        self.assertAllEqual(slice_val, inp[lo:hi])
+
+  def testScalarInput(self):
+    input_val = 0
+    with self.test_session() as sess:
+      # Test with constant input; shape inference fails.
+      with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
+        tf.constant(input_val)[:].get_shape()
+
+      # Test evaluating with non-constant input; kernel execution fails.
+      input_t = tf.placeholder(tf.int32)
+      slice_t = input_t[:]
+      with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
+                                               "out of range"):
+        sess.run([slice_t], feed_dict={input_t: input_val})
+
+  def testInvalidIndex(self):
+    input_val = [1, 2]
+    with self.test_session() as sess:
+      # Test with constant input; shape inference fails.
+      with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
+        tf.constant(input_val)[1:, 1:].get_shape()
+
+      # Test evaluating with non-constant input; kernel execution fails.
+      input_t = tf.placeholder(tf.int32)
+      slice_t = input_t[1:, 1:]
+      with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
+                                               "out of range"):
+        sess.run([slice_t], feed_dict={input_t: input_val})
+
+  def _testSliceMatrixDim0(self, x, begin, size):
+    with self.test_session(use_gpu=True):
       tf_ans = tf.slice(x, [begin, 0], [size, x.shape[1]]).eval()
     np_ans = x[begin:begin+size, :]
     self.assertAllEqual(tf_ans, np_ans)
 
   def testSliceMatrixDim0(self):
-    for use_gpu in [False, True]:
-      x = np.random.rand(8, 4).astype("f")
-      self._testSliceMatrixDim0(x, 1, 2, use_gpu)
-      self._testSliceMatrixDim0(x, 3, 3, use_gpu)
-      y = np.random.rand(8, 7).astype("f")    # 7 * sizeof(float) is not aligned
-      self._testSliceMatrixDim0(y, 1, 2, use_gpu)
-      self._testSliceMatrixDim0(y, 3, 3, use_gpu)
-
-  def _testIndexAndSlice(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
-      inp = np.random.rand(4, 4).astype("f")
-      a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
-
-      x, y = np.random.randint(0, 3, size=2).tolist()
-      slice_t = a[x, 0:y]
-      slice_val = slice_t.eval()
-    self.assertAllEqual(slice_val, inp[x, 0:y])
+    x = np.random.rand(8, 4).astype("f")
+    self._testSliceMatrixDim0(x, 1, 2)
+    self._testSliceMatrixDim0(x, 3, 3)
+    y = np.random.rand(8, 7).astype("f")    # 7 * sizeof(float) is not aligned
+    self._testSliceMatrixDim0(y, 1, 2)
+    self._testSliceMatrixDim0(y, 3, 3)
 
   def testSingleElementAll(self):
     for _ in range(10):
-      self._testIndexAndSlice(use_gpu=False)
-      self._testIndexAndSlice(use_gpu=True)
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(4, 4).astype("f")
+        a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
 
-  def _testSimple(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+        x, y = np.random.randint(0, 3, size=2).tolist()
+        slice_t = a[x, 0:y]
+        slice_val = slice_t.eval()
+      self.assertAllEqual(slice_val, inp[x, 0:y])
+
+  def testSimple(self):
+    with self.test_session(use_gpu=True) as sess:
       inp = np.random.rand(4, 4).astype("f")
       a = tf.constant([float(x) for x in inp.ravel(order="C")],
                                shape=[4, 4], dtype=tf.float32)
@@ -136,12 +143,8 @@ class SliceTest(tf.test.TestCase):
     self.assertEqual(slice_val.shape, slice_t.get_shape())
     self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
-  def testSimpleAll(self):
-    self._testSimple(use_gpu=False)
-    self._testSimple(use_gpu=True)
-
-  def _testComplex(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def testComplex(self):
+    with self.test_session(use_gpu=True):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
       a = tf.constant(inp, dtype=tf.float32)
 
@@ -154,16 +157,11 @@ class SliceTest(tf.test.TestCase):
       slice_t = a[:, x, y:z, :]
       self.assertAllEqual(slice_t.eval(), inp[:, x, y:z, :])
 
-  def testComplex(self):
-    for _ in range(10):
-      self._testComplex(use_gpu=False)
-      self._testComplex(use_gpu=True)
-
-  def _RunAndVerifyResult(self, use_gpu):
+  def testRandom(self):
     # Random dims of rank 6
     input_shape = np.random.randint(0, 20, size=6)
     inp = np.random.rand(*input_shape).astype("f")
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       a = tf.constant([float(x) for x in inp.ravel(order="C")],
                                shape=input_shape, dtype=tf.float32)
       indices = [0 if x == 0 else np.random.randint(x) for x in input_shape]
@@ -190,13 +188,8 @@ class SliceTest(tf.test.TestCase):
     self.assertEqual(expected_val.shape, slice_t.get_shape())
     self.assertEqual(expected_val.shape, slice2_t.get_shape())
 
-  def testRandom(self):
-    for _ in range(10):
-      self._RunAndVerifyResult(use_gpu=False)
-      self._RunAndVerifyResult(use_gpu=True)
-
-  def _testGradientSlice(self, input_shape, slice_begin, slice_size, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def _testGradientSlice(self, input_shape, slice_begin, slice_size):
+    with self.test_session(use_gpu=True):
       num_inputs = np.prod(input_shape)
       num_grads = np.prod(slice_size)
       inp = np.random.rand(num_inputs).astype("f").reshape(input_shape)
@@ -218,32 +211,28 @@ class SliceTest(tf.test.TestCase):
 
     self.assertAllClose(np_ans, result)
 
-  def _testGradientVariableSize(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def _testGradientVariableSize(self):
+    with self.test_session(use_gpu=True):
       inp = tf.constant([1.0, 2.0, 3.0], name="in")
       out = tf.slice(inp, [1], [-1])
       grad_actual = tf.gradients(out, inp)[0].eval()
     self.assertAllClose([0., 1., 1.], grad_actual)
 
-  def _testGradientsSimple(self, use_gpu):
+  def testGradientsAll(self):
     # Slice the middle square out of a 4x4 input
-    self._testGradientSlice([4, 4], [1, 1], [2, 2], use_gpu)
+    self._testGradientSlice([4, 4], [1, 1], [2, 2])
 
     # Slice the upper left square out of a 4x4 input
-    self._testGradientSlice([4, 4], [0, 0], [2, 2], use_gpu)
+    self._testGradientSlice([4, 4], [0, 0], [2, 2])
 
     # Slice a non-square input starting from (2,1)
-    self._testGradientSlice([4, 4], [2, 1], [1, 2], use_gpu)
+    self._testGradientSlice([4, 4], [2, 1], [1, 2])
 
     # Slice a 3D tensor
-    self._testGradientSlice([3, 3, 3], [0, 1, 0], [2, 1, 1], use_gpu)
+    self._testGradientSlice([3, 3, 3], [0, 1, 0], [2, 1, 1])
 
     # Use -1 as a slice dimension.
-    self._testGradientVariableSize(use_gpu)
-
-  def testGradientsAll(self):
-    self._testGradientsSimple(use_gpu=False)
-    self._testGradientsSimple(use_gpu=True)
+    self._testGradientVariableSize()
 
   def testNotIterable(self):
     # NOTE(mrry): If we register __getitem__ as an overloaded
@@ -256,6 +245,22 @@ class SliceTest(tf.test.TestCase):
         lambda e: "'Tensor' object is not iterable" in str(e)):
       for _ in c:
         pass
+
+  def testComputedShape(self):
+    # NOTE(mrry): We cannot currently handle partially-known values,
+    # because `tf.slice()` uses -1 to specify a wildcard size, and
+    # this can't be handled using the
+    # `tensor_util.constant_value_as_shape()` trick.
+    a = tf.constant([[1, 2, 3], [4, 5, 6]])
+    begin = tf.constant(0)
+    size = tf.constant(1)
+    b = tf.slice(a, [begin, 0], [size, 2])
+    self.assertEqual([1, 2], b.get_shape())
+
+    begin = tf.placeholder(tf.int32, shape=())
+    c = tf.slice(a, [begin, 0], [-1, 2])
+    self.assertEqual([None, 2], c.get_shape().as_list())
+
 
 if __name__ == "__main__":
   tf.test.main()

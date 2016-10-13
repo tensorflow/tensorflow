@@ -1,180 +1,144 @@
 A classifier for TensorFlow DNN models.
 
-  Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+Example:
 
-    installed_emb = embedding_column(installed_app_id, dimension=16,
-                                     combiner="sum")
-    impression_emb = embedding_column(impression_app_id, dimension=16,
-                                      combiner="sum")
+```python
+education = sparse_column_with_hash_bucket(column_name="education",
+                                           hash_bucket_size=1000)
+occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                            hash_bucket_size=1000)
 
-    estimator = DNNClassifier(
-        feature_columns=[installed_emb, impression_emb],
-        hidden_units=[1024, 512, 256])
+education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                 combiner="sum")
+occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                 combiner="sum")
 
-    # Input builders
-    def input_fn_train: # returns X, Y
-      pass
-    estimator.fit(input_fn=input_fn_train)
+estimator = DNNClassifier(
+    feature_columns=[education_emb, occupation_emb],
+    hidden_units=[1024, 512, 256])
 
-    def input_fn_eval: # returns X, Y
-      pass
-    estimator.evaluate(input_fn_eval)
-    estimator.predict(x)
-    ```
+# Or estimator using the ProximalAdagradOptimizer optimizer with
+# regularization.
+estimator = DNNClassifier(
+    feature_columns=[education_emb, occupation_emb],
+    hidden_units=[1024, 512, 256],
+    optimizer=tf.train.ProximalAdagradOptimizer(
+      learning_rate=0.1,
+      l1_regularization_strength=0.001
+    ))
 
-  Input of `fit`, `train`, and `evaluate` should have following features,
-    otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `feature_columns`:
-      - if `column` is a `SparseColumn`, a feature with `key=column.name`
-        whose `value` is a `SparseTensor`.
-      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
-        valued `Tensor`.
+# Input builders
+def input_fn_train: # returns x, Y
+  pass
+estimator.fit(input_fn=input_fn_train)
 
-Parameters:
-  hidden_units: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-    32.
-  feature_columns: An iterable containing all the feature columns used by the
-    model. All items in the set should be instances of classes derived from
-    `FeatureColumn`.
-  model_dir: Directory to save model parameters, graph and etc.
-  n_classes: number of target classes. Default is binary classification.
-    It must be greater than 1.
-  weight_column_name: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
-  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-    will use an Adagrad optimizer.
-  activation_fn: Activation function applied to each layer. If `None`, will
-    use `tf.nn.relu`.
-  dropout: When not None, the probability we will drop out a given coordinate.
+def input_fn_eval: # returns x, Y
+  pass
+estimator.evaluate(input_fn=input_fn_eval)
+estimator.predict(x=x)
+```
+
+Input of `fit` and `evaluate` should have following features,
+  otherwise there will be a `KeyError`:
+
+* if `weight_column_name` is not `None`, a feature with
+   `key=weight_column_name` whose value is a `Tensor`.
+* for each `column` in `feature_columns`:
+  - if `column` is a `SparseColumn`, a feature with `key=column.name`
+    whose `value` is a `SparseTensor`.
+  - if `column` is a `WeightedSparseColumn`, two features: the first with
+    `key` the id column name, the second with `key` the weight column name.
+    Both features' `value` must be a `SparseTensor`.
+  - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
+    whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None, feature_engineering_fn=None)` {#DNNClassifier.__init__}
+
+Initializes a DNNClassifier instance.
+
+##### Args:
 
 
+*  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
+    connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+    has 32.
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
+    the model. All items in the set should be instances of classes derived
+    from `FeatureColumn`.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
+    be used to load checkpoints from the directory into a estimator to continue
+    training a previously saved model.
+*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
+    It must be greater than 1.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+*  <b>`optimizer`</b>: An instance of `tf.Optimizer` used to train the model. If
+    `None`, will use an Adagrad optimizer.
+*  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
+    use `tf.nn.relu`.
+*  <b>`dropout`</b>: When not `None`, the probability we will drop out a given
+    coordinate.
+*  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
+    clipped to their global norm with this clipping ratio. See
+    `tf.clip_by_global_norm` for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
+
+##### Returns:
+
+  A `DNNClassifier` estimator.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `n_classes` < 2.
 
 
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
 
+DEPRECATED FUNCTION
 
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
-
-Returns bias of deep neural network part.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.dnn_weights_` {#DNNClassifier.dnn_weights_}
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
 
-Returns weights of deep neural network part.
+
 
 
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#DNNClassifier.evaluate}
 
-Evaluates given model with provided evaluation data.
-
-##### Args:
-
-
-*  <b>`x`</b>: features.
-*  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
-    once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
-    forever.
-*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
-*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
-    different data sets, such as evaluate on training data vs test data.
-
-##### Returns:
-
-  Returns `dict` with evaluation results.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-      `input_fn` or `feed_fn` is provided.
+See evaluable.Evaluable.
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#DNNClassifier.fit}
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
-Trains a model given training data `x` predictions and `y` targets.
-
-##### Args:
-
-
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-     iterator that returns arrays of features. The training input
-     samples for fitting the model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
+See BaseEstimator.export.
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.get_params(deep=True)` {#DNNClassifier.get_params}
+#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
 
-Get parameters for this estimator.
-
-##### Args:
-
-
-*  <b>`deep`</b>: boolean, optional
-    If True, will return the parameters for this estimator and
-    contained subobjects that are estimators.
-
-##### Returns:
-
-  params : mapping of string to any
-  Parameter names mapped to their values.
+See trainable.Trainable.
 
 
 - - -
@@ -201,21 +165,7 @@ Returns value of the variable given by name.
 
 ##### Returns:
 
-  Numpy array - value of the tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.linear_bias_` {#DNNClassifier.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.linear_weights_` {#DNNClassifier.linear_weights_}
-
-Returns weights per feature of the linear part.
+  `Tensor` object.
 
 
 - - -
@@ -227,113 +177,64 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#DNNClassifier.partial_fit}
+#### `tf.contrib.learn.DNNClassifier.predict(*args, **kwargs)` {#DNNClassifier.predict}
 
-Incremental fit on a batch of samples.
+Returns predicted classes for given features. (deprecated arguments)
 
-This method is expected to be called several times consecutively
-on different or the same chunks of the dataset. This either can
-implement iterative training or out-of-core/online training.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
-This is especially useful when the whole dataset is too big to
-fit in memory at the same time. Or when model is taking long time
-to converge, and you want to split up training into subparts.
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
-##### Args:
-
-
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
+    Returns:
+      Numpy array of predicted classes (or an iterable of predicted classes if
+      as_iterable is True).
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.predict(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict}
+#### `tf.contrib.learn.DNNClassifier.predict_proba(*args, **kwargs)` {#DNNClassifier.predict_proba}
 
-Returns predictions for given features.
+Returns prediction probabilities for given features. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
+    Args:
+      x: features.
+      input_fn: Input function. If set, x and y must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x must be None.
-*  <b>`batch_size`</b>: Override default batch size.
-
-##### Returns:
-
-  Numpy array of predicted classes or regression values.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict_proba}
-
-Returns prediction probabilities for given features.
-
-##### Args:
-
-
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
-*  <b>`batch_size`</b>: Override default batch size.
-
-##### Returns:
-
-  Numpy array of predicted probabilities.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.set_params(**params)` {#DNNClassifier.set_params}
-
-Set the parameters of this estimator.
-
-The method works on simple estimators as well as on nested objects
-(such as pipelines). The former have parameters of the form
-``<component>__<parameter>`` so that it's possible to update each
-component of a nested object.
-
-##### Args:
-
-
-*  <b>`**params`</b>: Parameters.
-
-##### Returns:
-
-  self
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If params contain invalid names.
+    Returns:
+      Numpy array of predicted probabilities (or an iterable of predicted
+      probabilities if as_iterable is True).
 
 
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.weights_` {#DNNClassifier.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 

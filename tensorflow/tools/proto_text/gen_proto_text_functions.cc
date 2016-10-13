@@ -16,7 +16,6 @@ limitations under the License.
 #include <stdio.h>
 #include <set>
 
-#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,7 +36,7 @@ class CrashOnErrorCollector
   }
 };
 
-static const char kTensorflowHeaderPrefix[] = "";
+static const char kTensorFlowHeaderPrefix[] = "";
 
 static const char kPlaceholderFile[] =
     "tensorflow/tools/proto_text/placeholder.txt";
@@ -69,15 +68,13 @@ bool IsPlaceholderFile(const char* s) {
 //
 // This is meant to be invoked by a genrule. See BUILD for more information.
 int MainImpl(int argc, char** argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
-
   if (argc < 4) {
     LOG(ERROR) << "Pass output path, relative path, and at least proto file";
     return -1;
   }
 
   const string output_root = argv[1];
-  const string output_relative_path = kTensorflowHeaderPrefix + string(argv[2]);
+  const string output_relative_path = kTensorFlowHeaderPrefix + string(argv[2]);
 
   string src_relative_path;
   bool has_placeholder = false;
@@ -114,7 +111,7 @@ int MainImpl(int argc, char** argv) {
         proto_path_no_suffix.substr(output_relative_path.size());
 
     const auto code =
-        tensorflow::GetProtoTextFunctionCode(*fd, kTensorflowHeaderPrefix);
+        tensorflow::GetProtoTextFunctionCode(*fd, kTensorFlowHeaderPrefix);
 
     // Three passes, one for each output file.
     for (int pass = 0; pass < 3; ++pass) {

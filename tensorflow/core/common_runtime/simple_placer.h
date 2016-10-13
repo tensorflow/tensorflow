@@ -33,8 +33,8 @@ namespace tensorflow {
 // devices the given DeviceSet, respecting the following constraints:
 //
 // 1. Existing device assignments remain unchanged.
-// 2. Requested (partial or complete) device specifications in the
-//    are granted.
+// 2. Requested (partial or complete) device specifications given by device name
+//    for each node are granted.
 // 3. Nodes connected by edges of a reference type are colocated on
 //    the same device.
 // 4. Given nodes "A" and "B", if node "B" has a colocation group

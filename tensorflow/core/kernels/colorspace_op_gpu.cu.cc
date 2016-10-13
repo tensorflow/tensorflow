@@ -24,8 +24,11 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-template class functor::RGBToHSV<GPUDevice>;
-template class functor::HSVToRGB<GPUDevice>;
+#define INSTANTIATE_GPU(T)                        \
+  template class functor::RGBToHSV<GPUDevice, T>; \
+  template class functor::HSVToRGB<GPUDevice, T>;
+TF_CALL_float(INSTANTIATE_GPU);
+TF_CALL_double(INSTANTIATE_GPU);
 }
 
 #endif  // GOOGLE_CUDA

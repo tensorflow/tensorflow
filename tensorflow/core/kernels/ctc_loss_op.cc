@@ -145,10 +145,12 @@ class CTCLossOp : public OpKernel {
 
     // Assumption: the blank index is num_classes - 1
     ctc::CTCLossCalculator ctc_loss_calculator(num_classes - 1, 0);
+    DeviceBase::CpuWorkerThreads workers =
+        *ctx->device()->tensorflow_cpu_worker_threads();
     OP_REQUIRES_OK(ctx, ctc_loss_calculator.CalculateLoss(
                             seq_len_t, labels_t, input_list_t,
                             preprocess_collapse_repeated_, ctc_merge_repeated_,
-                            &loss_t, &gradient_list_t));
+                            &loss_t, &gradient_list_t, &workers));
   }
 
  private:

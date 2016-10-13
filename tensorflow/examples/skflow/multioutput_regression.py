@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import datasets
 from sklearn.metrics import mean_squared_error
 
 from tensorflow.contrib import learn
@@ -37,17 +36,17 @@ y = np.array([np.pi * np.sin(X).ravel(), np.pi * np.cos(X).ravel()]).T
 regressors = []
 options = [[2], [10, 10], [20, 20]]
 for hidden_units in options:
-    def tanh_dnn(X, y):
-        features = learn.ops.dnn(X, hidden_units=hidden_units,
-          activation=learn.tf.tanh)
-        return learn.models.linear_regression(features, y)
+  def tanh_dnn(X, y):
+    features = learn.ops.dnn(X, hidden_units=hidden_units,
+      activation=learn.tf.tanh)
+    return learn.models.linear_regression(features, y)
 
-    regressor = learn.TensorFlowEstimator(model_fn=tanh_dnn, n_classes=0,
-        steps=500, learning_rate=0.1, batch_size=100)
-    regressor.fit(X, y)
-    score = mean_squared_error(regressor.predict(X), y)
-    print("Mean Squared Error for {0}: {1:f}".format(str(hidden_units), score))
-    regressors.append(regressor)
+  regressor = learn.TensorFlowEstimator(model_fn=tanh_dnn, n_classes=0,
+      steps=500, learning_rate=0.1, batch_size=100)
+  regressor.fit(X, y)
+  score = mean_squared_error(regressor.predict(X), y)
+  print("Mean Squared Error for {0}: {1:f}".format(str(hidden_units), score))
+  regressors.append(regressor)
 
 # Predict on new random Xs.
 X_test = np.arange(-100.0, 100.0, 0.1)[:, np.newaxis]

@@ -8,21 +8,22 @@ and variance of a vector.
 
 When using these moments for batch normalization (see
 `tf.nn.batch_normalization`):
-  * for so-called "global normalization", used with convolutional filters with
-    shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
-  * for simple batch normalization pass `axes=[0]` (batch only).
+
+ * for so-called "global normalization", used with convolutional filters with
+   shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+ * for simple batch normalization pass `axes=[0]` (batch only).
 
 ##### Args:
 
 
 *  <b>`x`</b>: A `Tensor`.
-*  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
+*  <b>`axes`</b>: Array of ints.  Axes along which to compute mean and
     variance.
 *  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift
     close to the true mean provides the most numerically stable results.
-*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
+*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 
 ##### Returns:
 

@@ -178,7 +178,7 @@ def _GetDenseDimensions(list_of_lists):
 
 
 def _FlattenToStrings(nested_strings):
-  if isinstance(nested_strings, list):
+  if isinstance(nested_strings, (list, tuple)):
     for inner in nested_strings:
       for flattened_string in _FlattenToStrings(inner):
         yield flattened_string
@@ -382,7 +382,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if is_quantized:
     numpy_dtype = dtype
 
-  if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:
+  if dtype is not None and (not hasattr(dtype, "base_dtype") or
+                            dtype.base_dtype != numpy_dtype.base_dtype):
     raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
 
   # If shape is not given, get the shape from the numpy array.
@@ -455,6 +456,17 @@ def MakeNdarray(tensor):
 
   if tensor.tensor_content:
     return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
+  elif tensor_dtype == dtypes.float16:
+    # the half_val field of the TensorProto stores the binary representation
+    # of the fp16: we need to reinterpret this as a proper float16
+    if len(tensor.half_val) == 1:
+      tmp = np.array(tensor.half_val[0], dtype=np.uint16)
+      tmp.dtype = np.float16
+      return np.repeat(tmp, num_elements).reshape(shape)
+    else:
+      tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
+      tmp.dtype = np.float16
+      return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
       return np.repeat(np.array(tensor.float_val[0], dtype=dtype),
@@ -562,7 +574,7 @@ def _ConstantValue(tensor):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return input_shape.ndims
+      return np.array([input_shape.ndims], dtype=np.int32)
     else:
       return None
   elif tensor.op.type == "Range":
@@ -593,6 +605,14 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "Pack":
+    values = []
+    for x in tensor.op.inputs:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.array(values)
   else:
     return None
 
@@ -628,3 +648,55 @@ def constant_value(tensor):
     # conservatively prevent it from being fed.
     tensor.graph.prevent_feeding(tensor)
   return ret
+
+
+def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
+  """A version of `constant_value()` that returns a `TensorShape`.
+
+  This version should be used when a constant tensor value is
+  interpreted as a (possibly partial) shape, e.g. in the shape
+  function for `tf.reshape()`. By explicitly requesting a
+  `TensorShape` as the return value, it is possible to represent
+  unknown dimensions; by contrast, `constant_value()` is
+  all-or-nothing.
+
+  Args:
+    tensor: The rank-1 Tensor to be evaluated.
+
+  Returns:
+    A `TensorShape` based on the constant value of the given `tensor`.
+  """
+  shape = tensor.get_shape().with_rank(1)
+  if tensor.get_shape() == [0]:
+    return tensor_shape.scalar()
+  elif tensor.op.type == "Shape":
+    return tensor.op.inputs[0].get_shape()
+  elif tensor.op.type == "Pack":
+    ret = tensor_shape.scalar()  # Empty list.
+    for pack_input in tensor.op.inputs:
+      # `pack_input` must be a scalar. Attempt to evaluate it, and append it
+      # to `ret`.
+      pack_input_val = constant_value(pack_input)
+      if pack_input_val is None or pack_input_val < 0:
+        new_dim = tensor_shape.Dimension(None)
+      else:
+        new_dim = tensor_shape.Dimension(pack_input_val)
+      ret = ret.concatenate([new_dim])
+    return ret
+  elif tensor.op.type == "Concat":
+    # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
+    # the only legal value when concatenating vectors, and it will
+    # have been checked by a previous shape function.
+    ret = tensor_shape.scalar()  # Empty list.
+    for concat_input in tensor.op.inputs[1:]:
+      # `concat_input` must be a vector. Attempt to evaluate it as a shape,
+      # and concatenate it with `ret`.
+      ret = ret.concatenate(constant_value_as_shape(concat_input))
+    return ret
+  else:
+    ret = tensor_shape.unknown_shape(shape[0].value)
+    value = constant_value(tensor)
+    if value is not None:
+      ret = ret.merge_with(tensor_shape.TensorShape(
+          [d if d != -1 else None for d in value]))
+    return ret

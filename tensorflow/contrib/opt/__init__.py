@@ -20,3 +20,5 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.opt.python.training.external_optimizer import *
+from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
+from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *

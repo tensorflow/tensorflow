@@ -14,11 +14,13 @@
 # ==============================================================================
 
 """Trains and Evaluates the MNIST network using a feed dictionary."""
-# pylint: disable=missing-docstring
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=missing-docstring
+import argparse
+import os.path
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -27,19 +29,8 @@ import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.examples.tutorials.mnist import mnist
 
-
 # Basic model parameters as external flags.
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-flags.DEFINE_integer('max_steps', 2000, 'Number of steps to run trainer.')
-flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
-flags.DEFINE_integer('batch_size', 100, 'Batch size.  '
-                     'Must divide evenly into the dataset sizes.')
-flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
-flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
-                     'for unit testing.')
+FLAGS = None
 
 
 def placeholder_inputs(batch_size):
@@ -82,7 +73,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
     feed_dict: The feed dictionary mapping from placeholders to values.
   """
   # Create the feed_dict for the placeholders filled with the next
-  # `batch size ` examples.
+  # `batch size` examples.
   images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size,
                                                  FLAGS.fake_data)
   feed_dict = {
@@ -147,8 +138,8 @@ def run_training():
     # Add the Op to compare the logits to the labels during evaluation.
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
-    # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+    # Build the summary Tensor based on the TF collection of Summaries.
+    summary = tf.merge_all_summaries()
 
     # Add the variable initializer Op.
     init = tf.initialize_all_variables()
@@ -192,13 +183,14 @@ def run_training():
         # Print status to stdout.
         print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
         # Update the events file.
-        summary_str = sess.run(summary_op, feed_dict=feed_dict)
+        summary_str = sess.run(summary, feed_dict=feed_dict)
         summary_writer.add_summary(summary_str, step)
         summary_writer.flush()
 
       # Save a checkpoint and evaluate the model periodically.
       if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:
-        saver.save(sess, FLAGS.train_dir, global_step=step)
+        checkpoint_file = os.path.join(FLAGS.train_dir, 'checkpoint')
+        saver.save(sess, checkpoint_file, global_step=step)
         # Evaluate against the training set.
         print('Training Data Eval:')
         do_eval(sess,
@@ -227,4 +219,49 @@ def main(_):
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--learning_rate',
+      type=float,
+      default=0.01,
+      help='Initial learning rate.'
+  )
+  parser.add_argument(
+      '--max_steps',
+      type=int,
+      default=2000,
+      help='Number of steps to run trainer.'
+  )
+  parser.add_argument(
+      '--hidden1',
+      type=int,
+      default=128,
+      help='Number of units in hidden layer 1.'
+  )
+  parser.add_argument(
+      '--hidden2',
+      type=int,
+      default=32,
+      help='Number of units in hidden layer 2.'
+  )
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=100,
+      help='Batch size.  Must divide evenly into the dataset sizes.'
+  )
+  parser.add_argument(
+      '--train_dir',
+      type=str,
+      default='data',
+      help='Directory to put the training data.'
+  )
+  parser.add_argument(
+      '--fake_data',
+      default=False,
+      help='If true, uses fake data for unit testing.',
+      action='store_true'
+  )
+  FLAGS = parser.parse_args()
+
   tf.app.run()

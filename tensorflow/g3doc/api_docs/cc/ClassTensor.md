@@ -8,9 +8,13 @@ Represents an n-dimensional array of values.
 
 #### `tensorflow::Tensor::Tensor()` {#tensorflow_Tensor_Tensor}
 
-Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
+Creates a 1-dimensional, 0-element float tensor.
 
+The returned Tensor is not a scalar (shape {}), but is instead an empty one-dimensional Tensor (shape {0}, NumElements() == 0). Since it has no elements, it does not need to be assigned a value and is initialized by default ( IsInitialized() is true). If this is undesirable, consider creating a one-element scalar which does require initialization:
 
+```c++ Tensor(DT_FLOAT, TensorShape({}))
+
+```
 
 #### `tensorflow::Tensor::Tensor(DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
@@ -32,9 +36,9 @@ Creates a tensor with the input `type` and `shape`, using the allocator `a` and 
 
 #### `tensorflow::Tensor::Tensor(DataType type)` {#tensorflow_Tensor_Tensor}
 
-Creates an uninitialized Tensor of the given data type.
+Creates an empty Tensor of the given data type.
 
-
+Like Tensor() , returns a 1-dimensional, 0-element Tensor with IsInitialized() returning True. See the Tensor() documentation for details.
 
 #### `tensorflow::Tensor::Tensor(const Tensor &other)` {#tensorflow_Tensor_Tensor}
 
@@ -42,9 +46,15 @@ Creates an uninitialized Tensor of the given data type.
 
 
 
-#### `tensorflow::Tensor::~Tensor()` {#tensorflow_Tensor_Tensor}
+#### `tensorflow::Tensor::Tensor(Tensor &&other)` {#tensorflow_Tensor_Tensor}
 
 Copy constructor.
+
+
+
+#### `tensorflow::Tensor::~Tensor()` {#tensorflow_Tensor_Tensor}
+
+
 
 
 
@@ -98,9 +108,9 @@ Convenience accessor for the tensor shape.
 
 #### `bool tensorflow::Tensor::IsInitialized() const` {#bool_tensorflow_Tensor_IsInitialized}
 
-Has this Tensor been initialized?
+If necessary, has this Tensor been initialized?
 
-
+Zero-element Tensors are always considered initialized, even if they have never been assigned to and do not have any memory allocated.
 
 #### `size_t tensorflow::Tensor::TotalBytes() const` {#size_t_tensorflow_Tensor_TotalBytes}
 
@@ -117,6 +127,12 @@ Returns true iff this tensor is aligned.
 #### `Tensor& tensorflow::Tensor::operator=(const Tensor &other)` {#Tensor_tensorflow_Tensor_operator_}
 
 Assign operator. This tensor shares other&apos;s underlying storage.
+
+
+
+#### `Tensor & tensorflow::Tensor::operator=(Tensor &&other)` {#Tensor_tensorflow_Tensor_operator_}
+
+Move operator. See move constructor for details.
 
 
 
@@ -190,6 +206,12 @@ auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
 
 
 
+#### `TTypes< T, NDIMS >::Tensor tensorflow::Tensor::bit_casted_tensor()` {#TTypes_T_NDIMS_Tensor_tensorflow_Tensor_bit_casted_tensor}
+
+Return the tensor data to an `Eigen::Tensor` with the same size but a bitwise cast to the specified dtype `T`.
+
+Using a bitcast is useful for move and copy operations. NOTE: this is the same as `tensor()` except a bitcast is allowed.
+
 #### `TTypes<T>::Flat tensorflow::Tensor::flat()` {#TTypes_T_Flat_tensorflow_Tensor_flat}
 
 Return the tensor data as an `Eigen::Tensor` of the data type and a specified shape.
@@ -239,6 +261,12 @@ Returns the data as an Eigen::Tensor with NDIMS dimensions, collapsing all Tenso
 
 
 
+#### `TTypes< T, NDIMS >::Tensor tensorflow::Tensor::bit_casted_shaped(gtl::ArraySlice< int64 > new_sizes)` {#TTypes_T_NDIMS_Tensor_tensorflow_Tensor_bit_casted_shaped}
+
+Return the tensor data to an `Eigen::Tensor` with the new shape specified in `new_sizes` and cast to a new dtype `T`.
+
+Using a bitcast is useful for move and copy operations. The allowed bitcast is the only difference from `shaped()`.
+
 #### `TTypes< T, NDIMS >::UnalignedTensor tensorflow::Tensor::unaligned_shaped(gtl::ArraySlice< int64 > new_sizes)` {#TTypes_T_NDIMS_UnalignedTensor_tensorflow_Tensor_unaligned_shaped}
 
 
@@ -269,6 +297,12 @@ Const versions of all the methods above.
 
 
 
+#### `TTypes< T, NDIMS >::ConstTensor tensorflow::Tensor::bit_casted_tensor() const` {#TTypes_T_NDIMS_ConstTensor_tensorflow_Tensor_bit_casted_tensor}
+
+Return the tensor data to an `Eigen::Tensor` with the same size but a bitwise cast to the specified dtype `T`.
+
+Using a bitcast is useful for move and copy operations. NOTE: this is the same as `tensor()` except a bitcast is allowed.
+
 #### `TTypes<T>::ConstFlat tensorflow::Tensor::flat() const` {#TTypes_T_ConstFlat_tensorflow_Tensor_flat}
 
 
@@ -286,6 +320,12 @@ Const versions of all the methods above.
 
 
 
+
+#### `TTypes< T, NDIMS >::ConstTensor tensorflow::Tensor::bit_casted_shaped(gtl::ArraySlice< int64 > new_sizes) const` {#TTypes_T_NDIMS_ConstTensor_tensorflow_Tensor_bit_casted_shaped}
+
+Return the tensor data to an `Eigen::Tensor` with the new shape specified in `new_sizes` and cast to a new dtype `T`.
+
+Using a bitcast is useful for move and copy operations. The allowed bitcast is the only difference from `shaped()`.
 
 #### `TTypes< T, NDIMS >::UnalignedConstTensor tensorflow::Tensor::unaligned_shaped(gtl::ArraySlice< int64 > new_sizes) const` {#TTypes_T_NDIMS_UnalignedConstTensor_tensorflow_Tensor_unaligned_shaped}
 
@@ -337,7 +377,7 @@ The returned ` StringPiece ` may point to memory location on devices that the CP
 
 NOTE: The underlying tensor buffer is refcounted, so the lifetime of the contents mapped by the ` StringPiece ` matches the lifetime of the buffer; callers should arrange to make sure the buffer does not get destroyed while the ` StringPiece ` is still used.
 
-REQUIRES: `DataTypeCanUseMemcpy( dtype() )`.
+REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
 
 #### `void tensorflow::Tensor::UnsafeCopyFromInternal(const Tensor &, const TensorShape &)` {#void_tensorflow_Tensor_UnsafeCopyFromInternal}
 

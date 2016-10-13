@@ -8,18 +8,14 @@ The following `DType` objects are defined:
 * `tf.bfloat16`: 16-bit truncated floating-point.
 * `tf.complex64`: 64-bit single-precision complex.
 * `tf.complex128`: 128-bit double-precision complex.
-
 * `tf.int8`: 8-bit signed integer.
 * `tf.uint8`: 8-bit unsigned integer.
 * `tf.uint16`: 16-bit unsigned integer.
 * `tf.int16`: 16-bit signed integer.
 * `tf.int32`: 32-bit signed integer.
 * `tf.int64`: 64-bit signed integer.
-
 * `tf.bool`: Boolean.
-
 * `tf.string`: String.
-
 * `tf.qint8`: Quantized 8-bit signed integer.
 * `tf.quint8`: Quantized 8-bit unsigned integer.
 * `tf.qint16`: Quantized 16-bit signed integer.
@@ -40,7 +36,7 @@ Returns True if the `other` DType will be converted to this DType.
 
 The conversion rules are as follows:
 
-```
+```python
 DType(T)       .is_compatible_with(DType(T))        == True
 DType(T)       .is_compatible_with(DType(T).as_ref) == True
 DType(T).as_ref.is_compatible_with(DType(T))        == False
@@ -154,6 +150,20 @@ Returns a `types_pb2.DataType` enum value based on this `DType`.
 #### Other Methods
 - - -
 
+#### `tf.DType.__eq__(other)` {#DType.__eq__}
+
+Returns True iff this DType refers to the same type as `other`.
+
+
+- - -
+
+#### `tf.DType.__hash__()` {#DType.__hash__}
+
+
+
+
+- - -
+
 #### `tf.DType.__init__(type_enum)` {#DType.__init__}
 
 Creates a new `DataType`.
@@ -171,6 +181,27 @@ construct a `DataType` object directly. Instead, use the
 
 
 *  <b>`TypeError`</b>: If `type_enum` is not a value `types_pb2.DataType`.
+
+
+- - -
+
+#### `tf.DType.__ne__(other)` {#DType.__ne__}
+
+Returns True iff self != other.
+
+
+- - -
+
+#### `tf.DType.__repr__()` {#DType.__repr__}
+
+
+
+
+- - -
+
+#### `tf.DType.__str__()` {#DType.__str__}
+
+
 
 
 - - -

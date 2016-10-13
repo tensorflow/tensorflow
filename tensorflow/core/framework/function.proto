@@ -1,12 +1,13 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "FunctionProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
 import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/node_def.proto";
 import "tensorflow/core/framework/op_def.proto";
 
 // A library is a set of named functions.
@@ -25,6 +26,8 @@ message FunctionDef {
   // The definition of the function's name, arguments, return values,
   // attrs etc.
   OpDef signature = 1;
+
+  // TO BE REPLACED
 
   // The body of the function.
   repeated Node node = 2;  // function.node.ret[*] are unique.
@@ -69,6 +72,56 @@ message FunctionDef {
     // signature.
     map<string, AttrValue> attr = 5;
   }
+
+  // WILL REPLACE THE ABOVE
+
+  // If node_def is present, and the consumer is at GraphDef version
+  // >= 12, then these fields are used and `node` is ignored.  If the
+  // consumer's GraphDef version is < 12 or this field is empty, then
+  // `node` is used.  This allows producers to fill both fields to
+  // remain compatible with old consumers.  At some future GraphDef
+  // version, `node` will be ignored even if `node_def` is empty.
+  // TODO(josh11b): Finish this transition.
+
+  // In both of the following fields, there is the need to specify an
+  // output that is used as either the input to another node (in
+  // `node_def`) or as a return value of the function (in `ret`).
+  // Unlike the NodeDefs in GraphDef, we need to be able to specify a
+  // list in some cases (instead of just single outputs).  Also, we
+  // need to be able to deal with lists of unknown length (so the
+  // output index may not be known at function definition time).  So
+  // we use the following format instead:
+  // * "fun_in" where "fun_in" is the name of a function input arg in
+  //   the `signature` field above.  This represents that input, whether
+  //   it is a single tensor or a list.
+  // * "fun_in:0" gives the first element of a function input arg (a
+  //   non-list input is considered a list of length 1 for these
+  //   purposes).
+  // * "node:out" where "node" is the name of a node in `node_def` and
+  //   "out" is the name one of its op's output arguments (the name
+  //   comes from the OpDef of the node's op). This represents that
+  //   node's output, whether it is a single tensor or a list.
+  //   Note: We enforce that an op's output arguments are never
+  //   renamed in the backwards-compatibility test.
+  // * "node:out:0" gives the first element of a node output arg (a
+  //   non-list output is considered a list of length 1 for these
+  //   purposes).
+  //
+  // NOT CURRENTLY SUPPORTED (but may be in the future):
+  // * "node:out:-1" gives last element in a node output list
+  // * "node:out:1:" gives a list with all but the first element in a
+  //   node output list
+  // * "node:out::-1" gives a list with all but the last element in a
+  //   node output list
+
+  // The body of the function.  Unlike the NodeDefs in a GraphDef, attrs
+  // may have values of type `placeholder` and the `input` field uses
+  // the "output" format above.
+  repeated NodeDef node_def = 3;
+
+  // A mapping from the output arg names from `signature` to the
+  // outputs from `node_def` that should be returned by the function.
+  map<string, string> ret = 4;
 }
 
 // GradientDef defines the gradient function of a function defined in

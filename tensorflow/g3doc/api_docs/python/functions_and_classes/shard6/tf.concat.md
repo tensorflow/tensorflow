@@ -32,6 +32,19 @@ tf.shape(tf.concat(0, [t3, t4])) ==> [4, 3]
 tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
 ```
 
+Note: If you are concatenating along a new axis consider using pack.
+E.g.
+
+```python
+tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
+```
+
+can be rewritten as
+
+```python
+tf.pack(tensors, axis=axis)
+```
+
 ##### Args:
 
 

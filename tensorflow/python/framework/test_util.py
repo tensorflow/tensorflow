@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import contextlib
 import math
+import random
 import re
 import sys
 import threading
@@ -37,6 +38,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -119,7 +121,10 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def setUp(self):
     self._ClearCachedSession()
+    random.seed(random_seed.DEFAULT_GRAPH_SEED)
+    np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
     ops.reset_default_graph()
+    ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 
   def tearDown(self):
     for thread in self._threads:
@@ -427,7 +432,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
       # print out which elements violate such conditions.
-      cond = np.abs(a - b) > atol + rtol * np.abs(b)
+      cond = np.logical_or(
+          np.abs(a - b) > atol + rtol * np.abs(b), np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
@@ -439,6 +445,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close rhs = ", y)
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
+      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
 
   def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6):
@@ -497,23 +504,26 @@ class TensorFlowTestCase(googletest.TestCase):
                                      expected_err_re_or_predicate):
     """Returns a context manager to enclose code expected to raise an exception.
 
+    If the exception is an OpError, the op stack is also included in the message
+    predicate search.
+
     Args:
       exception_type: The expected type of exception that should be raised.
       expected_err_re_or_predicate: If this is callable, it should be a function
-        of one argument that inspects the passed-in OpError exception and
+        of one argument that inspects the passed-in exception and
         returns True (success) or False (please fail the test). Otherwise, the
         error message is expected to match this regular expression partially.
 
     Returns:
       A context manager to surround code that is expected to raise an
-      errors.OpError exception.
+      exception.
     """
     if callable(expected_err_re_or_predicate):
       predicate = expected_err_re_or_predicate
     else:
       def predicate(e):
-        err_str = e.message
-        op = e.op
+        err_str = e.message if isinstance(e, errors.OpError) else str(e)
+        op = e.op if isinstance(e, errors.OpError) else None
         while op is not None:
           err_str += "\nCaused by: " + op.name
           op = op._original_op
@@ -525,7 +535,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError(e)
+        raise AssertionError("Exception of type %s: %s" %
+                             (str(type(e)), str(e)))
   # pylint: enable=g-doc-return-or-yield
 
   def assertRaisesOpError(self, expected_err_re_or_predicate):

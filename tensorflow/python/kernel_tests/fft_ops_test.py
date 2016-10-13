@@ -26,38 +26,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 VALID_FFT_RANKS = (1, 2, 3)
 
 
-class BaseFFTOpsTest(tf.test.TestCase):
-
-  def _tfFFT(self, x, rank, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
-      return self._tfFFTForRank(rank)(x).eval()
-
-  def _npFFT(self, x, rank):
-    if rank == 1:
-      return np.fft.fft2(x, axes=(-1,))
-    elif rank == 2:
-      return np.fft.fft2(x, axes=(-2, -1))
-    elif rank == 3:
-      return np.fft.fft2(x, axes=(-3, -2, -1))
-    else:
-      raise ValueError("invalid rank")
-
-  def _tfIFFT(self, x, rank, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
-      return self._tfIFFTForRank(rank)(x).eval()
-
-  def _npIFFT(self, x, rank):
-    if rank == 1:
-      return np.fft.ifft2(x, axes=(-1,))
-    elif rank == 2:
-      return np.fft.ifft2(x, axes=(-2, -1))
-    elif rank == 3:
-      return np.fft.ifft2(x, axes=(-3, -2, -1))
-    else:
-      raise ValueError("invalid rank")
+class FFTOpsTest(tf.test.TestCase):
 
   def _Compare(self, x, rank):
-    if tf.test.is_built_with_cuda():
+    if tf.test.is_gpu_available():
       # GPU/Forward
       self.assertAllClose(
           self._npFFT(x, rank),
@@ -90,31 +62,56 @@ class BaseFFTOpsTest(tf.test.TestCase):
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=1e-2)
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=1e-2, atol=1e-2)
 
+  def _npFFT(self, x, rank):
+    if rank == 1:
+      return np.fft.fft2(x, axes=(-1,))
+    elif rank == 2:
+      return np.fft.fft2(x, axes=(-2, -1))
+    elif rank == 3:
+      return np.fft.fft2(x, axes=(-3, -2, -1))
+    else:
+      raise ValueError("invalid rank")
 
-class BatchFFTOpsTest(BaseFFTOpsTest):
+  def _npIFFT(self, x, rank):
+    if rank == 1:
+      return np.fft.ifft2(x, axes=(-1,))
+    elif rank == 2:
+      return np.fft.ifft2(x, axes=(-2, -1))
+    elif rank == 3:
+      return np.fft.ifft2(x, axes=(-3, -2, -1))
+    else:
+      raise ValueError("invalid rank")
+
+  def _tfFFT(self, x, rank, use_gpu=False):
+    with self.test_session(use_gpu=use_gpu):
+      return self._tfFFTForRank(rank)(x).eval()
+
+  def _tfIFFT(self, x, rank, use_gpu=False):
+    with self.test_session(use_gpu=use_gpu):
+      return self._tfIFFTForRank(rank)(x).eval()
 
   def _tfFFTForRank(self, rank):
     if rank == 1:
-      return tf.batch_fft
+      return tf.fft
     elif rank == 2:
-      return tf.batch_fft2d
+      return tf.fft2d
     elif rank == 3:
-      return tf.batch_fft3d
+      return tf.fft3d
     else:
       raise ValueError("invalid rank")
 
   def _tfIFFTForRank(self, rank):
     if rank == 1:
-      return tf.batch_ifft
+      return tf.ifft
     elif rank == 2:
-      return tf.batch_ifft2d
+      return tf.ifft2d
     elif rank == 3:
-      return tf.batch_ifft3d
+      return tf.ifft3d
     else:
       raise ValueError("invalid rank")
 
   def testEmpty(self):
-    if tf.test.is_built_with_cuda():
+    if tf.test.is_gpu_available():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           x = np.zeros((0,) * dims).astype(np.complex64)
@@ -142,19 +139,21 @@ class BatchFFTOpsTest(BaseFFTOpsTest):
         self._Compare(gen((4,) * dims), rank)
 
   def testError(self):
-    if tf.test.is_built_with_cuda():
+    if tf.test.is_gpu_available():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(0, rank):
           x = np.zeros((1,) * dims).astype(np.complex64)
-          with self.assertRaisesOpError(
-              "Input must have rank of at least {}".format(rank)):
+          with self.assertRaisesWithPredicateMatch(
+              ValueError,
+              "Shape must be .*rank {}.*".format(rank)):
             self._tfFFT(x, rank)
-          with self.assertRaisesOpError(
-              "Input must have rank of at least {}".format(rank)):
+          with self.assertRaisesWithPredicateMatch(
+              ValueError,
+              "Shape must be .*rank {}.*".format(rank)):
             self._tfIFFT(x, rank)
 
   def testGrad_Simple(self):
-    if tf.test.is_built_with_cuda():
+    if tf.test.is_gpu_available():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 2):
           re = np.ones(shape=(4,) * dims, dtype=np.float32) / 10.0
@@ -163,7 +162,7 @@ class BatchFFTOpsTest(BaseFFTOpsTest):
           self._checkGrad(self._tfIFFTForRank(rank), re, im, use_gpu=True)
 
   def testGrad_Random(self):
-    if tf.test.is_built_with_cuda():
+    if tf.test.is_gpu_available():
       np.random.seed(54321)
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 2):
@@ -171,84 +170,6 @@ class BatchFFTOpsTest(BaseFFTOpsTest):
           im = np.random.rand(*((3,) * dims)).astype(np.float32) * 2 - 1
           self._checkGrad(self._tfFFTForRank(rank), re, im, use_gpu=True)
           self._checkGrad(self._tfIFFTForRank(rank), re, im, use_gpu=True)
-
-
-class FFTOpsTest(BaseFFTOpsTest):
-
-  def _tfFFTForRank(self, rank):
-    if rank == 1:
-      return tf.fft
-    elif rank == 2:
-      return tf.fft2d
-    elif rank == 3:
-      return tf.fft3d
-    else:
-      raise ValueError("invalid rank")
-
-  def _tfIFFTForRank(self, rank):
-    if rank == 1:
-      return tf.ifft
-    elif rank == 2:
-      return tf.ifft2d
-    elif rank == 3:
-      return tf.ifft3d
-    else:
-      raise ValueError("invalid rank")
-
-  def testBasic(self):
-    for rank in VALID_FFT_RANKS:
-      self._Compare(
-          np.mod(
-              np.arange(np.power(4, rank)), 10).reshape((4,) * rank), rank)
-
-  def testRandom(self):
-    np.random.seed(12345)
-
-    def gen(shape):
-      n = np.prod(shape)
-      re = np.random.uniform(size=n)
-      im = np.random.uniform(size=n)
-      return (re + im * 1j).reshape(shape)
-
-    for rank in VALID_FFT_RANKS:
-      for size in (1, 5, 7, 15):
-        self._Compare(gen((size,) * rank), rank)
-
-  def testEmpty(self):
-    if tf.test.is_built_with_cuda():
-      for rank in VALID_FFT_RANKS:
-        x = np.zeros((0,) * rank).astype(np.complex64)
-        self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
-        self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
-
-  def testError(self):
-    if tf.test.is_built_with_cuda():
-      for rank in VALID_FFT_RANKS:
-        for dims in list(range(0, rank)) + [rank + 1]:
-          x = np.zeros((1,) * dims).astype(np.complex64)
-          with self.assertRaisesOpError(
-              "Input must be of rank {} but got:".format(rank)):
-            self._tfFFT(x, rank)
-          with self.assertRaisesOpError(
-              "Input must be of rank {} but got:".format(rank)):
-            self._tfIFFT(x, rank)
-
-  def testGrad_Simple(self):
-    if tf.test.is_built_with_cuda():
-      for rank in VALID_FFT_RANKS:
-        re = np.ones(shape=(4,) * rank, dtype=np.float32) / 10.0
-        im = np.zeros(shape=(4,) * rank, dtype=np.float32)
-        self._checkGrad(self._tfFFTForRank(rank), re, im, use_gpu=True)
-        self._checkGrad(self._tfIFFTForRank(rank), re, im, use_gpu=True)
-
-  def testGrad_Random(self):
-    if tf.test.is_built_with_cuda():
-      np.random.seed(54321)
-      for rank in VALID_FFT_RANKS:
-        re = np.random.rand(*((3,) * rank)).astype(np.float32) * 2 - 1
-        im = np.random.rand(*((3,) * rank)).astype(np.float32) * 2 - 1
-        self._checkGrad(self._tfFFTForRank(rank), re, im, use_gpu=True)
-        self._checkGrad(self._tfIFFTForRank(rank), re, im, use_gpu=True)
 
 
 if __name__ == "__main__":

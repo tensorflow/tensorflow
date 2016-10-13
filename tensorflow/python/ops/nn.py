@@ -11,15 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
-"""## Activation Functions
+"""## Activation Functions.
 
 The activation ops provide different types of nonlinearities for use in neural
 networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
 `softplus`, and `softsign`), continuous but not everywhere differentiable
-functions (`relu`, `relu6`, and `relu_x`), and random regularization
+functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
 (`dropout`).
 
 All activation ops apply componentwise, and produce a tensor of the same
@@ -27,6 +27,7 @@ shape as the input tensor.
 
 @@relu
 @@relu6
+@@crelu
 @@elu
 @@softplus
 @@softsign
@@ -103,12 +104,15 @@ vectors.  For `depthwise_conv_2d`, each scalar component `input[b, i, j, k]`
 is multiplied by a vector `filter[di, dj, k]`, and all the vectors are
 concatenated.
 
+@@convolution
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
 @@atrous_conv2d
 @@conv2d_transpose
+@@conv1d
 @@conv3d
+@@conv3d_transpose
 
 ## Pooling
 
@@ -130,14 +134,16 @@ to the `Convolution` section for details about the padding calculation.
 @@max_pool_with_argmax
 @@avg_pool3d
 @@max_pool3d
+@@fractional_avg_pool
+@@fractional_max_pool
+@@pool
 
 ## Morphological filtering
 
 Morphological operators are non-linear filters used in image processing.
 
-[Greyscale morphological dilation]
-(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological dilation](https://en.wikipedia.org/wiki/Dilation_(morphology))
+is the max-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         max_{dy, dx} input[b,
@@ -150,9 +156,8 @@ The `filter` is usually called structuring function. Max-pooling is a special
 case of greyscale morphological dilation when the filter assumes all-zero
 values (a.k.a. flat structuring function).
 
-[Greyscale morphological erosion]
-(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological erosion](https://en.wikipedia.org/wiki/Erosion_(morphology))
+is the min-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         min_{dy, dx} input[b,
@@ -181,6 +186,7 @@ have varying scale, and to aid generalization.
 @@sufficient_statistics
 @@normalize_moments
 @@moments
+@@weighted_moments
 
 ## Losses
 
@@ -189,6 +195,7 @@ These can be used for measuring accuracy of a network in a regression task
 or for regularization purposes (weight decay).
 
 @@l2_loss
+@@log_poisson_loss
 
 ## Classification
 
@@ -209,10 +216,29 @@ tensors.
 @@embedding_lookup
 @@embedding_lookup_sparse
 
+## Recurrent Neural Networks
+
+TensorFlow provides a number of methods for constructing Recurrent
+Neural Networks.  Most accept an `RNNCell`-subclassed object
+(see the documentation for `tf.nn.rnn_cell`).
+
+@@dynamic_rnn
+@@rnn
+@@state_saving_rnn
+@@bidirectional_dynamic_rnn
+@@bidirectional_rnn
+@@raw_rnn
+
+## Connectionist Temporal Classification (CTC)
+
+@@ctc_loss
+@@ctc_greedy_decoder
+@@ctc_beam_search_decoder
+
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
-Since they are nondifferentiable, they are typically used at evaluation time.
+Since they are non-differentiable, they are typically used at evaluation time.
 
 @@top_k
 @@in_top_k
@@ -227,8 +253,8 @@ Candidate Sampling training algorithms can speed up your step times by
 only considering a small randomly-chosen subset of contrastive classes
 (called candidates) for each batch of training examples.
 
-See our [Candidate Sampling Algorithms Reference]
-(../../extras/candidate_sampling.pdf)
+See our
+[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
 ### Sampled Loss Functions
 
@@ -256,16 +282,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad
@@ -283,11 +311,77 @@ from tensorflow.python.util.all_util import make_all
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.ctc_ops import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
 from tensorflow.python.ops.rnn import *
+
 # pylint: enable=wildcard-import
+
+
+def log_poisson_loss(log_input, targets, compute_full_loss=False, name=None):
+  """Computes log Poisson loss given `log_input`.
+
+  Gives the log-likelihood loss between the prediction and the target under the
+  assumption that the target has a Poisson distribution.
+  Caveat: By default, this is not the exact loss, but the loss minus a
+    constant term [log(z!)]. That has no effect for optimization, but
+    does not play well with relative loss comparisons. To compute an
+    approximation of the log factorial term, specify
+    compute_full_loss=True to enable Stirling's Approximation.
+
+  For brevity, let `c = log(x) = log_input`, `z = targets`.  The log Poisson
+  loss is
+
+        -log(exp(-x) * (x^z) / z!)
+      = -log(exp(-x) * (x^z)) + log(z!)
+      ~ -log(exp(-x)) - log(x^z) [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
+          [ Note the second term is the Stirling's Approximation for log(z!).
+            It is invariant to x and does not affect optimization, though
+            important for correct relative loss comparisons. It is only
+            computed when compute_full_loss == True. ]
+      = x - z * log(x) [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
+      = exp(c) - z * c [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
+
+  Args:
+    log_input: A `Tensor` of type `float32` or `float64`.
+    targets: A `Tensor` of the same type and shape as `log_input`.
+    compute_full_loss: whether to compute the full loss. If false, a constant
+      term is dropped in favor of more efficient optimization.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same shape as `log_input` with the componentwise
+    logistic losses.
+
+  Raises:
+    ValueError: If `log_input` and `targets` do not have the same shape.
+  """
+  with ops.name_scope(name, "log_poisson_loss", [log_input, targets]) as name:
+    log_input = ops.convert_to_tensor(log_input, name="log_input")
+    targets = ops.convert_to_tensor(targets, name="targets")
+    try:
+      targets.get_shape().merge_with(log_input.get_shape())
+    except ValueError:
+      raise ValueError(
+          "log_input and targets must have the same shape (%s vs %s)" %
+          (log_input.get_shape(), targets.get_shape()))
+
+    result = math_ops.exp(log_input) - log_input * targets
+    if compute_full_loss:
+      # need to create constant tensors here so that their dtypes can be matched
+      # to that of the targets.
+      point_five = constant_op.constant(0.5, dtype=targets.dtype)
+      two_pi = constant_op.constant(2 * math.pi, dtype=targets.dtype)
+
+      stirling_approx = (targets * math_ops.log(targets)) - targets + (
+          point_five * math_ops.log(two_pi * targets))
+      zeros = array_ops.zeros_like(targets, dtype=targets.dtype)
+      ones = array_ops.ones_like(targets, dtype=targets.dtype)
+      cond = math_ops.logical_and(targets >= zeros, targets <= ones)
+      result += math_ops.select(cond, zeros, stirling_approx)
+    return result
 
 
 def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
@@ -332,15 +426,14 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
   Raises:
     ValueError: If `logits` and `targets` do not have the same shape.
   """
-  with ops.op_scope([logits, targets], name, "logistic_loss") as name:
+  with ops.name_scope(name, "logistic_loss", [logits, targets]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
       targets.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError(
-          "logits and targets must have the same shape (%s vs %s)"
-          % (logits.get_shape(), targets.get_shape()))
+      raise ValueError("logits and targets must have the same shape (%s vs %s)"
+                       % (logits.get_shape(), targets.get_shape()))
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -359,8 +452,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
                         name=name)
 
 
-def weighted_cross_entropy_with_logits(logits, targets, pos_weight,
-                                       name=None):
+def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
   """Computes a weighted cross entropy.
 
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
@@ -401,20 +493,19 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight,
 
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
-    weightedlogistic losses.
+    weighted logistic losses.
 
   Raises:
     ValueError: If `logits` and `targets` do not have the same shape.
   """
-  with ops.op_scope([logits, targets], name, "logistic_loss") as name:
+  with ops.name_scope(name, "logistic_loss", [logits, targets]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
       targets.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError(
-          "logits and targets must have the same shape (%s vs %s)"
-          % (logits.get_shape(), targets.get_shape()))
+      raise ValueError("logits and targets must have the same shape (%s vs %s)"
+                       % (logits.get_shape(), targets.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -444,7 +535,7 @@ def relu_layer(x, weights, biases, name=None):
     A 2-D Tensor computing relu(matmul(x, weights) + biases).
     Dimensions typically: batch, out_units.
   """
-  with ops.op_scope([x, weights, biases], name, "relu_layer") as name:
+  with ops.name_scope(name, "relu_layer", [x, weights, biases]) as name:
     x = ops.convert_to_tensor(x, name="x")
     weights = ops.convert_to_tensor(weights, name="weights")
     biases = ops.convert_to_tensor(biases, name="biases")
@@ -464,7 +555,8 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
 
   Args:
     x: A `Tensor`.
-    dim: Dimension along which to normalize.
+    dim: Dimension along which to normalize.  A scalar or a vector of
+      integers.
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
@@ -472,9 +564,9 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
   Returns:
     A `Tensor` with the same shape as `x`.
   """
-  with ops.op_scope([x], name, "l2_normalize") as name:
+  with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    square_sum = math_ops.reduce_sum(math_ops.square(x), [dim], keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), dim, keep_dims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.mul(x, x_inv_norm, name=name)
 
@@ -486,8 +578,10 @@ def zero_fraction(value, name=None):
 
   This is useful in summaries to measure and report sparsity.  For example,
 
+  ```python
       z = tf.Relu(...)
       summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+  ```
 
   Args:
     value: A tensor of numeric type.
@@ -496,13 +590,14 @@ def zero_fraction(value, name=None):
   Returns:
     The fraction of zeros in `value`, with type `float32`.
   """
-  with ops.op_scope([value], name, "zero_fraction"):
+  with ops.name_scope(name, "zero_fraction", [value]):
     value = ops.convert_to_tensor(value, name="value")
     zero = constant_op.constant(0, dtype=value.dtype, name="zero")
-    return math_ops.reduce_mean(math_ops.cast(math_ops.equal(value, zero),
-                                              dtypes.float32))
+    return math_ops.reduce_mean(
+        math_ops.cast(math_ops.equal(value, zero), dtypes.float32))
 
 
+# pylint: disable=redefined-builtin
 def depthwise_conv2d(input, filter, strides, padding, name=None):
   """Depthwise 2-D convolution.
 
@@ -529,40 +624,25 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment
+        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
     A 4-D `Tensor` of shape
     `[batch, out_height, out_width, in_channels * channel_multiplier].`
   """
-  with ops.op_scope([input, filter], name, "depthwise") as name:
+  with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
-    # A shape is required to statically compute the number of separable filters.
-    if filter.get_shape().ndims is not None:
-      assert len(filter.get_shape()) == 4
-      in_channels = filter.get_shape()[2]
-      # Sanity checks, if shape information is available for the inputs.
-      if input.get_shape().ndims is not None:
-        assert len(input.get_shape()) == 4
-        assert input.get_shape()[3] == in_channels, (
-            "Mismatched input depth %d and number of depthwise filters %d." % (
-                input.get_shape()[3].value, in_channels))
-    else:
-      assert input.get_shape().ndims is not None, (
-          "Either tensor must provide static shape information.")
-      assert input.get_shape().ndims == 4
-      in_channels = input.get_shape()[3]
 
-    if in_channels == 1:
-      return nn_ops.conv2d(input, filter, strides, padding, name=name)
-    else:
-      return nn_ops.depthwise_conv2d_native(input, filter, strides, padding,
-                                            name=name)
+    return nn_ops.depthwise_conv2d_native(
+        input, filter, strides, padding, name=name)
+# pylint: enable=redefined-builtin
 
 
+# pylint: disable=redefined-builtin,line-too-long
 def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                      padding,
                      name=None):
@@ -596,7 +676,8 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the [comment
+        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
@@ -606,36 +687,40 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     ValueError: If channel_multiplier * in_channels > out_channels,
       which means that the separable convolution is overparameterized.
   """
-  with ops.op_scope([input, depthwise_filter, pointwise_filter],
-                   name, "separable_conv2d") as name:
+  with ops.name_scope(name, "separable_conv2d",
+                      [input, depthwise_filter, pointwise_filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
-    depthwise_filter = ops.convert_to_tensor(depthwise_filter,
-                                             name="depthwise_filter")
-    pointwise_filter = ops.convert_to_tensor(pointwise_filter,
-                                             name="pointwise_filter")
+    depthwise_filter = ops.convert_to_tensor(
+        depthwise_filter, name="depthwise_filter")
+    pointwise_filter = ops.convert_to_tensor(
+        pointwise_filter, name="pointwise_filter")
 
-    if pointwise_filter.get_shape().ndims is not None:
-      assert len(pointwise_filter.get_shape()) == 4
-      assert pointwise_filter.get_shape()[0] == 1
-      assert pointwise_filter.get_shape()[1] == 1
-      if depthwise_filter.get_shape().ndims and input.get_shape().ndims:
-        channel_multiplier = depthwise_filter.get_shape()[3]
-        in_channels = input.get_shape()[3]
-        out_channels = pointwise_filter.get_shape()[3]
-        if channel_multiplier * in_channels > out_channels:
-          raise ValueError(
-              ("Refusing to perform an overparameterized separable "
-               "convolution: channel_multiplier * in_channels = "
-               "%d * %d = %d > %d = out_channels" %
-               (channel_multiplier, in_channels,
-                channel_multiplier * in_channels, out_channels)))
+    pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
+    pointwise_filter_shape[0].assert_is_compatible_with(1)
+    pointwise_filter_shape[1].assert_is_compatible_with(1)
+
+    channel_multiplier = depthwise_filter.get_shape().with_rank(4)[3]
+    in_channels = input.get_shape().with_rank(4)[3]
+    out_channels = pointwise_filter_shape[3]
+
+    # If any of channel numbers is unknown, then the comparison below returns
+    # None. See TensorShape.__gt__().
+    if channel_multiplier * in_channels > out_channels:
+      raise ValueError(
+          "Refusing to perform an overparameterized separable "
+          "convolution: channel_multiplier * in_channels = "
+          "%d * %d = %d > %d = out_channels" %
+          (channel_multiplier, in_channels,
+           channel_multiplier * in_channels, out_channels))
+
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
-    depthwise = nn_ops.depthwise_conv2d_native(input, depthwise_filter, strides,
-                                               padding, name="depthwise")
-    return nn_ops.conv2d(depthwise, pointwise_filter, [1, 1, 1, 1],
-                         padding="VALID", name=name)
+    depthwise = nn_ops.depthwise_conv2d_native(
+        input, depthwise_filter, strides, padding, name="depthwise")
+    return nn_ops.conv2d(
+        depthwise, pointwise_filter, [1, 1, 1, 1], padding="VALID", name=name)
+# pylint: enable=redefined-builtin,line-too-long
 
 
 def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
@@ -656,34 +741,25 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
 
   Returns:
     Four `Tensor` objects of the same type as `x`:
+
     * the count (number of elements to average over).
     * the (possibly shifted) sum of the elements in the array.
     * the (possibly shifted) sum of squares of the elements in the array.
     * the shift by which the mean must be corrected or None if `shift` is None.
   """
-  with ops.op_scope([x, axes, shift], name, "sufficient_statistics"):
+  axes = list(set(axes))
+  with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
     if x_shape.is_fully_defined():
       counts = 1
-      m_shape = []
-      for d in xrange(x_shape.ndims):
-        dim = x_shape[d].value
-        if d in set(axes):
-          counts *= dim
-          dim = 1
-        m_shape.append(dim)
+      for d in axes:
+        counts *= x_shape[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
-      x_shape = array_ops.shape(x)
-      select_axes = sparse_ops.sparse_to_dense(axes, array_ops.shape(x_shape),
-                                               True, False)
-      m_shape = math_ops.select(select_axes, array_ops.ones_like(x_shape),
-                                x_shape)
+      x_dims = array_ops.gather(array_ops.shape(x), axes)
       counts = math_ops.cast(
-          math_ops.reduce_prod(x_shape / m_shape),
-          x.dtype,
-          name="count")
+          math_ops.reduce_prod(x_dims), x.dtype, name="count")
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
       m_ss = math_ops.sub(x, shift)
@@ -712,7 +788,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([counts, mean_ss, variance_ss, shift], name, "normalize"):
+  with ops.name_scope(name, "normalize", [counts, mean_ss, variance_ss, shift]):
     divisor = math_ops.inv(counts, name="divisor")
     if shift is not None:
       shifted_mean = math_ops.mul(mean_ss, divisor, name="shifted_mean")
@@ -720,10 +796,9 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
     else:  # no shift.
       shifted_mean = math_ops.mul(mean_ss, divisor, name="mean")
       mean = shifted_mean
-    variance = math_ops.sub(
-        math_ops.mul(variance_ss, divisor),
-        math_ops.square(shifted_mean),
-        name="variance")
+    variance = math_ops.sub(math_ops.mul(variance_ss, divisor),
+                            math_ops.square(shifted_mean),
+                            name="variance")
   return (mean, variance)
 
 
@@ -736,30 +811,116 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
-    * for so-called "global normalization", used with convolutional filters with
-      shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
-    * for simple batch normalization pass `axes=[0]` (batch only).
+
+   * for so-called "global normalization", used with convolutional filters with
+     shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+   * for simple batch normalization pass `axes=[0]` (batch only).
 
   Args:
     x: A `Tensor`.
-    axes: array of ints.  Axes along which to compute mean and
+    axes: Array of ints.  Axes along which to compute mean and
       variance.
     shift: A `Tensor` containing the value by which to shift the data for
       numerical stability, or `None` if no shift is to be performed. A shift
       close to the true mean provides the most numerically stable results.
-    keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
+    keep_dims: produce moments with the same dimensionality as the input.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([x, axes, shift], name, "moments"):
-    counts, m_ss, v_ss, shift = sufficient_statistics(x,
-                                                      axes,
-                                                      shift=shift,
-                                                      keep_dims=keep_dims,
-                                                      name=name)
-    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+  with ops.name_scope(name, "moments", [x, axes, shift]):
+    # The dynamic range of fp16 is too limited to support the collection of
+    # sufficient statistics. As a workaround we simply perform the operations
+    # on 32-bit floats before converting the mean and variance back to fp16
+    y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+    shift = math_ops.cast(shift, dtypes.float32) if (
+        shift is not None and x.dtype == dtypes.float16) else shift
+    counts, m_ss, v_ss, shift = sufficient_statistics(
+        y, axes, shift=shift, keep_dims=keep_dims, name=name)
+    with ops.control_dependencies([counts, m_ss, v_ss]):
+      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
+      if x.dtype == dtypes.float16:
+        return (math_ops.cast(mean, dtypes.float16),
+                math_ops.cast(variance, dtypes.float16))
+      else:
+        return (mean, variance)
+
+
+def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
+  """Returns the frequency-weighted mean and variance of `x`.
+
+  Args:
+    x: A tensor.
+    axes: 1-d tensor of int32 values; these are the axes along which
+      to compute mean and variance.
+    frequency_weights: A tensor of positive weights which can be
+      broadcast with x.
+    name: Name used to scope the operation.
+    keep_dims: Produce moments with the same dimensionality as the input.
+
+  Returns:
+    Two tensors: `weighted_mean` and `weighted_variance`.
+  """
+  with ops.name_scope(name, "weighted_moments", [x, frequency_weights, axes]):
+    x = ops.convert_to_tensor(x, name="x")
+    frequency_weights = ops.convert_to_tensor(
+        frequency_weights, name="frequency_weights")
+
+    # Unlike moments(), this just uses a simpler two-pass method.
+
+    # See comment in moments() WRT precision; it applies here too.
+    needs_cast = x.dtype == dtypes.float16
+    if needs_cast:
+      x = math_ops.cast(x, dtypes.float32)
+
+    if frequency_weights.dtype != x.dtype:
+      frequency_weights = math_ops.cast(frequency_weights, x.dtype)
+
+    # Note that we use keep_dims=True for our reductions regardless of the arg;
+    # this is so that the results remain broadcast-compatible with the inputs.
+    weighted_input_sum = math_ops.reduce_sum(frequency_weights * x,
+                                             axes,
+                                             name="weighted_input_sum",
+                                             keep_dims=True)
+
+    # The shape of the weights isn't necessarily the same as x's
+    # shape, just broadcast-compatible with it -- so this expression
+    # performs broadcasting to give a per-item weight, with the same
+    # shape as (freqency_weights * x). This avoids having to reason
+    # through all the broadcast logic to compute a correct
+    # sum_of_weights.
+    broadcasted_weights = frequency_weights + array_ops.zeros_like(x)
+
+    sum_of_weights = math_ops.reduce_sum(
+        broadcasted_weights,
+        axes,
+        name="sum_of_weights",
+        keep_dims=True)
+
+    divisor = math_ops.inv(sum_of_weights, name="inv_weight_sum")
+
+    weighted_mean = math_ops.mul(weighted_input_sum, divisor)
+
+    # Have the weighted mean; now on to variance:
+    weighted_distsq = math_ops.reduce_sum(
+        frequency_weights * math_ops.squared_difference(x, weighted_mean),
+        axes,
+        name="weighted_distsq",
+        keep_dims=True)
+
+    weighted_variance = math_ops.mul(weighted_distsq, divisor)
+
+    if not keep_dims:
+      weighted_mean = array_ops.squeeze(weighted_mean, squeeze_dims=axes)
+      weighted_variance = array_ops.squeeze(weighted_variance,
+                                            squeeze_dims=axes)
+
+    if needs_cast:
+      weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)
+      weighted_variance = math_ops.cast(weighted_variance, dtypes.float16)
+
+    return weighted_mean, weighted_variance
 
 
 def batch_normalization(x,
@@ -769,16 +930,17 @@ def batch_normalization(x,
                         scale,
                         variance_epsilon,
                         name=None):
-  """Batch normalization.
+  r"""Batch normalization.
 
   As described in http://arxiv.org/abs/1502.03167.
   Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
-  `scale` \\\\(\gamma\\\\) to it, as well as an `offset` \\\\(\\beta\\\\):
+  `scale` \\(\gamma\\) to it, as well as an `offset` \\(\beta\\):
 
-  \\\\(\\frac{\gamma(x-\mu)}{\sigma}+\\beta\\\\)
+  \\(\frac{\gamma(x-\mu)}{\sigma}+\beta\\)
 
   `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
   shapes:
+
     * In all generality, they can have the same number of dimensions as the
       input `x`, with identical sizes as `x` for the dimensions that are not
       normalized over (the 'depth' dimension(s)), and dimension 1 for the
@@ -800,9 +962,9 @@ def batch_normalization(x,
     x: Input `Tensor` of arbitrary dimensionality.
     mean: A mean `Tensor`.
     variance: A variance `Tensor`.
-    offset: An offset `Tensor`, often denoted \\\\(\\beta\\\\) in equations, or
+    offset: An offset `Tensor`, often denoted \\(\beta\\) in equations, or
       None. If present, will be added to the normalized tensor.
-    scale: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
+    scale: A scale `Tensor`, often denoted \\(\gamma\\) in equations, or
       `None`. If present, the scale is applied to the normalized tensor.
     variance_epsilon: A small float number to avoid dividing by 0.
     name: A name for this operation (optional).
@@ -810,12 +972,68 @@ def batch_normalization(x,
   Returns:
     the normalized, scaled, offset tensor.
   """
-  with ops.op_scope([x, mean, variance, scale, offset], name, "batchnorm"):
+  with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (
-        offset - mean * inv if offset is not None else -mean * inv)
+    return x * inv + (offset - mean * inv
+                      if offset is not None else -mean * inv)
+
+
+def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
+                     mean=None,
+                     variance=None,
+                     epsilon=0.001,
+                     data_format="NHWC",
+                     is_training=True,
+                     name=None):
+  r"""Batch normalization.
+
+  As described in http://arxiv.org/abs/1502.03167.
+
+  Args:
+    x: Input `Tensor` of 4 dimensions.
+    scale: A `Tensor` of 1 dimension for scaling.
+    offset: A `Tensor` of 1 dimension for bias.
+    mean: A `Tensor` of 1 dimension for population mean used for inference.
+    variance: A `Tensor` of 1 dimension for population variance
+              used for inference.
+    epsilon: A small float number added to the variance of x.
+    data_format: The data format for x. Either "NHWC" (default) or "NCHW".
+    is_training: A bool value to specify if the operation is used for
+                 training or inference.
+    name: A name for this operation (optional).
+
+  Returns:
+    y: A 4D Tensor for the normalized, scaled, offsetted x.
+    batch_mean: A 1D Tensor for the mean of x.
+    batch_var: A 1D Tensor for the variance of x.
+
+  Raises:
+    ValueError: If mean or variance is not None when is_training is True.
+  """
+  x = ops.convert_to_tensor(x, name="input")
+  scale = ops.convert_to_tensor(scale, name="scale")
+  offset = ops.convert_to_tensor(offset, name="offset")
+  if is_training:
+    if (mean is not None) or (variance is not None):
+      raise ValueError("Both 'mean' and 'variance' must be None "
+                       "if is_training is True.")
+  if mean is None:
+    mean = constant_op.constant([])
+  if variance is None:
+    variance = constant_op.constant([])
+  y, batch_mean, batch_var, _, _ = gen_nn_ops.fused_batch_norm(
+      x,
+      scale,
+      offset,
+      mean,
+      variance,
+      epsilon=epsilon,
+      data_format=data_format,
+      is_training=is_training,
+      name=name)
+  return y, batch_mean, batch_var
 
 
 def batch_norm_with_global_normalization(t,
@@ -848,7 +1066,7 @@ def batch_norm_with_global_normalization(t,
       needs to be multiplied with gamma.
     name: A name for this operation (optional).
 
-   Returns:
+  Returns:
      A batch-normalized `t`.
   """
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
@@ -868,8 +1086,13 @@ def _sum_rows(x):
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
 
-def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
-                            num_classes, num_true=1,
+def _compute_sampled_logits(weights,
+                            biases,
+                            inputs,
+                            labels,
+                            num_sampled,
+                            num_classes,
+                            num_true=1,
                             sampled_values=None,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
@@ -921,8 +1144,8 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
   if not isinstance(weights, list):
     weights = [weights]
 
-  with ops.op_scope(
-      weights + [biases, inputs, labels], name, "compute_sampled_logits"):
+  with ops.name_scope(name, "compute_sampled_logits",
+                      weights + [biases, inputs, labels]):
     if labels.dtype != dtypes.int64:
       labels = math_ops.cast(labels, dtypes.int64)
     labels_flat = array_ops.reshape(labels, [-1])
@@ -984,9 +1207,8 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     # sampled_w has shape [num_sampled, dim]
     # sampled_b has shape [num_sampled]
     # Apply X*W'+B, which yields [batch_size, num_sampled]
-    sampled_logits = math_ops.matmul(inputs,
-                                     sampled_w,
-                                     transpose_b=True) + sampled_b
+    sampled_logits = math_ops.matmul(
+        inputs, sampled_w, transpose_b=True) + sampled_b
 
     if remove_accidental_hits:
       acc_hits = candidate_sampling_ops.compute_accidental_hits(
@@ -995,10 +1217,10 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
 
       # This is how SparseToDense expects the indices.
       acc_indices_2d = array_ops.reshape(acc_indices, [-1, 1])
-      acc_ids_2d_int32 = array_ops.reshape(math_ops.cast(
-          acc_ids, dtypes.int32), [-1, 1])
-      sparse_indices = array_ops.concat(
-          1, [acc_indices_2d, acc_ids_2d_int32], "sparse_indices")
+      acc_ids_2d_int32 = array_ops.reshape(
+          math_ops.cast(acc_ids, dtypes.int32), [-1, 1])
+      sparse_indices = array_ops.concat(1, [acc_indices_2d, acc_ids_2d_int32],
+                                        "sparse_indices")
       # Create sampled_logits_shape = [batch_size, num_sampled]
       sampled_logits_shape = array_ops.concat(
           0,
@@ -1006,8 +1228,11 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
       if sampled_logits.dtype != acc_weights.dtype:
         acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
       sampled_logits += sparse_ops.sparse_to_dense(
-          sparse_indices, sampled_logits_shape, acc_weights,
-          default_value=0.0, validate_indices=False)
+          sparse_indices,
+          sampled_logits_shape,
+          acc_weights,
+          default_value=0.0,
+          validate_indices=False)
 
     if subtract_log_q:
       # Subtract log of Q(l), prior probability that l appears in sampled.
@@ -1019,14 +1244,19 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     # true_logits is a float tensor, ones_like(true_logits) is a float tensor
     # of ones. We then divide by num_true to ensure the per-example labels sum
     # to 1.0, i.e. form a proper probability distribution.
-    out_labels = array_ops.concat(
-        1, [array_ops.ones_like(true_logits) / num_true,
-            array_ops.zeros_like(sampled_logits)])
+    out_labels = array_ops.concat(1,
+                                  [array_ops.ones_like(true_logits) / num_true,
+                                   array_ops.zeros_like(sampled_logits)])
 
   return out_logits, out_labels
 
 
-def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
+def nce_loss(weights,
+             biases,
+             inputs,
+             labels,
+             num_sampled,
+             num_classes,
              num_true=1,
              sampled_values=None,
              remove_accidental_hits=False,
@@ -1035,10 +1265,13 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
   """Computes and returns the noise-contrastive estimation training loss.
 
   See [Noise-contrastive estimation: A new estimation principle for
-  unnormalized statistical models]
-  (http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-  Also see our [Candidate Sampling Algorithms Reference]
-  (../../extras/candidate_sampling.pdf)
+  unnormalized statistical models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  Also see our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
+
+  Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
+  so your labels must be sorted in order of decreasing frequency to achieve
+  good results.  For more details, see
+  [log_uniform_candidate_sampler](#log_uniform_candidate_sampler).
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -1081,23 +1314,32 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
     A `batch_size` 1-D tensor of per-example NCE losses.
   """
   logits, labels = _compute_sampled_logits(
-      weights, biases, inputs, labels, num_sampled, num_classes,
+      weights,
+      biases,
+      inputs,
+      labels,
+      num_sampled,
+      num_classes,
       num_true=num_true,
       sampled_values=sampled_values,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
       name=name)
-  sampled_losses = sigmoid_cross_entropy_with_logits(logits,
-                                                     labels,
-                                                     name="sampled_losses")
+  sampled_losses = sigmoid_cross_entropy_with_logits(
+      logits, labels, name="sampled_losses")
   # sampled_losses is batch_size x {true_loss, sampled_losses...}
   # We sum out true and sampled losses.
   return _sum_rows(sampled_losses)
 
 
-def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
-                         num_classes, num_true=1,
+def sampled_softmax_loss(weights,
+                         biases,
+                         inputs,
+                         labels,
+                         num_sampled,
+                         num_classes,
+                         num_true=1,
                          sampled_values=None,
                          remove_accidental_hits=True,
                          partition_strategy="mod",
@@ -1148,7 +1390,12 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
 
   """
   logits, labels = _compute_sampled_logits(
-      weights, biases, inputs, labels, num_sampled, num_classes,
+      weights,
+      biases,
+      inputs,
+      labels,
+      num_sampled,
+      num_classes,
       num_true=num_true,
       sampled_values=sampled_values,
       subtract_log_q=True,
@@ -1158,7 +1405,6 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
-
 
 # TODO(cwhipkey): sigmoid and tanh should not be exposed from tf.nn.
 __all__ = make_all(__name__)
@@ -1175,14 +1421,10 @@ __all__.extend([
     "all_candidate_sampler",
     "batch_norm_with_global_normalization",
     "batch_normalization",
-    "bidirectional_rnn",
     "conv2d_backprop_filter",
     "conv2d_backprop_input",
     "depthwise_conv2d_native",
-    "dynamic_rnn",
     "lrn",
     "relu_layer",
-    "rnn",
-    "state_saving_rnn",
     "xw_plus_b",
 ])

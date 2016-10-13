@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <math.h>
+#undef _USE_MATH_DEFINES
+
 #include <string.h>
 #include <algorithm>
 
@@ -480,7 +484,7 @@ void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
   }
   const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
   const float u2 = sqrt(-2.0f * log(u1));
-#if defined(__linux)
+#if defined(__linux__)
   sincosf(v1, f0, f1);
 #else
   *f0 = sinf(v1);
@@ -506,7 +510,7 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
   }
   const double v1 = 2 * M_PI * Uint64ToDouble(x2, x3);
   const double u2 = sqrt(-2.0 * log(u1));
-#if defined(__linux)
+#if defined(__linux__)
   sincos(v1, d0, d1);
 #else
   *d0 = sin(v1);

@@ -42,7 +42,8 @@ namespace tensorflow {
 // tensor of handles to Queues in the corresponding device.
 class PaddingFIFOQueueOp : public QueueOp {
  public:
-  explicit PaddingFIFOQueueOp(OpKernelConstruction* context) : QueueOp(context) {
+  explicit PaddingFIFOQueueOp(OpKernelConstruction* context)
+      : QueueOp(context) {
     OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
     for (const auto& shape : component_shapes_) {
       OP_REQUIRES(context, shape.dims() >= 0,
@@ -56,8 +57,13 @@ class PaddingFIFOQueueOp : public QueueOp {
     return [this](QueueInterface** ret) {
       PaddingFIFOQueue* queue = new PaddingFIFOQueue(
           capacity_, component_types_, component_shapes_, cinfo_.name());
-      *ret = queue;
-      return queue->Initialize();
+      Status s = queue->Initialize();
+      if (s.ok()) {
+        *ret = queue;
+      } else {
+        queue->Unref();
+      }
+      return s;
     };
   }
 

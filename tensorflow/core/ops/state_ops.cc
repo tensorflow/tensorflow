@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("Variable")
     .Output("ref: Ref(dtype)")
@@ -24,6 +28,7 @@ REGISTER_OP("Variable")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Holds state in the form of a tensor that persists across steps.
 
@@ -41,10 +46,11 @@ shared_name: If non-empty, this variable is named in the given bucket
 )doc");
 
 REGISTER_OP("IsVariableInitialized")
-    .Output("is_initialized: bool")
     .Input("ref: Ref(dtype)")
+    .Output("is_initialized: bool")
     .Attr("dtype: type")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Checks whether a tensor has been initialized.
 
@@ -60,6 +66,14 @@ REGISTER_OP("TemporaryVariable")
     .Attr("dtype: type")
     .Attr("var_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      TensorShapeProto shape_proto;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns a tensor that may be mutated, but only persists within a single step.
 
@@ -90,6 +104,7 @@ REGISTER_OP("DestroyTemporaryVariable")
     .Output("value: T")
     .Attr("T: type")
     .Attr("var_name: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Destroys the temporary variable and returns its final value.
 
@@ -114,6 +129,16 @@ REGISTER_OP("Assign")
     .Attr("validate_shape: bool = true")
     .Attr("use_locking: bool = true")
     .SetAllowsUninitializedInput()
+    .SetShapeFn([](InferenceContext* c) {
+      bool validate_shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("validate_shape", &validate_shape));
+      if (validate_shape) {
+        return shape_inference::MergeBothInputsShapeFn(c);
+      }
+
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Update 'ref' by assigning 'value' to it.
 
@@ -137,6 +162,7 @@ REGISTER_OP("AssignAdd")
     .Output("output_ref: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Update 'ref' by adding 'value' to it.
 
@@ -157,6 +183,7 @@ REGISTER_OP("AssignSub")
     .Output("output_ref: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Update 'ref' by subtracting 'value' from it.
 
@@ -171,6 +198,25 @@ output_ref:= Same as "ref".  Returned as a convenience for operations that want
   to use the new value after the variable has been updated.
 )doc");
 
+namespace {
+
+Status ScatterUpdateShape(InferenceContext* c) {
+  ShapeHandle var_shape = c->input(0);
+  ShapeHandle indices_shape = c->input(1);
+
+  ShapeHandle unused_updates_shape;
+  ShapeHandle concat;
+  ShapeHandle var_subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
+  TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
+  TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
+
+  c->set_output(0, var_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ScatterUpdate")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
@@ -179,6 +225,7 @@ REGISTER_OP("ScatterUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .SetShapeFn(ScatterUpdateShape)
     .Doc(R"doc(
 Applies sparse updates to a variable reference.
 
@@ -223,6 +270,7 @@ REGISTER_OP("ScatterAdd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape)
     .Doc(R"doc(
 Adds sparse updates to a variable reference.
 
@@ -266,6 +314,7 @@ REGISTER_OP("ScatterSub")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape)
     .Doc(R"doc(
 Subtracts sparse updates to a variable reference.
 
@@ -299,16 +348,99 @@ use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+REGISTER_OP("ScatterMul")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape)
+    .Doc(R"doc(
+Multiplies sparse updates into a variable reference.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] *= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] *= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions multiply.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+ref: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of updated values to multiply to `ref`.
+output_ref:= Same as `ref`.  Returned as a convenience for operations that want
+  to use the updated values after the update is done.
+use_locking: If True, the operation will be protected by a lock;
+  otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
+REGISTER_OP("ScatterDiv")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape)
+    .Doc(R"doc(
+Divides a variable reference by sparse updates.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] /= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] /= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions divide.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+ref: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of values that `ref` is divided by.
+output_ref:= Same as `ref`.  Returned as a convenience for operations that want
+  to use the updated values after the update is done.
+use_locking: If True, the operation will be protected by a lock;
+  otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
 REGISTER_OP("CountUpTo")
     .Input("ref: Ref(T)")
     .Output("output: T")
     .Attr("limit: int")
     .Attr("T: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Increments 'ref' until it reaches 'limit'.
-
-This operation outputs "ref" after the update is done.  This makes it
-easier to chain operations that need to use the updated value.
 
 ref: Should be from a scalar `Variable` node.
 limit: If incrementing ref would bring it above limit, instead generates an

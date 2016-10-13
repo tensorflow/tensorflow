@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -73,13 +74,10 @@ class QuantizeAndDequantizeOp : public OpKernel {
 
     auto input_min = input_min_tensor.scalar<T>();
     auto input_max = input_max_tensor.scalar<T>();
-
-    input_min() = input_min_;
-    input_max() = input_max_;
-
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> functor;
     functor(ctx->template eigen_device<Device>(), input.template flat<T>(),
             signed_input_, num_bits_, range_given_, input_min, input_max,
+            static_cast<T>(input_min_), static_cast<T>(input_max_),
             output->template flat<T>());
   }
 
@@ -98,32 +96,29 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::ConstVec input,
                   const bool signed_input, const int num_bits,
                   const bool range_given, typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max,
-                  typename TTypes<T>::Vec out) {
+                  typename TTypes<T>::Scalar input_max, const T input_min_init,
+                  const T input_max_init, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<CPUDevice, T>::Compute(
         d, input, signed_input, num_bits, range_given, input_min, input_max,
-        out);
+        input_min_init, input_max_init, out);
   }
 };
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        QuantizeAndDequantizeOp<CPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        QuantizeAndDequantizeOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QuantizeAndDequantize").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      QuantizeAndDequantizeOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        QuantizeAndDequantizeOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("QuantizeAndDequantize").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    QuantizeAndDequantizeOp<GPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
+REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantize")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<double>("T"),
                         QuantizeAndDequantizeOp<GPUDevice, double>);

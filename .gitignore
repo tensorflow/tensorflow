@@ -9,13 +9,8 @@ node_modules
 /bazel-testlogs
 /bazel-tf
 /tensorflow/contrib/cmake/build
-/third_party/gpus/cuda/bin
-/third_party/gpus/cuda/cuda.config
-/third_party/gpus/cuda/extras
-/third_party/gpus/cuda/include
-/third_party/gpus/cuda/lib
-/third_party/gpus/cuda/lib64
-/third_party/gpus/cuda/nvvm
+/tensorflow/core/util/version_info.cc
+/tensorflow/tools/git/gen
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
 /tools/python_bin_path.sh
@@ -25,3 +20,4 @@ node_modules
 /_python_build
 *.pyc
 __pycache__
+*.swp

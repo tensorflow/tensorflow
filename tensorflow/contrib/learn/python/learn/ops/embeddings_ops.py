@@ -50,7 +50,7 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
   Raises:
     ValueError: if some parameters are invalid.
   """
-  with ops.op_scope([params, ids], name, "embedding_lookup"):
+  with ops.name_scope(name, "embedding_lookup", [params, ids]):
     params = ops.convert_to_tensor(params)
     ids = ops.convert_to_tensor(ids)
     shape = array_ops_.shape(ids)

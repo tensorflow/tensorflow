@@ -17,6 +17,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,15 +30,17 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+namespace {
 
 class QuantizeAndDequantizeTest : public OpsTestBase {};
 
 // Convert a simple scalar tensor.
 TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
@@ -56,7 +60,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
 // Convert a 1D tensor with signed 8 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
@@ -80,7 +84,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
 // Convert a 1D tensor with signed 4 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 4)
@@ -103,7 +107,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
 // Convert a 2D tensor with signed 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
@@ -130,7 +134,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
 // Convert a 4D tensor with unsigned 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", false)
           .Attr("num_bits", 8)
@@ -153,7 +157,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
 // Convert a tensor with all 0.
 TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", false)
           .Attr("num_bits", 8)
@@ -173,7 +177,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
 // Range is invalid
 TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("num_bits", 8)
           .Attr("range_given", true)
@@ -186,4 +190,20 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
 
       << s;
 }
+
+#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                     \
+  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) { \
+    auto root = Scope::NewRootScope().ExitOnError();      \
+    ops::QuantizeAndDequantize(root, {-3.5} /* input */); \
+    TF_CHECK_OK(root.status());                           \
+    Graph* g = new Graph(OpRegistry::Global());           \
+    root.ToGraph(g);                                      \
+    test::Benchmark(#DEVICE, g).Run(iters);               \
+  }                                                       \
+  BENCHMARK(BM_SIMPLE_QUAN_DEQUAN_##DEVICE);
+
+BM_SIMPLE_QUAN_DEQUAN(cpu);
+BM_SIMPLE_QUAN_DEQUAN(gpu);
+
+}  // namespace
 }  // namespace tensorflow

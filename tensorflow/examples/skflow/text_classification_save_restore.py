@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -46,47 +46,47 @@ print('Total words: %d' % n_words)
 EMBEDDING_SIZE = 50
 
 def average_model(X, y):
-    word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
-        embedding_size=EMBEDDING_SIZE, name='words')
-    features = tf.reduce_max(word_vectors, reduction_indices=1)
-    return learn.models.logistic_regression(features, y)
+  word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
+      embedding_size=EMBEDDING_SIZE, name='words')
+  features = tf.reduce_max(word_vectors, reduction_indices=1)
+  return learn.models.logistic_regression(features, y)
 
 def rnn_model(X, y):
-    """Recurrent neural network model to predict from sequence of words
+  """Recurrent neural network model to predict from sequence of words
     to a class."""
-    # Convert indexes of words into embeddings.
-    # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
-    # maps word indexes of the sequence into [batch_size, sequence_length,
-    # EMBEDDING_SIZE].
-    word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
-        embedding_size=EMBEDDING_SIZE, name='words')
-    # Split into list of embedding per word, while removing doc length dim.
-    # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-    word_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
-    # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
-    cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
-    # Create an unrolled Recurrent Neural Networks to length of
-    # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
-    _, encoding = tf.nn.rnn(cell, word_list, dtype=tf.float32)
-    # Given encoding of RNN, take encoding of last step (e.g hidden size of the
-    # neural network of last step) and pass it as features for logistic
-    # regression over output classes.
-    return learn.models.logistic_regression(encoding, y)
+  # Convert indexes of words into embeddings.
+  # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
+  # maps word indexes of the sequence into [batch_size, sequence_length,
+  # EMBEDDING_SIZE].
+  word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
+      embedding_size=EMBEDDING_SIZE, name='words')
+  # Split into list of embedding per word, while removing doc length dim.
+  # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
+  word_list = tf.unpack(word_vectors, axis=1)
+  # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
+  cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
+  # Create an unrolled Recurrent Neural Networks to length of
+  # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
+  _, encoding = tf.nn.rnn(cell, word_list, dtype=tf.float32)
+  # Given encoding of RNN, take encoding of last step (e.g hidden size of the
+  # neural network of last step) and pass it as features for logistic
+  # regression over output classes.
+  return learn.models.logistic_regression(encoding, y)
 
 model_path = '/tmp/skflow_examples/text_classification'
 if os.path.exists(model_path):
-    classifier = learn.TensorFlowEstimator.restore(model_path)
+  classifier = learn.TensorFlowEstimator.restore(model_path)
 else:
-    classifier = learn.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
-        steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
+  classifier = learn.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
+      steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-    # Continuously train for 1000 steps
-    while True:
-        try:
-            classifier.fit(X_train, y_train)
-        except KeyboardInterrupt:
-            classifier.save(model_path)
-            break
+  # Continuously train for 1000 steps
+  while True:
+    try:
+      classifier.fit(X_train, y_train)
+    except KeyboardInterrupt:
+      classifier.save(model_path)
+      break
 # Predict on test set
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))

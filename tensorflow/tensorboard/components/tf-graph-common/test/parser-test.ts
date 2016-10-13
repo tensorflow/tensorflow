@@ -16,8 +16,8 @@ limitations under the License.
 suite('parser', () => {
   let assert = chai.assert;
 
-  test('simple pbtxt', (done) => {
-    let pbtxt = `node {
+  test('simple pbtxt', done => {
+    let pbtxt = tf.graph.test.util.stringToArrayBuffer(`node {
        name: "Q"
        op: "Input"
      }
@@ -30,8 +30,8 @@ suite('parser', () => {
        op: "MatMul"
        input: "Q"
        input: "W"
-     }`;
-    tf.graph.parser.parseGraphPbTxt(new Blob([pbtxt])).then(nodes => {
+     }`);
+    tf.graph.parser.parseGraphPbTxt(pbtxt).then(nodes => {
       assert.isTrue(nodes != null && nodes.length === 3);
 
       assert.equal('Q', nodes[0].name);
@@ -45,6 +45,33 @@ suite('parser', () => {
       assert.equal('Q', nodes[2].input[0]);
       assert.equal('W', nodes[2].input[1]);
 
+      done();
+    });
+  });
+
+  test('stats pbtxt parsing', done => {
+    let statsPbtxt = tf.graph.test.util.stringToArrayBuffer(`step_stats {
+      dev_stats {
+        device: "cpu"
+        node_stats {
+          node_name: "Q"
+          all_start_micros: 10
+          all_end_rel_micros: 4
+        }
+        node_stats {
+          node_name: "Q"
+          all_start_micros: 12
+          all_end_rel_micros: 4
+        }
+      }
+    }`);
+    tf.graph.parser.parseStatsPbTxt(statsPbtxt).then(stepStats => {
+      assert.equal(stepStats.dev_stats.length, 1);
+      assert.equal(stepStats.dev_stats[0].device, 'cpu');
+      assert.equal(stepStats.dev_stats[0].node_stats.length, 2);
+      assert.equal(stepStats.dev_stats[0].node_stats[0].all_start_micros, 10);
+      assert.equal(stepStats.dev_stats[0].node_stats[1].node_name, 'Q');
+      assert.equal(stepStats.dev_stats[0].node_stats[1].all_end_rel_micros, 4);
       done();
     });
   });

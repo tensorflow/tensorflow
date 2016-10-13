@@ -128,7 +128,7 @@ given variable.
 
 
 *  <b>`loss`</b>: A Tensor containing the value to minimize.
-*  <b>`var_list`</b>: Optional list of tf.Variable to update to minimize
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
     `loss`.  Defaults to the list of variables collected in the graph
     under the key `GraphKey.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
@@ -184,9 +184,9 @@ applies gradients.
 
 ### Gating Gradients
 
-Both `minimize()` and `compute_gradients()` accept a `gate_gradient` argument
-that controls the degree of parallelism during the application of the
-gradients.
+Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
+argument that controls the degree of parallelism during the application of
+the gradients.
 
 The possible values are: `GATE_NONE`, `GATE_OP`, and `GATE_GRAPH`.
 
@@ -251,5 +251,14 @@ Use `get_slot_names()` to get the list of slot names created by the
 ##### Returns:
 
   The `Variable` for the slot if it was created, `None` otherwise.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.Optimizer.get_name()` {#Optimizer.get_name}
+
+
 
 

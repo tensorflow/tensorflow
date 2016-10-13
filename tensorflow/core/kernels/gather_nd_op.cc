@@ -16,13 +16,11 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 #define EIGEN_USE_THREADS
 
-#include <atomic>
-
+#include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
@@ -47,21 +45,26 @@ class GatherNdOp : public OpKernel {
     const Tensor& indices = c->input(1);
     OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
                 errors::InvalidArgument("params must be at least a vector"));
-    OP_REQUIRES(c, TensorShapeUtils::IsMatrixOrHigher(indices.shape()),
-                errors::InvalidArgument("indices must be at least a matrix"));
+    OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(indices.shape()),
+                errors::InvalidArgument("indices must be at least a vector"));
     OP_REQUIRES(
-        c, indices.dim_size(indices.dims() - 1) == params.dims(),
+        c, indices.dim_size(indices.dims() - 1) <= params.dims(),
         errors::InvalidArgument(
-            "index innermost dimension length must equal params rank; saw: ",
+            "index innermost dimension length must be <= params rank; saw: ",
             indices.dim_size(indices.dims() - 1), " vs. ", params.dims()));
 
+    const TensorShape& indices_shape(indices.shape());
+    const int64 indices_nd = indices_shape.dim_size(indices_shape.dims() - 1);
+
     // Check that we have enough index space
-    const int64 N_big = indices.NumElements() / params.dims();
+    int64 N_big = 1;
+    for (int i = 0; i < indices_shape.dims() - 1; ++i) {
+      N_big *= indices_shape.dim_size(i);
+    }
     OP_REQUIRES(c, N_big <= std::numeric_limits<int>::max(),
                 errors::InvalidArgument(
                     "indices has too many elements for int indexing: ", N_big,
                     " > ", std::numeric_limits<int>::max()));
-    const int N = indices.NumElements() / params.dims();
     OP_REQUIRES(
         c, params.NumElements() <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.NumElements() too large for ",
@@ -69,110 +72,86 @@ class GatherNdOp : public OpKernel {
                                 " indexing: ", params.NumElements(), " > ",
                                 std::numeric_limits<Index>::max()));
 
-    // The result shape is indices.shape[:-1]
-    TensorShape result_shape(indices.shape());
+    // The result shape is
+    //   indices.shape[:-1] + params.shape[indices.shape[-1]:]
+    Index N_result = 1;
+    for (int i = 0; i < indices_shape.dims() - 1; ++i) {
+      N_result *= indices_shape.dim_size(i);
+    }
+
+    const TensorShape& params_shape(params.shape());
+    Index total_nd = params_shape.dims();
+
+    TensorShape result_shape(indices_shape);
     result_shape.RemoveDim(result_shape.dims() - 1);
+
+    int64 slice_size_big = 1;
+    for (Index i = indices_nd; i < total_nd; ++i) {
+      slice_size_big *= params_shape.dim_size(i);
+      result_shape.AddDim(params_shape.dim_size(i));
+    }
+
+    OP_REQUIRES(c, slice_size_big <= std::numeric_limits<Index>::max(),
+                errors::InvalidArgument(
+                    "slice size is too large for indexing: ", slice_size_big,
+                    " > ", std::numeric_limits<Index>::max()));
+
+    const Index slice_size = static_cast<Index>(slice_size_big);
 
     Tensor* out = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
-    if (N > 0) {
+    if (N_result > 0) {
+      OP_REQUIRES(c, params_shape.num_elements() > 0,
+                  errors::InvalidArgument("Requested more than 0 entries, but "
+                                          "params is empty.  Params shape: ",
+                                          params_shape.DebugString()));
+
       auto indices_mat = indices.flat_inner_dims<Index>();
-      auto out_flat = out->flat<T>();
 
       Index bad_i = -1;
-      switch (params.dims()) {
-#define PARAMS_CASE(NDIM)                                                  \
-  case NDIM: {                                                             \
-    functor::GatherNd<Device, T, Index, NDIM> functor;                     \
-    auto params_tensor = params.tensor<T, NDIM>();                         \
-    bad_i = functor(c->eigen_device<Device>(), params_tensor, indices_mat, \
-                    out_flat);                                             \
-  } break
 
+      // Request to copy slices / subtensors
+      // Make out a matrix with the slices the col size.
+      auto out_mat = out->shaped<T, 2>({N_result, slice_size});
+      Tensor scratch;
+      OP_REQUIRES_OK(c, c->allocate_temp(DT_INT32, TensorShape(), &scratch));
+      auto scratch_scalar = scratch.scalar<int32>();
+
+      switch (indices_nd) {
+#define PARAMS_CASE(IXDIM)                                              \
+  case IXDIM: {                                                         \
+    functor::GatherNdSlice<Device, T, Index, IXDIM> func;               \
+    auto params_flat = params.flat_outer_dims<T, IXDIM + 1>();          \
+    bad_i = func(c->eigen_device<Device>(), slice_size, scratch_scalar, \
+                 params_flat, indices_mat, out_mat);                    \
+  } break
+        PARAMS_CASE(0);
         PARAMS_CASE(1);
         PARAMS_CASE(2);
         PARAMS_CASE(3);
         PARAMS_CASE(4);
         PARAMS_CASE(5);
+#undef PARAMS_CASE
         default:
           OP_REQUIRES(c, false,
                       errors::InvalidArgument(
-                          "Only param tensors with ranks between 1 and 5 "
-                          "are currently supported.  Tensor rank: ",
-                          params.dims()));
+                          "Only indices.shape[-1] values between 1 and 5 "
+                          "are currently supported.  Requested rank: ",
+                          indices_nd));
       }
 
+      // bad_i will only return >= 0 on CPUs right now.
       OP_REQUIRES(c, bad_i < 0,
                   errors::InvalidArgument(
                       "flat indices[", bad_i, ", :] = [",
                       str_util::Join(gtl::ArraySlice<Index>(
-                                         &indices_mat(bad_i, 0), params.dims()),
+                                         &indices_mat(bad_i, 0), indices_nd),
                                      ", "),
                       "] does not index into param (shape: ",
                       params.shape().DebugString(), ")."));
     }
   }
 };
-
-// Specialization of GatherNd to CPU
-namespace generator {
-
-template <typename T, typename Index, int NDIM>
-class GatherNdGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  GatherNdGenerator(typename TTypes<Index>::ConstMatrix Tindices,
-                    typename TTypes<T, NDIM>::ConstTensor Tparams,
-                    Index* error_loc)
-      : Tindices_(Tindices), Tparams_(Tparams), error_loc_(*error_loc) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<Eigen::DenseIndex, 1>& loc_array) const {
-    Index loc = loc_array[0];
-    Eigen::array<Eigen::DenseIndex, NDIM> ix;
-    bool out_of_bounds = false;
-    for (int i = 0; i < NDIM; ++i) {
-      Index ix_i = Tindices_(loc, i);
-      ix[i] = ix_i;
-      out_of_bounds |= !FastBoundsCheck(ix_i, Tparams_.dimension(i));
-    }
-    if (out_of_bounds) {
-      error_loc_ = loc;
-      return T();  // Return 0, 0.0, or '', etc.
-    } else {
-      return Tparams_(ix);
-    }
-  }
-
- private:
-  typename TTypes<Index>::ConstMatrix Tindices_;
-  typename TTypes<T, NDIM>::ConstTensor Tparams_;
-  Index& error_loc_;
-};
-
-}  // namespace generator
-
-namespace functor {
-
-template <typename T, typename Index, int NDIM>
-struct GatherNd<CPUDevice, T, Index, NDIM> {
-  Index operator()(const CPUDevice& d,
-                   typename TTypes<T, NDIM>::ConstTensor Tparams,
-                   typename TTypes<Index>::ConstMatrix Tindices,
-                   typename TTypes<T>::Flat Tout) {
-    Index error_loc(-1);
-    generator::GatherNdGenerator<T, Index, NDIM> gather_nd_generator(Tindices,
-                                                                     Tparams,
-                                                                     &error_loc);
-    Tout.device(d) = Tout.generate(gather_nd_generator);
-
-    // error_loc() returns -1 if there's no out-of-bounds index,
-    // otherwise it returns the location of an OOB index in Tindices.
-    return error_loc;
-  }
-};
-
-}  // namespace functor
 
 #define REGISTER_GATHER_ND_FULL(dev, type, index_type)                 \
   REGISTER_KERNEL_BUILDER(Name("GatherNd")                             \
@@ -194,15 +173,18 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, NDIM)                     \
-  template <>                                                            \
-  Index GatherNd<GPUDevice, T, Index, NDIM>::operator()(                 \
-      const GPUDevice& d, typename TTypes<T, NDIM>::ConstTensor Tparams, \
-      typename TTypes<Index>::ConstMatrix Tindices,                      \
-      typename TTypes<T>::Flat Tout);                                    \
-  extern template struct GatherNd<GPUDevice, T, Index, NDIM>;
+#define DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, NDIM)          \
+  template <>                                                 \
+  Index GatherNdSlice<GPUDevice, T, Index, NDIM>::operator()( \
+      const GPUDevice& d, const Index slice_size,             \
+      typename TTypes<int32>::Scalar Tscratch,                \
+      typename TTypes<T, NDIM + 1>::ConstTensor Tparams,      \
+      typename TTypes<Index>::ConstMatrix Tindices,           \
+      typename TTypes<T>::Matrix Tout);                       \
+  extern template struct GatherNdSlice<GPUDevice, T, Index, NDIM>;
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)    \
+  DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 0); \
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 1); \
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 2); \
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 3); \

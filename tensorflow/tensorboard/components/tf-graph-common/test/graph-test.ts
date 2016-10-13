@@ -19,7 +19,7 @@ suite('graph', () => {
   test('graphlib exists', () => { assert.isTrue(graphlib != null); });
 
   test('simple graph contruction', done => {
-    let pbtxt = `
+    let pbtxt = tf.graph.test.util.stringToArrayBuffer(`
       node {
         name: "Q"
         op: "Input"
@@ -33,7 +33,23 @@ suite('graph', () => {
         op: "MatMul"
         input: "Q:2"
         input: "W"
-      }`;
+      }`);
+    let statsPbtxt = tf.graph.test.util.stringToArrayBuffer(`step_stats {
+      dev_stats {
+        device: "cpu"
+        node_stats {
+          node_name: "Q"
+          all_start_micros: 10
+          all_end_rel_micros: 4
+        }
+        node_stats {
+          node_name: "Q"
+          all_start_micros: 12
+          all_end_rel_micros: 4
+        }
+      }
+    }`);
+
     let buildParams: tf.graph.BuildParams = {
       enableEmbedding: true,
       inEmbeddingTypes: ['Const'],
@@ -42,7 +58,7 @@ suite('graph', () => {
     };
     let dummyTracker =
         tf.graph.util.getTracker({set: () => { return; }, progress: 0});
-    tf.graph.parser.parseGraphPbTxt(new Blob([pbtxt])).then(nodes => {
+    tf.graph.parser.parseGraphPbTxt(pbtxt).then(nodes => {
       tf.graph.build(nodes, buildParams, dummyTracker)
           .then((slimGraph: tf.graph.SlimGraph) => {
             assert.isTrue(slimGraph.nodes['X'] != null);
@@ -57,7 +73,11 @@ suite('graph', () => {
             assert.equal(secondInputOfX.name, 'W');
             assert.equal(secondInputOfX.outputTensorIndex, 0);
 
-            done();
+            tf.graph.parser.parseStatsPbTxt(statsPbtxt).then(stepStats => {
+              tf.graph.joinStatsInfoWithGraph(slimGraph, stepStats);
+              assert.equal(slimGraph.nodes['Q'].stats.totalMicros, 6);
+              done();
+            });
           });
     });
   });

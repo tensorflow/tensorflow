@@ -143,6 +143,8 @@ void TestConsumeLeadingDigits(StringPiece s, int64 expected,
 }
 
 TEST(ConsumeLeadingDigits, Basic) {
+  using str_util::ConsumeLeadingDigits;
+
   TestConsumeLeadingDigits("123", 123, "");
   TestConsumeLeadingDigits("a123", -1, "a123");
   TestConsumeLeadingDigits("9_", 9, "_");
@@ -158,6 +160,9 @@ TEST(ConsumeLeadingDigits, Basic) {
   // 2^64-1
   TestConsumeLeadingDigits("18446744073709551615xyz", 18446744073709551615ull,
                            "xyz");
+  // (2^64-1)*10+9
+  TestConsumeLeadingDigits("184467440737095516159yz", -1,
+                           "184467440737095516159yz");
 }
 
 void TestConsumeNonWhitespace(StringPiece s, StringPiece expected,
@@ -215,6 +220,16 @@ TEST(JoinStrings, Basic) {
   EXPECT_EQ(str_util::Join(sp, ",,"), "hi");
   sp = {"hi", "there", "strings"};
   EXPECT_EQ(str_util::Join(sp, "--"), "hi--there--strings");
+}
+
+TEST(JoinStrings, Join3) {
+  std::vector<string> s;
+  s = {"hi"};
+  auto l1 = [](string* out, string s) { *out += s; };
+  EXPECT_EQ(str_util::Join(s, " ", l1), "hi");
+  s = {"hi", "there", "strings"};
+  auto l2 = [](string* out, string s) { *out += s[0]; };
+  EXPECT_EQ(str_util::Join(s, " ", l2), "h t s");
 }
 
 TEST(Split, Basic) {

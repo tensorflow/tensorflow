@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from abc import ABCMeta
 import collections
 
 from .series import Series
@@ -28,7 +27,6 @@ from .transform import Transform
 
 class DataFrame(object):
   """A DataFrame is a container for ingesting and preprocessing data."""
-  __metaclass__ = ABCMeta
 
   def __init__(self):
     self._columns = {}
@@ -61,23 +59,18 @@ class DataFrame(object):
       if not isinstance(k, str):
         raise TypeError("The only supported type for keys is string; got %s" %
                         type(k))
-      if isinstance(v, Series):
-        s = v
+      if v is None:
+        del self._columns[k]
+      elif isinstance(v, Series):
+        self._columns[k] = v
       elif isinstance(v, Transform) and v.input_valency() == 0:
-        s = v()
-      # TODO(jamieas): hook up these special cases again
-      # TODO(soergel): can these special cases be generalized?
-      # elif isinstance(v, pd.Series):
-      #   s = series.NumpySeries(v.values)
-      # elif isinstance(v, np.ndarray):
-      #   s = series.NumpySeries(v)
+        self._columns[k] = v()
       else:
         raise TypeError(
-            "Column in assignment must be an inflow.Series, pandas.Series or a"
-            " numpy array; got type '%s'." % type(v).__name__)
-      self._columns[k] = s
+            "Column in assignment must be an inflow.Series, inflow.Transform,"
+            " or None; got type '%s'." % type(v).__name__)
 
-  def select(self, keys):
+  def select_columns(self, keys):
     """Returns a new DataFrame with a subset of columns.
 
     Args:
@@ -89,6 +82,21 @@ class DataFrame(object):
     result = type(self)()
     for key in keys:
       result[key] = self._columns[key]
+    return result
+
+  def exclude_columns(self, exclude_keys):
+    """Returns a new DataFrame with all columns not excluded via exclude_keys.
+
+    Args:
+      exclude_keys: A list of strings. Each should be the name of a column in
+        the DataFrame.  These columns will be excluded from the result.
+    Returns:
+      A new DataFrame containing all columns except those specified.
+    """
+    result = type(self)()
+    for key, value in self._columns.items():
+      if key not in exclude_keys:
+        result[key] = value
     return result
 
   def __getitem__(self, key):
@@ -119,53 +127,17 @@ class DataFrame(object):
       value = [value]
     self.assign(**dict(zip(key, value)))
 
-  def build(self):
+  def __delitem__(self, key):
+    if isinstance(key, str):
+      key = [key]
+    value = [None for _ in key]
+    self.assign(**dict(zip(key, value)))
+
+  def build(self, **kwargs):
     # We do not allow passing a cache here, because that would encourage
     # working around the rule that DataFrames cannot be expected to be
     # synced with each other (e.g., they shuffle independently).
     cache = {}
-    tensors = {name: c.build(cache) for name, c in self._columns.items()}
+    tensors = {name: c.build(cache, **kwargs)
+               for name, c in self._columns.items()}
     return tensors
-
-  def to_input_fn(self, feature_keys=None, target_keys=None):
-    """Build an input_fn suitable for use with Estimator.
-
-    Args:
-      feature_keys: the names of columns to be used as features.  If None, all
-        columns except those in target_keys are used.
-      target_keys: the names of columns to be used as targets.  None is
-        acceptable for unsupervised learning.
-
-    Returns:
-      A function that returns a pair of dicts (features, targets), each mapping
-        string names to Tensors.
-
-    Raises:
-      ValueError: when the feature and target key sets are non-disjoint
-    """
-    if target_keys is None:
-      target_keys = []
-
-    if feature_keys is None:
-      feature_keys = self.columns() - set(target_keys)
-    else:
-      in_both = set(feature_keys) & set(target_keys)
-      if in_both:
-        raise ValueError(
-            "Columns cannot be used for both features and targets: %s" %
-            ", ".join(in_both))
-
-    def input_fn():
-      # It's important to build all the tensors together in one DataFrame.
-      # If we did df.select() for both key sets and then build those, the two
-      # resulting DataFrames would be shuffled independently.
-      tensors = self.build()
-
-      # Note that (for now at least) we provide our columns to Estimator keyed
-      # by strings, so they are base features as far as Estimator is concerned.
-      # TODO(soergel): reconcile with FeatureColumn keys, Transformer etc.
-      features = {key: tensors[key] for key in feature_keys}
-      targets = {key: tensors[key] for key in target_keys}
-      return features, targets
-
-    return input_fn

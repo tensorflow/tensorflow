@@ -26,54 +26,70 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-namespace generator {
-
-template <typename T, typename Index, int NDIM>
-class GatherNdGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  GatherNdGenerator(typename TTypes<const Index, 2>::Tensor32Bit Tindices,
-                    typename TTypes<const T, NDIM>::Tensor32Bit Tparams)
-      : Tindices_(Tindices), Tparams_(Tparams) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<int, 1>& loc_array) const {
-    int loc = loc_array[0];
-    Eigen::array<int, NDIM> ix;
+template <typename T, typename Index, int IXDIM>
+__global__ void GatherSliceOpKernel(
+    const T* params, const Index* indices, T* out,
+    const Eigen::array<int64, IXDIM> batch_strides,
+    const Eigen::array<int64, IXDIM> batch_indices, const int64 indices_size,
+    const int64 slice_size, const int64 out_size) {
+  // TODO(ebrevdo): reduce inner loop into two loops:
+  // one over the number of locs, and one over the offsets inside the locs.
+  CUDA_1D_KERNEL_LOOP(i, out_size) {
+    const Index loc = i / slice_size;
+    const auto indices_i = indices + IXDIM * loc;
     bool out_of_bounds = false;
-    for (int i = 0; i < NDIM; ++i) {
-      int ix_i = Tindices_(loc, i);
-      ix[i] = ix_i;
-      out_of_bounds |= !FastBoundsCheck(ix_i, Tparams_.dimension(i));
+    Index offset = 0;
+#pragma unroll
+    for (int j = 0; j < IXDIM; ++j) {
+      const Index index_j = ldg(indices_i + j);
+      out_of_bounds |= !FastBoundsCheck(index_j, batch_indices[j]);
+      offset += batch_strides[j] * index_j;
     }
-    if (out_of_bounds) {
-      return T(0);  // TODO(ebrevdo): Pass error back to host.
-    } else {
-      return Tparams_(ix);
-    }
+    // TODO(ebrevdo):
+    // This is the only part that depends on the offset.  The part
+    // above does not need to be executed for every index i.
+    // Is there a way to break the outer loop into two loops?  One
+    // that determines how many slice_size-length locs are iterated
+    // over, and another that iterates over slice_size iterations for
+    // the correct indices?
+    const Index loc_offset = i - loc * slice_size;
+    out[i] = (out_of_bounds) ? T(0) : ldg(params + offset + loc_offset);
   }
-
- private:
-  typename TTypes<const Index, 2>::Tensor32Bit Tindices_;
-  typename TTypes<const T, NDIM>::Tensor32Bit Tparams_;
-};
-
-}  // namespace generator
+}
 
 namespace functor {
 
-template <typename T, typename Index, int NDIM>
-struct GatherNd<GPUDevice, T, Index, NDIM> {
-  Index operator()(const GPUDevice& d,
-                   typename TTypes<T, NDIM>::ConstTensor Tparams,
+template <typename T, typename Index, int IXDIM>
+struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
+  Index operator()(const GPUDevice& d, const Index unused_slice_size,
+                   typename TTypes<int32>::Scalar Tscratch,
+                   typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
                    typename TTypes<Index>::ConstMatrix Tindices,
-                   typename TTypes<T>::Flat Tout) {
-    generator::GatherNdGenerator<T, Index, NDIM> gather_nd_generator(
-        To32Bit(Tindices), To32Bit(Tparams));
-    To32Bit(Tout).device(d) = To32Bit(Tout).generate(gather_nd_generator);
+                   typename TTypes<T>::Matrix Tout) {
+    const int64 indices_size = Tindices.dimension(1);
+    const int64 out_size = Tout.size();
+    int64 s_size = Tout.dimension(1);
+    Eigen::array<int64, IXDIM> batch_strides;
+    Eigen::array<int64, IXDIM> batch_indices;
+    if (IXDIM > 0) {
+      batch_strides[IXDIM - 1] = s_size;
+      batch_indices[IXDIM - 1] = Tparams.dimension(IXDIM - 1);
+    }
+    for (int i = IXDIM - 1; i > 0; --i) {
+      batch_indices[i - 1] = Tparams.dimension(i - 1);
+      batch_strides[i - 1] = batch_strides[i] * Tparams.dimension(i);
+    }
+    CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+
+    // clang-format off
+    GatherSliceOpKernel<T, Index, IXDIM>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            Tparams.data(), Tindices.data(), Tout.data(), batch_strides,
+            batch_indices, indices_size, s_size, out_size);
+    // clang-format on
 
     // TODO(ebrevdo): enable indices validation on GPU.
-    // Right now checking for indicies out of bound in the kernel would
+    // Right now checking for indices out of bound in the kernel would
     // require copying code between GPU/CPU, and is too slow.
     return -1;
   }
@@ -82,9 +98,10 @@ struct GatherNd<GPUDevice, T, Index, NDIM> {
 }  // namespace functor
 
 #define DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, NDIM) \
-  template struct functor::GatherNd<GPUDevice, T, Index, NDIM>;
+  template struct functor::GatherNdSlice<GPUDevice, T, Index, NDIM>;
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)    \
+  DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 0); \
   DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 1); \
   DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 2); \
   DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 3); \
