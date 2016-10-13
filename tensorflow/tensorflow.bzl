@@ -764,6 +764,8 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
           "-Wl,-exported_symbols_list",
           "//tensorflow:tf_exported_symbols.lds"
       ],
+      "//tensorflow:windows": [
+      ],
       "//conditions:default": [
           "-Wl,--version-script",
           "//tensorflow:tf_version_script.lds"
@@ -771,6 +773,8 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   extra_deps += select({
       "@local_config_cuda//cuda:darwin": [
         "//tensorflow:tf_exported_symbols.lds"
+      ],
+      "//tensorflow:windows": [
       ],
       "//conditions:default": [
         "//tensorflow:tf_version_script.lds"
