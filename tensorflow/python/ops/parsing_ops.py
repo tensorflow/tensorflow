@@ -153,8 +153,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
 
-  Parses a number of serialized [`Example`]
-  (https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   protos given in `serialized`.
 
   `example_names` may contain descriptive names for the corresponding serialized
@@ -549,8 +548,7 @@ def parse_single_sequence_example(
   # pylint: disable=line-too-long
   """Parses a single `SequenceExample` proto.
 
-  Parses a single serialized [`SequenceExample`]
-  (https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  Parses a single serialized [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   proto given in `serialized`.
 
   This op parses a serialize sequence example into a tuple of dictionaries
