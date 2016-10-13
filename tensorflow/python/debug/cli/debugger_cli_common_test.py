@@ -22,6 +22,20 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
+class CommandLineExitTest(test_util.TensorFlowTestCase):
+
+  def testConstructionWithoutToken(self):
+    exit_exc = debugger_cli_common.CommandLineExit()
+
+    self.assertTrue(isinstance(exit_exc, Exception))
+
+  def testConstructionWithToken(self):
+    exit_exc = debugger_cli_common.CommandLineExit(exit_token={"foo": "bar"})
+
+    self.assertTrue(isinstance(exit_exc, Exception))
+    self.assertEqual({"foo": "bar"}, exit_exc.exit_token)
+
+
 class RichTextLinesTest(test_util.TensorFlowTestCase):
 
   def testRichTextLinesConstructorComplete(self):
@@ -38,6 +52,8 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(screen_output.font_attr_segs[0]))
     self.assertEqual(1, len(screen_output.font_attr_segs[1]))
     self.assertEqual(2, len(screen_output.annotations))
+
+    self.assertEqual(2, screen_output.num_lines())
 
   def testRichTextLinesConstructorWithInvalidType(self):
     with self.assertRaisesRegexp(ValueError, "Unexpected type in lines"):
@@ -102,6 +118,16 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     return debugger_cli_common.RichTextLines(
         ["cols = %d" % screen_info["cols"]])
 
+  def _exiting_handler(self, argv, screen_info=None):
+    """A handler that exits with an exit token."""
+
+    if argv:
+      exit_token = argv[0]
+    else:
+      exit_token = None
+
+    raise debugger_cli_common.CommandLineExit(exit_token=exit_token)
+
   def testRegisterEmptyCommandPrefix(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
 
@@ -128,6 +154,22 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     # Empty command prefix should trigger an exception.
     with self.assertRaisesRegexp(ValueError, "Prefix is empty"):
       registry.dispatch_command("", [])
+
+  def testExitingHandler(self):
+    """Test that exit exception is correctly raised."""
+
+    registry = debugger_cli_common.CommandHandlerRegistry()
+    registry.register_command_handler("exit", self._exiting_handler, "")
+
+    self.assertTrue(registry.is_registered("exit"))
+
+    exit_token = None
+    try:
+      registry.dispatch_command("exit", ["foo"])
+    except debugger_cli_common.CommandLineExit as e:
+      exit_token = e.exit_token
+
+    self.assertEqual("foo", exit_token)
 
   def testInvokeHandlerWithScreenInfo(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
@@ -210,7 +252,9 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     # The registry should catch and wrap exceptions that occur during command
     # handling.
     cmd_output = registry.dispatch_command("raise_exception", [])
-    self.assertEqual(2, len(cmd_output.lines))
+    # The error output contains a stack trace.
+    # So the line count should be >= 2.
+    self.assertGreater(len(cmd_output.lines), 2)
     self.assertTrue(cmd_output.lines[0].startswith(
         "Error occurred during handling of command"))
     self.assertTrue(cmd_output.lines[1].endswith(self._intentional_error_msg))
@@ -254,11 +298,14 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     self.assertFalse(help_lines[4])
     self.assertFalse(help_lines[5])
 
-    self.assertEqual("noop", help_lines[6])
-    self.assertTrue(help_lines[7].endswith("Aliases: n, NOOP"))
-    self.assertFalse(help_lines[8])
-    self.assertTrue(help_lines[9].endswith("No operation."))
-    self.assertTrue(help_lines[10].endswith("I.e., do nothing."))
+    # The default help command should appear in the help output.
+    self.assertEqual("help", help_lines[6])
+
+    self.assertEqual("noop", help_lines[12])
+    self.assertTrue(help_lines[13].endswith("Aliases: n, NOOP"))
+    self.assertFalse(help_lines[14])
+    self.assertTrue(help_lines[15].endswith("No operation."))
+    self.assertTrue(help_lines[16].endswith("I.e., do nothing."))
 
   def testGetHelpSingleCommand(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
@@ -295,6 +342,55 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     help_lines = registry.get_help("foo").lines
 
     self.assertEqual("Invalid command prefix: \"foo\"", help_lines[0])
+
+  def testHelpCommandWithoutIntro(self):
+    registry = debugger_cli_common.CommandHandlerRegistry()
+    registry.register_command_handler(
+        "noop",
+        self._noop_handler,
+        "No operation.\nI.e., do nothing.",
+        prefix_aliases=["n", "NOOP"])
+    registry.register_command_handler(
+        "cols",
+        self._echo_screen_cols,
+        "Show screen width in number of columns.",
+        prefix_aliases=["c"])
+
+    # Get help for all commands.
+    output = registry.dispatch_command("help", [])
+    self.assertEqual(["cols", "  Aliases: c", "",
+                      "  Show screen width in number of columns.", "", "",
+                      "help", "  Aliases: h", "", "  Print this help message.",
+                      "", "", "noop", "  Aliases: n, NOOP", "",
+                      "  No operation.", "  I.e., do nothing.", "", ""],
+                     output.lines)
+
+    # Get help for one specific command prefix.
+    output = registry.dispatch_command("help", ["noop"])
+    self.assertEqual(["noop", "  Aliases: n, NOOP", "", "  No operation.",
+                      "  I.e., do nothing."], output.lines)
+
+    # Get help for a nonexistent command prefix.
+    output = registry.dispatch_command("help", ["foo"])
+    self.assertEqual(["Invalid command prefix: \"foo\""], output.lines)
+
+  def testHelpCommandWithIntro(self):
+    registry = debugger_cli_common.CommandHandlerRegistry()
+    registry.register_command_handler(
+        "noop",
+        self._noop_handler,
+        "No operation.\nI.e., do nothing.",
+        prefix_aliases=["n", "NOOP"])
+
+    help_intro = ["Introductory comments.", ""]
+    registry.set_help_intro(help_intro)
+
+    output = registry.dispatch_command("help", [])
+    self.assertEqual(
+        help_intro + ["help", "  Aliases: h", "", "  Print this help message.",
+                      "", "", "noop", "  Aliases: n, NOOP", "",
+                      "  No operation.", "  I.e., do nothing.", "", ""],
+        output.lines)
 
 
 class RegexFindTest(test_util.TensorFlowTestCase):
@@ -426,6 +522,52 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
           debugger_cli_common.RichTextLines(["foo", "bar"]), "12")
 
 
+class SliceRichTextLinesText(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self._original = debugger_cli_common.RichTextLines(
+        ["Roses are red", "Violets are blue"],
+        font_attr_segs={0: [(0, 5, "red")],
+                        1: [(0, 7, "blue")]},
+        annotations={
+            0: "longer wavelength",
+            1: "shorter wavelength",
+            "foo_metadata": "bar"
+        })
+
+  def testSliceBeginning(self):
+    sliced = self._original.slice(0, 1)
+
+    self.assertEqual(["Roses are red"], sliced.lines)
+    self.assertEqual({0: [(0, 5, "red")]}, sliced.font_attr_segs)
+
+    # Non-line-number metadata should be preseved.
+    self.assertEqual({
+        0: "longer wavelength",
+        "foo_metadata": "bar"
+    }, sliced.annotations)
+
+    self.assertEqual(1, sliced.num_lines())
+
+  def testSliceEnd(self):
+    sliced = self._original.slice(1, 2)
+
+    self.assertEqual(["Violets are blue"], sliced.lines)
+
+    # The line index should have changed from 1 to 0.
+    self.assertEqual({0: [(0, 7, "blue")]}, sliced.font_attr_segs)
+    self.assertEqual({
+        0: "shorter wavelength",
+        "foo_metadata": "bar"
+    }, sliced.annotations)
+
+    self.assertEqual(1, sliced.num_lines())
+
+  def testAttemptSliceWithNegativeIndex(self):
+    with self.assertRaisesRegexp(ValueError, "Encountered negative index"):
+      self._original.slice(0, -1)
+
+
 class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -441,41 +583,43 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 
   def testTabCompletion(self):
     # The returned completions should have sorted order.
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
 
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("pt", ""))
+    self.assertEqual((["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
+                      "node_"), self._tc_reg.get_completions("pt", ""))
 
-    self.assertEqual(["node_a:1", "node_a:2"],
+    self.assertEqual((["node_a:1", "node_a:2"], "node_a:"),
                      self._tc_reg.get_completions("print_tensor", "node_a"))
 
-    self.assertEqual(["node_a:1"],
+    self.assertEqual((["node_a:1"], "node_a:1"),
                      self._tc_reg.get_completions("pt", "node_a:1"))
 
-    self.assertEqual([], self._tc_reg.get_completions("print_tensor",
-                                                      "node_a:3"))
+    self.assertEqual(([], ""),
+                     self._tc_reg.get_completions("print_tensor", "node_a:3"))
 
-    self.assertIsNone(self._tc_reg.get_completions("foo", "node_"))
+    self.assertEqual((None, None), self._tc_reg.get_completions("foo", "node_"))
 
   def testExtendCompletionItems(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.extend_comp_items("print_tensor", ["node_A:1", "node_A:2"])
 
-    self.assertEqual(["node_A:1", "node_A:2", "node_a:1", "node_a:2",
-                      "node_b:1", "node_b:2"],
+    self.assertEqual((["node_A:1", "node_A:2", "node_a:1", "node_a:2",
+                       "node_b:1", "node_b:2"], "node_"),
                      self._tc_reg.get_completions("print_tensor", "node_"))
 
     # Extending the completions for one of the context's context words should
     # have taken effect on other context words of the same context as well.
-    self.assertEqual(["node_A:1", "node_A:2", "node_a:1", "node_a:2",
-                      "node_b:1", "node_b:2"],
+    self.assertEqual((["node_A:1", "node_A:2", "node_a:1", "node_a:2",
+                       "node_b:1", "node_b:2"], "node_"),
                      self._tc_reg.get_completions("pt", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
   def testExtendCompletionItemsNonexistentContext(self):
@@ -484,16 +628,17 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
       self._tc_reg.extend_comp_items("foo", ["node_A:1", "node_A:2"])
 
   def testRemoveCompletionItems(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.remove_comp_items("pt", ["node_a:1", "node_a:2"])
 
-    self.assertEqual(["node_b:1", "node_b:2"],
+    self.assertEqual((["node_b:1", "node_b:2"], "node_b:"),
                      self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
   def testRemoveCompletionItemsNonexistentContext(self):
@@ -502,23 +647,27 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
       self._tc_reg.remove_comp_items("foo", ["node_a:1", "node_a:2"])
 
   def testDeregisterContext(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.deregister_context(["print_tensor"])
 
-    self.assertIsNone(self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((None, None),
+                     self._tc_reg.get_completions("print_tensor", "node_"))
 
     # The alternative context word should be unaffected.
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("pt", "node_"))
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("pt", "node_"))
 
   def testDeregisterNonexistentContext(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.deregister_context(["print_tensor"])

@@ -1,283 +1,218 @@
-This directory contains *CMake* files that can be used to build TensorFlow
-core library.
+TensorFlow CMake build
+======================
 
+This directory contains CMake files for building TensorFlow on Microsoft
+Windows. [CMake](https://cmake.org) is a cross-platform tool that can
+generate build scripts for multiple build systems, including Microsoft
+Visual Studio.
+
+**N.B.** We provide Linux build instructions primarily for the purpose of
+testing the build. We recommend using the standard Bazel-based build on
+Linux.
 
 Current Status
 --------------
 
-CMake build is not yet ready for general usage!
+The CMake files in this directory can build the core TensorFlow runtime, an
+example C++ binary, and a PIP package containing the runtime and Python
+bindings. Currently, only CPU builds are supported, but we are working on
+providing a GPU build as well.
 
-We are actively working on CMake support. Please help us improve it.
-Pull requests are welcomed!
+Note: Windows support is in an **alpha** state, and we welcome your feedback.
 
+### Pre-requisites
 
-Linux CMake + Docker (very simple)
-----------------------------------
+* CMake version 3.1 or later
 
-```bash
-git clone --recursive https://github.com/tensorflow/tensorflow.git
-cd tensorflow
-tensorflow/tools/ci_build/ci_build.sh CPU tensorflow/tools/ci_build/builds/cmake.sh
-```
+* [Git](http://git-scm.com)
 
-That's it. Dependencies included. Otherwise read the rest of this readme...
+* [SWIG](http://www.swig.org/download.html)
 
+* Additional pre-requisites for Microsoft Windows:
+  - Visual Studio 2015
+  - Python 3.5
+  - NumPy 1.11.0 or later
 
-Prerequisites
-=============
+* Additional pre-requisites for Linux:
+  - Python 2.7 or later
+  - [Docker](https://www.docker.com/) (for automated testing)
+  - NumPy 1.11.0 or later
 
-You need to have [CMake](http://www.cmake.org) and [Git](http://git-scm.com)
-installed on your computer before proceeding.
+### Known-good configurations
 
-Most of the instructions will be given to the *Сommand Prompt*, but the same
-actions can be performed using appropriate GUI tools.
+* Microsoft Windows 10
+  - Microsoft Visual Studio Enterprise 2015 with Visual C++ 2015
+  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
+  - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
+  - [swigwin-3.0.10](http://www.swig.org/download.html)
 
+* Ubuntu 14.04
+  - Makefile generator
+  - Docker 1.9.1 (for automated testing)
 
-Environment Setup
-=================
+### Current known limitations
 
-Open the appropriate *Command Prompt* from the *Start* menu.
+* CPU support only
 
-For example *VS2013 x64 Native Tools Command Prompt*:
+  - We are in the process of porting the GPU code in
+    `tensorflow/stream_executor` to build with CMake and work on non-POSIX
+    platforms.
 
-    C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64>
+* Additional limitations for the Windows build:
 
-Change to your working directory:
+  - The Python package supports **Python 3.5 only**, because that is the only
+    version for which standard Python binaries exist and those binaries are
+    compatible with the TensorFlow runtime. (On Windows, the standard Python
+    binaries for versions earlier than 3.5 were compiled with older compilers
+    that do not have all of the features (e.g. C++11 support) needed to compile
+    TensorFlow. We welcome patches for making TensorFlow work with Python 2.7
+    on Windows, but have not yet committed to supporting that configuration.)
 
-    C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64>cd C:\Path\to
-    C:\Path\to>
+  - The following Python APIs are not currently implemented:
+    * Loading custom op libraries via `tf.load_op_library()`.
+    * Path manipulation functions (such as `tf.gfile.ListDirectory()`) are not
+      functional.
 
-Where *C:\Path\to* is the path to your real working directory.
+  - The `tf.contrib` libraries are not currently included in the PIP package.
 
-Create a folder where TensorFlow headers/libraries/binaries will be installed
-after they are built:
+  - The following operations are not currently implemented:
+    * `DepthwiseConv2dNative`
+    * `Digamma`
+    * `Erf`
+    * `Erfc`
+    * `Igamma`
+    * `Igammac`
+    * `ImmutableConst`
+    * `Lgamma`
+    * `Polygamma`
+    * `SparseMatmul`
+    * `Zeta`
 
-    C:\Path\to>mkdir install
+  - Google Cloud Storage support is not currently implemented. The GCS library
+    currently depends on `libcurl` and `boringssl`, and the Windows version
+    could use standard Windows APIs for making HTTP requests and cryptography
+    (for OAuth). Contributions are welcome for this feature.
 
-If *cmake* command is not available from *Command Prompt*, add it to system
-*PATH* variable:
+We are actively working on improving CMake and Windows support, and addressing
+these limitations. We would appreciate pull requests that implement missing
+ops or APIs.
 
-    C:\Path\to>set PATH=%PATH%;C:\Program Files (x86)\CMake\bin
 
-If *git* command is not available from *Command Prompt*, add it to system
-*PATH* variable:
-
-    C:\Path\to>set PATH=%PATH%;C:\Program Files\Git\cmd
-
-Good. Now you are ready to continue.
-
-Getting Sources
-===============
-
-You can get the latest stable source packages from the
-[releases](https://github.com/tensorflow/tensorflow/releases) page.
-Or you can type:
-
-    C:\Path\to> git clone --recursive -b [release_tag] https://github.com/tensorflow/tensorflow.git
-
-Where *[release_tag]* is a git tag like *v0.6.0* or a branch name like *master*
-if you want to get the latest code.
-
-Go to the project folder:
-
-    C:\Path\to>cd tensorflow
-    C:\Path\to\tensorflow>
-
-Now go to *tensorflow\contrib\cmake* folder in TensorFlow's contrib sources:
-
-    C:\Path\to\tensorflow>cd tensorflow\contrib\cmake
-    C:\Path\to\tensorflow\tensorflow\contrib\cmake>
-
-Good. Now you are ready to configure *CMake*.
-
-CMake Configuration
-===================
-
-*CMake* supports a lot of different
-[generators](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html)
-for various native build systems. We are only interested in
-[Makefile](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html#makefile-generators)
-and
-[Visual Studio](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html#visual-studio-generators)
-generators.
-
-We will use shadow building to separate the temporary files from the TensorFlow
-source code.
-
-Create a temporary *build* folder and change your working directory to it:
-
-     C:\Path\to\tensorflow\tensorflow\contrib\cmake>mkdir build & cd build
-     C:\Path\to\tensorflow\tensorflow\contrib\cmake\build>
-
-The *Makefile* generator can build the project in only one configuration, so
-you need to build a separate folder for each configuration.
-
-To start using a *Release* configuration:
-
-     [...]\contrib\cmake\build>mkdir release & cd release
-     [...]\contrib\cmake\build\release>cmake -G "NMake Makefiles" ^
-     -DCMAKE_BUILD_TYPE=Release ^
-     -DCMAKE_INSTALL_PREFIX=../../../../../../install ^
-     ../..
-
-It will generate *nmake* *Makefile* in current directory.
-
-To use *Debug* configuration:
-
-     [...]\contrib\cmake\build>mkdir debug & cd debug
-     [...]\contrib\cmake\build\debug>cmake -G "NMake Makefiles" ^
-     -DCMAKE_BUILD_TYPE=Debug ^
-     -DCMAKE_INSTALL_PREFIX=../../../../../../install ^
-     ../..
-
-It will generate *nmake* *Makefile* in current directory.
-
-To create *Visual Studio* solution file:
-
-     [...]\contrib\cmake\build>mkdir solution & cd solution
-     [...]\contrib\cmake\build\solution>cmake -G "Visual Studio 12 2013 Win64" ^
-     -DCMAKE_INSTALL_PREFIX=../../../../../../install ^
-     ../..
-
-It will generate *Visual Studio* solution file *tensorflow.sln* in current
-directory.
-
-If the *gmock* directory does not exist, and/or you do not want to build
-TensorFlow unit tests, you need to add *cmake* command argument
-`-Dtensorflow_BUILD_TESTS=OFF` to disable testing.
-
-Compiling
-=========
-
-To compile tensorflow:
-
-     [...]\contrib\cmake\build\release>nmake
-
-or
-
-     [...]\contrib\cmake\build\debug>nmake
-
-And wait for the compilation to finish.
-
-If you prefer to use the IDE:
-
-  * Open the generated tensorflow.sln file in Microsoft Visual Studio.
-  * Choose "Debug" or "Release" configuration as desired.
-  * From the Build menu, choose "Build Solution".
-
-And wait for the compilation to finish.
-
-Testing
-=======
-
-To run unit-tests:
-
-     [...]\contrib\cmake\build\release>nmake check
-
-or
-
-     [...]\contrib\cmake\build\debug>nmake check
-
-You can also build project *check* from Visual Studio solution.
-Yes, it may sound strange, but it works.
-
-You should see an output similar to:
-
-     Running main() from gmock_main.cc
-     [==========] Running 1546 tests from 165 test cases.
-     
-     ...
-     
-     [==========] 1546 tests from 165 test cases ran. (2529 ms total)
-     [  PASSED  ] 1546 tests.
-
-To run specific tests:
-
-     C:\Path\to\tensorflow>tensorflow\contrib\cmake\build\release\tests.exe ^
-     --gtest_filter=AnyTest*
-     Running main() from gmock_main.cc
-     Note: Google Test filter = AnyTest*
-     [==========] Running 3 tests from 1 test case.
-     [----------] Global test environment set-up.
-     [----------] 3 tests from AnyTest
-     [ RUN      ] AnyTest.TestPackAndUnpack
-     [       OK ] AnyTest.TestPackAndUnpack (0 ms)
-     [ RUN      ] AnyTest.TestPackAndUnpackAny
-     [       OK ] AnyTest.TestPackAndUnpackAny (0 ms)
-     [ RUN      ] AnyTest.TestIs
-     [       OK ] AnyTest.TestIs (0 ms)
-     [----------] 3 tests from AnyTest (1 ms total)
-     
-     [----------] Global test environment tear-down
-     [==========] 3 tests from 1 test case ran. (2 ms total)
-     [  PASSED  ] 3 tests.
-
-Note that the tests must be run from the source folder.
-
-If all tests are passed, safely continue.
-
-Installing
-==========
-
-To install TensorFlow to the specified *install* folder:
-
-     [...]\contrib\cmake\build\release>nmake install
-
-or
-
-     [...]\contrib\cmake\build\debug>nmake install
-
-You can also build project *INSTALL* from Visual Studio solution.
-It sounds not so strange and it works.
-
-This will create the following folders under the *install* location:
-  * bin - that contains tensorflow binaries;
-  * include - that contains C++ headers and TensorFlow *.proto files;
-  * lib - that contains linking libraries and *CMake* configuration files for
-    *tensorflow* package.
-
-Now you can if needed:
-  * Copy the contents of the include directory to wherever you want to put
-    headers.
-  * Copy binaries wherever you put build tools (probably somewhere in your
-    PATH).
-  * Copy linking libraries libtensorflow[d].lib wherever you put libraries.
-
-To avoid conflicts between the MSVC debug and release runtime libraries, when
-compiling a debug build of your application, you may need to link against a
-debug build of libtensorflowd.lib with "d" postfix.  Similarly, release builds
-should link against release libtensorflow.lib library.
-
-DLLs vs. static linking
-=======================
-
-Static linking is now the default for the TensorFlow Buffer libraries.  Due to
-issues with Win32's use of a separate heap for each DLL, as well as binary
-compatibility issues between different versions of MSVC's STL library, it is
-recommended that you use static linkage only.  However, it is possible to
-build libtensorflow as DLLs if you really want.  To do this, do the following:
-
-  * Add an additional flag `-Dtensorflow_BUILD_SHARED_LIBS=ON` when invoking
-    cmake
-  * Follow the same steps as described in the above section.
-  * When compiling your project, make sure to `#define TENSORFLOW_USE_DLLS`.
-
-When distributing your software to end users, we strongly recommend that you
-do NOT install libtensorflow.dll to any shared location.
-Instead, keep these libraries next to your binaries, in your application's
-own install directory.  C++ makes it very difficult to maintain binary
-compatibility between releases, so it is likely that future versions of these
-libraries will *not* be usable as drop-in replacements.
-
-If your project is itself a DLL intended for use by third-party software, we
-recommend that you do NOT expose TensorFlow objects in your library's
-public interface, and that you statically link them into your library.
-
-Notes on Compiler Warnings
+Step-by-step Windows build
 ==========================
 
-The following warnings have been disabled while building the tensorflow
-libraries and binaries.  You may have to disable some of them in your own
-project as well, or live with them.
+1. Install the pre-requisites detailed above, and set up your environment.
 
-* [TODO]
+   * The following commands assume that you are using the Windows Command
+     Prompt (`cmd.exe`). You will need to set up your environment to use the
+     appropriate toolchain, i.e. the 64-bit tools. (Some of the binary targets
+     we will build are too large for the 32-bit tools, and they will fail with
+     out-of-memory errors.) The typical command to do set up your
+     environment is:
+
+     ```
+     D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvarsall.bat"
+     ```
+
+   * We assume that `cmake` and `git` are installed and in your `%PATH%`. If
+     for example `cmake` is not in your path and it is installed in
+     `C:\Program Files (x86)\CMake\bin\cmake.exe`, you can add this directory
+     to your `%PATH%` as follows:
+
+     ```
+     D:\temp> set PATH="%PATH%;C:\Program Files (x86)\CMake\bin\cmake.exe"
+     ```
+
+2. Clone the TensorFlow repository and create a working directory for your
+   build:
+
+   ```
+   D:\temp> git clone https://github.com/tensorflow/tensorflow.git
+   D:\temp> cd tensorflow\tensorflow\contrib\cmake
+   D:\temp\tensorflow\tensorflow\contrib\cmake> mkdir build
+   D:\temp\tensorflow\tensorflow\contrib\cmake> cd build
+   D:\temp\tensorflow\tensorflow\contrib\cmake\build>
+   ```
+
+3. Invoke CMake to create Visual Studio solution and project files.
+
+   **N.B.** This assumes that `cmake.exe` is in your `%PATH%` environment
+   variable. The other paths are for illustrative purposes only, and may
+   be different on your platform. The `^` character is a line continuation
+   and must be the last character on each line.
+
+   ```
+   D:\...\build> cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release ^
+   More? -DSWIG_EXECUTABLE=C:/tools/swigwin-3.0.10/swig.exe ^
+   More? -DPYTHON_EXECUTABLE=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/python.exe ^
+   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib
+   ```
+
+   Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
+   configuration that you choose when invoking `msbuild`. The known-good
+   values are `Release` and `RelWithDebInfo`. The `Debug` build type is
+   not currently supported, because it relies on a `Debug` library for
+   Python (`python35d.lib`) that is not distributed by default.
+
+   There are various options that can be specified when generating the
+   solution and project files:
+
+   * `-DCMAKE_BUILD_TYPE=(Release|RelWithDebInfo)`: Note that the
+     `CMAKE_BUILD_TYPE` option must match the build configuration that you
+     choose when invoking MSBuild in step 4. The known-good values are
+     `Release` and `RelWithDebInfo`. The `Debug` build type is not currently
+     supported, because it relies on a `Debug` library for Python
+     (`python35d.lib`) that is not distributed by default.
+
+   * `-Dtensorflow_BUILD_ALL_KERNELS=(ON|OFF)`. Defaults to `ON`. You can
+     build a small subset of the kernels for a faster build by setting this
+     option to `OFF`.
+
+   * `-Dtensorflow_BUILD_CC_EXAMPLE=(ON|OFF)`. Defaults to `ON`. Generate
+     project files for a simple C++
+     [example training program](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/tutorials/example_trainer.cc).
+
+   * `-Dtensorflow_BUILD_PYTHON_BINDINGS=(ON|OFF)`. Defaults to `ON`. Generate
+     project files for building a PIP package containing the TensorFlow runtime
+     and its Python bindings.
+
+   * `-Dtensorflow_ENABLE_GRPC_SUPPORT=(ON|OFF)`. Defaults to `ON`. Include
+     gRPC support and the distributed client and server code in the TensorFlow
+     runtime.
+
+   * `-Dtensorflow_ENABLE_SSL_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include
+     SSL support (for making secure HTTP requests) in the TensorFlow runtime.
+     This support is incomplete, and will be used for Google Cloud Storage
+     support.
+
+4. Invoke MSBuild to build TensorFlow.
+
+   To build the C++ example program, which will be created as a `.exe`
+   executable in the subdirectory `.\Release`:
+
+   ```
+   D:\...\build> MSBuild /p:Configuration=Release tf_tutorials_example_trainer.vcxproj
+   D:\...\build> Release\tf_tutorials_example_trainer.exe
+   ```
+
+   To build the PIP package, which will be created as a `.whl` file in the
+   subdirectory `.\tf_python\dist`:
+
+   ```
+   D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
+   ```
+
+
+Linux Continuous Integration build
+==================================
+
+This build requires [Docker](https://www.docker.com/) to be installed on the
+local machine.
+
+```bash
+$ git clone --recursive https://github.com/tensorflow/tensorflow.git
+$ cd tensorflow
+$ tensorflow/tools/ci_build/ci_build.sh CMAKE tensorflow/tools/ci_build/builds/cmake.sh
+```
+
+That's it. Dependencies included.

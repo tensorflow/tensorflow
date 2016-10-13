@@ -123,7 +123,8 @@ class SDCAOptimizer(object):
           # bucketized feature is "sparsified" for SDCA by converting it to a
           # SparseFeatureColumn respresenting the one-hot encoding of the
           # bucketized feature.
-          dense_bucket_tensor = column.to_dnn_input_layer(transformed_tensor)
+          dense_bucket_tensor = layers.input_from_feature_columns(
+              {column: transformed_tensor}, [column])
           sparse_feature_column = _tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)

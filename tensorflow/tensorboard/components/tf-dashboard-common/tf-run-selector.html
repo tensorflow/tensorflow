@@ -53,6 +53,11 @@ Properties out:
     >
     Toggle All Runs
     </paper-button>
+    <template
+      is="dom-if"
+      if="[[logdir]]">
+      <div id="logdir" inner-h-t-m-l="{{_breakAtSlashes(logdir)}}"></div>
+    </template>
     <style>
       :host {
         display: flex;
@@ -65,7 +70,6 @@ Properties out:
         flex-grow: 0;
         flex-shrink: 0;
         padding-right: 16px;
-        padding-bottom: 6px;
         box-sizing: border-box;
         color: var(--paper-grey-800);
       }
@@ -77,7 +81,6 @@ Properties out:
       .x-button {
         font-size: 13px;
         background-color: var(--tb-ui-light-accent);
-        margin-top: 5px;
         color: var(--tb-ui-dark-accent);
       }
       #tooltip-help {
@@ -90,19 +93,44 @@ Properties out:
       paper-button {
         margin-left: 0;
       }
+      #logdir {
+        color: var(--tb-ui-dark-accent);
+        font-size: 13px;
+        margin: 5px 0 0 0;
+        max-width: 288px;
+      }
     </style>
   </template>
   <script>
   Polymer({
     is: "tf-run-selector",
     properties: {
+      backend: Object,
       outSelected: {type: Array, notify: true},
       // runs: an array of strings, representing the run names that may be chosen
       runs: Array,
       colorScale: Object, // TF.ColorScale
+      logdir: {
+        type: String,
+        notify: true,
+      },
+    },
+    ready: function() {
+      // Populate the logdir.
+      this.backend.logdir().then(logdirObject => {
+        this.set('logdir', logdirObject.logdir);
+      }).catch(e => {
+        // Fetching the logdir failed. Prevent the exception from logging to
+        // console. The console already logs a 404 network event.
+      });
     },
     _toggleAll: function() {
       this.$.multiCheckbox.toggleAll();
+    },
+    // Makes a string only be broken at the right of slashes instead of in front
+    // of any arbitrary character.
+    _breakAtSlashes: function(originalString) {
+      return originalString.replace(/\//g, '/<wbr>');
     },
   });
   </script>

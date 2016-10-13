@@ -26,7 +26,7 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.10.0-cmake-experimental'
+_VERSION = '0.11.0rc0-cmake-experimental'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -140,6 +140,10 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
+if os.name == 'nt':
+  EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
+else:
+  EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
 
 
 # TODO(mrry): Add support for development headers.
@@ -168,8 +172,7 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': ['python/_pywrap_tensorflow.so',
-                     ] + matches,
+        'tensorflow': [EXTENSION_NAME] + matches,
     },
     zip_safe=False,
     distclass=BinaryDistribution,

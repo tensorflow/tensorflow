@@ -183,7 +183,7 @@ def conv2d_shape(op):
     data_format = None
 
   if data_format == b"NCHW":
-    # Convert input shape to the dfeault NHWC for inference.
+    # Convert input shape to the default NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
 
@@ -368,7 +368,7 @@ def avg_pool_shape(op):
     data_format = None
 
   if data_format == b"NCHW":
-    # Convert input shape to the dfeault NHWC for inference.
+    # Convert input shape to the default NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
 

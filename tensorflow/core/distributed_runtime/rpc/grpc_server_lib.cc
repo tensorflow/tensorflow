@@ -185,8 +185,8 @@ Status GrpcServer::Init() {
   master_env_.master_session_factory = [](const SessionOptions& options,
                                           const MasterEnv* env,
                                           std::vector<Device*>* remote_devs) {
-    return internal::NewMasterSession(options, env, remote_devs,
-                                      CreateNoOpStatsPublisher);
+    return new MasterSession(options, env, remote_devs,
+                             CreateNoOpStatsPublisher);
   };
 
   // Finish setting up worker environment.

@@ -235,7 +235,6 @@ def read_keyed_batch_features(file_pattern,
                               reader_num_threads=1,
                               feature_queue_capacity=100,
                               num_queue_runners=2,
-                              parser_num_threads=None,
                               parse_fn=None,
                               name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
@@ -270,7 +269,6 @@ def read_keyed_batch_features(file_pattern,
       Adding multiple queue runners for the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
       parsing.
-    parser_num_threads: (Deprecated) The number of threads to parse examples.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -284,10 +282,6 @@ def read_keyed_batch_features(file_pattern,
     ValueError: for invalid inputs.
   """
 
-  if parser_num_threads:
-    # TODO(sibyl-Aix6ihai): Remove on Sept 3 2016.
-    logging.warning('parser_num_threads is deprecated, it will be removed on'
-                    'Sept 3 2016')
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
     keys, examples = read_keyed_batch_examples(
         file_pattern, batch_size, reader, randomize_input=randomize_input,
@@ -410,11 +404,17 @@ def queue_parsed_features(parsed_features,
     return dequeued_keys, dequeued_parsed_features
 
 
-def read_batch_features(file_pattern, batch_size, features, reader,
-                        randomize_input=True, num_epochs=None,
-                        queue_capacity=10000, feature_queue_capacity=100,
-                        reader_num_threads=1, parser_num_threads=1,
-                        parse_fn=None, name=None):
+def read_batch_features(file_pattern,
+                        batch_size,
+                        features,
+                        reader,
+                        randomize_input=True,
+                        num_epochs=None,
+                        queue_capacity=10000,
+                        feature_queue_capacity=100,
+                        reader_num_threads=1,
+                        parse_fn=None,
+                        name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -444,8 +444,6 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     feature_queue_capacity: Capacity of the parsed features queue. Set this
       value to a small number, for example 5 if the parsed features are large.
     reader_num_threads: The number of threads to read examples.
-    parser_num_threads: The number of threads to parse examples.
-      records to read at once
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -462,7 +460,6 @@ def read_batch_features(file_pattern, batch_size, features, reader,
       queue_capacity=queue_capacity,
       feature_queue_capacity=feature_queue_capacity,
       reader_num_threads=reader_num_threads,
-      parser_num_threads=parser_num_threads,
       parse_fn=parse_fn, name=name)
   return features
 
@@ -470,7 +467,6 @@ def read_batch_features(file_pattern, batch_size, features, reader,
 def read_batch_record_features(file_pattern, batch_size, features,
                                randomize_input=True, num_epochs=None,
                                queue_capacity=10000, reader_num_threads=1,
-                               parser_num_threads=1,
                                name='dequeue_record_examples'):
   """Reads TFRecord, queues, batches and parses `Example` proto.
 
@@ -489,7 +485,6 @@ def read_batch_record_features(file_pattern, batch_size, features,
       tf.initialize_local_variables() as shown in the tests.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
-    parser_num_threads: The number of threads to parse examples.
     name: Name of resulting op.
 
   Returns:
@@ -499,8 +494,12 @@ def read_batch_record_features(file_pattern, batch_size, features,
     ValueError: for invalid inputs.
   """
   return read_batch_features(
-      file_pattern=file_pattern, batch_size=batch_size, features=features,
+      file_pattern=file_pattern,
+      batch_size=batch_size,
+      features=features,
       reader=io_ops.TFRecordReader,
-      randomize_input=randomize_input, num_epochs=num_epochs,
-      queue_capacity=queue_capacity, reader_num_threads=reader_num_threads,
-      parser_num_threads=parser_num_threads, name=name)
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
+      queue_capacity=queue_capacity,
+      reader_num_threads=reader_num_threads,
+      name=name)

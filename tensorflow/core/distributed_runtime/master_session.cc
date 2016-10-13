@@ -19,13 +19,9 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
-#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
-#include "tensorflow/core/distributed_runtime/master_env.h"
-#include "tensorflow/core/distributed_runtime/master_session_interface.h"
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -34,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -48,13 +45,10 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
-namespace {
 // A little bit of per-step state.
 struct PerStepState {
   bool collect_costs = false;
@@ -64,118 +58,6 @@ struct PerStepState {
   Microseconds end_micros = Microseconds(0);
   std::vector<StepStats> step_stats;  // per partition
   StepStats rpc_stats;                // for RPC layer
-};
-
-// A session encapsulates a graph computation (resource allocation,
-// placement, execution, etc.).
-class MasterSession : public MasterSessionInterface {
- public:
-  // This session encapsulates the graph computation for a graph.
-  //
-  // The session places nodes on devices in "remote_devs" and executes
-  // operations on these devices.
-  //
-  // The caller takes ownership of all remote devices.
-  MasterSession(const SessionOptions& options, const MasterEnv* env,
-                std::vector<Device*>* remote_devs,
-                StatsPublisherFactory stats_publisher_factory);
-
-  // Initialize the MasterSession for "def".  Must be called before Extend(),
-  // Run(), or Close().
-  //
-  // The callee may clear "def".
-  Status Create(GraphDef* def) override;
-
-  // Returns the session handle.
-  const string& handle() const override { return handle_; }
-
-  // Returns the last access time (the number of micro-seconds since
-  // some fixed point in time) of this session.
-  uint64 last_access_time_usec() const override {
-    return last_access_time_usec_.load();
-  }
-
-  // Attempt to extend the graph according to the given "req".
-  // (See master.proto for details of valid extensions.)
-  //
-  // PRECONDITION: The current version of this session's graph
-  //   is "req->current_graph_version".
-  //
-  // POSTCONDITION: The current version of this session's graph
-  //   is "resp->new_graph_version".
-  //
-  // Extend() may block the caller thread for a long time.
-  Status Extend(const ExtendSessionRequest* req,
-                ExtendSessionResponse* resp) override;
-
-  // Run one step.
-  Status Run(CallOptions* opts, const RunStepRequest* req,
-             RunStepResponse* resp) override;
-
-  // Close this session and delete "*this". Returns OK if all known
-  // states are cleanup successfully.
-  //
-  // Close() may block the caller thread for a long time.
-  Status Close() override;
-
- private:
-  SessionOptions session_opts_;
-
-  // Not owned.
-  const MasterEnv* env_;
-
-  // The opaque session handle.
-  const string handle_;
-
-  // Owned.
-  std::vector<Device*> remote_devs_;
-
-  // The device set used by this session.
-  DeviceSet devices_;
-
-  StatsPublisherFactory stats_publisher_factory_;
-
-  std::atomic_ulong last_access_time_usec_;
-
-  mutex mu_;
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_;
-  int64 graph_version_;
-
-  // We keep a map from a signature of a run request to the
-  // ReffedClientGraph the can execute it.  We keep up to one old copy
-  // of each ReffedClientGraph around because if it gets deallocated
-  // before a new substitute has been created, Variables can go out of
-  // scope and lose their state.
-  class ReffedClientGraph;
-  typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
-  RCGMap runs_ GUARDED_BY(mu_);
-  RCGMap obsolete_ GUARDED_BY(mu_);
-
-  // Active RunStep calls.
-  condition_variable num_running_is_zero_;
-  int32 num_running_ GUARDED_BY(mu_) = 0;
-
-  std::unordered_map<uint64, int64> subgraph_execution_counts_ GUARDED_BY(mu_);
-
-  // We need to ensure that certain nodes added (e.g., send and recv
-  // nodes) are unique across all sub-graphs within this session.
-  int64 next_node_id_ GUARDED_BY(mu_) = 0;
-
-  // Used to cancel running steps on Close().
-  CancellationManager* cancellation_manager_;
-
-  // Private dtor. The client must call Close().
-  virtual ~MasterSession();
-
-  Status StartStep(const RunStepRequest& req, BuildGraphOptions* opts,
-                   int64* count, ReffedClientGraph** graph);
-  void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
-                      RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status DoRunWithLocalExecution(CallOptions* opts, const RunStepRequest* req,
-                                 RunStepResponse* resp);
-  void UpdateLastAccessTime();
-
-  TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
 };
 
 // MasterSession wraps SimpleClientGraph in a reference counted object.
@@ -246,20 +128,14 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     int waiting_for = partitions_.size();
     if (waiting_for > 0) {
       mutex scoped_mu;
-      // TODO(suharshs): Use BlockingCounter instead?
-      Notification all_done;
+      BlockingCounter all_done(waiting_for);
       for (auto& p : partitions_) {
         LoggingResponse* resp = new LoggingResponse;
         p.worker->LoggingAsync(
             &req, resp, [step_id, ss, resp, &scoped_mu, &waiting_for,
                          &all_done](const Status& s) {
-              bool notify_all_done = false;
               {
                 mutex_lock l(scoped_mu);
-                --waiting_for;
-                if (waiting_for == 0) {
-                  notify_all_done = true;
-                }
                 if (s.ok()) {
                   for (auto& lss : resp->step()) {
                     if (step_id != lss.step_id()) {
@@ -271,14 +147,12 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                 }
                 delete resp;
               }
-              // Must not call all_done.Notify() until out of critical
-              // section where *ss is updated.
-              if (notify_all_done) {
-                all_done.Notify();
-              }
+              // Must not decrement all_done until out of critical section where
+              // *ss is updated.
+              all_done.DecrementCount();
             });
       }
-      all_done.WaitForNotification();
+      all_done.Wait();
     }
   }
 
@@ -306,7 +180,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     SimpleGraphExecutionState* execution_state,
                     ProfileHandler* ph, RunStepResponse* resp);
   void ProcessDeviceStats(ProfileHandler* ph,
-                          SimpleGraphExecutionState* execution_state,
+                          const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
 
   string DetailText(const NodeDef& def, const NodeExecStats& ns) {
@@ -511,10 +385,10 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     RegisterGraphRequest req;
     RegisterGraphResponse resp;
     Status status;
-    Notification done;
   };
   const int num = partitions_.size();
   gtl::InlinedVector<Call, 4> calls(num);
+  BlockingCounter done(num);
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
     Call* c = &calls[i];
@@ -522,15 +396,15 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     *c->req.mutable_graph_def() = part.gdef;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     VLOG(2) << "Register " << part.gdef.DebugString();
-    auto cb = [c](const Status& s) {
+    auto cb = [c, &done](const Status& s) {
       c->status = s;
-      c->done.Notify();
+      done.DecrementCount();
     };
     part.worker->RegisterGraphAsync(&c->req, &c->resp, cb);
   }
-  for (int i = num - 1; i >= 0; --i) {
+  done.Wait();
+  for (int i = 0; i < num; ++i) {
     Call* c = &calls[i];
-    c->done.WaitForNotification();
     s.Update(c->status);
     partitions_[i].graph_handle = c->resp.graph_handle();
   }
@@ -553,7 +427,7 @@ static bool CopyIfNeeded(TensorProto* in, TensorProto* out) {
 // Helper class to manage "num" parallel RunGraph calls.
 class RunManyGraphs {
  public:
-  explicit RunManyGraphs(int num) : calls_(num), num_pending_(num) {}
+  explicit RunManyGraphs(int num) : calls_(num), pending_(num) {}
 
   ~RunManyGraphs() {}
 
@@ -568,14 +442,11 @@ class RunManyGraphs {
   // When the index-th call is done, updates the overall status.
   void WhenDone(int index, const Status& s) {
     TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
-    {
+    if (!s.ok()) {
       mutex_lock l(mu_);
-      if (!s.ok()) {
-        UpdateStatusLocked(s);
-      }
-      --num_pending_;
-      cv_pending_.notify_all();
+      UpdateStatusLocked(s);
     }
+    pending_.DecrementCount();
   }
 
   void StartCancel() {
@@ -583,12 +454,7 @@ class RunManyGraphs {
     UpdateStatusLocked(errors::Cancelled("RunManyGraphs"));
   }
 
-  void Wait() {
-    mutex_lock l(mu_);
-    while (num_pending_ > 0) {
-      cv_pending_.wait(l);
-    }
-  }
+  void Wait() { pending_.Wait(); }
 
   Status status() const {
     mutex_lock l(mu_);
@@ -598,12 +464,8 @@ class RunManyGraphs {
  private:
   gtl::InlinedVector<Call, 4> calls_;
 
-  // TODO(jeff,sanjay): Replace bookkeeping state here with a
-  // BlockingCounter abstraction that we define in
-  // tensorflow/core/lib/core.
+  BlockingCounter pending_;
   mutable mutex mu_;
-  condition_variable cv_pending_;
-  int num_pending_;
   Status status_ GUARDED_BY(mu_);
 
   void UpdateStatusLocked(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -862,7 +724,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(
 }
 
 void MasterSession::ReffedClientGraph::ProcessDeviceStats(
-    ProfileHandler* ph, SimpleGraphExecutionState* execution_state,
+    ProfileHandler* ph, const SimpleGraphExecutionState* execution_state,
     const DeviceStepStats& ds, bool is_rpc) {
   const string& dev_name = ds.device();
   VLOG(1) << "Device " << dev_name << " reports stats for "
@@ -874,9 +736,8 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       ph->RecordOneOp(dev_name, ns, true /*is_copy*/, "", ns.node_name(),
                       ns.timeline_label());
     } else {
-      NodeDef ndef;
-      Status s = execution_state->GlobalNodeDefByName(ns.node_name(), &ndef);
-      const bool found_node_in_graph = s.ok();
+      const Node* node = execution_state->get_node_by_name(ns.node_name());
+      const bool found_node_in_graph = node != nullptr;
       if (!found_node_in_graph && ns.timeline_label().empty()) {
         // The counter incrementing is not thread-safe. But we don't really
         // care.
@@ -890,12 +751,13 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
         }
         continue;
       }
-      string optype = found_node_in_graph ? ndef.op() : ns.node_name();
+      string optype =
+          found_node_in_graph ? node->type_string() : ns.node_name();
       string details;
       if (!ns.timeline_label().empty()) {
         details = ns.timeline_label();
       } else if (found_node_in_graph) {
-        details = DetailText(ndef, ns);
+        details = DetailText(node->def(), ns);
       } else {
         // Leave details string empty
       }
@@ -1025,15 +887,14 @@ Status MasterSession::Create(GraphDef* graph_def) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "
                     "place_pruned_graph option.";
+    session_opts_.config.mutable_graph_options()->set_place_pruned_graph(false);
   }
 
   SimpleGraphExecutionStateOptions options;
   options.device_set = &devices_;
   options.session_options = &session_opts_;
-  execution_state_.reset(
-      new SimpleGraphExecutionState(graph_def->library(), options));
-  TF_RETURN_IF_ERROR(execution_state_->Create(graph_def));
-
+  TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
+      graph_def, options, &execution_state_));
   return Status::OK();
 }
 
@@ -1206,7 +1067,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   ph = rcg->GetProfileHandler(step_id, count, req->options());
   if (ph) {
     pss.collect_timeline = true;
-    pss.collect_rpcs = true;
+    pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
   TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
@@ -1244,16 +1105,4 @@ Status MasterSession::Close() {
   return Status::OK();
 }
 
-}  // end namespace
-
-namespace internal {
-
-MasterSessionInterface* NewMasterSession(
-    const SessionOptions& options, const MasterEnv* env,
-    std::vector<Device*>* remote_devs,
-    StatsPublisherFactory stats_publisher_factory) {
-  return new MasterSession(options, env, remote_devs, stats_publisher_factory);
-}
-
-}  // end namespace internal
 }  // end namespace tensorflow

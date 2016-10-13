@@ -122,8 +122,8 @@ reparameterized distributions; it will also return None if the value type is
 *  <b>`dist_value_type`</b>: a `_StochasticValueType`, which will determine what the
       `value` of this `StochasticTensor` will be. If not provided, the
       value type set with the `value_type` context manager will be used.
-*  <b>`loss_fn`</b>: callable that takes `(dt, dt.value(), influenced_loss)`, where
-      `dt` is this `StochasticTensor`, and returns a `Tensor` loss. By
+*  <b>`loss_fn`</b>: callable that takes `(st, st.value(), influenced_loss)`, where
+      `st` is this `StochasticTensor`, and returns a `Tensor` loss. By
       default, `loss_fn` is the `score_function`, or more precisely, the
       integral of the score function, such that when the gradient is taken,
       the score function results. See the `stochastic_gradient_estimators`
@@ -275,10 +275,10 @@ Example:
 mu = tf.zeros((2,3))
 sigma = tf.ones((2, 3))
 with sg.value_type(sg.SampleValue(n=4)):
-  dt = sg.DistributionTensor(
+  st = sg.StochasticTensor(
     distributions.Normal, mu=mu, sigma=sigma)
 # draws 4 samples each with shape (2, 3) and concatenates
-assertEqual(dt.value().get_shape(), (4, 2, 3))
+assertEqual(st.value().get_shape(), (4, 2, 3))
 ```
 - - -
 
@@ -351,15 +351,15 @@ mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
 sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
 
 with sg.value_type(sg.SampleAndReshapeValue(n=2)):
-  dt = sg.DistributionTensor(
+  st = sg.StochasticTensor(
       distributions.Normal, mu=mu, sigma=sigma)
 
 # sample(2) creates a (2, 2, 3) tensor, and the two outermost dimensions
 # are reshaped into one: the final value is a (4, 3) tensor.
-dt_value = dt.value()
-assertEqual(dt_value.get_shape(), (4, 3))
+st_value = st.value()
+assertEqual(st_value.get_shape(), (4, 3))
 
-dt_value_val = sess.run([dt_value])[0]  # or e.g. run([tf.identity(dt)])[0]
+dt_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
 assertEqual(dt_value_val.shape, (4, 3))
 ```
 - - -
@@ -423,10 +423,10 @@ Typical usage:
 
 ```
 with sg.value_type(sg.MeanValue(stop_gradients=True)):
-  dt = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
+  st = sg.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
 ```
 
-In the example above, `dt.value()` (or equivalently, `tf.identity(dt)`) will
+In the example above, `st.value()` (or equivalently, `tf.identity(st)`) will
 be the mean value of the Normal distribution, i.e., `mu` (possibly
 broadcasted to the shape of `sigma`).  Furthermore, because the `MeanValue`
 was marked with `stop_gradients=True`, this value will have been wrapped

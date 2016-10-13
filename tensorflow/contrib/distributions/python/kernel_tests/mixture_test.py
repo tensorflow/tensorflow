@@ -126,7 +126,7 @@ class MixtureTest(tf.test.TestCase):
           [distributions_py.Normal(mu=1.0, sigma=2.0),  # scalar dist
            distributions_py.Normal(mu=[1.0, 1.0], sigma=[2.0, 2.0])])
     with self.assertRaisesWithPredicateMatch(ValueError, r"Could not infer"):
-      cat_logits = tf.placeholder(shape=[1, None], dtype=tf.int32)
+      cat_logits = tf.placeholder(shape=[1, None], dtype=tf.float32)
       distributions_py.Mixture(
           distributions_py.Categorical(cat_logits),
           [distributions_py.Normal(mu=[1.0], sigma=[2.0])])

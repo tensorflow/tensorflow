@@ -30,7 +30,16 @@ limitations under the License.
   __attribute__((__format__(__printf__, string_index, first_to_check)))
 #define TF_SCANF_ATTRIBUTE(string_index, first_to_check) \
   __attribute__((__format__(__scanf__, string_index, first_to_check)))
-
+#elif defined(COMPILER_MSVC)
+// Non-GCC equivalents
+#define TF_ATTRIBUTE_NORETURN __declspec(noreturn)
+#define TF_ATTRIBUTE_NOINLINE
+#define TF_ATTRIBUTE_UNUSED
+#define TF_ATTRIBUTE_COLD
+#define TF_MUST_USE_RESULT
+#define TF_PACKED
+#define TF_PRINTF_ATTRIBUTE(string_index, first_to_check)
+#define TF_SCANF_ATTRIBUTE(string_index, first_to_check)
 #else
 // Non-GCC equivalents
 #define TF_ATTRIBUTE_NORETURN

@@ -464,7 +464,7 @@ class SaverTest(tf.test.TestCase):
       save.restore(sess, save_path)
       self.assertAllClose([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], var.eval())
 
-  def testSaveWithGlobalStep(self):
+  def testSaveWithGlobalStep(self, pad_step_number=False):
     save_path = os.path.join(self.get_temp_dir(), "ckpt_with_global_step")
     global_step_int = 5
     # Save and reload one Variable named "var0".
@@ -472,15 +472,25 @@ class SaverTest(tf.test.TestCase):
     for use_tensor in [True, False]:
       with self.test_session() as sess:
         var = tf.Variable(1.0, name="var0")
-        save = tf.train.Saver({var.op.name: var})
+        save = tf.train.Saver(
+            {
+                var.op.name: var
+            }, pad_step_number=pad_step_number)
         var.initializer.run()
         if use_tensor:
           global_step = tf.constant(global_step_int)
           val = save.save(sess, save_path, global_step=global_step)
         else:
           val = save.save(sess, save_path, global_step=global_step_int)
-        expected_save_path = "%s-%d" % (save_path, global_step_int)
+        if pad_step_number:
+          expected_save_path = "%s-%s" % (save_path,
+                                          "{:08d}".format(global_step_int))
+        else:
+          expected_save_path = "%s-%d" % (save_path, global_step_int)
         self.assertEqual(expected_save_path, val)
+
+  def testSaveWithGlobalStepWithPadding(self):
+    self.testSaveWithGlobalStep(pad_step_number=True)
 
   def testSaveToNonexistingPath(self):
 
@@ -1668,6 +1678,12 @@ class CheckpointReaderForV2Test(CheckpointReaderTest):
 
 
 class WriteGraphTest(tf.test.TestCase):
+
+  def testWriteGraph(self):
+    test_dir = _TestDir("write_graph_dir")
+    tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+    tf.train.write_graph(tf.get_default_graph(),
+                         "/".join([test_dir, "l1"]), "graph.pbtxt")
 
   def testRecursiveCreate(self):
     test_dir = _TestDir("deep_dir")

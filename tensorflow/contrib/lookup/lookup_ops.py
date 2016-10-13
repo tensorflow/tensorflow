@@ -839,8 +839,7 @@ class MutableHashTable(LookupInterface):
       op = gen_data_flow_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
       # pylint: enable=protected-access
-
-    return op
+      return op
 
   def export(self, name=None):
     """Returns tensors of all keys and values in the table.
@@ -883,3 +882,150 @@ class MutableHashTable(LookupInterface):
       # pylint: disable=protected-access
       return gen_data_flow_ops._lookup_table_import(
           self.op._table_ref, restored_tensors[0], restored_tensors[1])
+
+
+class MutableDenseHashTable(LookupInterface):
+  """A generic mutable hash table implementation using tensors as backing store.
+
+  Data can be inserted by calling the insert method. It does not support
+  initialization via the init method.
+
+  It uses "open addressing" with quadratic reprobing to resolve collisions.
+  Compared to `MutableHashTable` the insert and lookup operations in a
+  `MutableDenseHashTable` are typically faster, but memory usage can be higher.
+  However, `MutableDenseHashTable` does not require additional memory for
+  temporary tensors created during checkpointing and restore operations.
+
+  Example usage:
+
+  ```python
+  table = tf.contrib.lookup.MutableDenseHashTable(key_dtype=tf.int64,
+                                                  value_dtype=tf.int64,
+                                                  default_value=-1,
+                                                  empty_key=0)
+  table.insert(keys, values)
+  out = table.lookup(query_keys)
+  print out.eval()
+  ```
+  """
+
+  # TODO(andreasst): consider extracting common code with MutableHashTable into
+  # a common superclass.
+  def __init__(self,
+               key_dtype,
+               value_dtype,
+               default_value,
+               empty_key,
+               initial_num_buckets=None,
+               shared_name=None,
+               name="MutableDenseHashTable"):
+    """Creates an empty `MutableDenseHashTable` object.
+
+    Creates a table, the type of its keys and values are specified by key_dtype
+    and value_dtype, respectively.
+
+    Args:
+      key_dtype: the type of the key tensors.
+      value_dtype: the type of the value tensors.
+      default_value: The value to use if a key is missing in the table.
+      empty_key: the key to use to represent empty buckets internally. Must not
+        be used in insert or lookup operations.
+      initial_num_buckets: the initial number of buckets.
+      shared_name: If non-empty, this table will be shared under
+        the given name across multiple sessions.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `MutableHashTable` object.
+
+    Raises:
+      ValueError: If checkpoint is True and no name was specified.
+    """
+    self._default_value = ops.convert_to_tensor(
+        default_value, dtype=value_dtype)
+    self._value_shape = self._default_value.get_shape()
+
+    empty_key = ops.convert_to_tensor(empty_key, dtype=key_dtype)
+    # pylint: disable=protected-access
+    self._table_ref = gen_data_flow_ops._mutable_dense_hash_table(
+        empty_key=empty_key,
+        shared_name=shared_name,
+        value_dtype=value_dtype,
+        value_shape=self._value_shape,
+        initial_num_buckets=initial_num_buckets,
+        name=name)
+    # pylint: enable=protected-access
+    super(MutableDenseHashTable, self).__init__(
+        key_dtype, value_dtype, self._table_ref.op.name.split("/")[-1])
+
+  def size(self, name=None):
+    """Compute the number of elements in this table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A scalar tensor containing the number of elements in this table.
+    """
+    with ops.name_scope(name, "%s_Size" % self._name,
+                        [self._table_ref]) as name:
+      # pylint: disable=protected-access
+      return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
+      # pylint: enable=protected-access
+
+  def lookup(self, keys, name=None):
+    """Looks up `keys` in a table, outputs the corresponding values.
+
+    The `default_value` is used for keys not present in the table.
+
+    Args:
+      keys: Keys to look up. Can be a tensor of any shape. Must match the
+        table's key_dtype.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor containing the values in the same shape as `keys` using the
+        table's value type.
+
+    Raises:
+      TypeError: when `keys` do not match the table data types.
+    """
+    if keys.dtype != self._key_dtype:
+      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
+                      (self._key_dtype, keys.dtype))
+
+    with ops.name_scope(name, "%s_lookup_table_find" % self._name,
+                        [self._table_ref, keys]) as name:
+      # pylint: disable=protected-access
+      values = gen_data_flow_ops._lookup_table_find(
+          self._table_ref, keys, self._default_value, name=name)
+      # pylint: enable=protected-access
+
+    values.set_shape(keys.get_shape().concatenate(self._value_shape))
+    return values
+
+  def insert(self, keys, values, name=None):
+    """Associates `keys` with `values`.
+
+    Args:
+      keys: Keys to insert. Can be a tensor of any shape. Must match the
+        table's key type.
+      values: Values to be associated with keys. Must be a tensor of the same
+        shape as `keys` and match the table's value type.
+      name: A name for the operation (optional).
+
+    Returns:
+      The created Operation.
+
+    Raises:
+      TypeError: when `keys` or `values` doesn't match the table data
+        types.
+    """
+    self._check_table_dtypes(keys.dtype, values.dtype)
+    with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
+                        [self._table_ref, keys, values]) as name:
+      # pylint: disable=protected-access
+      op = gen_data_flow_ops._lookup_table_insert(
+          self._table_ref, keys, values, name=name)
+      # pylint: enable=protected-access
+      return op

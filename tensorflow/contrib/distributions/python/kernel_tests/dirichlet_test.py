@@ -150,7 +150,7 @@ class DirichletTest(tf.test.TestCase):
       self.assertEqual(dirichlet.mode().get_shape(), (3,))
       self.assertAllClose(dirichlet.mode().eval(), expected_mode)
 
-  def testDirichletMode_invalid(self):
+  def testDirichletModeInvalid(self):
     with self.test_session():
       alpha = np.array([1., 2, 3])
       dirichlet = tf.contrib.distributions.Dirichlet(
@@ -158,7 +158,7 @@ class DirichletTest(tf.test.TestCase):
       with self.assertRaisesOpError("Condition x < y.*"):
         dirichlet.mode().eval()
 
-  def testDirichletMode_enable_allow_nan_stats(self):
+  def testDirichletModeEnableAllowNanStats(self):
     with self.test_session():
       alpha = np.array([1., 2, 3])
       dirichlet = tf.contrib.distributions.Dirichlet(

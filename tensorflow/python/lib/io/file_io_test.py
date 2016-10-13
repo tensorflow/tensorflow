@@ -47,6 +47,18 @@ class FileIoTest(tf.test.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual(b"testing", file_contents)
 
+  def testAppend(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("begin\n")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("a1\n")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("a2\n")
+    with file_io.FileIO(file_path, mode="r") as f:
+      file_contents = f.read()
+      self.assertEqual(b"begin\na1\na2\n", file_contents)
+
   def testMultipleWrites(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="w") as f:

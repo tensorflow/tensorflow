@@ -163,7 +163,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     return table_.size();
   }
 
-  Status Find(const Tensor& key, Tensor* value,
+  Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
     const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
@@ -195,11 +195,13 @@ class MutableHashTableOfScalars final : public LookupInterface {
     return Status::OK();
   }
 
-  Status Insert(const Tensor& keys, const Tensor& values) override {
+  Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                const Tensor& values) override {
     return DoInsert(false, keys, values);
   }
 
-  Status ImportValues(const Tensor& keys, const Tensor& values) override {
+  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) override {
     return DoInsert(true, keys, values);
   }
 
@@ -255,7 +257,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     return table_.size();
   }
 
-  Status Find(const Tensor& key, Tensor* value,
+  Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
     const auto default_flat = default_value.flat<V>();
     const auto key_values = key.flat<K>();
@@ -301,11 +303,13 @@ class MutableHashTableOfTensors final : public LookupInterface {
     return Status::OK();
   }
 
-  Status Insert(const Tensor& keys, const Tensor& values) override {
+  Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                const Tensor& values) override {
     return DoInsert(false, keys, values);
   }
 
-  Status ImportValues(const Tensor& keys, const Tensor& values) override {
+  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) override {
     return DoInsert(true, keys, values);
   }
 
@@ -349,6 +353,176 @@ class MutableHashTableOfTensors final : public LookupInterface {
   std::unordered_map<K, ValueArray> table_ GUARDED_BY(mu_);
 };
 
+// Modeled after https://github.com/sparsehash/sparsehash
+template <class K, class V>
+class MutableDenseHashTable final : public LookupInterface {
+ public:
+  MutableDenseHashTable(OpKernelContext* ctx, OpKernel* kernel)
+      : num_entries_(0) {
+    OP_REQUIRES_OK(
+        ctx, GetNodeAttr(kernel->def(), "initial_num_buckets", &num_buckets_));
+    OP_REQUIRES(
+        ctx, num_buckets_ >= 4 && ((num_buckets_ & (num_buckets_ - 1)) == 0),
+        errors::InvalidArgument(
+            "initial_num_buckets must be at least 4 and a power of 2, got: ",
+            num_buckets_));
+
+    OP_REQUIRES_OK(ctx,
+                   GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
+    // TODO(andreasst): allow values of other shapes
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(value_shape_),
+        errors::InvalidArgument("Default value must be a scalar, got shape ",
+                                value_shape_.DebugString()));
+    // TODO(andreasst): allow keys of other shapes
+    const Tensor* empty_key_input;
+    OP_REQUIRES_OK(ctx, ctx->input("empty_key", &empty_key_input));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(empty_key_input->shape()),
+        errors::InvalidArgument("Empty key must be a scalar, got shape ",
+                                empty_key_input->shape().DebugString()));
+    K empty_key_value = empty_key_input->flat<K>()(0);
+    Tensor* empty_key_tensor;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_persistent(key_dtype(), TensorShape({1}),
+                                            &empty_key_, &empty_key_tensor));
+    empty_key_tensor->flat<K>()(0) = empty_key_value;
+
+    TensorShape buckets_shape({num_buckets_});
+    Tensor* key_buckets_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_persistent(key_dtype(), buckets_shape, &key_buckets_,
+                                      &key_buckets_tensor));
+    auto key_buckets_flat = key_buckets_tensor->flat<K>();
+    for (int i = 0; i < num_buckets_; ++i) {
+      key_buckets_flat(i) = empty_key_value;
+    }
+
+    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(value_dtype(), buckets_shape,
+                                                 &value_buckets_, nullptr));
+  }
+
+  size_t size() const override {
+    mutex_lock l(mu_);
+    return num_entries_;
+  }
+
+  Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
+              const Tensor& default_value) override {
+    const auto& default_flat = default_value.flat<V>();
+    const auto& key_values = key.flat<K>();
+    auto value_values = value->flat<V>();
+
+    mutex_lock l(mu_);
+    const auto& flat_key_buckets =
+        key_buckets_.AccessTensor(ctx)->template flat<K>();
+    const auto& flat_value_buckets =
+        value_buckets_.AccessTensor(ctx)->template flat<V>();
+    const K& empty_key = empty_key_.AccessTensor(ctx)->template flat<K>()(0);
+    const int64 bit_mask = num_buckets_ - 1;
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      const K& key_value = key_values(i);
+      if (key_value == empty_key) {
+        return errors::InvalidArgument(
+            "Using the empty_key as a table key is not allowed: ",
+            key_values(i));
+      }
+      // TODO(andreasst): do not use compiler dependent std:hash
+      const int64 key_hash = std::hash<K>()(key_value);
+      int64 bucket_index = key_hash & bit_mask;
+      int64 num_probes = 0;
+      while (true) {
+        if (flat_key_buckets(bucket_index) == key_value) {
+          value_values(i) = flat_value_buckets(bucket_index);
+          break;
+        }
+        if (flat_key_buckets(bucket_index) == empty_key) {
+          value_values(i) = default_flat(0);
+          break;
+        }
+        ++num_probes;
+        bucket_index =
+            (bucket_index + num_probes) & bit_mask;  // quadratic probing
+        if (num_probes >= num_buckets_) {
+          return errors::Internal(
+              "Internal error in MutableDenseHashTable lookup");
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Insert(OpKernelContext* ctx, const Tensor& key,
+                const Tensor& value) override {
+    const auto& key_values = key.flat<K>();
+    const auto& value_values = value.flat<V>();
+
+    mutex_lock l(mu_);
+    auto flat_key_buckets = key_buckets_.AccessTensor(ctx)->template flat<K>();
+    auto flat_value_buckets =
+        value_buckets_.AccessTensor(ctx)->template flat<V>();
+    const K& empty_key = empty_key_.AccessTensor(ctx)->template flat<K>()(0);
+    const int64 bit_mask = num_buckets_ - 1;
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      const K& key_value = key_values(i);
+      if (key_value == empty_key) {
+        return errors::InvalidArgument(
+            "Using the empty_key as a table key is not allowed: ",
+            key_values(i));
+      }
+      const int64 key_hash = std::hash<K>()(key_value);
+      int64 bucket_index = key_hash & bit_mask;
+      int64 num_probes = 0;
+      while (true) {
+        if (flat_key_buckets(bucket_index) == key_value) {
+          flat_value_buckets(bucket_index) = value_values(i);
+          break;
+        }
+        if (flat_key_buckets(bucket_index) == empty_key) {
+          ++num_entries_;
+          flat_key_buckets(bucket_index) = key_value;
+          flat_value_buckets(bucket_index) = value_values(i);
+          break;
+        }
+        ++num_probes;
+        bucket_index =
+            (bucket_index + num_probes) & bit_mask;  // quadratic probing
+        if (num_probes >= num_buckets_) {
+          return errors::Unimplemented(
+              "Table is full and resize is not supported yet");
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) override {
+    // TODO(andreasst): add support for checkpointing and restore
+    return errors::Unimplemented("ImportValues not supported yet");
+  }
+
+  Status ExportValues(OpKernelContext* ctx) override {
+    // TODO(andreasst): add support for checkpointing and restore
+    return errors::Unimplemented("ExportValues not supported yet");
+  }
+
+  DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
+
+  DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
+
+  TensorShape value_shape() const override { return value_shape_; }
+
+ private:
+  TensorShape value_shape_;
+  mutable mutex mu_;
+  int64 num_entries_ GUARDED_BY(mu_);
+  int64 num_buckets_ GUARDED_BY(mu_);
+  PersistentTensor key_buckets_ GUARDED_BY(mu_);
+  PersistentTensor value_buckets_ GUARDED_BY(mu_);
+  PersistentTensor empty_key_;
+};
+
 }  // namespace lookup
 
 // Table lookup op. Perform the lookup operation on the given table.
@@ -375,7 +549,7 @@ class LookupTableFindOp : public OpKernel {
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("values", output_shape, &out));
 
-    OP_REQUIRES_OK(ctx, table->Find(key, out, default_value));
+    OP_REQUIRES_OK(ctx, table->Find(ctx, key, out, default_value));
   }
 };
 
@@ -399,7 +573,7 @@ class LookupTableInsertOp : public OpKernel {
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensors(keys, values));
-    OP_REQUIRES_OK(ctx, table->Insert(keys, values));
+    OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
   }
 };
 
@@ -459,7 +633,7 @@ class LookupTableImportOp : public OpKernel {
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensors(keys, values));
-    OP_REQUIRES_OK(ctx, table->ImportValues(keys, values));
+    OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
   }
 };
 
@@ -510,6 +684,21 @@ REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+
+#undef REGISTER_KERNEL
+
+// Register the MutableHashTableOfTensors op.
+#define REGISTER_KERNEL(key_dtype, value_dtype)                            \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MutableDenseHashTable")                                        \
+          .Device(DEVICE_CPU)                                              \
+          .TypeConstraint<key_dtype>("key_dtype")                          \
+          .TypeConstraint<value_dtype>("value_dtype"),                     \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)
+
+// TODO(andreasst): add other data types
+REGISTER_KERNEL(int64, int64);
 
 #undef REGISTER_KERNEL
 

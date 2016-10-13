@@ -81,6 +81,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "conditional_accumulator_test",
+    size = "small",
+    srcs = ["conditional_accumulator_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "ctc_decoder_ops_test",
     size = "small",
     srcs = ["ctc_decoder_ops_test.py"],
@@ -273,6 +280,13 @@ tf_py_test(
     name = "sparse_concat_op_test",
     size = "small",
     srcs = ["sparse_concat_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "sparse_conditional_accumulator_test",
+    size = "small",
+    srcs = ["sparse_conditional_accumulator_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -907,10 +921,19 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "sparse_serialization_ops_test",
     size = "small",
     srcs = ["sparse_serialization_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+tf_py_test(
+    name = "sparse_tensors_map_ops_test",
+    size = "small",
+    srcs = ["sparse_tensors_map_ops_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],

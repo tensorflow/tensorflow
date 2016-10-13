@@ -850,6 +850,12 @@ class LSTMTest(tf.test.TestCase):
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
 
+  def testDynamicRNNAllowsUnknownTimeDimension(self):
+    inputs = tf.placeholder(tf.float32, shape=[1, None, 20])
+    cell = tf.nn.rnn_cell.GRUCell(30)
+    # Smoke test, this should not raise an error
+    tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
+
   def testDynamicRNNWithTupleStates(self):
     num_units = 3
     input_size = 5

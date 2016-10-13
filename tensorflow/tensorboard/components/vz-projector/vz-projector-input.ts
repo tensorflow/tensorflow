@@ -37,9 +37,11 @@ export class ProjectorInput extends PolymerClass {
   label: string;
 
   /** Subscribe to be called everytime the input changes. */
-  onInputChanged(listener: InputChangedListener) {
+  onInputChanged(listener: InputChangedListener, callImmediately = false) {
     this.inputChangedListeners.push(listener);
-    listener(this.paperInput.value, this.inRegexMode);
+    if (callImmediately) {
+      listener(this.paperInput.value, this.inRegexMode);
+    }
   }
 
   ready() {
@@ -77,19 +79,24 @@ export class ProjectorInput extends PolymerClass {
       if (this.inRegexMode) {
         new RegExp(this.paperInput.value);
       }
-      this.paperInput.removeAttribute('invalid');
-      this.notifyInputChanged(this.paperInput.value, this.inRegexMode);
     } catch (invalidRegexException) {
       this.paperInput.setAttribute('invalid', 'true');
       this.message = '';
       this.notifyInputChanged(null, true);
+      return;
     }
+    this.paperInput.removeAttribute('invalid');
+    this.notifyInputChanged(this.paperInput.value, this.inRegexMode);
   }
 
   private showHideSlashes() {
     d3.select(this.paperInput)
         .selectAll('.slash')
         .style('display', this.inRegexMode ? null : 'none');
+  }
+
+  getValue(): string {
+    return this.paperInput.value;
   }
 }
 

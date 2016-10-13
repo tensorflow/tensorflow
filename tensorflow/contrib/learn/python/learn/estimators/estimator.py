@@ -41,7 +41,6 @@ from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
-from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -57,6 +56,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
+from tensorflow.python.training import session_run_hook
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -491,7 +491,7 @@ class BaseEstimator(
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa 
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -686,6 +686,7 @@ class BaseEstimator(
       if deprecated_monitors:
         hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
 
+      ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
       return graph_actions._monitored_train(  # pylint: disable=protected-access
           graph=g,
           output_dir=self._model_dir,
@@ -699,6 +700,7 @@ class BaseEstimator(
           supervisor_is_chief=supervisor_is_chief,
           supervisor_master=self._config.master,
           supervisor_save_model_secs=self._config.save_checkpoints_secs,
+          supervisor_save_model_steps=self._config.save_checkpoints_steps,
           supervisor_save_summaries_steps=self._config.save_summary_steps,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
           feed_fn=feed_fn,

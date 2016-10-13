@@ -52,8 +52,7 @@ with tf.Session() as sess:
   sess.run(...)
 ```
 
-The [`ConfigProto`]
-(https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+The [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
 protocol buffer exposes various configuration options for a
 session. For example, to create a session that uses soft constraints
 for device placement, and log the resulting placement decisions,
@@ -84,8 +83,8 @@ the session constructor.
 
 
 *  <b>`target`</b>: (Optional.) The execution engine to connect to.
-    Defaults to using an in-process engine. See [Distributed Tensorflow]
-    (https://www.tensorflow.org/how_tos/distributed/index.html)
+    Defaults to using an in-process engine. See
+    [Distributed Tensorflow](https://www.tensorflow.org/how_tos/distributed/index.html)
     for more examples.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
 *  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
@@ -134,7 +133,7 @@ Example:
    # v is the numpy array [10, 20]
    # 'fetches' can be a list.
    v = session.run([a, b])
-   # v is a Python list with 2 numpy arrays: the numpy array [10, 20] and the
+   # v a Python list with 2 numpy arrays: the numpy array [10, 20] and the
    # 1-D array [1.0, 2.0]
    # 'fetches' can be arbitrary lists, tuples, namedtuple, dicts:
    MyData = collections.namedtuple('MyData', ['a', 'b'])

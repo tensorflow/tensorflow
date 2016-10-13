@@ -1071,8 +1071,7 @@ each component is divided by the weighted, squared sum of inputs within
     output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
-convolutional neural networks (NIPS 2012)]
-(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
 
 input: 4-D.
 depth_radius: 0-D.  Half-width of the 1-D normalization window.
@@ -1445,7 +1444,7 @@ Computes rectified linear 6 gradients for a Relu6 operation.
 gradients: The backpropagated gradients to the corresponding Relu6 operation.
 features: The features passed as input to the corresponding Relu6 operation.
 backprops: The gradients:
-  `gradients * features * (features > 0) * (features < 6)`.
+  `gradients * (features > 0) * (features < 6)`.
 )doc");
 
 REGISTER_OP("Elu")
@@ -1825,8 +1824,7 @@ Then, row_pooling_sequence should satisfy:
 4.  length(row_pooling_sequence) = output_row_length+1
 
 For more details on fractional max pooling, see this paper:
-[Benjamin Graham, Fractional Max-Pooling]
-(http://arxiv.org/abs/1412.6071)
+[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
 
 value: 4-D with shape `[batch, height, width, channels]`.
 pooling_ratio: Pooling ratio for each dimension of `value`, currently only
@@ -1837,7 +1835,7 @@ pooling_ratio: Pooling ratio for each dimension of `value`, currently only
   respectively.
 pseudo_random: When set to True, generates the pooling sequence in a
   pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-  Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+  Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
   difference between pseudorandom and random.
 overlapping: When set to True, it means when pooling, the values at the boundary
   of adjacent pooling cells are used by both cells. For example:
@@ -1927,7 +1925,7 @@ pooling_ratio: Pooling ratio for each dimension of `value`, currently only
   respectively.
 pseudo_random: When set to True, generates the pooling sequence in a
   pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-  Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+  Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
   difference between pseudorandom and random.
 overlapping: When set to True, it means when pooling, the values at the boundary
   of adjacent pooling cells are used by both cells. For example:

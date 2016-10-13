@@ -151,7 +151,8 @@ class Variable(object):
                caching_device=None,
                name=None,
                variable_def=None,
-               dtype=None):
+               dtype=None,
+               expected_shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -191,6 +192,8 @@ class Variable(object):
       dtype: If set, initial_value will be converted to the given type.
         If `None`, either the datatype will be kept (if `initial_value` is
         a Tensor), or `convert_to_tensor` will decide.
+      expected_shape: A TensorShape. If set, initial_value is expected
+        to have this shape.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -212,7 +215,8 @@ class Variable(object):
           validate_shape=validate_shape,
           caching_device=caching_device,
           name=name,
-          dtype=dtype)
+          dtype=dtype,
+          expected_shape=expected_shape)
 
   def _init_from_args(self,
                       initial_value=None,
@@ -221,7 +225,8 @@ class Variable(object):
                       validate_shape=True,
                       caching_device=None,
                       name=None,
-                      dtype=None):
+                      dtype=None,
+                      expected_shape=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -250,6 +255,8 @@ class Variable(object):
         If None, either the datatype will be kept (if initial_value is
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
+      expected_shape: A TensorShape. If set, initial_value is expected
+        to have this shape.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -277,24 +284,40 @@ class Variable(object):
         # Get the initial value from a callable function. The real shape of the
         # variable will be set later, since under the init_from_fn case, the
         # shape won't be known until after the function is invoked.
+        def full_shape_to_list(shape):
+          """Returns shape as a list if shape is fully defined."""
+          if shape and shape.is_fully_defined():
+            return shape.as_list()
+          else:
+            return []
+
+        def assert_expected_shape():
+          """Asserts that the initial value has the expected shape."""
+          if expected_shape:
+            expected_shape.assert_is_compatible_with(
+                self._initial_value.get_shape())
+
         if init_from_fn:
+          expected_shape_list = full_shape_to_list(expected_shape)
           self._variable = state_ops.variable_op(
-              [], dtype.base_dtype, set_shape=False, name=name)
+              expected_shape_list, dtype.base_dtype, set_shape=False, name=name)
           with ops.colocate_with(self._variable.op):
             with ops.name_scope("Initializer"):
               # Colocate the tensors created by the initial_value() function
               # with the variable itself.
               self._initial_value = ops.convert_to_tensor(
                   initial_value(), name="initial_value", dtype=dtype)
+              assert_expected_shape()
 
         # Or get the initial value from a Tensor or Python object.
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
+          assert_expected_shape()
           # In this case, the variable op can't be created until after the
           # initial_value has been converted to a Tensor with a known type.
           self._variable = state_ops.variable_op(
-              [],
+              full_shape_to_list(self._initial_value.get_shape()),
               self._initial_value.dtype.base_dtype,
               set_shape=False,
               name=name)

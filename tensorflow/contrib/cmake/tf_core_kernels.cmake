@@ -81,6 +81,23 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
 )
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 
+if(WIN32)
+  file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
+      # Not currently working on Windows:
+      "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
+      "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
+  )
+  list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
+endif(WIN32)
+
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
+
+if(WIN32)
+  target_compile_options(tf_core_kernels PRIVATE /MP)
+endif()
 
 add_dependencies(tf_core_kernels tf_core_cpu)

@@ -38,6 +38,125 @@ op {
   description: "Given a tensor `x`, this operation returns a tensor containing the absolute\nvalue of each element in `x`. For example, if x is an input element and y is\nan output element, this operation computes \\\\(y = |x|\\\\)."
 }
 op {
+  name: "AccumulatorApplyGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to a accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "local_step"
+    description: "The local_step value at which the gradient was computed."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "gradient"
+    description: "A tensor of the gradient to be accumulated."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Applies a gradient to a given accumulator. Does not add if local_step is lesser"
+  description: "than the accumulator\'s global_step."
+}
+op {
+  name: "AccumulatorNumAccumulated"
+  input_arg {
+    name: "handle"
+    description: "The handle to an accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "num_accumulated"
+    description: "The number of gradients aggregated in the given accumulator."
+    type: DT_INT32
+  }
+  summary: "Returns the number of gradients aggregated in the given accumulators."
+}
+op {
+  name: "AccumulatorSetGlobalStep"
+  input_arg {
+    name: "handle"
+    description: "The handle to an accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "new_global_step"
+    description: "The new global_step value to set."
+    type: DT_INT64
+  }
+  summary: "Updates the accumulator with a new value for global_step. Logs warning if the"
+  description: "accumulator\'s value is already higher than new_global_step."
+}
+op {
+  name: "AccumulatorTakeGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to an accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_required"
+    description: "Number of gradients required before we return an aggregate."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "average"
+    description: "The average of the accumulated gradients."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Extracts the average gradient in the given ConditionalAccumulator, provided"
+  description: "that sufficient (i.e., more than num_required) gradients have been accumulated.\nThe op blocks until sufficient gradients have been accumulated.\nIf the accumulator has already aggregated more than num_required gradients, it\nreturns the average of the accumulated gradients.\nAlso automatically increments the recorded global_step in the accumulator by 1,\nand resets the aggregate to 0."
+}
+op {
   name: "Acos"
   input_arg {
     name: "x"
@@ -101,6 +220,52 @@ op {
   description: "*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
+  name: "AddManySparseToTensorsMap"
+  input_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the minibatch `SparseTensor`.\n`sparse_indices[:, 0]` must be ordered values in `[0, N)`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the minibatch `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the minibatch `SparseTensor`.\nThe minibatch size `N == sparse_shape[0]`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_handles"
+    description: "1-D.  The handles of the `SparseTensor` now stored in the\n`SparseTensorsMap`.  Shape: `[N]`."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The container name for the `SparseTensorsMap` created by this op."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The shared name for the `SparseTensorsMap` created by this op.\nIf blank, the new Operation\'s unique name is used."
+  }
+  summary: "Add an `N`-minibatch `SparseTensor` to a `SparseTensorsMap`, return `N` handles."
+  description: "A `SparseTensor` of rank `R` is represented by three tensors: `sparse_indices`,\n`sparse_values`, and `sparse_shape`, where\n\n```sparse_indices.shape[1] == sparse_shape.shape[0] == R```\n\nAn `N`-minibatch of `SparseTensor` objects is represented as a `SparseTensor`\nhaving a first `sparse_indices` column taking values between `[0, N)`, where\nthe minibatch size `N == sparse_shape[0]`.\n\nThe input `SparseTensor` must have rank `R` greater than 1, and the first\ndimension is treated as the minibatch dimension.  Elements of the `SparseTensor`\nmust be sorted in increasing order of this first dimension.  The stored\n`SparseTensor` objects pointed to by each row of the output `sparse_handles`\nwill have rank `R-1`.\n\nThe `SparseTensor` values can then be read out as part of a minibatch by passing\nthe given keys as vector elements to `TakeManySparseFromTensorsMap`.  To ensure\nthe correct `SparseTensorsMap` is accessed, ensure that the same\n`container` and `shared_name` are passed to that Op.  If no `shared_name`\nis provided here, instead use the *name* of the Operation created by calling\n`AddManySparseToTensorsMap` as the `shared_name` passed to\n`TakeManySparseFromTensorsMap`.  Ensure the Operations are colocated."
+  is_stateful: true
+}
+op {
   name: "AddN"
   input_arg {
     name: "inputs"
@@ -143,6 +308,52 @@ op {
   summary: "Add all input tensors element wise."
   is_aggregate: true
   is_commutative: true
+}
+op {
+  name: "AddSparseToTensorsMap"
+  input_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_handle"
+    description: "0-D.  The handle of the `SparseTensor` now stored in the\n`SparseTensorsMap`."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The container name for the `SparseTensorsMap` created by this op."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The shared name for the `SparseTensorsMap` created by this op.\nIf blank, the new Operation\'s unique name is used."
+  }
+  summary: "Add a `SparseTensor` to a `SparseTensorsMap` return its handle."
+  description: "A `SparseTensor` is represented by three tensors: `sparse_indices`,\n`sparse_values`, and `sparse_shape`.\n\nThis operator takes the given `SparseTensor` and adds it to a container\nobject (a `SparseTensorsMap`).  A unique key within this container is generated\nin the form of an `int64`, and this is the value that is returned.\n\nThe `SparseTensor` can then be read out as part of a minibatch by passing\nthe key as a vector element to `TakeManySparseFromTensorsMap`.  To ensure\nthe correct `SparseTensorsMap` is accessed, ensure that the same\n`container` and `shared_name` are passed to that Op.  If no `shared_name`\nis provided here, instead use the *name* of the Operation created by calling\n`AddSparseToTensorsMap` as the `shared_name` passed to\n`TakeManySparseFromTensorsMap`.  Ensure the Operations are colocated."
+  is_stateful: true
 }
 op {
   name: "AdjustContrast"
@@ -669,6 +880,95 @@ op {
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
 }
 op {
+  name: "ApplyCenteredRMSProp"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "mg"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "ms"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "mom"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, mg, ms, and mom tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the centered RMSProp algorithm."
+  description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\n\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nmg <- rho * mg_{t-1} + (1-rho) * grad\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)\nvar <- var - mom"
+}
+op {
   name: "ApplyFtrl"
   input_arg {
     name: "var"
@@ -1102,10 +1402,10 @@ op {
     default_value {
       b: false
     }
-    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+    description: "If `True`, updating of the var, ms, and mom tensors is protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
-  description: "Note that in dense implement of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implement, ms\nand mom will not update in iterations the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
 }
 op {
   name: "ArgMax"
@@ -1531,6 +1831,45 @@ op {
     name: "sample_rate"
     type: "float"
     description: "The sample rate of the signal in hertz."
+  }
+  attr {
+    name: "max_outputs"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    description: "Max number of batch elements to generate audio for."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Outputs a `Summary` protocol buffer with audio."
+  description: "The summary has up to `max_outputs` summary values containing audio. The\naudio is built from `tensor` which must be 3-D with shape `[batch_size,\nframes, channels]` or 2-D with shape `[batch_size, frames]`. The values are\nassumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_outputs` is 1, the summary value tag is \'*tag*/audio\'.\n*  If `max_outputs` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/audio/0\', \'*tag*/audio/1\', etc."
+  deprecation {
+    version: 15
+    explanation: "Use AudioSummaryV2."
+  }
+}
+op {
+  name: "AudioSummaryV2"
+  input_arg {
+    name: "tag"
+    description: "Scalar. Used to build the `tag` attribute of the summary values."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    description: "2-D of shape `[batch_size, frames]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    description: "The sample rate of the signal in hertz."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summary"
+    description: "Scalar. Serialized `Summary` protocol buffer."
+    type: DT_STRING
   }
   attr {
     name: "max_outputs"
@@ -3567,6 +3906,62 @@ op {
   }
   summary: "Computes offsets of concat inputs within its output."
   description: "For example:\n\n```prettyprint\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
+}
+op {
+  name: "ConditionalAccumulator"
+  output_arg {
+    name: "handle"
+    description: "The handle to the accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the value being accumulated."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The shape of the values, can be [], in which case shape is unknown."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A conditional accumulator for aggregating gradients. The accumulator accepts"
+  description: "gradients marked with local_step greater or equal to the most recent global_step\nknown to the accumulator. The average can be extracted from the accumulator,\nprovided sufficient gradients have been accumulated. Extracting the average\nautomatically resets the aggregate to 0, and increments the global_step recorded\nby the accumulator."
+  is_stateful: true
 }
 op {
   name: "Conj"
@@ -6467,7 +6862,7 @@ op {
     default_value {
       b: false
     }
-    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
+    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
   }
   attr {
     name: "overlapping"
@@ -6601,7 +6996,7 @@ op {
     default_value {
       b: false
     }
-    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
+    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
   }
   attr {
     name: "overlapping"
@@ -6648,7 +7043,7 @@ op {
     }
   }
   summary: "Performs fractional max pooling on the input."
-  description: "Fractional max pooling is slightly different than regular max pooling.  In\nregular max pooling, you downsize an input set by taking the maximum value of\nsmaller N x N subsections of the set (often 2x2), and try to reduce the set by\na factor of N, where N is an integer.  Fractional max pooling, as you might\nexpect from the word \"fractional\", means that the overall reduction ratio N\ndoes not have to be an integer.\n\nThe sizes of the pooling regions are generated randomly but are fairly uniform.\nFor example, let\'s look at the height dimension, and the constraints on the\nlist of rows that will be pool boundaries.\n\nFirst we define the following:\n\n1.  input_row_length : the number of rows from the input set\n2.  output_row_length : which will be smaller than the input\n3.  alpha = input_row_length / output_row_length : our reduction ratio\n4.  K = floor(alpha)\n5.  row_pooling_sequence : this is the result list of pool boundary rows\n\nThen, row_pooling_sequence should satisfy:\n\n1.  a[0] = 0 : the first value of the sequence is 0\n2.  a[end] = input_row_length : the last value of the sequence is the size\n3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size\n4.  length(row_pooling_sequence) = output_row_length+1\n\nFor more details on fractional max pooling, see this paper:\n[Benjamin Graham, Fractional Max-Pooling]\n(http://arxiv.org/abs/1412.6071)"
+  description: "Fractional max pooling is slightly different than regular max pooling.  In\nregular max pooling, you downsize an input set by taking the maximum value of\nsmaller N x N subsections of the set (often 2x2), and try to reduce the set by\na factor of N, where N is an integer.  Fractional max pooling, as you might\nexpect from the word \"fractional\", means that the overall reduction ratio N\ndoes not have to be an integer.\n\nThe sizes of the pooling regions are generated randomly but are fairly uniform.\nFor example, let\'s look at the height dimension, and the constraints on the\nlist of rows that will be pool boundaries.\n\nFirst we define the following:\n\n1.  input_row_length : the number of rows from the input set\n2.  output_row_length : which will be smaller than the input\n3.  alpha = input_row_length / output_row_length : our reduction ratio\n4.  K = floor(alpha)\n5.  row_pooling_sequence : this is the result list of pool boundary rows\n\nThen, row_pooling_sequence should satisfy:\n\n1.  a[0] = 0 : the first value of the sequence is 0\n2.  a[end] = input_row_length : the last value of the sequence is the size\n3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size\n4.  length(row_pooling_sequence) = output_row_length+1\n\nFor more details on fractional max pooling, see this paper:\n[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)"
 }
 op {
   name: "FractionalMaxPoolGrad"
@@ -7979,7 +8374,7 @@ op {
     }
   }
   summary: "Local Response Normalization."
-  description: "The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last\ndimension), and each vector is normalized independently.  Within a given vector,\neach component is divided by the weighted, squared sum of inputs within\n`depth_radius`.  In detail,\n\n    sqr_sum[a, b, c, d] =\n        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)\n    output = input / (bias + alpha * sqr_sum) ** beta\n\nFor details, see [Krizhevsky et al., ImageNet classification with deep\nconvolutional neural networks (NIPS 2012)]\n(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks)."
+  description: "The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last\ndimension), and each vector is normalized independently.  Within a given vector,\neach component is divided by the weighted, squared sum of inputs within\n`depth_radius`.  In detail,\n\n    sqr_sum[a, b, c, d] =\n        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)\n    output = input / (bias + alpha * sqr_sum) ** beta\n\nFor details, see [Krizhevsky et al., ImageNet classification with deep\nconvolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks)."
 }
 op {
   name: "LRNGrad"
@@ -9909,6 +10304,73 @@ op {
   is_stateful: true
 }
 op {
+  name: "MutableDenseHashTable"
+  input_arg {
+    name: "empty_key"
+    description: "The key to use to represent empty buckets internally. Must not\nbe used in insert or lookup operations."
+    type_attr: "key_dtype"
+  }
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+    description: "The shape of each value."
+  }
+  attr {
+    name: "initial_num_buckets"
+    type: "int"
+    default_value {
+      i: 131072
+    }
+    description: "The initial number of hash table buckets. Must be a power\nto 2."
+  }
+  summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
+  description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  is_stateful: true
+}
+op {
   name: "MutableHashTable"
   output_arg {
     name: "table_handle"
@@ -11039,7 +11501,6 @@ op {
     type: "list(type)"
     description: "Data types of the outputs from the op.\nThe length of the list specifies the number of outputs."
     has_minimum: true
-    minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
   description: "This operation is considered stateful. For a stateless version, see\nPyFuncStateless."
@@ -11068,7 +11529,6 @@ op {
     name: "Tout"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   summary: "A stateless version of PyFunc."
 }
@@ -12302,7 +12762,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients:\n`gradients * features * (features > 0) * (features < 6)`."
+    description: "The gradients:\n`gradients * (features > 0) * (features < 6)`."
     type_attr: "T"
   }
   attr {
@@ -14685,6 +15145,119 @@ op {
   description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```prettyprint\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```prettyprint\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```prettyprint\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
+  name: "SparseAccumulatorApplyGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to a accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "local_step"
+    description: "The local_step value at which the sparse gradient was computed."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "gradient_indices"
+    description: "Indices of the sparse gradient to be accumulated. Must be a\nvector."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "gradient_values"
+    description: "Values are the non-zero slices of the gradient, and must have\nthe same first dimension as indices, i.e., the nnz represented by indices and\nvalues must be consistent."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "gradient_shape"
+    description: "Shape of the sparse gradient to be accumulated."
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "has_known_shape"
+    type: "bool"
+    description: "Boolean indicating whether gradient_shape is unknown, in which\ncase the input is ignored during validation."
+  }
+  summary: "Applies a sparse gradient to a given accumulator. Does not add if local_step is"
+  description: "lesser than the accumulator\'s global_step."
+}
+op {
+  name: "SparseAccumulatorTakeGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to a SparseConditionalAccumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_required"
+    description: "Number of gradients required before we return an aggregate."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "indices"
+    description: "Indices of the average of the accumulated sparse gradients."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    description: "Values of the average of the accumulated sparse gradients."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "shape"
+    description: "Shape of the average of the accumulated sparse gradients."
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Extracts the average sparse gradient in the given SparseConditionalAccumulator,"
+  description: "provided that sufficient (i.e., more than num_required) gradients have been\naccumulated. The op will blocks until sufficient gradients have been\naccumulated. If the accumulator has already aggregated more than num_required\ngradients, it will return its average of the accumulated gradients.\nAlso automatically increments the recorded global_step in the accumulator by 1,\nand resets the aggregate to 0."
+}
+op {
   name: "SparseAdd"
   input_arg {
     name: "a_indices"
@@ -15099,6 +15672,110 @@ op {
     description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Update entries in \'*var\' and \'*accum\' according to the proximal adagrad scheme."
+}
+op {
+  name: "SparseApplyCenteredRMSProp"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "mg"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "ms"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "mom"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var, ms and mom."
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, mg, ms, and mom tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the centered RMSProp algorithm."
+  description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
 }
 op {
   name: "SparseApplyFtrl"
@@ -15553,10 +16230,10 @@ op {
     default_value {
       b: false
     }
-    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+    description: "If `True`, updating of the var, ms, and mom tensors is protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
-  description: "Note that in dense implement of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implement, ms\nand mom will not update in iterations the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
 }
 op {
   name: "SparseConcat"
@@ -15610,6 +16287,62 @@ op {
   }
   summary: "Concatenates a list of `SparseTensor` along the specified dimension."
   description: "Concatenation is with respect to the dense versions of these sparse tensors.\nIt is assumed that each input is a `SparseTensor` whose elements are ordered\nalong increasing dimension number.\n\nAll inputs\' shapes must match, except for the concat dimension.  The\n`indices`, `values`, and `shapes` lists must have the same length.\n\nThe output shape is identical to the inputs\', except along the concat\ndimension, where it is the sum of the inputs\' sizes along that dimension.\n\nThe output elements will be resorted to preserve the sort order along\nincreasing dimension number.\n\nThis op runs in `O(M log M)` time, where `M` is the total number of non-empty\nvalues across all inputs. This is due to the need for an internal sort in\norder to concatenate efficiently across an arbitrary dimension.\n\nFor example, if `concat_dim = 1` and the inputs are\n\n    sp_inputs[0]: shape = [2, 3]\n    [0, 2]: \"a\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\n    sp_inputs[1]: shape = [2, 4]\n    [0, 1]: \"d\"\n    [0, 2]: \"e\"\n\nthen the output will be\n\n    shape = [2, 7]\n    [0, 2]: \"a\"\n    [0, 4]: \"d\"\n    [0, 5]: \"e\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\nGraphically this is equivalent to doing\n\n    [    a] concat [  d e  ] = [    a   d e  ]\n    [b c  ]        [       ]   [b c          ]"
+}
+op {
+  name: "SparseConditionalAccumulator"
+  output_arg {
+    name: "handle"
+    description: "The handle to the accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the value being accumulated."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The shape of the values."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A conditional accumulator for aggregating sparse gradients. The accumulator"
+  description: "accepts gradients marked with local_step greater or equal to the most recent\nglobal_step known to the accumulator. The average can be extracted from the\naccumulator, provided sufficient gradients have been accumulated. Extracting the\naverage automatically resets the aggregate to 0, and increments the global_step\nrecorded by the accumulator."
+  is_stateful: true
 }
 op {
   name: "SparseDenseCwiseAdd"
@@ -17628,6 +18361,53 @@ op {
     }
   }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
+  is_stateful: true
+}
+op {
+  name: "TakeManySparseFromTensorsMap"
+  input_arg {
+    name: "sparse_handles"
+    description: "1-D, The `N` serialized `SparseTensor` objects.\nShape: `[N]`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the minibatch `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the minibatch `SparseTensor`."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the minibatch `SparseTensor`."
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The `dtype` of the `SparseTensor` objects stored in the\n`SparseTensorsMap`."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The container name for the `SparseTensorsMap` read by this op."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The shared name for the `SparseTensorsMap` read by this op.\nIt should not be blank; rather the `shared_name` or unique Operation name\nof the Op that created the original `SparseTensorsMap` should be used."
+  }
+  summary: "Read `SparseTensors` from a `SparseTensorsMap` and concatenate them."
+  description: "The input `sparse_handles` must be an `int64` matrix of shape `[N, 1]` where\n`N` is the minibatch size and the rows correspond to the output handles of\n`AddSparseToTensorsMap` or `AddManySparseToTensorsMap`.  The ranks of the\noriginal `SparseTensor` objects that went into the given input ops must all\nmatch.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension on the left).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the handles represent an input, which is a `[2, 3]` matrix\nrepresenting two original `SparseTensor` objects:\n\n```\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n```\n\nand\n\n```\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n```\n\nthen the final `SparseTensor` will be:\n\n```\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]\n```"
   is_stateful: true
 }
 op {

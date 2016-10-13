@@ -265,6 +265,13 @@ cc_library(
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
+filegroup(
+    name = "saved_model_half_plus_two",
+    srcs = glob([
+        "testdata/saved_model_half_plus_two/**",
+    ]),
+)
+
 cc_library(
     name = "bundle_shim",
     srcs = ["bundle_shim.cc"],
@@ -276,6 +283,7 @@ cc_library(
         ":session_bundle",
         ":signature",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:signature_constants",
     ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
@@ -291,6 +299,8 @@ cc_test(
     size = "small",
     srcs = ["bundle_shim_test.cc"],
     data = [
+        ":saved_model_half_plus_two",
+        "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     # Link in all registered kernels.

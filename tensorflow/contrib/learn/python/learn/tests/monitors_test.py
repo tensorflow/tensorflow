@@ -29,8 +29,8 @@ import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
-from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 
 

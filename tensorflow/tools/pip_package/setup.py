@@ -26,7 +26,7 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.10.0'
+_VERSION = '0.11.0rc0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -168,6 +168,7 @@ setup(
     include_package_data=True,
     package_data={
         'tensorflow': ['python/_pywrap_tensorflow.so',
+                       'tensorboard/dist/bazel-html-imports.html',
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',
                        'tensorboard/lib/css/global.css',

@@ -394,6 +394,17 @@ REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .HostMemory("strides")
                             .HostMemory("output"),
                         StridedSliceOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("shape")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("dy")
+                            .HostMemory("output"),
+                        StridedSliceGradOp<CPUDevice, int32>);
 
 #undef REGISTER_GPU
 

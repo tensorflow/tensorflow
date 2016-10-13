@@ -211,43 +211,6 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
   ExpectNodeEqual<int>(*(b1_ident->in_nodes().begin()), {}, {0});
 }
 
-TEST_F(ConstantFoldingTest, TestNoReplaceOnGPU) {
-#if GOOGLE_CUDA
-  Device* device = nullptr;
-  std::vector<Device*> devices;
-  DeviceFactory::GetFactory(DEVICE_GPU)
-      ->CreateDevices(SessionOptions{}, "", &devices);
-  if (devices.size() > 0) {
-    device = devices[0];
-  }
-  if (!device) {
-    // Don't run the test if not GPUs found.
-    return;
-  }
-  Reset();
-  Graph* g = g_.get();
-  Node* s0 = Constant<float>({42.0f}, {1});
-  g->AddControlEdge(g->source_node(), s0);
-  Node* cast = test::graph::Cast(g, s0, DT_BFLOAT16);
-  Node* send = test::graph::Send(g, cast, "cast", "sender", 0, "receiver");
-
-  g->AddControlEdge(send, g->sink_node());
-
-  // No ops should be replaced, as there is no kernel for BFLOAT16 on GPU.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), device, g));
-
-  // But constant folding should have replaced the cast op with a constant when
-  // running on CPU.
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                Env::Default(), nullptr, g));
-
-  for (auto d : devices) {
-    delete d;
-  }
-#endif  // GOOGLE_CUDA
-}
-
 TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   Reset();
   Graph* g = g_.get();

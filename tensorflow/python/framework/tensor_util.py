@@ -178,7 +178,7 @@ def _GetDenseDimensions(list_of_lists):
 
 
 def _FlattenToStrings(nested_strings):
-  if isinstance(nested_strings, list):
+  if isinstance(nested_strings, (list, tuple)):
     for inner in nested_strings:
       for flattened_string in _FlattenToStrings(inner):
         yield flattened_string

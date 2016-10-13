@@ -45,6 +45,12 @@ config_setting(
 )
 
 config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows_msvc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",
@@ -114,17 +120,20 @@ filegroup(
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/metrics/kernels:all_files",
+        "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/quantization:all_files",
         "//tensorflow/contrib/quantization/kernels:all_files",
         "//tensorflow/contrib/quantization/kernels/hexagon:all_files",
         "//tensorflow/contrib/quantization/tools:all_files",
         "//tensorflow/contrib/rnn:all_files",
+        "//tensorflow/contrib/seq2seq:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
         "//tensorflow/contrib/slim:all_files",
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
+        "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensorboard:all_files",

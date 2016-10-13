@@ -136,46 +136,54 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
     # - Reset states, and iterate for 5 steps. Last state is state_5.
     # - Reset the sets to state_3 and iterate for 2 more steps,
     #   last state will be state_5'.
-    # - Check that state_5 and state_5' are the same.
-    #   (Check forward and backward).
-    # - Check output_5 and output_5' as well.
+    # - Check that the  state_5 and state_5' (forward and backward) are the
+    #   same for the first layer (it does not apply for the second layer since
+    #   it has forward-backward dependencies).
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      batch_size = 2
+      # Create states placeholders.
+      initial_states_fw = [tf.placeholder(tf.float32, shape=(batch_size, layer*2))
+              for layer in self.layers]
+      initial_states_bw = [tf.placeholder(tf.float32, shape=(batch_size, layer*2))
+              for layer in self.layers]
       # Create the net
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
-          self._createStackBidirectionalRNN(use_gpu, True, True))
+          self._createStackBidirectionalRNN(use_gpu, True, True,
+              initial_states_fw, initial_states_bw))
       tf.initialize_all_variables().run()
+
       # Run 3 steps.
+      feed_dict = {inputs[0]: input_value, sequence_length: [3, 2]}
+      # Initialize to empty state.
+      for i, layer in enumerate(self.layers):
+        feed_dict[initial_states_fw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
+        feed_dict[initial_states_bw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
       _, st_3_fw, st_3_bw = sess.run([outputs, state_fw, state_bw],
-                                     feed_dict={inputs[0]: input_value,
-                                                sequence_length: [3, 3]})
+                                     feed_dict=feed_dict)
+
       # Reset the net and run 5 steps.
-      batch_size = 2
-      zero_state = [cell.zero_state(
-          batch_size, dtype=tf.float32).eval() for cell in self.cells_fw]
-      feed_dict = {inputs[0]: input_value, sequence_length: [5, 5]}
-      for i, _ in enumerate(self.layers):
-        feed_dict[state_fw[i]] = zero_state[i]
-        feed_dict[state_bw[i]] = zero_state[i]
-      out_5, st_5_fw, st_5_bw = sess.run([outputs, state_fw, state_bw],
+      feed_dict = {inputs[0]: input_value, sequence_length: [5, 3]}
+      for i, layer in enumerate(self.layers):
+        feed_dict[initial_states_fw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
+        feed_dict[initial_states_bw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
+      _, st_5_fw, st_5_bw = sess.run([outputs, state_fw, state_bw],
                                          feed_dict=feed_dict)
 
       # Reset the net to state_3 and run 2 more steps.
-      feed_dict = {inputs[0]: input_value, sequence_length: [2, 2]}
+      feed_dict = {inputs[0]: input_value, sequence_length: [2, 1]}
       for i, _ in enumerate(self.layers):
-        feed_dict[state_fw[i]] = st_3_fw[i]
-        feed_dict[state_bw[i]] = st_3_bw[i]
-
-      out_5, st_5_fw, st_5_bw = sess.run([outputs, state_fw, state_bw],
-                                         feed_dict=feed_dict)
+        feed_dict[initial_states_fw[i]] = st_3_fw[i]
+        feed_dict[initial_states_bw[i]] = st_3_bw[i]
       out_5p, st_5p_fw, st_5p_bw = sess.run([outputs, state_fw, state_bw],
                                             feed_dict=feed_dict)
 
-      # Check that the 3+2 and 5 outputs are the same.
-      self.assertAllEqual(out_5p[-1][0], out_5[-1][0])
-      # Check that the 3+2 and 5 last states are the same.
-      for i, _ in enumerate(self.layers):
-        self.assertAllEqual(st_5_fw[i], st_5p_fw[i])
-        self.assertAllEqual(st_5_bw[i], st_5p_bw[i])
+      # Check that the 3+2 and 5 first layer states.
+      self.assertAllEqual(st_5_fw[0], st_5p_fw[0])
+      self.assertAllEqual(st_5_bw[0], st_5p_bw[0])
 
   def testStackBidirectionalRNN(self):
     self._testStackBidirectionalRNN(use_gpu=False, use_shape=False)
@@ -288,54 +296,65 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
       self.assertNotEqual(out[2][1][1], out[0][1][4])
       self.assertNotEqual(out[2][1][2], out[0][1][5])
 
-  def _testStackBidirectionalDynamicRNNStates(self, use_gpu,
-                                              use_state_tuple):
+  def _testStackBidirectionalDynamicRNNStates(self, use_gpu):
+                                              
     # Check that the states are correctly initialized.
     # - Create a net and iterate for 3 states. Keep the state (state_3).
     # - Reset states, and iterate for 5 steps. Last state is state_5.
     # - Reset the sets to state_3 and iterate for 2 more steps,
     #   last state will be state_5'.
-    # - Check that state_5 and state_5' are the same.
-    #   (Check forward and backward).
-    # - Check output_5 and output_5' as well.
+    # - Check that the  state_5 and state_5' (forward and backward) are the
+    #   same for the first layer (it does not apply for the second layer since
+    #   it has forward-backward dependencies).
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      batch_size=2
+      # Create states placeholders.
+      initial_states_fw = [tf.placeholder(tf.float32, shape=(batch_size, layer*2))
+              for layer in self.layers]
+      initial_states_bw = [tf.placeholder(tf.float32, shape=(batch_size, layer*2))
+              for layer in self.layers]
       # Create the net
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
-          self._createStackBidirectionalDynamicRNN(use_gpu, False,
-                                                   use_state_tuple))
+          self._createStackBidirectionalDynamicRNN(
+              use_gpu,
+              use_shape=True,
+              use_state_tuple=False,
+              initial_states_fw=initial_states_fw,
+              initial_states_bw=initial_states_bw))
       tf.initialize_all_variables().run()
+
       # Run 3 steps.
+      feed_dict = {inputs[0]: input_value, sequence_length: [3, 2]}
+      # Initialize to empty state.
+      for i, layer in enumerate(self.layers):
+        feed_dict[initial_states_fw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
+        feed_dict[initial_states_bw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
       _, st_3_fw, st_3_bw = sess.run([outputs, state_fw, state_bw],
-                                     feed_dict={inputs[0]: input_value,
-                                                sequence_length: [3, 3]})
+                                     feed_dict=feed_dict)
+
       # Reset the net and run 5 steps.
-      batch_size = 2
-      zero_state = [cell.zero_state(
-          batch_size, dtype=tf.float32).eval() for cell in self.cells_fw]
-      feed_dict = {inputs[0]: input_value, sequence_length: [5, 5]}
-      for i, _ in enumerate(self.layers):
-        feed_dict[state_fw[i]] = zero_state[i]
-        feed_dict[state_bw[i]] = zero_state[i]
-      out_5, st_5_fw, st_5_bw = sess.run([outputs, state_fw, state_bw],
+      feed_dict = {inputs[0]: input_value, sequence_length: [5, 3]}
+      for i, layer in enumerate(self.layers):
+        feed_dict[initial_states_fw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
+        feed_dict[initial_states_bw[i]] = np.zeros((batch_size, layer*2),
+                dtype=np.float32)
+      _, st_5_fw, st_5_bw = sess.run([outputs, state_fw, state_bw],
                                          feed_dict=feed_dict)
 
       # Reset the net to state_3 and run 2 more steps.
-      feed_dict = {inputs[0]: input_value, sequence_length: [2, 2]}
+      feed_dict = {inputs[0]: input_value, sequence_length: [2, 1]}
       for i, _ in enumerate(self.layers):
-        feed_dict[state_fw[i]] = st_3_fw[i]
-        feed_dict[state_bw[i]] = st_3_bw[i]
-
-      out_5, st_5_fw, st_5_bw = sess.run([outputs, state_fw, state_bw],
-                                         feed_dict=feed_dict)
+        feed_dict[initial_states_fw[i]] = st_3_fw[i]
+        feed_dict[initial_states_bw[i]] = st_3_bw[i]
       out_5p, st_5p_fw, st_5p_bw = sess.run([outputs, state_fw, state_bw],
                                             feed_dict=feed_dict)
 
-      # Check that the 3+2 and 5 outputs are the same.
-      self.assertAllEqual(out_5p[-1][0], out_5[-1][0])
-      # Check that the 3+2 and 5 last states are the same.
-      for i, _ in enumerate(self.layers):
-        self.assertAllEqual(st_5_fw[i], st_5p_fw[i])
-        self.assertAllEqual(st_5_bw[i], st_5p_bw[i])
+      # Check that the 3+2 and 5 first layer states.
+      self.assertAllEqual(st_5_fw[0], st_5p_fw[0])
+      self.assertAllEqual(st_5_bw[0], st_5p_bw[0])
 
   def testBidirectionalRNN(self):
     # Generate 2^3 option values
@@ -346,13 +365,9 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
           use_gpu=option[0], use_shape=option[1], use_state_tuple=option[2])
     # Check States.
     self._testStackBidirectionalDynamicRNNStates(
-        use_gpu=False, use_state_tuple=False)
+        use_gpu=False)
     self._testStackBidirectionalDynamicRNNStates(
-        use_gpu=True, use_state_tuple=False)
-    self._testStackBidirectionalDynamicRNNStates(
-        use_gpu=False, use_state_tuple=True)
-    self._testStackBidirectionalDynamicRNNStates(
-        use_gpu=True, use_state_tuple=False)
+        use_gpu=True)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     # REMARKS: factory(scope) is a function accepting a scope

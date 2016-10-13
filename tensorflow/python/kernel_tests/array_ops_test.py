@@ -182,10 +182,23 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     scalar_expanded = array_ops.expand_dims(scalar, [0])
     self.assertEqual(scalar_expanded.get_shape(), (1,))
 
-  def testSqueeze(self):
+  def testSqueezeScalar(self):
     scalar = "hello"
     scalar_squeezed = array_ops.squeeze(scalar, ())
     self.assertEqual(scalar_squeezed.get_shape(), ())
+
+  def testSqueezeMatrix(self):
+    matrix = [[1, 2, 3]]
+    matrix_squeezed = array_ops.squeeze(matrix, [0])
+    self.assertEqual(matrix_squeezed.get_shape(), (3))
+
+    with self.assertRaises(ValueError):
+      matrix_squeezed = array_ops.squeeze(matrix, [1])
+
+  def testSqueezeScalarDim(self):
+    matrix = [[1, 2, 3]]
+    matrix_squeezed = array_ops.squeeze(matrix, 0)
+    self.assertEqual(matrix_squeezed.get_shape(), (3))
 
 
 class ReverseTest(test_util.TensorFlowTestCase):
@@ -232,37 +245,41 @@ class ReverseTest(test_util.TensorFlowTestCase):
 
 class MeshgridTest(test_util.TensorFlowTestCase):
 
-  def _compare(self, n, np_dtype, use_gpu):
-    inputs = []
-    for i in range(n):
-      x = np.linspace(-10, 10, 5).astype(np_dtype)
-      if np_dtype in (np.complex64, np.complex128):
-        x += 1j
-      inputs.append(x)
+  def _compareDiff(self, x, y, use_gpu):
+    for index in ('ij', 'xy'):
+      numpy_out = np.meshgrid(x, y, indexing=index)
+      tf_out = array_ops.meshgrid(x, y, indexing=index)
+      with self.test_session(use_gpu=use_gpu):
+        for xx, yy in zip(numpy_out, tf_out):
+          self.assertAllEqual(xx, yy.eval())
 
-    numpy_out = np.meshgrid(*inputs)
-    with self.test_session(use_gpu=use_gpu):
-      tf_out = array_ops.meshgrid(*inputs)
-      for X, _X in zip(numpy_out, tf_out):
-        self.assertAllEqual(X, _X.eval())
+  def _compareDiffType(self, n, np_dtype, use_gpu):
+    inputs = []
+    for index in ('ij', 'xy'):
+      for i in range(n):
+        x = np.linspace(-10, 10, 5).astype(np_dtype)
+        if np_dtype in (np.complex64, np.complex128):
+          x += 1j
+        inputs.append(x)
+      numpy_out = np.meshgrid(*inputs, indexing=index)
+      with self.test_session(use_gpu=use_gpu):
+        tf_out = array_ops.meshgrid(*inputs, indexing=index)
+        for X, _X in zip(numpy_out, tf_out):
+          self.assertAllEqual(X, _X.eval())
 
   def testCompare(self):
     for t in (np.float16, np.float32, np.float64, np.int32, np.int64,
             np.complex64, np.complex128):
-      # Don't test the one-dimensional case, as
-      # old numpy versions don't support it
-      self._compare(2, t, False)
-      self._compare(3, t, False)
-      self._compare(4, t, False)
-      self._compare(5, t, False)
+      self._compareDiffType(2, t, False)
+      self._compareDiffType(3, t, False)
 
-    # Test for inputs with rank not equal to 1
-    x = [[1, 1], [1, 1]]
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "needs to have rank 1"):
-      with self.test_session():
-        X, _ = array_ops.meshgrid(x, x)
-        X.eval()
+      x = [1, 2, 3]
+      y = [4, 5]
+
+      a = [[1, 1], [1, 1]]
+
+      self._compareDiff(x, y, False)
+      self._compareDiff(x, a, False)
 
 
 class StridedSliceChecker(object):

@@ -28,6 +28,14 @@ from the `AudioSummary`, and the `images` from `ImageSummary`. The tag type
 boolean denoting if there is a graph definition associated with the run. The tag
 is provided to the summary op (usually as a constant).
 
+## `data/logdir`
+
+Returns a JSON object with a key "logdir" that maps to the `logdir` argument
+(string) with which Tensorboard started up. Example:
+`{logdir: '/foo/logdir/argument'}`
+
+The `logdir` argument is the path of the directory that contains events files.
+
 ## `data/runs`
 
 Returns a dictionary mapping from `run name` (quoted string) to dictionaries

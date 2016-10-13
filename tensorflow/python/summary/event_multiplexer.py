@@ -73,6 +73,7 @@ class EventMultiplexer(object):
   @@RunPaths
   @@Scalars
   @@Graph
+  @@MetaGraph
   @@Histograms
   @@CompressedHistograms
   @@Images
@@ -251,10 +252,26 @@ class EventMultiplexer(object):
       ValueError: If the run does not have an associated graph.
 
     Returns:
-      The `graph_def` protobuf data structure.
+      The `GraphDef` protobuf data structure.
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def MetaGraph(self, run):
+    """Retrieve the metagraph associated with the provided run.
+
+    Args:
+      run: A string name of a run to load the graph for.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run does not have an associated graph.
+
+    Returns:
+      The `MetaGraphDef` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.MetaGraph()
 
   def RunMetadata(self, run, tag):
     """Get the session.run() metadata associated with a TensorFlow run and tag.
@@ -350,7 +367,7 @@ class EventMultiplexer(object):
                   scalarValues: [tagA, tagB, tagC],
                   histograms: [tagX, tagY, tagZ],
                   compressedHistograms: [tagX, tagY, tagZ],
-                  graph: true}}
+                  graph: true, meta_graph: true}}
     ```
     """
     with self._accumulators_mutex:

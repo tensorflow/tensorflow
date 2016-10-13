@@ -27,8 +27,8 @@ struct QuantizeAndDequantizeOneScaleFunctor {
   void operator()(const Device& d, typename TTypes<T>::ConstVec input,
                   bool signed_input, int num_bits, bool range_given,
                   typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max,
-                  typename TTypes<T>::Vec out);
+                  typename TTypes<T>::Scalar input_max, const T input_min_init,
+                  const T input_max_init, typename TTypes<T>::Vec out);
 };
 
 // The implementation below runs on both CPU and GPU.
@@ -38,14 +38,16 @@ struct QuantizeAndDequantizeOneScaleImpl {
                       bool signed_input, int num_bits, bool range_given,
                       typename TTypes<T>::Scalar input_min,
                       typename TTypes<T>::Scalar input_max,
+                      const T input_min_init, const T input_max_init,
                       typename TTypes<T>::Vec out) {
+    T min_range = input_min_init;
+    T max_range = input_max_init;
     if (!range_given) {
       input_min.device(d) = input.minimum();
       input_max.device(d) = input.maximum();
+      d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
+      d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
     }
-
-    T min_range = input_min();
-    T max_range = input_max();
 
     // Make sure the range is symmetric for signed quantization, or start from
     // 0 for unsigned quantization.
@@ -53,7 +55,7 @@ struct QuantizeAndDequantizeOneScaleImpl {
 
     // If both min and max are 0, then the output should be just 0.
     if (max_range == 0) {
-      out.device(d) = input * T(0);
+      out.device(d) = input.constant(T(0));
       return;
     }
 

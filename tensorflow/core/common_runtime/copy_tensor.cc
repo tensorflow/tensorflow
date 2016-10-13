@@ -28,7 +28,7 @@ namespace {
 struct RegistrationInfo {
   RegistrationInfo(DeviceType s, DeviceType r, CopyTensor::CopyFunction cf)
       : sender_device_type(std::move(s)),
-        receiver_device_type(r),
+        receiver_device_type(std::move(r)),
         copy_function(cf) {}
   DeviceType sender_device_type;
   DeviceType receiver_device_type;

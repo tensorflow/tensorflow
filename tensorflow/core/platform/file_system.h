@@ -26,8 +26,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+
+#ifdef PLATFORM_WINDOWS
+#undef DeleteFile
+#endif
 
 namespace tensorflow {
 
@@ -141,6 +146,8 @@ class FileSystem {
   virtual Status IsDirectory(const string& fname);
 };
 
+// START_SKIP_DOXYGEN
+
 #ifndef SWIG
 // Degenerate file system that provides no implementations.
 class NullFileSystem : public FileSystem {
@@ -202,6 +209,8 @@ class NullFileSystem : public FileSystem {
   }
 };
 #endif
+
+// END_SKIP_DOXYGEN
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {

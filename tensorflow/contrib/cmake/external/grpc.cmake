@@ -19,7 +19,7 @@ endif()
   
 ExternalProject_Add(grpc
     PREFIX grpc
-    DEPENDS protobuf
+    DEPENDS protobuf zlib
     GIT_REPOSITORY ${GRPC_URL}
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"

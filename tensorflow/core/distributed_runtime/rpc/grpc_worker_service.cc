@@ -421,8 +421,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
                               const Rendezvous::Args& recv_args,
                               const Tensor& val, const bool is_dead) {
           call->ClearCancelCallback();
-          Status s = status;
-          if (s.ok()) {
+          if (status.ok()) {
             // DMA can only be used for Tensors that do not fall into
             // the following three odd edge cases: 1) a zero-size
             // buffer, 2) a dead tensor which has an uninit value, and
@@ -475,7 +474,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
             }
           } else {
             //  !s.ok()
-            call->SendResponse(ToGrpcStatus(s));
+            call->SendResponse(ToGrpcStatus(status));
           }
         });
   }

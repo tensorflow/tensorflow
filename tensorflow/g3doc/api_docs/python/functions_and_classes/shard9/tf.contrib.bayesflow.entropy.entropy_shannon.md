@@ -16,7 +16,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 ##### Args:
 
 
-*  <b>`p`</b>: `tf.contrib.distributions.BaseDistribution`
+*  <b>`p`</b>: `tf.contrib.distributions.Distribution`
 *  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.

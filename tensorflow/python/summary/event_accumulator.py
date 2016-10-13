@@ -24,6 +24,7 @@ import threading
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import tf_logging as logging
@@ -71,6 +72,7 @@ IMAGES = 'images'
 AUDIO = 'audio'
 SCALARS = 'scalars'
 GRAPH = 'graph'
+META_GRAPH = 'meta_graph'
 RUN_METADATA = 'run_metadata'
 
 ## Normal CDF for std_devs: (-Inf, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, Inf)
@@ -126,6 +128,7 @@ class EventAccumulator(object):
   @@Tags
   @@Scalars
   @@Graph
+  @@MetaGraph
   @@RunMetadata
   @@Histograms
   @@CompressedHistograms
@@ -165,6 +168,8 @@ class EventAccumulator(object):
     self._first_event_timestamp = None
     self._scalars = reservoir.Reservoir(size=sizes[SCALARS])
     self._graph = None
+    self._graph_from_metagraph = False
+    self._meta_graph = None
     self._tagged_metadata = {}
     self._histograms = reservoir.Reservoir(size=sizes[HISTOGRAMS])
     self._compressed_histograms = reservoir.Reservoir(
@@ -242,12 +247,37 @@ class EventAccumulator(object):
 
     self._MaybePurgeOrphanedData(event)
 
-    ## Process the event
+    ## Process the event.
+    # GraphDef and MetaGraphDef are handled in a special way:
+    # If no graph_def Event is available, but a meta_graph_def is, and it
+    # contains a graph_def, then use the meta_graph_def.graph_def as our graph.
+    # If a graph_def Event is available, always prefer it to the graph_def
+    # inside the meta_graph_def.
     if event.HasField('graph_def'):
       if self._graph is not None:
-        logging.warn(('Found more than one graph event per run. '
-                      'Overwriting the graph with the newest event.'))
+        logging.warn(('Found more than one graph event per run, or there was '
+                      'a metagraph containing a graph_def, as well as one or '
+                      'more graph events.  Overwriting the graph with the '
+                      'newest event.'))
       self._graph = event.graph_def
+      self._graph_from_metagraph = False
+    elif event.HasField('meta_graph_def'):
+      if self._meta_graph is not None:
+        logging.warn(('Found more than one metagraph event per run. '
+                      'Overwriting the metagraph with the newest event.'))
+      self._meta_graph = event.meta_graph_def
+      if self._graph is None or self._graph_from_metagraph:
+        # We may have a graph_def in the metagraph.  If so, and no
+        # graph_def is directly available, use this one instead.
+        meta_graph = meta_graph_pb2.MetaGraphDef()
+        meta_graph.ParseFromString(self._meta_graph)
+        if meta_graph.graph_def:
+          if self._graph is not None:
+            logging.warn(('Found multiple metagraphs containing graph_defs,'
+                          'but did not find any graph events.  Overwriting the '
+                          'graph with the newest metagraph version.'))
+          self._graph_from_metagraph = True
+          self._graph = meta_graph.graph_def.SerializeToString()
     elif event.HasField('tagged_run_metadata'):
       tag = event.tagged_run_metadata.tag
       if tag in self._tagged_metadata:
@@ -273,7 +303,10 @@ class EventAccumulator(object):
             HISTOGRAMS: self._histograms.Keys(),
             SCALARS: self._scalars.Keys(),
             COMPRESSED_HISTOGRAMS: self._compressed_histograms.Keys(),
+            # Use a heuristic: if the metagraph is available, but
+            # graph is not, then we assume the metagraph contains the graph.
             GRAPH: self._graph is not None,
+            META_GRAPH: self._meta_graph is not None,
             RUN_METADATA: list(self._tagged_metadata.keys())}
 
   def Scalars(self, tag):
@@ -293,17 +326,40 @@ class EventAccumulator(object):
   def Graph(self):
     """Return the graph definition, if there is one.
 
+    If the graph is stored directly, return that.  If no graph is stored
+    directly but a metagraph is stored containing a graph, return that.
+
     Raises:
       ValueError: If there is no graph for this run.
 
     Returns:
       The `graph_def` proto.
     """
-    if self._graph is None:
-      raise ValueError('There is no graph in this EventAccumulator')
     graph = graph_pb2.GraphDef()
-    graph.ParseFromString(self._graph)
-    return graph
+    if self._graph is not None:
+      graph.ParseFromString(self._graph)
+      return graph
+    if self._meta_graph is not None:
+      meta_graph = meta_graph_pb2.MetaGraphDef()
+      meta_graph.ParseFromString(self._meta_graph)
+      if meta_graph.graph_def:
+        return meta_graph.graph_def
+    raise ValueError('There is no graph in this EventAccumulator')
+
+  def MetaGraph(self):
+    """Return the metagraph definition, if there is one.
+
+    Raises:
+      ValueError: If there is no metagraph for this run.
+
+    Returns:
+      The `meta_graph_def` proto.
+    """
+    if self._meta_graph is None:
+      raise ValueError('There is no metagraph in this EventAccumulator')
+    meta_graph = meta_graph_pb2.MetaGraphDef()
+    meta_graph.ParseFromString(self._meta_graph)
+    return meta_graph
 
   def RunMetadata(self, tag):
     """Given a tag, return the associated session.run() metadata.

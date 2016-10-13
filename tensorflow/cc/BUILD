@@ -317,6 +317,15 @@ tf_gen_op_wrappers_cc(
     pkg = "//tensorflow/core",
 )
 
+tf_gen_op_wrappers_cc(
+    name = "function_ops",
+    op_lib_names = [
+        "function_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
 cc_library(
     name = "cc_op_gen_main",
     srcs = [

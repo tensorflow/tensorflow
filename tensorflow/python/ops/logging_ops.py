@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
@@ -179,7 +180,8 @@ def audio_summary(tag,
       of the summary values.
     tensor: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
       or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
-    sample_rate: The sample rate of the signal in hertz.
+    sample_rate: A Scalar `float32` `Tensor` indicating the sample rate of the
+      signal in hertz.
     max_outputs: Max number of batch elements to generate audio for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [ops.GraphKeys.SUMMARIES]
@@ -190,11 +192,13 @@ def audio_summary(tag,
     buffer.
   """
   with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
-    val = gen_logging_ops._audio_summary(tag=tag,
-                                         tensor=tensor,
-                                         max_outputs=max_outputs,
-                                         sample_rate=sample_rate,
-                                         name=scope)
+    sample_rate = ops.convert_to_tensor(sample_rate, dtype=dtypes.float32,
+                                        name="sample_rate")
+    val = gen_logging_ops._audio_summary_v2(tag=tag,
+                                            tensor=tensor,
+                                            max_outputs=max_outputs,
+                                            sample_rate=sample_rate,
+                                            name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
@@ -298,6 +302,7 @@ ops.NotDifferentiable("HistogramAccumulatorSummary")
 ops.NotDifferentiable("HistogramSummary")
 ops.NotDifferentiable("ImageSummary")
 ops.NotDifferentiable("AudioSummary")
+ops.NotDifferentiable("AudioSummaryV2")
 ops.NotDifferentiable("MergeSummary")
 ops.NotDifferentiable("ScalarSummary")
 
@@ -307,5 +312,6 @@ ops.RegisterShape("HistogramAccumulatorSummary")(
 ops.RegisterShape("HistogramSummary")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageSummary")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AudioSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AudioSummaryV2")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("MergeSummary")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScalarSummary")(common_shapes.call_cpp_shape_fn)
