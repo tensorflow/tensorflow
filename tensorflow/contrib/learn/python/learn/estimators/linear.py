@@ -60,6 +60,10 @@ _CLASSES = "classes"
 _LOGISTIC = "logistic"
 _PROBABILITIES = "probabilities"
 
+# The default learning rate of 0.2 is a historical artifact of the initial
+# implementation, but seems a reasonable choice.
+_LEARNING_RATE = 0.2
+
 
 def _get_metric_args(metric):
   if hasattr(metric, "__code__"):
@@ -87,7 +91,7 @@ def _wrap_metric(metric):
 def _get_optimizer(spec):
   if isinstance(spec, six.string_types):
     return layers.OPTIMIZER_CLS_NAMES[spec](
-        learning_rate=0.2)
+        learning_rate=_LEARNING_RATE)
   elif callable(spec):
     return spec()
   return spec
@@ -172,10 +176,45 @@ def _weighted_loss(loss, weight_tensor):
 
 
 def _linear_classifier_model_fn(features, targets, mode, params):
-  """Estimator's linear model_fn."""
+  """Linear classifier model_fn.
+
+  Args:
+    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    targets: `Tensor` of shape [batch_size, 1] or [batch_size] target labels of
+      dtype `int32` or `int64` in the range `[0, n_classes)`.
+    mode: Defines whether this is training, evaluation or prediction.
+      See `ModeKeys`.
+    params: A dict of hyperparameters.
+      The following hyperparameters are expected:
+      * feature_columns: An iterable containing all the feature columns used by
+          the model.
+      * n_classes: number of target classes.
+      * weight_column_name: A string defining the weight feature column, or
+          None if there are no weights.
+      * optimizer: string, `Optimizer` object, or callable that defines the
+          optimizer to use for training.
+      * gradient_clip_norm: A float > 0. If provided, gradients are
+          clipped to their global norm with this clipping ratio.
+      * enable_centered_bias: A bool. If True, estimator will learn a centered
+          bias variable for each class. Rest of the model structure learns the
+          residual after centered bias.
+      * num_ps_replicas: The number of parameter server replicas.
+      * joint_weights: If True, the weights for all columns will be stored in a
+        single (possibly partitioned) variable. It's more efficient, but it's
+        incompatible with SDCAOptimizer, and requires all feature columns are
+        sparse and use the 'sum' combiner.
+
+  Returns:
+    predictions: A dict of `Tensor` objects.
+    loss: A scalar containing the loss of the step.
+    train_op: The op for training.
+
+  Raises:
+    ValueError: If mode is not any of the `ModeKeys`.
+  """
+  feature_columns = params["feature_columns"]
   n_classes = params["n_classes"]
   weight_column_name = params["weight_column_name"]
-  feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   gradient_clip_norm = params.get("gradient_clip_norm", None)
   enable_centered_bias = params.get("enable_centered_bias", True)
@@ -185,25 +224,24 @@ def _linear_classifier_model_fn(features, targets, mode, params):
   if not isinstance(features, dict):
     features = {"": features}
 
+  parent_scope = "linear"
   num_label_columns = 1 if n_classes == 2 else n_classes
   loss_fn = _softmax_cross_entropy_loss
   if n_classes == 2:
     loss_fn = _log_loss_with_two_classes
 
-  feat_values = (features.values() if isinstance(features, dict)
-                 else [features])
   partitioner = partitioned_variables.min_max_variable_partitioner(
       max_partitions=num_ps_replicas,
       min_slice_size=64 << 20)
   with variable_scope.variable_op_scope(
-      feat_values, "linear", partitioner=partitioner) as scope:
+      features.values(), parent_scope, partitioner=partitioner) as scope:
     if joint_weights:
       logits, _, _ = (
           layers.joint_weighted_sum_from_feature_columns(
               columns_to_tensors=features,
               feature_columns=feature_columns,
               num_outputs=num_label_columns,
-              weight_collections=["linear"],
+              weight_collections=[parent_scope],
               scope=scope))
     else:
       logits, _, _ = (
@@ -211,7 +249,7 @@ def _linear_classifier_model_fn(features, targets, mode, params):
               columns_to_tensors=features,
               feature_columns=feature_columns,
               num_outputs=num_label_columns,
-              weight_collections=["linear"],
+              weight_collections=[parent_scope],
               scope=scope))
 
   if enable_centered_bias:
@@ -253,20 +291,33 @@ def _linear_classifier_model_fn(features, targets, mode, params):
 
 
 def sdca_classifier_model_fn(features, targets, mode, params):
-  """Estimator's model_fn for the SDCA optimizer.
+  """Linear classifier model_fn that uses the SDCA optimizer.
 
   Args:
-    features: feature `Tensor` or `dict`. See the Estimator documentation.
-    targets: targets `Tensor` or `dict`. See the Estimator documentation.
-    mode: the mode. See the Estimator documentation.
-    params: a `dict` with entries for "feature_columns", "optimizer",
-      "weight_column_name", "loss_type", and optionally "update_weights_hook".
+    features: A dict of `Tensor` keyed by column name.
+    targets: `Tensor` of shape [batch_size, 1] or [batch_size] target labels of
+      dtype `int32` or `int64` in the range `[0, n_classes)`.
+    mode: Defines whether this is training, evaluation or prediction.
+      See `ModeKeys`.
+    params: A dict of hyperparameters.
+      The following hyperparameters are expected:
+      * feature_columns: An iterable containing all the feature columns used by
+          the model.
+      * optimizer: An `SDCAOptimizer` instance.
+      * weight_column_name: A string defining the weight feature column, or
+          None if there are no weights.
+      * loss_type: A string. Must be either "logistic_loss" or "hinge_loss".
+      * update_weights_hook: A `SessionRunHook` object or None. Used to update
+          model weights.
 
   Returns:
-    Tuple of predictions, loss, and train_op.
+    predictions: A dict of `Tensor` objects.
+    loss: A scalar containing the loss of the step.
+    train_op: The op for training.
 
   Raises:
-    ValueError: if the parameters are invalid.
+    ValueError: If `optimizer` is not an `SDCAOptimizer` instance.
+    ValueError: If mode is not any of the `ModeKeys`.
   """
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
@@ -317,7 +368,7 @@ def sdca_classifier_model_fn(features, targets, mode, params):
 
 # Ensures consistency with LinearComposableModel.
 def _get_default_optimizer(feature_columns):
-  learning_rate = min(0.2, 1.0 / math.sqrt(len(feature_columns)))
+  learning_rate = min(_LEARNING_RATE, 1.0 / math.sqrt(len(feature_columns)))
   return train.FtrlOptimizer(learning_rate=learning_rate)
 
 
