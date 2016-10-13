@@ -223,7 +223,7 @@ def _fused_batch_norm(
       channels = inputs.get_shape()[-1].value
       if channels is None:
         raise ValueError('`C` dimension must be known but is None')
-      new_shape = [-1, channels, 1, 1] if data_format == 'NCHW' else \
+      new_shape = [-1, channels, 1, 1] if data_format == DATA_FORMAT_NCHW else \
           [-1, 1, 1, channels]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
