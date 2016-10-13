@@ -27,19 +27,7 @@ py_library(
 py_test(
     name = "base_test",
     size = "medium",
-    srcs = ["python/learn/tests/base_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "load_csv_test",
-    size = "small",
-    srcs = ["python/learn/tests/load_csv_test.py"],
+    srcs = ["python/learn/estimators/base_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -51,7 +39,7 @@ py_test(
 py_test(
     name = "data_feeder_test",
     size = "small",
-    srcs = ["python/learn/tests/data_feeder_test.py"],
+    srcs = ["python/learn/learn_io/data_feeder_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -274,7 +262,7 @@ py_test(
 py_test(
     name = "estimators_test",
     size = "small",
-    srcs = ["python/learn/tests/estimators_test.py"],
+    srcs = ["python/learn/estimators/estimators_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -286,7 +274,7 @@ py_test(
 py_test(
     name = "metric_spec_test",
     size = "small",
-    srcs = ["python/learn/tests/metric_spec_test.py"],
+    srcs = ["python/learn/metric_spec_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -298,7 +286,7 @@ py_test(
 py_test(
     name = "experiment_test",
     size = "small",
-    srcs = ["python/learn/tests/experiment_test.py"],
+    srcs = ["python/learn/experiment_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -310,7 +298,7 @@ py_test(
 py_test(
     name = "graph_actions_test",
     size = "small",
-    srcs = ["python/learn/tests/graph_actions_test.py"],
+    srcs = ["python/learn/graph_actions_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -322,7 +310,7 @@ py_test(
 py_test(
     name = "learn_runner_test",
     size = "small",
-    srcs = ["python/learn/tests/learn_runner_test.py"],
+    srcs = ["python/learn/learn_runner_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -334,7 +322,7 @@ py_test(
 py_test(
     name = "monitors_test",
     size = "small",
-    srcs = ["python/learn/tests/monitors_test.py"],
+    srcs = ["python/learn/monitors_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -347,7 +335,7 @@ py_test(
     name = "run_config_test",
     size = "small",
     srcs = [
-        "python/learn/tests/run_config_test.py",
+        "python/learn/estimators/run_config_test.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -522,7 +510,7 @@ py_test(
 py_test(
     name = "grid_search_test",
     size = "small",
-    srcs = ["python/learn/tests/grid_search_test.py"],
+    srcs = ["python/learn/grid_search_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -534,7 +522,7 @@ py_test(
 py_test(
     name = "io_test",
     size = "small",
-    srcs = ["python/learn/tests/io_test.py"],
+    srcs = ["python/learn/learn_io/io_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -546,7 +534,7 @@ py_test(
 py_test(
     name = "multioutput_test",
     size = "small",
-    srcs = ["python/learn/tests/multioutput_test.py"],
+    srcs = ["python/learn/estimators/multioutput_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -558,7 +546,7 @@ py_test(
 py_test(
     name = "nonlinear_test",
     size = "medium",
-    srcs = ["python/learn/tests/nonlinear_test.py"],
+    srcs = ["python/learn/estimators/nonlinear_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -570,7 +558,7 @@ py_test(
 py_test(
     name = "regression_test",
     size = "small",
-    srcs = ["python/learn/tests/regression_test.py"],
+    srcs = ["python/learn/estimators/regression_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -671,7 +659,7 @@ py_test(
 py_test(
     name = "stability_test",
     size = "small",
-    srcs = ["python/learn/tests/stability_test.py"],
+    srcs = ["python/learn/estimators/stability_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
