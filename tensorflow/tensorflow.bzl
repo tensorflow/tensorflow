@@ -752,6 +752,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
   # and use that as the name for the rule producing the .so file.
   cc_library_name = "/".join(name.split("/")[:-1] + ["_" + module_name + ".so"])
+  cc_library_pyd_name = "/".join(name.split("/")[:-1] + ["_" + module_name + ".pyd"])
   extra_deps = []
   _py_wrap_cc(name=name + "_py_wrap",
               srcs=srcs,
@@ -790,10 +791,19 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
       linkstatic=1,
       linkshared=1,
       deps=deps + extra_deps)
+  native.genrule(
+      name = cc_library_pyd_name,
+      srcs = [":" + cc_library_name],
+      outs = [cc_library_pyd_name],
+      cmd = "cp $< $@",
+  )
   native.py_library(name=name,
                     srcs=[":" + name + ".py"],
                     srcs_version="PY2AND3",
-                    data=[":" + cc_library_name])
+                    data=select({
+                      "//tensorflow:windows": [":" + cc_library_pyd_name],
+                      "//conditions:default": [":" + cc_library_name],
+                    }))
 
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                tags=[], shard_count=1, additional_deps=[], flaky=0):
