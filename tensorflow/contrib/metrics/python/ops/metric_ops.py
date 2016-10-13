@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import tensor_util
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
@@ -1225,6 +1226,8 @@ def _at_k_name(name, k, class_id=None):
   return name
 
 
+@deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
+            'and reshape labels from [batch_size] to [batch_size, 1].')
 @deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
 def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
                           weights=None, metrics_collections=None,
@@ -1328,7 +1331,7 @@ def streaming_sparse_recall_at_k(predictions,
     labels: `int64` `Tensor` or `SparseTensor` with shape
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
-      has shape [batch_size, num_labels]. [D1, ... DN] must match `labels`.
+      has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
       Values should be in range [0, num_classes], where num_classes is the last
       dimension of `predictions`.
     k: Integer, k for @k metric.
@@ -1429,7 +1432,7 @@ def streaming_sparse_precision_at_k(predictions,
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions_idx`. Values should be in range [0, num_classes], where
+      `predictions`. Values should be in range [0, num_classes], where
       num_classes is the last dimension of `predictions`.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
@@ -1596,7 +1599,7 @@ def sparse_average_precision_at_k(predictions, labels, k):
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions_idx`. Values should be in range [0, num_classes], where
+      `predictions`. Values should be in range [0, num_classes], where
       num_classes is the last dimension of `predictions`.
     k: Integer, k for @k metric. This will calculate an average precision for
       range `[1,k]`, as documented above.
@@ -1698,7 +1701,7 @@ def streaming_sparse_average_precision_at_k(predictions,
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions_idx`. Values should be in range [0, num_classes], where
+      `predictions`. Values should be in range [0, num_classes], where
       num_classes is the last dimension of `predictions`.
     k: Integer, k for @k metric. This will calculate an average precision for
       range `[1,k]`, as documented above.
@@ -1770,9 +1773,8 @@ def _select_class_id(ids, selected_id):
     selected_id: Int id to select.
 
   Returns:
-    `SparseTensor` of same dimensions as `ids`, except for the last dimension,
-    which might be smaller. This contains only the entries equal to
-    `selected_id`.
+    `SparseTensor` of same dimensions as `ids`. This contains only the entries
+    equal to `selected_id`.
   """
   if isinstance(ids, (ops.SparseTensor, ops.SparseTensorValue)):
     return sparse_ops.sparse_retain(
@@ -1782,7 +1784,7 @@ def _select_class_id(ids, selected_id):
   # tf.equal and tf.reduce_any?
 
   # Shape of filled IDs is the same as `ids` with the last dim collapsed to 1.
-  ids_shape = array_ops.shape(ids)
+  ids_shape = array_ops.shape(ids, out_type=dtypes.int64)
   ids_last_dim = array_ops.size(ids_shape) - 1
   filled_selected_id_shape = math_ops.reduced_shape(
       ids_shape, array_ops.reshape(ids_last_dim, [1]))
@@ -1790,7 +1792,9 @@ def _select_class_id(ids, selected_id):
   # Intersect `ids` with the selected ID.
   filled_selected_id = array_ops.fill(
       filled_selected_id_shape, math_ops.to_int64(selected_id))
-  return set_ops.set_intersection(filled_selected_id, ids)
+  result = set_ops.set_intersection(filled_selected_id, ids)
+  return ops.SparseTensor(
+      indices=result.indices, values=result.values, shape=ids_shape)
 
 
 def _maybe_select_class_id(labels, predictions_idx, selected_id=None):
