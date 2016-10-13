@@ -33,8 +33,25 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner
 
+
 # Default name for key in the feature dict.
 KEY_FEATURE_NAME = '__key__'
+
+
+def _check_enqueue_params(num_queue_runners, num_enqueue_threads):
+  """Check enqueue paramerters for deprecation of `num_queue_runners`."""
+  if num_queue_runners is not None:
+    # TODO(yifanchen): Remove on Nov 21 2016.
+    logging.warning('`num_queue_runners` is deprecated, it will be removed on '
+                    'Nov 21 2016')
+    if num_enqueue_threads is not None:
+      raise ValueError('`num_queue_runners` and `num_enqueue_threads` can not '
+                       'both be set.')
+  elif num_enqueue_threads is None:
+    logging.warning('Default behavior will change and `num_queue_runners` '
+                    'will be replaced by `num_enqueue_threads`.')
+    num_queue_runners = 2
+  return num_queue_runners, num_enqueue_threads
 
 
 def read_batch_examples(file_pattern, batch_size, reader,
@@ -234,7 +251,8 @@ def read_keyed_batch_features(file_pattern,
                               queue_capacity=10000,
                               reader_num_threads=1,
                               feature_queue_capacity=100,
-                              num_queue_runners=2,
+                              num_queue_runners=None,
+                              num_enqueue_threads=None,
                               parse_fn=None,
                               name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
@@ -265,10 +283,17 @@ def read_keyed_batch_features(file_pattern,
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     feature_queue_capacity: Capacity of the parsed features queue.
-    num_queue_runners: Number of queue runners to start for the feature queue,
-      Adding multiple queue runners for the parsed example queue helps maintain
+    num_queue_runners: Deprecated. Defaults to 2 if this and
+      `num_enqueue_threads` are both `None`. This is the number of queue
+      runners to start for the feature queue. Adding multiple queue runners for
+      the parsed example queue helps maintain a full queue when the subsequent
+      computations overall are cheaper than parsing. This argument will be
+      deprecated and replaced with `num_enqueue_threads`.
+    num_enqueue_threads: Number of threads to enqueue the parsed example queue.
+      Using multiple threads to enqueue the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
-      parsing.
+      parsing. This argument will replace `num_queue_runners`. This and
+      `num_queue_runners` can not both be set.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -281,6 +306,9 @@ def read_keyed_batch_features(file_pattern,
   Raises:
     ValueError: for invalid inputs.
   """
+
+  num_queue_runners, num_enqueue_threads = _check_enqueue_params(
+      num_queue_runners, num_enqueue_threads)
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
     keys, examples = read_keyed_batch_examples(
@@ -295,13 +323,15 @@ def read_keyed_batch_features(file_pattern,
         keys=keys,
         feature_queue_capacity=feature_queue_capacity,
         num_queue_runners=num_queue_runners,
+        num_enqueue_threads=num_enqueue_threads,
         name=scope)
 
 
 def queue_parsed_features(parsed_features,
                           keys=None,
                           feature_queue_capacity=100,
-                          num_queue_runners=2,
+                          num_queue_runners=None,
+                          num_enqueue_threads=None,
                           name=None):
   """Speeds up parsing by using queues to do it asynchronously.
 
@@ -320,10 +350,17 @@ def queue_parsed_features(parsed_features,
     parsed_features: A dict of string key to `Tensor` or `SparseTensor` objects.
     keys: `Tensor` of string keys.
     feature_queue_capacity: Capacity of the parsed features queue.
-    num_queue_runners: Number of queue runners to start for the feature queue,
-      Adding multiple queue runners for the parsed example queue helps maintain
+    num_queue_runners: Deprecated. Defaults to 2 if this and
+      `num_enqueue_threads` are both `None`. This is the number of queue
+      runners to start for the feature queue. Adding multiple queue runners for
+      the parsed example queue helps maintain a full queue when the subsequent
+      computations overall are cheaper than parsing. This argument will be
+      deprecated and replaced with `num_enqueue_threads`.
+    num_enqueue_threads: Number of threads to enqueue the parsed example queue.
+      Using multiple threads to enqueue the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
-      parsing.
+      parsing. This argument will replace `num_queue_runners`. This and
+      `num_queue_runners` can not both be set.
     name: Name of resulting op.
 
   Returns:
@@ -331,7 +368,12 @@ def queue_parsed_features(parsed_features,
     - `Tensor` corresponding to `keys` if provided, otherwise `None`.
     -  A dict of string key to `Tensor` or `SparseTensor` objects corresponding
        to `parsed_features`.
+  Raises:
+    ValueError: for invalid inputs.
   """
+  num_queue_runners, num_enqueue_threads = _check_enqueue_params(
+      num_queue_runners, num_enqueue_threads)
+
   args = list(parsed_features.values())
   if keys is not None:
     args += [keys]
@@ -370,12 +412,31 @@ def queue_parsed_features(parsed_features,
 
     # Add multiple queue runners so that the queue is always full. Adding more
     # than two queue-runners may hog the cpu on the worker to fill up the queue.
-    for _ in range(num_queue_runners):
-      queue_runner.add_queue_runner(
-          queue_runner.QueueRunner(
-              input_queue, [input_queue.enqueue(tensors_to_enqueue)],
-              queue_closed_exception_types=(errors.OutOfRangeError,
-                                            errors.CancelledError)))
+    #
+    # Note: this can result in large last batch being lost as the multiple queue
+    # runner threads do not coordinate with each other. Please use
+    # `num_enqueue_threads` instead.
+    if num_queue_runners is not None:
+      for _ in range(num_queue_runners):
+        queue_runner.add_queue_runner(
+            queue_runner.QueueRunner(
+                input_queue, [input_queue.enqueue(tensors_to_enqueue)],
+                queue_closed_exception_types=(errors.OutOfRangeError,
+                                              errors.CancelledError)))
+    # Use a single QueueRunner with multiple threads to enqueue so the queue is
+    # always full. The threads are coordinated so the last batch will not be
+    # lost.
+    elif num_enqueue_threads is not None:
+      enqueue_ops = [input_queue.enqueue(tensors_to_enqueue)
+                     for _ in range(num_enqueue_threads)]
+      queue_runner.add_queue_runner(queue_runner.QueueRunner(
+          input_queue, enqueue_ops,
+          queue_closed_exception_types=(errors.OutOfRangeError,
+                                        errors.CancelledError)))
+    else:
+      raise AssertionError(
+          'Either `num_queue_runners` or `num_enqueue_threads` should have '
+          'been set.')
 
     dequeued_tensors = input_queue.dequeue()
 

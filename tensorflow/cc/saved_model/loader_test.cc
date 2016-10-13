@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/signature_constants.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -34,17 +37,30 @@ class LoaderTest : public ::testing::Test {
  protected:
   LoaderTest() {}
 
-  void CheckSavedModelBundle(const SavedModelBundle& bundle) {
-    // Validate the half plus two behavior.
-    Tensor input = test::AsTensor<float>({0, 1, 2, 3}, TensorShape({4, 1}));
+  string MakeSerializedExample(float x) {
+    tensorflow::Example example;
+    auto* feature_map = example.mutable_features()->mutable_feature();
+    (*feature_map)["x"].mutable_float_list()->add_value(x);
+    return example.SerializeAsString();
+  }
 
+  void CheckSavedModelBundle(const SavedModelBundle& bundle) {
     // Retrieve the regression signature from meta graph def.
     const auto signature_def_map = bundle.meta_graph_def.signature_def();
-    const auto signature_def = signature_def_map.at("regression");
+    const auto signature_def = signature_def_map.at(kRegressMethodName);
 
-    const string input_name = signature_def.inputs().at("input").name();
-    const string output_name = signature_def.outputs().at("output").name();
+    const string input_name = signature_def.inputs().at(kRegressInputs).name();
+    const string output_name =
+        signature_def.outputs().at(kRegressOutputs).name();
 
+    std::vector<string> serialized_examples;
+    for (float x : {0, 1, 2, 3}) {
+      serialized_examples.push_back(MakeSerializedExample(x));
+    }
+
+    // Validate the half plus two behavior.
+    Tensor input =
+        test::AsTensor<string>(serialized_examples, TensorShape({4}));
     std::vector<Tensor> outputs;
     TF_ASSERT_OK(bundle.session->Run({{input_name, input}}, {output_name}, {},
                                      &outputs));
@@ -65,7 +81,7 @@ TEST_F(LoaderTest, ResourceLeakTest) {
   RunOptions run_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   for (int i = 0; i < 100; ++i) {
     TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                                 {kSavedModelTagServe}, &bundle));
@@ -79,7 +95,7 @@ TEST_F(LoaderTest, TagMatch) {
   RunOptions run_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(bundle);
@@ -91,7 +107,7 @@ TEST_F(LoaderTest, NoTagMatch) {
   SessionOptions session_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {"missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
@@ -107,7 +123,7 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
   SessionOptions session_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe, "missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
@@ -129,13 +145,13 @@ TEST_F(LoaderTest, PbtxtFormat) {
   CheckSavedModelBundle(bundle);
 }
 
-TEST_F(LoaderTest, ShardedVariables) {
+TEST_F(LoaderTest, SingleShardVariables) {
   SavedModelBundle bundle;
   SessionOptions session_options;
   RunOptions run_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(bundle);
@@ -156,7 +172,7 @@ TEST_F(LoaderTest, InvalidExportPath) {
 TEST_F(LoaderTest, MaybeSavedModelDirectory) {
   // Valid SavedModel directory.
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   EXPECT_TRUE(MaybeSavedModelDirectory(export_dir));
 
   // Directory that does not exist.

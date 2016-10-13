@@ -136,7 +136,7 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
-OPTFLAGS := -O0
+OPTFLAGS := -O2
 CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
@@ -229,6 +229,8 @@ ifeq ($(TARGET),ANDROID)
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
 -march=armv7-a \
+-mfloat-abi=softfp \
+-mfpu=neon \
 -fPIE
 
 	INCLUDES = \

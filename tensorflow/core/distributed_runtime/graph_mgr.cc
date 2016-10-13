@@ -264,22 +264,6 @@ Status GraphMgr::DeregisterAll() {
   return Status::OK();
 }
 
-Status GraphMgr::Execute(const string& handle, const int64 step_id,
-                         const ExecutorOpts& opts,
-                         StepStatsCollector* collector,
-                         CancellationManager* cancellation_manager,
-                         const NamedTensors& in, NamedTensors* out) {
-  Notification n;
-  Status status;
-  ExecuteAsync(handle, step_id, opts, collector, cancellation_manager, in, out,
-               [&n, &status](const Status& s) {
-                 status = s;
-                 n.Notify();
-               });
-  n.WaitForNotification();
-  return status;
-}
-
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             const ExecutorOpts& opts,
                             StepStatsCollector* collector,

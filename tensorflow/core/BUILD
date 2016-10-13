@@ -712,6 +712,7 @@ cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts() + ["-Os"],
+    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -769,7 +770,6 @@ cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
     copts = tf_copts(),
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",

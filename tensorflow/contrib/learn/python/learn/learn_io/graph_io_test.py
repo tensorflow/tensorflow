@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import base64
 import os
 import random
 import tempfile
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
@@ -242,6 +244,63 @@ class GraphIOTest(tf.test.TestCase):
         session.run(inputs)
 
       coord.request_stop()
+
+  def test_read_keyed_batch_features_mutual_exclusive_args(self):
+    filename = self._create_temp_file("abcde")
+    features = {"sequence": tf.FixedLenFeature([], tf.string)}
+    with self.assertRaisesRegexp(ValueError, "can not both be set"):
+      _, _ = tf.contrib.learn.read_keyed_batch_features(
+          filename, 1, features, tf.TextLineReader, randomize_input=False,
+          num_queue_runners=2, num_enqueue_threads=2)
+
+  def test_queue_parsed_features_mutual_exclusive_args(self):
+    parsed_features = {"a": tf.constant([10, 20, 30])}
+    with self.assertRaisesRegexp(ValueError, "can not both be set"):
+      _, _ = tf.contrib.learn.queue_parsed_features(
+          parsed_features, num_queue_runners=2, num_enqueue_threads=2)
+
+  def test_read_text_lines_large(self):
+    gfile.Glob = self._orig_glob
+    sequence_prefix = "abcdefghijklmnopqrstuvwxyz123456789"
+    num_records = 49999
+    lines = ["".join([sequence_prefix, str(l)]).encode("ascii")
+             for l in xrange(num_records)]
+    json_lines = ["".join(['{"features": { "feature": { "sequence": {',
+                           '"bytes_list": { "value": ["',
+                           base64.b64encode(l).decode("ascii"),
+                           '"]}}}}}\n']) for l in lines]
+    filename = self._create_temp_file("".join(json_lines))
+    batch_size = 10000
+    queue_capacity = 10000
+    name = "my_large_batch"
+
+    features = {"sequence": tf.FixedLenFeature([], tf.string)}
+
+    with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
+      _, result = tf.contrib.learn.read_keyed_batch_features(
+          filename, batch_size, features, tf.TextLineReader,
+          randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
+          num_enqueue_threads=2, parse_fn=tf.decode_json_example, name=name)
+      session.run(tf.initialize_local_variables())
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(session, coord=coord)
+
+      data = []
+      try:
+        while not coord.should_stop():
+          data.append(session.run(result))
+      except errors.OutOfRangeError:
+        pass
+      finally:
+        coord.request_stop()
+
+      coord.join(threads)
+    parsed_records = [item for sublist in [d["sequence"] for d in data]
+                      for item in sublist]
+    # Check that the number of records matches expected and all records
+    # are present.
+    self.assertEqual(len(parsed_records), num_records)
+    self.assertEqual(set(parsed_records), set(lines))
 
   def test_read_text_lines_multifile(self):
     gfile.Glob = self._orig_glob

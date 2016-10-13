@@ -26,6 +26,18 @@ export interface PointMetadata {
   [key: string]: number | string;
 }
 
+export interface DataProto {
+  shape: [number, number];
+  tensor: number[];
+  metadata: {
+    columns: Array<{
+      name: string;
+      stringValues: string[];
+      numericValues: number[];
+    }>;
+  };
+}
+
 /** Statistics for a metadata column. */
 export interface ColumnStats {
   name: string;

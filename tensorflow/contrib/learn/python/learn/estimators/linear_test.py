@@ -1017,7 +1017,7 @@ class LinearRegressorTest(tf.test.TestCase):
         scores['my_error'])
 
     # Tests that when the key is a tuple, an error is raised.
-    with self.assertRaises(TypeError):
+    with self.assertRaises(KeyError):
       regressor.evaluate(
           input_fn=_input_fn_train,
           steps=1,

@@ -17,24 +17,15 @@ import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 
-const AXIS_COLOR = 0xb3b3b3;
-
 /**
  * Maintains and renders 2d and 3d axes for the scatter plot.
- * 2d axes are scaled relative to the data set.
  */
 export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
   private axis3D: THREE.AxisHelper;
   private axis2D: THREE.LineSegments;
   private sceneIs3D: boolean = true;
-  private xScale: d3.scale.Linear<number, number>;
-  private yScale: d3.scale.Linear<number, number>;
 
-  constructor(
-      xScale: d3.scale.Linear<number, number>,
-      yScale: d3.scale.Linear<number, number>) {
-    this.xScale = xScale;
-    this.yScale = yScale;
+  constructor() {
     this.axis3D = new THREE.AxisHelper();
   }
 
@@ -44,35 +35,14 @@ export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
       this.axis2D.geometry.dispose();
     }
 
-    let vertices = new Float32Array([
-      0,  // origin
-      0,
-      0,
-      this.xScale(1),  // x axis
-      0,
-      0,
-      0,  // origin
-      0,
-      0,
-      0,  // y axis
-      this.yScale(1),
-      0,
-    ]);
+    let vertices = new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0]);
 
-    let axisColor = new THREE.Color(AXIS_COLOR);
-    let axisColors = new Float32Array([
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
+    const red = new THREE.Color(1, 0, 0);
+    const green = new THREE.Color(0, 1, 0);
+
+    const axisColors = new Float32Array([
+      red.r, red.g, red.b, red.r, red.g, red.b, green.r, green.g, green.b,
+      green.r, green.g, green.b
     ]);
 
     const RGB_NUM_BYTES = 3;
@@ -106,6 +76,8 @@ export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
       scene.remove(this.axis3D);
     } else {
       scene.remove(this.axis2D);
+      this.axis2D.material.dispose();
+      this.axis2D.geometry.dispose();
     }
   }
 

@@ -416,6 +416,7 @@ class DNNClassifierTest(tf.test.TestCase):
     def _my_metric_op(predictions, targets):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
+      targets = tf.to_float(targets)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
       targets = math_ops.cast(targets, predictions.dtype)
       return tf.reduce_sum(tf.mul(predictions, targets))
@@ -850,7 +851,7 @@ class DNNRegressorTest(tf.test.TestCase):
         scores['my_error'])
 
     # Tests that when the key is a tuple, an error is raised.
-    with self.assertRaises(TypeError):
+    with self.assertRaises(KeyError):
       regressor.evaluate(
           input_fn=_input_fn_train,
           steps=1,

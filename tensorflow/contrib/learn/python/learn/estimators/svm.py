@@ -55,7 +55,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   method), should be set to (#concurrent train ops per worker) x (#workers). If
   num_loss_partitions is larger or equal to this value, convergence is
   guaranteed but becomes slower as num_loss_partitions increases. If it is set
-  to a smaller value, the optimizer is more agressive in reducing the global
+  to a smaller value, the optimizer is more aggressive in reducing the global
   loss but convergence is not guaranteed. The recommended value in tf.learn
   (where there is one process per worker) is the number of workers running the
   train steps. It defaults to 1 (single machine).
@@ -146,6 +146,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
 
     self._feature_columns = feature_columns
     self._model_dir = model_dir or tempfile.mkdtemp()
+    self._chief_hook = linear._SdcaUpdateWeightsHook()  # pylint: disable=protected-access
     self._estimator = estimator.Estimator(
         model_fn=linear.sdca_classifier_model_fn,
         model_dir=self._model_dir,
@@ -155,12 +156,19 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
             "optimizer": self._optimizer,
             "weight_column_name": weight_column_name,
             "loss_type": "hinge_loss",
+            "update_weights_hook": self._chief_hook,
         },
         feature_engineering_fn=feature_engineering_fn)
+    if not self._estimator.config.is_chief:
+      self._chief_hook = None
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
+    if monitors is None:
+      monitors = []
+    if self._chief_hook:
+      monitors.append(self._chief_hook)
     return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
                                batch_size=batch_size, monitors=monitors,
                                max_steps=max_steps)
