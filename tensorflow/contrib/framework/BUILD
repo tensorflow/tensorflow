@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -28,9 +29,9 @@ py_library(
         "python/ops/prettyprint_ops.py",
         "python/ops/variables.py",
     ],
-    data = [
+    data = if_not_windows([
         ":python/ops/_variable_ops.so",
-    ],
+    ]),
     srcs_version = "PY2AND3",
     deps = [
         ":gen_variable_ops",

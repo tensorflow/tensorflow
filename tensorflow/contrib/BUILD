@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
+
 py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
@@ -16,33 +18,34 @@ py_library(
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
-        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/distributions:distributions_py",
-        "//tensorflow/contrib/factorization:factorization_py",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/learn",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
-        "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/opt:opt_py",
-        "//tensorflow/contrib/quantization:quantization_py",
-        "//tensorflow/contrib/rnn:rnn_py",
-        "//tensorflow/contrib/seq2seq:seq2seq_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim:nets",
-        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
-        "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ],
+    ] + if_not_windows([
+        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
+        "//tensorflow/contrib/factorization:factorization_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/quantization:quantization_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/seq2seq:seq2seq_py",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",
+    ]),
 )
 
 cc_library(

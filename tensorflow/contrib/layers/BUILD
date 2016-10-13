@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -74,15 +75,16 @@ tf_kernel_library(
 py_library(
     name = "layers_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + glob(["python/layers/*.py"]),
-    data = [
+    data = if_not_windows([
         ":python/ops/_bucketization_op.so",
         ":python/ops/_sparse_feature_cross_op.so",
-    ],
+    ]),
     srcs_version = "PY2AND3",
     deps = [
         ":bucketization_op",
+    ] + if_not_windows([
         ":sparse_feature_cross_op",
-    ],
+    ]),
 )
 
 cuda_py_test(
