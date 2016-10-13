@@ -25,6 +25,16 @@ function cp_external() {
   done
 }
 
+PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
+function is_windows() {
+  # On windows, the shell script is actually running in msys
+  if [[ "${PLATFORM}" =~ msys_nt* ]]; then
+    true
+  else
+    false
+  fi
+}
+
 function main() {
   if [ $# -lt 1 ] ; then
     echo "No destination dir provided"
@@ -41,46 +51,67 @@ function main() {
     exit 1
   fi
 
-  if [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
-    # Really old (0.2.1-) runfiles, without workspace name.
+  if is_windows; then
+    mkdir -p ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
+    echo "Unzipping simple_console_for_windows.zip to create runfiles tree..."
+    unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
+    echo "Unzip finished."
+    # runfiles structure after unzip the python binary
     cp -R \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     mkdir "${TMPDIR}/external"
+    # Note: this makes an extra copy of org_tensorflow.
     cp_external \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
-    if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
-      # Old-style runfiles structure (--legacy_external_runfiles).
+    if [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
+      # Really old (0.2.1-) runfiles, without workspace name.
       cp -R \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
       cp_external \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
         "${TMPDIR}/external"
+      RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
     else
-      # New-style runfiles structure (--nolegacy_external_runfiles).
-      cp -R \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-        "${TMPDIR}"
-      mkdir "${TMPDIR}/external"
-      # Note: this makes an extra copy of org_tensorflow.
-      cp_external \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
-        "${TMPDIR}/external"
+      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
+        # Old-style runfiles structure (--legacy_external_runfiles).
+        cp -R \
+          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+          "${TMPDIR}"
+        mkdir "${TMPDIR}/external"
+        cp_external \
+          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
+          "${TMPDIR}/external"
+      else
+        # New-style runfiles structure (--nolegacy_external_runfiles).
+        cp -R \
+          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+          "${TMPDIR}"
+        mkdir "${TMPDIR}/external"
+        # Note: this makes an extra copy of org_tensorflow.
+        cp_external \
+          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+          "${TMPDIR}/external"
+      fi
+      RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     fi
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers
   # over so user defined ops can be compiled.
-  mkdir -p ${TMPDIR}/google
-  rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
-    $RUNFILES/external/protobuf ${TMPDIR}/google
-  rsync -a $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
+  # TODO(pcloudy): rsync doesn't work well in msys on Windows
+  # Find an alternative for this on Windows
+  if ! is_windows; then
+    mkdir -p ${TMPDIR}/google
+    rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
+      $RUNFILES/external/protobuf ${TMPDIR}/google
+    rsync -a $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
+  fi
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}
@@ -93,7 +124,7 @@ function main() {
   pushd ${TMPDIR}
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  ${PYTHON_BIN_PATH:-python} setup.py bdist_wheel >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd
