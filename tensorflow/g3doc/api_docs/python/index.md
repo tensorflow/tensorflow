@@ -198,6 +198,7 @@
   * [`erf`](../../api_docs/python/math_ops.md#erf)
   * [`erfc`](../../api_docs/python/math_ops.md#erfc)
   * [`exp`](../../api_docs/python/math_ops.md#exp)
+  * [`eye`](../../api_docs/python/math_ops.md#eye)
   * [`fft`](../../api_docs/python/math_ops.md#fft)
   * [`fft2d`](../../api_docs/python/math_ops.md#fft2d)
   * [`fft3d`](../../api_docs/python/math_ops.md#fft3d)
@@ -747,6 +748,7 @@
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
+  * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
   * [`decode_audio`](../../api_docs/python/contrib.ffmpeg.md#decode_audio)
