@@ -51,6 +51,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -684,3 +685,77 @@ class ScaleAndShift(Bijector):
     return -math_ops.reduce_sum(
         math_ops.log(array_ops.matrix_diag_part(self.scale)),
         reduction_indices=[-1])
+
+
+class Softplus(Bijector):
+  """Bijector which computes `Y = g(X) = Log[1 + exp(X)]`.
+
+  The softplus `Bijector` has the following two useful properties:
+
+  * The domain is the positive real numbers
+  * `softplus(x) approx x`, for large `x`, so it does not overflow as easily as
+    the `Exp` `Bijector`.
+
+    Example Use:
+
+    ```python
+    # Create the Y=g(X)=softplus(X) transform which works only on Tensors with 1
+    # batch ndim and 2 event ndims (i.e., vector of matrices).
+    softplus = Softplus(batch_ndims=1, event_ndims=2)
+    x = [[[1., 2],
+           [3, 4]],
+          [[5, 6],
+           [7, 8]]]
+    log(1 + exp(x)) == softplus.forward(x)
+    log(exp(x) - 1) == softplus.inverse(x)
+    ```
+
+    Note: log(.) and exp(.) are applied element-wise but the Jacobian is a
+    reduction over the event space.
+  """
+
+  def __init__(self,
+               event_ndims=0,
+               validate_args=False,
+               name="Softplus"):
+    super(Softplus, self).__init__(
+        batch_ndims=0,
+        event_ndims=event_ndims,
+        validate_args=validate_args,
+        name=name)
+
+  def _forward(self, x):
+    return nn_ops.softplus(x)
+
+  def _inverse(self, x):
+    # The most stable inverse of softplus is not the most direct one.
+    # y = softplus(x) = Log[1 + exp{x}], (which means y > 0).
+    # ==> exp{y} = 1 + exp{x}
+    # ==> x = Log[exp{y} - 1]
+    #       = Log[(exp{y} - 1) / exp{y}] + Log[exp{y}]
+    #       = Log[(1 - exp{-y}) / 1] + Log[exp{y}]
+    #       = Log[1 - exp{-y}] + y
+    # Recalling y > 0, you see that this is more stable than Log[exp{y} - 1].
+    return x + math_ops.log(1. - math_ops.exp(-x))
+
+  def _inverse_log_det_jacobian(self, x):
+    # Stable inverse log det jacobian.
+    # Y = Log[1 + exp{X}] ==> X = Log[exp{Y} - 1]
+    # ==> dX/dY = exp{Y} / (exp{Y} - 1)
+    #           = 1 / (1 - exp{-Y}),
+    # which is the most stable for Y > 0.
+    if self.shaper is None:
+      raise ValueError("Jacobian cannot be computed with unknown event_ndims")
+    _, _, event_dims = self.shaper.get_dims(x)
+    return -math_ops.reduce_sum(
+        math_ops.log(1. - math_ops.exp(-x)), reduction_indices=event_dims)
+
+  def _inverse_and_inverse_log_det_jacobian(self, x):
+    if self.shaper is None:
+      raise ValueError("Jacobian cannot be computed with unknown event_ndims")
+    _, _, event_dims = self.shaper.get_dims(x)
+    log_one_minus_exp_neg = math_ops.log(1. - math_ops.exp(-x))
+    y = x + log_one_minus_exp_neg
+    ildj = -math_ops.reduce_sum(
+        log_one_minus_exp_neg, reduction_indices=event_dims)
+    return y, ildj

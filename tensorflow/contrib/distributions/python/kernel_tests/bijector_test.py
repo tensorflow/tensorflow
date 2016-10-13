@@ -24,6 +24,7 @@ import numpy as np
 import tensorflow as tf
 
 bijectors = tf.contrib.distributions.bijector
+rng = np.random.RandomState(42)
 
 
 class BaseBijectorTest(tf.test.TestCase):
@@ -327,6 +328,66 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
       self.assertAllClose([[[0., 2]]], sess.run(bijector.inverse(x), feed_dict))
       self.assertAllClose(
           [0.], sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
+
+
+class SoftplusBijectorTest(tf.test.TestCase):
+  """Tests the correctness of the Y = g(X) = Log[1 + exp(X)] transformation."""
+
+  def _softplus(self, x):
+    return np.log(1 + np.exp(x))
+
+  def _softplus_inverse(self, y):
+    return np.log(np.exp(y) - 1)
+
+  def _softplus_ildj_before_reduction(self, y):
+    """Inverse log det jacobian, before being reduced."""
+    return -np.log(1 - np.exp(-y))
+
+  def testBijectorForwardInverseEventDimsZero(self):
+    with self.test_session():
+      bijector = bijectors.Softplus(event_ndims=0)
+      self.assertEqual("Softplus", bijector.name)
+      x = 2 * rng.randn(2, 10)
+      y = self._softplus(x)
+
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+      self.assertAllClose(
+          x, bijector.inverse_and_inverse_log_det_jacobian(y)[0].eval())
+
+  def testBijectorLogDetJacobianEventDimsZero(self):
+    with self.test_session():
+      bijector = bijectors.Softplus(event_ndims=0)
+      y = 2 * rng.rand(2, 10)
+      # No reduction needed if event_dims = 0.
+      ildj = self._softplus_ildj_before_reduction(y)
+
+      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(
+          ildj, bijector.inverse_and_inverse_log_det_jacobian(y)[1].eval())
+
+  def testBijectorForwardInverseEventDimsOne(self):
+    with self.test_session():
+      bijector = bijectors.Softplus(event_ndims=1)
+      self.assertEqual("Softplus", bijector.name)
+      x = 2 * rng.randn(2, 10)
+      y = self._softplus(x)
+
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+      self.assertAllClose(
+          x, bijector.inverse_and_inverse_log_det_jacobian(y)[0].eval())
+
+  def testBijectorLogDetJacobianEventDimsOne(self):
+    with self.test_session():
+      bijector = bijectors.Softplus(event_ndims=1)
+      y = 2 * rng.rand(2, 10)
+      ildj_before = self._softplus_ildj_before_reduction(y)
+      ildj = np.sum(ildj_before, axis=1)
+
+      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(
+          ildj, bijector.inverse_and_inverse_log_det_jacobian(y)[1].eval())
 
 
 if __name__ == "__main__":
