@@ -358,6 +358,9 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual(0, f.tell())
     self.assertEqual("testing1\n", f.readline())
 
+    with self.assertRaises(errors.InvalidArgumentError):
+      f.seek(-1)
+
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     data = ["testing1\n", "testing2\n", "testing3\n", "\n", "testing5"]
