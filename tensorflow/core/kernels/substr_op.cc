@@ -93,43 +93,43 @@ class SubstrOp : public OpKernel {
         }
       } else {  
         // Attempt broadcasting this Op
-        context->SetStatus(errors::Unimplemented(
-                 "Substr broadcast is not supported yet."));
+        // context->SetStatus(errors::Unimplemented(
+        //          "Substr broadcast is not supported yet."));
 
-        // BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
-        // OP_REQUIRES(context, bcast.IsValid(), 
-        //             errors::InvalidArgument("Incompatible shapes: ", 
-        //                                     input_shape.DebugString(), " vs. ",
-        //                                     pos_shape.DebugString()));
-        // TensorShape output_shape = BCast::ToShape(bcast.result_shape());
-        // int ndims = output_shape.dims();
-        // Tensor* output_tensor = nullptr;
-        // OP_REQUIRES_OK(context,
-        //                context->allocate_output("output", output_shape,
-        //                                         &output_tensor));
-        // switch (ndims) {
-        //   case 2: {
-        //     auto output = output_tensor->shaped<string, 2>(bcast.x_reshape());
-        //     auto input_reshaped = input_tensor.shaped<string, 2>(bcast.x_reshape());
-        //     auto pos_reshaped = pos_tensor.shaped<T, 2>(bcast.y_reshape());
-        //     auto len_reshaped = len_tensor.shaped<T, 2>(bcast.y_reshape());
+        BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
+        OP_REQUIRES(context, bcast.IsValid(), 
+                    errors::InvalidArgument("Incompatible shapes: ", 
+                                            input_shape.DebugString(), " vs. ",
+                                            pos_shape.DebugString()));
+        TensorShape output_shape = BCast::ToShape(bcast.result_shape());
+        int ndims = output_shape.dims();
+        Tensor* output_tensor = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output("output", output_shape,
+                                                &output_tensor));
+        switch (ndims) {
+          case 2: {
+            auto output = output_tensor->shaped<string, 2>(bcast.x_reshape());
+            auto input_reshaped = input_tensor.shaped<string, 2>(bcast.x_reshape());
+            auto pos_reshaped = pos_tensor.shaped<T, 2>(bcast.y_reshape());
+            auto len_reshaped = len_tensor.shaped<T, 2>(bcast.y_reshape());
               
-        //     typename TTypes<string, 2>::Tensor input = input_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
-        //     typename TTypes<T, 2>::Tensor pos = pos_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
-        //     typename TTypes<T, 2>::Tensor len = len_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            typename TTypes<string, 2>::Tensor input = input_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()))(0);
+            typename TTypes<T, 2>::Tensor pos = pos_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()))(0);
+            typename TTypes<T, 2>::Tensor len = len_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()))(0);
             
-        //     for (size_t i = 0; i < ndims; ++i) {
-        //       size_t dim_size = output_shape.dim_size(i);
-        //       for (size_t j = 0; j < dim_size; ++j) {
-        //         output(i, j) = input(i, j).substr(pos(i, j), len(i, j));
-        //       }
-        //     }
-        //   }
-        //   default: {
-        //     context->SetStatus(errors::InvalidArgument(
-        //             "Broadcast rank not supported: ", ndims));
-        //   }
-        // }
+            for (size_t i = 0; i < ndims; ++i) {
+              size_t dim_size = output_shape.dim_size(i);
+              for (size_t j = 0; j < dim_size; ++j) {
+                output(i, j) = input(i, j).substr(pos(i, j), len(i, j));
+              }
+            }
+          }
+          default: {
+            context->SetStatus(errors::InvalidArgument(
+                    "Broadcast rank not supported: ", ndims));
+          }
+        }
       }
     }
 };
