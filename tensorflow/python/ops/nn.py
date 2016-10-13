@@ -1023,13 +1023,15 @@ def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
+  #Add 1e-12 to epsilon when epsilon=1e-5 to prevent cudnn exception.
+  epsilon = epsilon if epsilon > 1e-5 else epsilon + 1e-12
   y, batch_mean, batch_var, _, _ = gen_nn_ops.fused_batch_norm(
       x,
       scale,
       offset,
       mean,
       variance,
-      epsilon=epsilon + 1e-12,
+      epsilon=epsilon,
       data_format=data_format,
       is_training=is_training,
       name=name)

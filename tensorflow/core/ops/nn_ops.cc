@@ -389,9 +389,9 @@ REGISTER_OP("FusedBatchNormGrad")
       c->set_output(0, x_backprop);
       c->set_output(1, c->Vector(channel_dim));
       c->set_output(2, c->Vector(channel_dim));
-      // set the correct shapes for reserve_spaces
+      // Set the correct shapes for reserve_spaces
       // so that gradients can be performed when
-      // the op is in a symbolic condition
+      // the op is in a symbolic condition.
       if (is_training) {
         c->set_output(3, c->Vector(0));
         c->set_output(4, c->Vector(0));
