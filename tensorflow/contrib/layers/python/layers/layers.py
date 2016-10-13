@@ -601,7 +601,7 @@ def bias_add(inputs,
              variables_collections=None,
              outputs_collections=None,
              trainable=True,
-             data_format='NHWC',
+             data_format=DATA_FORMAT_NHWC,
              scope=None):
   """Adds a bias to the inputs.
 
