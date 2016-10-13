@@ -587,7 +587,6 @@ export class ScatterPlot {
 
   recreateScene() {
     this.removeAll();
-    this.recreateCamera(this.dimensionality);
     this.visualizers.forEach(v => {
       v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);
     });
