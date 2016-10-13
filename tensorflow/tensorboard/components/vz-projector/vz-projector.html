@@ -119,12 +119,10 @@ limitations under the License.
 }
 
 #wrapper-notify-msg {
-  z-index: 1;
-  position: fixed;
-  top: 10px;
-  width: 100%;
+  align-items: center;
   display: flex;
   justify-content: center;
+  width: 300px;
 }
 
 #notify-msgs {
@@ -132,15 +130,12 @@ limitations under the License.
 }
 
 .notify-msg {
-  margin: 5px 0;
-  font-weight: 500;
-  color: black;
-  background-color: #FFF9C4;
-  padding: 5px;
-  border: 1px solid #FBC02D;
   backface-visibility: hidden;
+  font-weight: 500;
+  margin: 0;
   opacity: 1;
-  transition: opacity 0.3s ease-out;
+  padding: 0;
+  transition: opacity 0.3s ease-out, height 0.3s ease-out;
 }
 
 #warning-msg {
@@ -347,9 +342,9 @@ limitations under the License.
   overflow-y: auto;
 }
 </style>
-<div id="wrapper-notify-msg">
+<paper-dialog id="wrapper-notify-msg" modal>
   <div id="notify-msgs"></div>
-</div>
+</paper-dialog>
 <div id="warning-msg"></div>
 <div id="container">
   <div id="left-pane" class="ink-panel">
