@@ -22,9 +22,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "http://bitbucket.org/eigen/eigen/get/" + eigen_version + ".tar.gz",
+    url = "http://bitbucket.org/benoitsteiner/opencl/get/" + eigen_version + ".tar.gz",
     sha256 = eigen_sha256,
-    strip_prefix = "eigen-eigen-" + eigen_version,
+    strip_prefix = "benoitsteiner-opencl-" + eigen_version,
     build_file = str(Label("//:eigen.BUILD")),
   )
 
