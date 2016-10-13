@@ -295,11 +295,8 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   }
 
   private colorSprites(pointColors?: Float32Array) {
-    if (this.geometry == null || this.dataSet == null) {
-      return;
-    }
-
-    if (pointColors == null) {
+    if (this.labelAccessor == null || this.geometry == null ||
+        this.dataSet == null || pointColors == null) {
       return;
     }
 
@@ -341,6 +338,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
 
   onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.dataSet = dataSet;
+    this.labelAccessor = null;
   }
 
   onPickingRender(rc: RenderContext) {
