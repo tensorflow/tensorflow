@@ -308,7 +308,7 @@ def _fused_batch_norm(
 
     # If `is_training` doesn't have a constant value, because it is a `Tensor`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
-    # `needs_updates` will be true.
+    # `need_updates` will be true.
     is_training_value = utils.constant_value(is_training)
     need_updates = is_training_value is None or is_training_value
     if need_updates:
