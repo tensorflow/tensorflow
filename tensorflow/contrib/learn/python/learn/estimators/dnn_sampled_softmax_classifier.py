@@ -414,12 +414,12 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
   def get_estimator(self):
     return self._estimator
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self, x=None, y=None, input_fn=None, feed_fn=None, steps=None,
+          batch_size=None, monitors=None, max_steps=None):
     """See trainable.Trainable."""
-    return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                               batch_size=batch_size, monitors=monitors,
-                               max_steps=max_steps)
+    return self._estimator.fit(x=x, y=y, input_fn=input_fn, feed_fn=feed_fn,
+                               steps=steps, batch_size=batch_size,
+                               monitors=monitors, max_steps=max_steps)
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None,

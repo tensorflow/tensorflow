@@ -158,12 +158,12 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         },
         feature_engineering_fn=feature_engineering_fn)
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self, x=None, y=None, input_fn=None, feed_fn=None, steps=None,
+          batch_size=None, monitors=None, max_steps=None):
     """See trainable.Trainable."""
-    return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                               batch_size=batch_size, monitors=monitors,
-                               max_steps=max_steps)
+    return self._estimator.fit(x=x, y=y, input_fn=input_fn, feed_fn=feed_fn,
+                               steps=steps, batch_size=batch_size,
+                               monitors=monitors, max_steps=max_steps)
 
   # pylint: disable=protected-access
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,

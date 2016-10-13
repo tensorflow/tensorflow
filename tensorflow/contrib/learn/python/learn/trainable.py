@@ -28,8 +28,8 @@ class Trainable(object):
   __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self, x=None, y=None, input_fn=None, feed_fn=None, steps=None,
+          batch_size=None, monitors=None, max_steps=None):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
@@ -44,6 +44,9 @@ class Trainable(object):
           features - Dictionary of string feature name to `Tensor` or `Tensor`.
           target - `Tensor` or dictionary of `Tensor` with target labels.
         If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
+      feed_fn: A function that is called every iteration to produce a `feed_dict`
+        passed to `session.run` calls. Optional.
+        feed_fn is used only if `input_fn` is given, and not used with `x` nor `y`.
       steps: Number of steps for which to train model. If `None`, train forever.
         'steps' works incrementally. If you call two times fit(steps=10) then
         training occurs in total 20 steps. If you don't want to have incremental
