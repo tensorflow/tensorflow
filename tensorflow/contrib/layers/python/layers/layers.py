@@ -629,6 +629,9 @@ def bias_add(inputs,
 
   Raises:
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: if `data_format` is `NCHW` and rank of `inputs` is not 4.
+    ValueError: if the rank of `inputs` is undefined.
+    ValueError: if rank or `C` dimension of `inputs` is undefined.
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
@@ -636,7 +639,16 @@ def bias_add(inputs,
                                      reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
-    num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Dims of shape must be known but is None')
+    elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
+      raise ValueError('Data format NCHW only supports 4D Tensor')
+    axis = 1 if data_format==DATA_FORMAT_NCHW else -1
+    num_features = inputs_shape[axis].value
+    if num_features is None:
+      raise ValueError('`C` dimension must be known but is None')
     biases_collections = utils.get_variable_collections(variables_collections,
                                                         'biases')
     biases = variables.model_variable('biases',
