@@ -26,7 +26,8 @@ load and the location of the SavedModel.
 Upon a load, the subset of variables and assets supplied as part of the specific
 meta graph def, will be restored into the supplied session. The values of the
 variables though will correspond to the saved values from the first meta graph
-added to the SavedModel using `add_graph_and_variables(...)` in `builder.py`.
+added to the SavedModel using `add_meta_graph_and_variables(...)` in
+`builder.py`.
 
 TODO(sukritiramesh): Add support for a single init or main op to run upon load.
 
@@ -37,15 +38,16 @@ builder = saved_model_builder.SavedModelBuilder(export_dir)
 
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_graph_and_variables(sess,
-                                  ["foo-tag"],
-                                  signature_def_map=foo_signatures,
-                                  asset_collection=foo_assets)
+  builder.add_meta_graph_and_variables(sess,
+                                       ["foo-tag"],
+                                       signature_def_map=foo_signatures,
+                                       assets_collection=foo_assets)
 ...
 
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_graph(["bar-tag", "baz-tag"])
+  builder.add_meta_graph(["bar-tag", "baz-tag"],
+                         assets_collection=bar_baz_assets)
 ...
 
 builder.save()
@@ -128,7 +130,7 @@ def load(sess, tags, export_dir):
         to be loaded are located.
 
   Returns:
-    The `MetaGraphDef` protocol buffer loaloadded in the provided session. This
+    The `MetaGraphDef` protocol buffer loaded in the provided session. This
     can be used to further extract signature-defs, collection-defs, etc.
 
   Raises:
