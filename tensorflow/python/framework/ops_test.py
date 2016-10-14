@@ -38,6 +38,17 @@ import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
+ops.RegisterShape("ResourceOp")(None)
+ops.RegisterShape("ResourceUsingOp")(None)
+
+
+class ResourceTest(test_util.TensorFlowTestCase):
+
+  def testBuildGraph(self):
+    with self.test_session():
+      pt = test_ops.resource_op(container="a", shared_name="b")
+      test_ops.resource_using_op(pt).run()
+
 
 class TensorTest(test_util.TensorFlowTestCase):
 
