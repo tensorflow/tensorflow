@@ -1,6 +1,6 @@
-### `tf.contrib.metrics.streaming_sparse_precision_at_k(*args, **kwargs)` {#streaming_sparse_precision_at_k}
+### `tf.contrib.metrics.streaming_sparse_precision_at_top_k(*args, **kwargs)` {#streaming_sparse_precision_at_top_k}
 
-Computes precision@k of the predictions with respect to sparse labels. (deprecated arguments)
+Computes precision@k of top-k predictions with respect to sparse labels. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
 Instructions for updating:
@@ -14,40 +14,37 @@ Instructions for updating:
       average a class among the top-k classes with the highest predicted values
       of a batch entry is correct and can be found in the label for that entry.
 
-  `streaming_sparse_precision_at_k` creates two local variables,
-  `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
+  `streaming_sparse_precision_at_top_k` creates two local variables,
+  `true_positive_at_k` and `false_positive_at_k`, that are used to compute
   the precision@k frequency. This frequency is ultimately returned as
-  `precision_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
-  `false_positive_at_<k>`).
+  `precision_at_k`: an idempotent operation that simply divides
+  `true_positive_at_k` by total (`true_positive_at_k` + `false_positive_at_k`).
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
-  `precision_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
-  indicating the top `k` `predictions`. Set operations applied to `top_k` and
-  `labels` calculate the true positives and false positives weighted by
-  `weights`. Then `update_op` increments `true_positive_at_<k>` and
-  `false_positive_at_<k>` using these values.
+  `precision_at_k`. Internally, set operations applied to `top_k_predictions`
+  and `labels` calculate the true positives and false positives weighted by
+  `weights`. Then `update_op` increments `true_positive_at_k` and
+  `false_positive_at_k` using these values.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
   Alternatively, if `ignore_mask` is not `None`, then mask values where
   `ignore_mask` is `True`.
 
   Args:
-    predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
-      N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
-      The final dimension contains the logit values for each class. [D1, ... DN]
+    top_k_predictions: Integer `Tensor` with shape [D1, ... DN, k] where
+      N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
+      The final dimension contains the indices of top-k labels. [D1, ... DN]
       must match `labels`.
     labels: `int64` `Tensor` or `SparseTensor` with shape
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions`. Values should be in range [0, num_classes), where
+      `top_k_predictions`. Values should be in range [0, num_classes), where
       num_classes is the last dimension of `predictions`. Values outside this
       range are ignored.
-    k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
-      in range [0, num_classes], where num_classes is the last dimension of
+      in range [0, num_classes), where num_classes is the last dimension of
       `predictions`. If `class_id` is outside this range, the method returns
       NAN.
     ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
@@ -72,4 +69,5 @@ Instructions for updating:
       `predictions`, or if `weights` is not `None` and its shape doesn't match
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
+    ValueError: If `top_k_predictions` has rank < 2.
 
