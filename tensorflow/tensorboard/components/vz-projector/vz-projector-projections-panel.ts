@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE} from './data';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
@@ -37,6 +38,8 @@ export let ProjectionsPanelPolymer = PolymerElement({
     },
   }
 });
+
+type InputControlName = 'xLeft' | 'xRight' | 'yUp' | 'yDown';
 
 /**
  * A polymer component which handles the projection tabs in the projector.
@@ -130,14 +133,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     };
     learningRateInput.addEventListener('change', updateLearningRate);
     updateLearningRate();
+    this.setupAllInputsInCustomTab();
   }
 
   dataSetUpdated(dataSet: DataSet, dim: number) {
     this.currentDataSet = dataSet;
     this.dim = dim;
     this.clearCentroids();
-
-    this.setupAllInputsInCustomTab();
 
     this.dom.select('#tsne-sampling')
         .style('display', dataSet.points.length > SAMPLE_SIZE ? null : 'none');
@@ -173,9 +175,6 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   public showTab(id: Projection) {
-    if (id === this.currentProjection) {
-      return;
-    }
     this.currentProjection = id;
 
     let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
@@ -193,13 +192,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       this.showTSNE();
     } else if (id === 'custom') {
       this.currentDataSet.stopTSNE();
-      this.showCustom();
+      this.computeAllCentroids();
+      this.reprojectCustom();
     }
   }
 
   private showTSNE() {
     this.projector.setProjection(
-        'tsne',
+        'tsne', this.is3d ? 3 : 2,
         // Accessors.
         i => this.currentDataSet.points[i].projections['tsne-0'],
         i => this.currentDataSet.points[i].projections['tsne-1'],
@@ -242,19 +242,17 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       let z = this.pcaZ - 1;
 
       this.projector.setProjection(
-          'pca',
+          'pca', this.is3d ? 3 : 2,
           // Accessors.
           i => this.currentDataSet.points[i].projections['pca-' + x],
           i => this.currentDataSet.points[i].projections['pca-' + y],
-          this.is3d ?
-              (i => this.currentDataSet.points[i].projections['pca-' + z]) :
-              null,
+          i => this.currentDataSet.points[i].projections['pca-' + z],
           // Axis labels.
           'pca-' + x, 'pca-' + y);
     });
   }
 
-  private showCustom() {
+  private reprojectCustom() {
     if (this.centroids == null || this.centroids.xLeft == null ||
         this.centroids.xRight == null || this.centroids.yUp == null ||
         this.centroids.yDown == null) {
@@ -270,7 +268,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     let yLabel = this.centroidValues.yUp + ' → ' + this.centroidValues.yDown;
 
     this.projector.setProjection(
-        'custom',
+        'custom', 2,
         // Accessors.
         i => this.currentDataSet.points[i].projections['linear-x'],
         i => this.currentDataSet.points[i].projections['linear-y'],
@@ -285,46 +283,52 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   _searchByMetadataOptionChanged(newVal: string, oldVal: string) {
-    // Ignore the initial call to the observer so we don't try to create these
-    // projections pre-emptively.
-    if (oldVal) {
-      this.setupAllInputsInCustomTab(true /** callListenersImmediately */);
+    if (this.currentProjection === 'custom') {
+      this.computeAllCentroids();
+      this.reprojectCustom();
     }
   }
 
-  private setupAllInputsInCustomTab(callListenersImmediately = false) {
-    this.setupInputUIInCustomTab('xLeft', callListenersImmediately);
-    this.setupInputUIInCustomTab('xRight', callListenersImmediately);
-    this.setupInputUIInCustomTab('yUp', callListenersImmediately);
-    this.setupInputUIInCustomTab('yDown', callListenersImmediately);
+  private setupAllInputsInCustomTab() {
+    this.setupInputUIInCustomTab('xLeft');
+    this.setupInputUIInCustomTab('xRight');
+    this.setupInputUIInCustomTab('yUp');
+    this.setupInputUIInCustomTab('yDown');
   }
 
-  private setupInputUIInCustomTab(
-      name: string, callListenersImmediately = false) {
+  private computeAllCentroids() {
+    this.computeCentroid('xLeft');
+    this.computeCentroid('xRight');
+    this.computeCentroid('yUp');
+    this.computeCentroid('yDown');
+  }
+
+  private computeCentroid(name: InputControlName) {
     let input = this.querySelector('#' + name) as ProjectorInput;
+    let value = input.getValue();
+    let inRegexMode = input.getInRegexMode();
 
-    let updateInput = (value: string, inRegexMode: boolean) => {
-      if (value == null) {
-        return;
-      }
-      let result = this.getCentroid(value, inRegexMode);
-      if (result.numMatches === 0) {
-        input.message = '0 matches. Using a random vector.';
-        result.centroid = vector.rn(this.dim);
-      } else {
-        input.message = `${result.numMatches} matches.`;
-      }
-      this.centroids[name] = result.centroid;
-      this.centroidValues[name] = value;
-    };
+    if (value == null) {
+      return;
+    }
+    let result = this.getCentroid(value, inRegexMode);
+    if (result.numMatches === 0) {
+      input.message = '0 matches. Using a random vector.';
+      result.centroid = vector.rn(this.dim);
+    } else {
+      input.message = `${result.numMatches} matches.`;
+    }
+    this.centroids[name] = result.centroid;
+    this.centroidValues[name] = value;
+  }
 
-    updateInput(input.getValue(), false);
-
+  private setupInputUIInCustomTab(name: InputControlName) {
+    let input = this.querySelector('#' + name) as ProjectorInput;
     // Setup the input text.
     input.onInputChanged((input, inRegexMode) => {
-      updateInput(input, inRegexMode);
-      this.showCustom();
-    }, callListenersImmediately);
+      this.computeCentroid(name);
+      this.reprojectCustom();
+    });
   }
 
   private getCentroid(pattern: string, inRegexMode: boolean): CentroidResult {

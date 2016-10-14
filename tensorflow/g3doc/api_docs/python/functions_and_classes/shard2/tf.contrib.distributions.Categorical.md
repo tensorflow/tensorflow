@@ -2,9 +2,45 @@ Categorical distribution.
 
 The categorical distribution is parameterized by the log-probabilities
 of a set of classes.
+
+#### Examples
+
+Creates a 3-class distiribution, with the 2nd class, the most likely to be
+drawn from.
+
+```python
+p = [0.1, 0.5, 0.4]
+dist = Categorical(p=p)
+```
+
+Creates a 3-class distiribution, with the 2nd class the most likely to be
+drawn from, using logits.
+
+```python
+logits = [-50, 400, 40]
+dist = Categorical(logits=logits)
+```
+
+Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+The distribution functions can be evaluated on counts.
+
+```python
+# counts is a scalar.
+p = [0.1, 0.4, 0.5]
+dist = Categorical(p=p)
+dist.pmf(0)  # Shape []
+
+# p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
+counts = [1, 0]
+dist.pmf(counts)  # Shape [2]
+
+# p will be broadcast to shape [3, 5, 7, 3] to match counts.
+counts = [[...]] # Shape [5, 7, 3]
+dist.pmf(counts)  # Shape [5, 7, 3]
+```
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits=None, p=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -14,7 +50,13 @@ Initialize Categorical distributions using class log-probabilities.
 *  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
       of a set of Categorical distributions. The first `N - 1` dimensions
       index into a batch of independent distributions and the last dimension
-      indexes into the classes.
+      represents a vector of logits for each class. Only one of `logits` or
+      `p` should be passed in.
+*  <b>`p`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
+      of a set of Categorical distributions. The first `N - 1` dimensions
+      index into a batch of independent distributions and the last dimension
+      represents a vector of probabilities for each class. Only one of
+      `logits` or `p` should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
 *  <b>`validate_args`</b>: Unused in this distribution.
 *  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
@@ -292,7 +334,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 #### `tf.contrib.distributions.Categorical.logits` {#Categorical.logits}
 
-
+Vector of coordinatewise logits.
 
 
 - - -
@@ -321,6 +363,15 @@ Name prepended to all ops created by this `Distribution`.
 #### `tf.contrib.distributions.Categorical.num_classes` {#Categorical.num_classes}
 
 Scalar `int32` tensor: the number of classes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.p` {#Categorical.p}
+
+Vector of probabilities summing to one.
+
+Each element is the probability of drawing that coordinate.
 
 
 - - -

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 #ifdef USE_HEXAGON_LIBS
-#include "tensorflow/core/platform/hexagon/gemm_wrapper.h"
+#include "tensorflow/core/platform/hexagon/soc_interface.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #endif
 
@@ -42,9 +42,9 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
 #ifdef USE_HEXAGON_LIBS
     profile_utils::CpuUtils::EnableClockCycleProfiling(true);
     LOG(INFO) << "Hexagon libs are linked (wrapper version = "
-              << hexagon_gemm_wrapper_GetWrapperVersion()
+              << soc_interface_GetWrapperVersion()
               << ", hexagon binary version = "
-              << hexagon_gemm_wrapper_GetHexagonBinaryVersion() << ")";
+              << soc_interface_GetHexagonBinaryVersion() << ")";
     LOG(INFO) << "Cpu frequency = "
               << profile_utils::CpuUtils::GetCycleCounterFrequency();
 #else
@@ -58,15 +58,14 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
 TEST_F(QuantizedMatMulOpForHexagonTest, EvaluateSharedLibOverhead) {
   const uint64 overhead_shared_lib_start =
       profile_utils::CpuUtils::GetCurrentClockCycle();
-  const int wrapper_version = hexagon_gemm_wrapper_GetWrapperVersion();
+  const int wrapper_version = soc_interface_GetWrapperVersion();
   const uint64 overhead_shared_lib_end =
       profile_utils::CpuUtils::GetCurrentClockCycle();
   const uint64 overhead_shared_lib_diff =
       (overhead_shared_lib_end - overhead_shared_lib_start);
   const uint64 overhead_hexagon_rpc_start =
       profile_utils::CpuUtils::GetCurrentClockCycle();
-  const int hexagon_binary_version =
-      hexagon_gemm_wrapper_GetHexagonBinaryVersion();
+  const int hexagon_binary_version = soc_interface_GetHexagonBinaryVersion();
   const uint64 overhead_hexagon_rpc_end =
       profile_utils::CpuUtils::GetCurrentClockCycle();
   const uint64 overhead_hexagon_rpc_diff =

@@ -359,7 +359,7 @@ class LSTMBlockCellTest(tf.test.TestCase):
         inp = tf.convert_to_tensor(
             np.random.randn(batch_size, input_size), dtype=tf.float32)
         inputs.append(inp)
-      seq_lengths = [3, 4, 5]
+      seq_lengths = tf.constant([3, 4, 5])
 
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890213)
       with tf.variable_scope("basic", initializer=initializer):
@@ -400,7 +400,7 @@ class LSTMBlockCellTest(tf.test.TestCase):
         outputs = []
         state = None
         for i, inp in enumerate(inputs):
-          lengths = [int(i < l) for l in seq_lengths]
+          lengths = [int(i < l) for l in seq_lengths.eval()]
           output, state = cell(
               [inp],
               initial_state=state,

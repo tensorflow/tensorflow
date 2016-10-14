@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
 
-module TF {
+module VZ {
   export class DistributionChart {
     private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
@@ -31,6 +31,8 @@ module TF {
     protected outer: Plottable.Components.Table;
     protected colorScale: Plottable.Scales.Color;
     private plots: Plottable.XYPlot<number|Date, number>[];
+
+    private targetSVG: d3.Selection<any>;
 
     constructor(xType: string, colorScale: Plottable.Scales.Color) {
       this.run2datasets = {};
@@ -123,9 +125,36 @@ module TF {
       this.getDataset(name).data(data);
     }
 
-    public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }
+    public renderTo(targetSVG: d3.Selection<any>) {
+      this.targetSVG = targetSVG;
+      this.setViewBox();
+      this.outer.renderTo(targetSVG);
+    }
 
-    public redraw() { this.outer.redraw(); }
+    /** There's an issue in Chrome where the svg overflow is a bit
+     * "flickery". There is a border on the gridlines on the extreme edge of the
+     * chart, which behaves inconsistently and causes the screendiffing tests to
+     * flake. We can solve this by creating 1px effective margin for the svg by
+     * setting the viewBox on the containing svg.
+     */
+    private setViewBox() {
+      // There's an issue in Firefox where if we measure with the old viewbox
+      // set, we get horrible results.
+      this.targetSVG.attr('viewBox', null);
+
+      let parent = this.targetSVG.node().parentNode as HTMLElement;
+      let w = parent.clientWidth;
+      let h = parent.clientHeight;
+      this.targetSVG.attr({
+        'height': h,
+        'viewBox': `0 0 ${w + 1} ${h + 1}`,
+      });
+    }
+
+    public redraw() {
+      this.outer.redraw();
+      this.setViewBox();
+    }
 
     protected destroy() { this.outer.destroy(); }
   }

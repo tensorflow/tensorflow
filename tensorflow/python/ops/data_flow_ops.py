@@ -1395,9 +1395,10 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     return gen_data_flow_ops.sparse_accumulator_apply_gradient(
         self._accumulator_ref,
         local_step=local_step,
-        gradient_indices=grad_indices,
+        gradient_indices=math_ops.to_int64(grad_indices),
         gradient_values=grad_values,
-        gradient_shape=[] if grad_shape is None else grad_shape,
+        gradient_shape=math_ops.to_int64([] if grad_shape is None else
+                                         grad_shape),
         has_known_shape=(grad_shape is not None),
         name=name)
 

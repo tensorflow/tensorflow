@@ -28,12 +28,11 @@ Example:
   <tf-regex-group regexes="{{regexes}}"></tf-regex-group>
 
 It contains a series of regular expression input fields. From this, it computes
-`regexes', an array in which every element is either a string representing an
-active, valid, nonempty regular expression, or the value `null`
+`regexes', an array in which every element is either a string representing a
+valid, nonempty regular expression, or the value `null`
 
 Public Properties:
-`regexes` a readonly, notifying array of strings, where each string is an
-  active, valid, nonempty regex
+`regexes` a readonly, notifying array of strings, where each string is a regex
 
 It maintains an invariant that the final regex should always be an empty string,
 so the user can easily add more regular expressions. It does this by adding
@@ -47,17 +46,12 @@ more regexes).
     <div class="regex-list">
       <template is="dom-repeat" items="{{rawRegexes}}">
         <div class="regex-line">
-          <paper-checkbox
-            class="active-button"
-            checked="{{item.active}}"
-            disabled="[[!item.valid]]"
-          ></paper-checkbox>
           <paper-input
             id="text-input"
             class="regex-input"
             label="Write a regex to create a tag group"
             no-label-float
-            bind-value="{{item.regex}}"
+            value="{{item.regex}}"
             invalid="[[!item.valid]]"
             on-keyup="moveFocus"
           ></paper-input>
@@ -71,14 +65,9 @@ more regexes).
         </div>
         <style>
           .regex-input {
-            width: 230px;
+            width: 250px;
             display: inline-block;
             margin-left: -3px;
-          }
-
-          paper-checkbox {
-            --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
-            --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
           }
 
           .delete-button {
@@ -111,16 +100,16 @@ more regexes).
       properties: {
         rawRegexes: {
           type: Array,
-          value: function() {
-            return [{regex: "", active: true, valid: true}];
-          }
+          value: TF.URIStorage.getObjectInitializer('rawRegexes', [{regex: "", valid: true}]),
         },
         regexes: {type: Array, computed: "usableRegexes(rawRegexes.*)", notify: true},
       },
       observers: [
         "addNewRegexIfNeeded(rawRegexes.*)",
         "checkValidity(rawRegexes.*)",
+        "_uriStoreRegexes(rawRegexes.*)",
       ],
+      _uriStoreRegexes: TF.URIStorage.getObjectObserver('rawRegexes', [{regex: "", valid: true}]),
       checkValidity: function(x) {
         var match = x.path.match(/rawRegexes\.(\d+)\.regex/);
         if (match) {
@@ -142,7 +131,7 @@ more regexes).
           // Checking validity here (rather than using the data property)
           // is necessary because otherwise we might send invalid regexes due
           // to the fact that this function can call before the observer does
-          return r.regex !== "" && r.active && isValid(r.regex);
+          return r.regex !== "" && isValid(r.regex);
         }).map(function(r) {
           return r.regex;
         });
@@ -150,7 +139,7 @@ more regexes).
       addNewRegexIfNeeded: function() {
         var last = this.rawRegexes[this.rawRegexes.length - 1];
         if (last.regex !== "") {
-          this.push("rawRegexes", {regex: "", active: true, valid: true});
+          this.push("rawRegexes", {regex: "", valid: true});
         }
       },
       deleteRegex: function(e) {

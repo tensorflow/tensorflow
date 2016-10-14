@@ -189,19 +189,46 @@ class RunConfigTest(tf.test.TestCase):
     # Basically, just make sure no exception is being raised.
     self.assertEquals(config.num_ps_replicas, 2)
 
-  def test_is_chief_from_tf_config(self):
+  def test_is_chief_from_cloud_tf_config(self):
     # is_chief should be true when ["task"]["type"] == "master" and
-    # index == 0. Note that test_values_from_tf_config covers the
-    # non-master case.
+    # index == 0 and ["task"]["environment"] == "cloud". Note that
+    # test_values_from_tf_config covers the non-master case.
     tf_config = {"cluster": {"ps": ["host1:1", "host2:2"],
                              "master": ["host3:3"],
                              "worker": ["host4:4", "host5:5", "host6:6"]},
                  "task": {"type": "master",
-                          "index": 0}}
+                          "index": 0},
+                 "environment": "cloud"}
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
 
     self.assertTrue(config.is_chief)
+
+  def test_is_chief_from_noncloud_tf_config(self):
+    # is_chief should be true when ["task"]["type"] == "worker" and
+    # index == 0 if ["task"]["environment"] != "cloud".
+    tf_config = {"cluster": {"ps": ["host1:1", "host2:2"],
+                             "master": ["host3:3"],
+                             "worker": ["host4:4", "host5:5", "host6:6"]},
+                 "task": {"type": "worker",
+                          "index": 0},
+                 "environment": "random"}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+
+    self.assertTrue(config.is_chief)
+
+    # But task 0 for a job named "master" should not be.
+    tf_config = {"cluster": {"ps": ["host1:1", "host2:2"],
+                             "master": ["host3:3"],
+                             "worker": ["host4:4", "host5:5", "host6:6"]},
+                 "task": {"type": "master",
+                          "index": 0},
+                 "environment": "random"}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+
+    self.assertFalse(config.is_chief)
 
   def test_default_is_chief_from_tf_config_without_job_name(self):
     tf_config = {"cluster": {},
@@ -245,8 +272,15 @@ class RunConfigTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, msg):
       run_config.RunConfig(is_chief=True, task=0, job_name="ps")
 
-    with self.assertRaisesRegexp(ValueError, "Master task 0 must be chief"):
-      run_config.RunConfig(is_chief=False, task=0, job_name="master")
+    msg = "Master task 0 must be chief for cloud"
+    with self.assertRaisesRegexp(ValueError, msg):
+      tf_config = {"environment": "cloud"}
+      with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+        run_config.RunConfig(is_chief=False, task=0, job_name="master")
+
+    msg = "Worker task 0 must be chief"
+    with self.assertRaisesRegexp(ValueError, msg):
+      run_config.RunConfig(is_chief=False, task=0, job_name="worker")
 
 
 if __name__ == "__main__":

@@ -289,6 +289,9 @@ if tf.constant(5) < tf.constant(7):  # Will raise.
   # ...
 ```
 
+This disallows ambiguities between testing the Python value vs testing the
+dynamic condition of the `Tensor`.
+
 ##### Raises:
 
   `TypeError`.
