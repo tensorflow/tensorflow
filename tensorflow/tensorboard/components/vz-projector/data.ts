@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateWarningMessage} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
 import * as scatterPlot from './scatterPlot';
-import {shuffle, getSearchPredicate} from './util';
+import {shuffle, getSearchPredicate, runAsyncTask} from './util';
+import * as logging from './logging';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
@@ -327,7 +327,7 @@ export class DataSet implements scatterPlot.DataSet {
 
   mergeMetadata(metadata: MetadataInfo) {
     if (metadata.pointsInfo.length !== this.points.length) {
-      updateWarningMessage(
+      logging.setWarningMessage(
           `Number of tensors (${this.points.length}) do not match` +
           ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
     }
