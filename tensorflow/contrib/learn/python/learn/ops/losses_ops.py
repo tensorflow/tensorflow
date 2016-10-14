@@ -33,7 +33,7 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
     if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
       predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
-    return predictions, loss_ops.sum_of_squares(predictions, labels)
+    return predictions, loss_ops.mean_squared_error(predictions, labels)
 
 
 def softmax_classifier(tensor_in,

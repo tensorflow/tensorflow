@@ -22,6 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace test {
+class Benchmark;
+}
 struct SessionOptions;
 
 // This class is shared by ThreadPoolDevice and GPUDevice and
@@ -32,9 +35,20 @@ class LocalDevice : public Device {
  public:
   LocalDevice(const SessionOptions& options, const DeviceAttributes& attributes,
               Allocator* device_allocator);
-  ~LocalDevice() override {}
+  ~LocalDevice() override;
 
  private:
+  static bool use_global_threadpool_;
+
+  static void set_use_global_threadpool(bool use_global_threadpool) {
+    use_global_threadpool_ = use_global_threadpool;
+  }
+
+  struct EigenThreadPoolInfo;
+  std::unique_ptr<EigenThreadPoolInfo> owned_tp_info_;
+
+  friend class test::Benchmark;
+
   TF_DISALLOW_COPY_AND_ASSIGN(LocalDevice);
 };
 

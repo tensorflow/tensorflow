@@ -21,7 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -43,9 +42,7 @@ __all__ = ["absolute_difference",
            "mean_squared_error",
            "sigmoid_cross_entropy",
            "softmax_cross_entropy",
-           "sparse_softmax_cross_entropy",
-           "sum_of_pairwise_squares",
-           "sum_of_squares"]
+           "sparse_softmax_cross_entropy"]
 
 
 def _scale_losses(losses, weight):
@@ -486,8 +483,7 @@ def hinge_loss(logits, target, scope=None):
     return losses
 
 
-@deprecated("2016-10-01", "Use mean_squared_error.")
-def sum_of_squares(predictions, targets, weight=1.0, scope=None):
+def mean_squared_error(predictions, targets, weight=1.0, scope=None):
   """Adds a Sum-of-Squares loss to the training procedure.
 
   `weight` acts as a coefficient for the loss. If a scalar is provided, then the
@@ -512,7 +508,7 @@ def sum_of_squares(predictions, targets, weight=1.0, scope=None):
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid.
   """
-  with ops.name_scope(scope, "sum_of_squares_loss",
+  with ops.name_scope(scope, "mean_squared_error",
                       [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
@@ -523,17 +519,13 @@ def sum_of_squares(predictions, targets, weight=1.0, scope=None):
     return compute_weighted_loss(losses, weight)
 
 
-mean_squared_error = sum_of_squares
-
-
-@deprecated("2016-10-01", "Use mean_pairwise_squared_error.")
-def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
+def mean_pairwise_squared_error(predictions, targets, weight=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.
 
-  Unlike the sum_of_squares loss, which is a measure of the differences between
-  corresponding elements of `predictions` and `targets`, sum_of_pairwise_squares
-  is a measure of the differences between pairs of corresponding elements of
-  `predictions` and `targets`.
+  Unlike `mean_squared_error`, which is a measure of the differences between
+  corresponding elements of `predictions` and `targets`,
+  `mean_pairwise_squared_error` is a measure of the differences between pairs of
+  corresponding elements of `predictions` and `targets`.
 
   For example, if `targets`=[a, b, c] and `predictions`=[x, y, z], there are
   three pairs of differences are summed to compute the loss:
@@ -566,7 +558,7 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid.
   """
-  with ops.name_scope(scope, "sum_of_pairwise_squares_loss",
+  with ops.name_scope(scope, "mean_pairwise_squared_error",
                       [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
@@ -605,9 +597,6 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
                                 name="value")
     add_loss(mean_loss)
     return mean_loss
-
-
-mean_pairwise_squared_error = sum_of_pairwise_squares
 
 
 def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):

@@ -9,8 +9,15 @@ Constructs an Estimator instance.
 
 
 *  <b>`model_fn`</b>: Model function, takes features and targets tensors or dicts of
-            tensors and returns predictions and loss tensors.
-            Supports next three signatures for the function:
+            tensors and returns tuple of:
+
+      * predictions: `Tensor`, `SparseTensor` or dictionary of same.
+          Can also be any type that is convertible to a `Tensor` or
+          `SparseTensor`, or dictionary of same.
+      * loss: Scalar loss `Tensor`.
+      * train_op: Training update `Tensor` or `Operation`.
+
+     Supports next three signatures for the function:
 
       * `(features, targets) -> (predictions, loss, train_op)`
       * `(features, targets, mode) -> (predictions, loss, train_op)`

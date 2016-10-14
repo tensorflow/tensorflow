@@ -77,13 +77,6 @@ class GraphMgr {
                     const NamedTensors& in, NamedTensors* out,
                     StatusCallback done);
 
-  // Synchronous wrapper.
-  Status Execute(const string& handle, const int64 step_id,
-                 const ExecutorOpts& opts,
-                 StepStatsCollector* step_stats_collector,
-                 CancellationManager* cancellation_manager,
-                 const NamedTensors& in, NamedTensors* out);
-
   // Deregisters a graph.
   Status Deregister(const string& handle);
 

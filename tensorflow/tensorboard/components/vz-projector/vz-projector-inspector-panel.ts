@@ -257,7 +257,7 @@ export class InspectorPanel extends PolymerClass {
     let numNNInput = this.$$('#nn-slider') as HTMLInputElement;
     let updateNumNN = () => {
       this.numNN = +numNNInput.value;
-      this.dom.select('.num-nn span').text(this.numNN);
+      this.dom.select('.num-nn .nn-count').text(this.numNN);
       if (this.selectedPointIndex != null) {
         this.projector.notifySelectionChanged([this.selectedPointIndex]);
       }

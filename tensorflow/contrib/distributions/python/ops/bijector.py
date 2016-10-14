@@ -12,12 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""An API for reversible (bijective) transformations of random variables."""
+r"""Bijector Ops.
+
+An API for reversible (bijective) transformations of random variables.
+
+## Background
+
+Differentiable, bijective transformations of continuous random variables alter
+the calculations made in the cumulative/probability distribution functions and
+sample function.  This module provides a standard interface for making these
+manipulations.
+
+For more details and examples, see the `Bijector` docstring.
+
+To apply a `Bijector`, use `distributions.TransformedDistribution`.
+
+## Bijectors
+
+@@Bijector
+@@Identity
+@@Inline
+@@Exp
+@@ScaleAndShift
+
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import contextlib
+import six
 
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import constant_op
@@ -26,40 +51,43 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 
-class _Bijector(object):
-  """An interface for transforming a `Distribution` `Tensor`.
-
-  Recall that a `Distribution` `Tensor` has dimensions which have `sample`,
-  `batch`, and `event` semantics. (See `DistributionShape` for more details.)
+@six.add_metaclass(abc.ABCMeta)
+class Bijector(object):
+  """Interface for transforming a `Distribution` via `TransformedDistribution`.
 
   A `Bijector` implements a bijective, differentiable function by transforming
   an input `Tensor`. The output `Tensor` shape is constrained by the input
   `sample`, `batch`, and `event` shape.  A `Bijector` is characterized by three
   operations:
 
-  (1) Forward Evaluation
-      Useful for turning one random outcome into another random outcome from a
-      different distribution.
+  1. Forward Evaluation
 
-  (2) Inverse Evaluation
-      Useful for "reversing" a transformation to compute one probability in
-      terms of another.
+     Useful for turning one random outcome into another random outcome from a
+     different distribution.
 
-  (3) (log o det o Jacobian o inverse)(x)
-      "The log of the determinant of the matrix of all first-order partial
-      derivatives of the inverse function."
-      Useful for inverting a transformation to compute one probability in terms
-      of another.  Geometrically, the det(Jacobian) is the volume of the
-      transformation and is used to scale the probability.
+  2. Inverse Evaluation
+
+     Useful for "reversing" a transformation to compute one probability in
+     terms of another.
+
+  3. (log o det o Jacobian o inverse)(x)
+
+     "The log of the determinant of the matrix of all first-order partial
+     derivatives of the inverse function."
+     Useful for inverting a transformation to compute one probability in terms
+     of another.  Geometrically, the det(Jacobian) is the volume of the
+     transformation and is used to scale the probability.
 
   By convention, transformations of random variables are named in terms of the
   forward transformation. The forward transformation creates samples, the
   inverse is useful for computing probabilities.
 
   Example Use:
-    Basic properties:
+
+    - Basic properties:
 
     ```python
     x = ... # A tensor.
@@ -69,7 +97,7 @@ class _Bijector(object):
     x != my_bijector.forward(fwd_x)  # Not equal because g(x) != g(g(x)).
     ```
 
-    Computing a log-likelihood:
+    - Computing a log-likelihood:
 
     ```python
     def transformed_log_pdf(bijector, log_pdf, x):
@@ -77,7 +105,7 @@ class _Bijector(object):
               log_pdf(bijector.inverse(x)))
     ```
 
-    Transforming a random outcome:
+    - Transforming a random outcome:
 
     ```python
     def transformed_sample(bijector, x):
@@ -85,7 +113,8 @@ class _Bijector(object):
     ```
 
   Example transformations:
-    "Exponential"
+
+    - "Exponential"
 
       ```
       Y = g(X) = exp(X)
@@ -102,7 +131,7 @@ class _Bijector(object):
                   = (1 / y) Normal(log(y); 0, 1)
       ```
 
-    "ShiftAndScale"
+    - "ScaleAndShift"
 
       ```
       Y = g(X) = sqrtSigma * X + mu
@@ -122,7 +151,8 @@ class _Bijector(object):
 
   Example of why a `Bijector` needs to understand sample, batch, event
   partitioning:
-    Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
+
+  - Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
     and event (S, B, E) shape semantics.  Suppose
     the `Tensor`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
 
@@ -132,24 +162,25 @@ class _Bijector(object):
     over the event dimensions.
 
   Subclass Requirements:
-    Subclasses are expected to implement `_forward` and one or both of:
+
+  - Subclasses are expected to implement `_forward` and one or both of:
       - `_inverse`, `_inverse_log_det_jacobian`,
       - `_inverse_and_inverse_log_det_jacobian`.
 
-    If computation can be shared among `_inverse` and
+  - If computation can be shared among `_inverse` and
     `_inverse_log_det_jacobian` it is preferable to implement
     `_inverse_and_inverse_log_det_jacobian`. This usually reduces
     graph-construction overhead because a `Distribution`'s implementation of
     `log_prob` will need to evaluate both the inverse Jacobian as well as the
     inverse function.
 
-    If an additional use case needs just `inverse` or just
+  - If an additional use case needs just `inverse` or just
     `inverse_log_det_jacobian` then he or she may also wish to implement these
     functions to avoid computing the `inverse_log_det_jacobian` or the
     `inverse`, respectively.
   """
 
-  # TODO(b/30476956): Try to remove constructor dependence on ndims.
+  @abc.abstractmethod
   def __init__(self,
                batch_ndims=None,
                event_ndims=None,
@@ -236,6 +267,9 @@ class _Bijector(object):
     """Returns the string name of this `Bijector`."""
     return self._name
 
+  def _forward(self, x):
+    raise NotImplementedError("forward is not implemented.")
+
   def forward(self, x, name="forward"):
     """Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -249,12 +283,15 @@ class _Bijector(object):
     Raises:
       TypeError: if `self.dtype` is specified and `x.dtype` is not
         `self.dtype`.
-      AttributeError: if `_forward` is not implemented.
+      NotImplementedError: if `_forward` is not implemented.
     """
     with self._name_scope(name, [x]):
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
       return self._forward(x)
+
+  def _inverse(self, x):
+    raise NotImplementedError("inverse is not implemented")
 
   def inverse(self, x, name="inverse"):
     """Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -269,7 +306,7 @@ class _Bijector(object):
     Raises:
       TypeError: if `self.dtype` is specified and `x.dtype` is not
         `self.dtype`.
-      AttributeError: if neither `_inverse` nor
+      NotImplementedError: if neither `_inverse` nor
         `_inverse_and_inverse_log_det_jacobian` are implemented.
     """
     with self._name_scope(name, [x]):
@@ -277,10 +314,13 @@ class _Bijector(object):
       self._maybe_assert_dtype(x)
       try:
         return self._inverse(x)
-      except AttributeError:
+      except NotImplementedError:
         # Since _inverse was not implemented, try to see if it's implemented
         # by the _inverse_and_inverse_log_det_jacobian member.
         return self._inverse_and_inverse_log_det_jacobian(x)[0]
+
+  def _inverse_log_det_jacobian(self, x):
+    raise NotImplementedError("inverse_log_det_jacobian is not implemented")
 
   def inverse_log_det_jacobian(self, x, name="inverse_log_det_jacobian"):
     """Returns the (log o det o Jacobian o inverse)(x).
@@ -300,7 +340,7 @@ class _Bijector(object):
     Raises:
       TypeError: if `self.dtype` is specified and `x.dtype` is not
         `self.dtype`.
-      AttributeError: if neither `_inverse_log_det_jacobian` nor
+      NotImplementedError: if neither `_inverse_log_det_jacobian` nor
         `_inverse_and_inverse_log_det_jacobian` are implemented.
     """
     with self._name_scope(name, [x]):
@@ -308,10 +348,14 @@ class _Bijector(object):
       self._maybe_assert_dtype(x)
       try:
         return self._inverse_log_det_jacobian(x)
-      except AttributeError:
+      except NotImplementedError:
         # Since _inverse_log_det_jacobian was not implemented, try to see if
         # it's implemented by the _inverse_and_inverse_log_det_jacobian member.
         return self._inverse_and_inverse_log_det_jacobian(x)[1]
+
+  def _inverse_and_inverse_log_det_jacobian(self, x):
+    raise NotImplementedError(
+        "inverse_and_inverse_log_det_jacobian is not implemented.")
 
   def inverse_and_inverse_log_det_jacobian(
       self, x, name="inverse_and_inverse_log_det_jacobian"):
@@ -332,15 +376,15 @@ class _Bijector(object):
     Raises:
       TypeError: if `self.dtype` is specified and `x.dtype` is not
         `self.dtype`.
-      AttributeError: if neither `_inverse_and_inverse_log_det_jacobian` nor
-        {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+      NotImplementedError: if neither `_inverse_and_inverse_log_det_jacobian`
+        nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
     """
     with self._name_scope(name, [x]):
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
       try:
         return self._inverse_and_inverse_log_det_jacobian(x)
-      except AttributeError:
+      except NotImplementedError:
         # Since _inverse_and_inverse_log_det_jacobian was not implemented, try
         # to see if we can separately use _inverse and
         # _inverse_log_det_jacobian members.
@@ -361,7 +405,7 @@ class _Bijector(object):
                       (self.dtype, x.dtype))
 
 
-class _Identity(_Bijector):
+class Identity(Bijector):
   """Bijector which computes Y = g(X) = X.
 
     Example Use:
@@ -378,7 +422,7 @@ class _Identity(_Bijector):
   """
 
   def __init__(self, validate_args=False, name="Identity"):
-    super(_Identity, self).__init__(
+    super(Identity, self).__init__(
         batch_ndims=0,
         event_ndims=0,
         is_constant_jacobian=True,
@@ -396,7 +440,59 @@ class _Identity(_Bijector):
     return constant_op.constant(0., dtype=x.dtype)
 
 
-class _Exp(_Bijector):
+class Inline(Bijector):
+  # pylint: disable=line-too-long
+  """Bijector constructed from callables implementing forward, inverse, and inverse_log_det_jacobian.
+
+  Example Use:
+
+  ```python
+  exp = Inline(
+    forward_fn=tf.exp,
+    inverse_fn=tf.log,
+    inverse_log_det_jacobian_fn=(
+      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+    name="Exp")
+  ```
+
+  The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
+  """
+  # pylint: enable=line-too-long
+
+  def __init__(self, forward_fn, inverse_fn, inverse_log_det_jacobian_fn,
+               is_constant_jacobian=False, name="Inline"):
+    """Creates a `Bijector` from callables.
+
+    Args:
+      forward_fn: Python callable implementing the forward transformation.
+      inverse_fn: Python callable implementing the inverse transformation.
+      inverse_log_det_jacobian_fn: Python callable implementing the
+        inverse_log_det_jacobian transformation.
+      is_constant_jacobian: `Boolean` indicating that the Jacobian is constant
+        for all input arguments.
+      name: `String`, name given to ops managed by this object.
+    """
+    super(Inline, self).__init__(
+        batch_ndims=0,
+        event_ndims=0,
+        is_constant_jacobian=is_constant_jacobian,
+        validate_args=False,
+        name=name)
+    self._forward_fn = forward_fn
+    self._inverse_fn = inverse_fn
+    self._inverse_log_det_jacobian_fn = inverse_log_det_jacobian_fn
+
+  def _forward(self, x):
+    return self._forward_fn(x)
+
+  def _inverse(self, y):
+    return self._inverse_fn(y)
+
+  def _inverse_log_det_jacobian(self, y):
+    return self._inverse_log_det_jacobian_fn(y)
+
+
+class Exp(Bijector):
   """Bijector which computes Y = g(X) = exp(X).
 
     Example Use:
@@ -417,12 +513,11 @@ class _Exp(_Bijector):
     over the event space.
   """
 
-  # TODO(b/30476956): Try to remove constructor dependence on ndims.
   def __init__(self,
                event_ndims=0,
                validate_args=False,
                name="Exp"):
-    super(_Exp, self).__init__(
+    super(Exp, self).__init__(
         batch_ndims=0,
         event_ndims=event_ndims,
         validate_args=validate_args,
@@ -448,7 +543,7 @@ class _Exp(_Bijector):
     return y, -math_ops.reduce_sum(y, reduction_indices=event_dims)
 
 
-class _ShiftAndScale(_Bijector):
+class ScaleAndShift(Bijector):
   """Bijector which computes Y = g(X; loc, scale) = scale * X + loc.
 
   Example Use:
@@ -457,35 +552,35 @@ class _ShiftAndScale(_Bijector):
   # No batch, scalar.
   mu = 0     # shape=[]
   sigma = 1  # shape=[]
-  b = ShiftAndScale(loc=mu, scale=sigma)
+  b = ScaleAndShift(loc=mu, scale=sigma)
   # b.shaper.batch_ndims == 0
   # b.shaper.event_ndims == 0
 
   # One batch, scalar.
   mu = ...    # shape=[b], b>0
   sigma = ... # shape=[b], b>0
-  b = ShiftAndScale(loc=mu, scale=sigma)
+  b = ScaleAndShift(loc=mu, scale=sigma)
   # b.shaper.batch_ndims == 1
   # b.shaper.event_ndims == 0
 
   # No batch, multivariate.
   mu = ...    # shape=[d],    d>0
   sigma = ... # shape=[d, d], d>0
-  b = ShiftAndScale(loc=mu, scale=sigma, event_ndims=1)
+  b = ScaleAndShift(loc=mu, scale=sigma, event_ndims=1)
   # b.shaper.batch_ndims == 0
   # b.shaper.event_ndims == 1
 
   # (B1*B2*...*Bb)-batch, multivariate.
   mu = ...    # shape=[B1,...,Bb, d],    b>0, d>0
   sigma = ... # shape=[B1,...,Bb, d, d], b>0, d>0
-  b = ShiftAndScale(loc=mu, scale=sigma, event_ndims=1)
+  b = ScaleAndShift(loc=mu, scale=sigma, event_ndims=1)
   # b.shaper.batch_ndims == b
   # b.shaper.event_ndims == 1
 
   # Mu is broadcast:
   mu = 1
   sigma = [I, I]  # I is a 3x3 identity matrix.
-  b = ShiftAndScale(loc=mu, scale=sigma, event_ndims=1)
+  b = ScaleAndShift(loc=mu, scale=sigma, event_ndims=1)
   x = numpy.ones(S + sigma.shape)
   b.forward(x) # == x + 1
   ```
@@ -497,7 +592,7 @@ class _ShiftAndScale(_Bijector):
                scale,
                event_ndims=0,
                validate_args=False,
-               name="ShiftAndScale"):
+               name="ScaleAndShift"):
     self._parameters = {}
     self._name = name
     with self._name_scope("init", values=[loc, scale, event_ndims]):
@@ -512,7 +607,7 @@ class _ShiftAndScale(_Bijector):
         raise TypeError("%s.dtype=%s does not match %s" %
                         (event_ndims.name, event_ndims.dtype, dtypes.int32))
       self._scale, batch_ndims = self._process_scale(self.scale, event_ndims)
-      super(_ShiftAndScale, self).__init__(
+      super(ScaleAndShift, self).__init__(
           batch_ndims=batch_ndims,
           event_ndims=event_ndims,
           parameters={"loc": self.loc, "scale": self.scale},
@@ -590,3 +685,77 @@ class _ShiftAndScale(_Bijector):
     return -math_ops.reduce_sum(
         math_ops.log(array_ops.matrix_diag_part(self.scale)),
         reduction_indices=[-1])
+
+
+class Softplus(Bijector):
+  """Bijector which computes `Y = g(X) = Log[1 + exp(X)]`.
+
+  The softplus `Bijector` has the following two useful properties:
+
+  * The domain is the positive real numbers
+  * `softplus(x) approx x`, for large `x`, so it does not overflow as easily as
+    the `Exp` `Bijector`.
+
+    Example Use:
+
+    ```python
+    # Create the Y=g(X)=softplus(X) transform which works only on Tensors with 1
+    # batch ndim and 2 event ndims (i.e., vector of matrices).
+    softplus = Softplus(batch_ndims=1, event_ndims=2)
+    x = [[[1., 2],
+           [3, 4]],
+          [[5, 6],
+           [7, 8]]]
+    log(1 + exp(x)) == softplus.forward(x)
+    log(exp(x) - 1) == softplus.inverse(x)
+    ```
+
+    Note: log(.) and exp(.) are applied element-wise but the Jacobian is a
+    reduction over the event space.
+  """
+
+  def __init__(self,
+               event_ndims=0,
+               validate_args=False,
+               name="Softplus"):
+    super(Softplus, self).__init__(
+        batch_ndims=0,
+        event_ndims=event_ndims,
+        validate_args=validate_args,
+        name=name)
+
+  def _forward(self, x):
+    return nn_ops.softplus(x)
+
+  def _inverse(self, x):
+    # The most stable inverse of softplus is not the most direct one.
+    # y = softplus(x) = Log[1 + exp{x}], (which means y > 0).
+    # ==> exp{y} = 1 + exp{x}
+    # ==> x = Log[exp{y} - 1]
+    #       = Log[(exp{y} - 1) / exp{y}] + Log[exp{y}]
+    #       = Log[(1 - exp{-y}) / 1] + Log[exp{y}]
+    #       = Log[1 - exp{-y}] + y
+    # Recalling y > 0, you see that this is more stable than Log[exp{y} - 1].
+    return x + math_ops.log(1. - math_ops.exp(-x))
+
+  def _inverse_log_det_jacobian(self, x):
+    # Stable inverse log det jacobian.
+    # Y = Log[1 + exp{X}] ==> X = Log[exp{Y} - 1]
+    # ==> dX/dY = exp{Y} / (exp{Y} - 1)
+    #           = 1 / (1 - exp{-Y}),
+    # which is the most stable for Y > 0.
+    if self.shaper is None:
+      raise ValueError("Jacobian cannot be computed with unknown event_ndims")
+    _, _, event_dims = self.shaper.get_dims(x)
+    return -math_ops.reduce_sum(
+        math_ops.log(1. - math_ops.exp(-x)), reduction_indices=event_dims)
+
+  def _inverse_and_inverse_log_det_jacobian(self, x):
+    if self.shaper is None:
+      raise ValueError("Jacobian cannot be computed with unknown event_ndims")
+    _, _, event_dims = self.shaper.get_dims(x)
+    log_one_minus_exp_neg = math_ops.log(1. - math_ops.exp(-x))
+    y = x + log_one_minus_exp_neg
+    ildj = -math_ops.reduce_sum(
+        log_one_minus_exp_neg, reduction_indices=event_dims)
+    return y, ildj

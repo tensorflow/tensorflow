@@ -24,7 +24,7 @@ from tensorflow.contrib.training.python.training import sampling_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
-class SamplingOpsTest(tf.test.TestCase):
+class StratifiedSampleTest(tf.test.TestCase):
 
   def testGraphBuildAssertionFailures(self):
     val = [tf.zeros([1, 3]), tf.ones([1, 5])]
@@ -383,17 +383,79 @@ class SamplingOpsTest(tf.test.TestCase):
 
     self.normalBehaviorHelper(curried_sampler)
 
+
+class RejectionSampleTest(tf.test.TestCase):
+
+  def testGraphConstructionFailures(self):
+    accept_prob_fn = lambda _: tf.constant(1.0)
+    batch_size = 32
+    # Data must have batch dimension if `enqueue_many` is `True`.
+    with self.assertRaises(ValueError):
+      tf.contrib.training.rejection_sample(
+          [tf.zeros([])], accept_prob_fn, batch_size, enqueue_many=True)
+
+    # Batch dimensions should be equal if `enqueue_many` is `True`.
+    with self.assertRaises(ValueError):
+      tf.contrib.training.rejection_sample(
+          [tf.zeros([5, 1]), tf.zeros([4, 1])], accept_prob_fn, batch_size,
+          enqueue_many=True)
+
+  def testRuntimeFailures(self):
+    prob_ph = tf.placeholder(tf.float32, [])
+    accept_prob_fn = lambda _: prob_ph
+    batch_size = 32
+
+    # Set up graph.
+    tf.set_random_seed(1234)
+    tf.contrib.training.rejection_sample(
+        [tf.zeros([])], accept_prob_fn, batch_size, runtime_checks=True,
+        name='rejection_sample')
+    prob_tensor = tf.get_default_graph().get_tensor_by_name(
+        'rejection_sample/prob_with_checks:0')
+
+    # Run session that should fail.
+    with self.test_session() as sess:
+      for illegal_prob in [-0.1, 1.1]:
+        with self.assertRaises(tf.errors.InvalidArgumentError):
+          sess.run(prob_tensor, feed_dict={prob_ph: illegal_prob})
+
+  def testNormalBehavior(self):
+    tensor_list = [tf.cond(
+        tf.greater(.5, tf.random_uniform([])),
+        lambda: tf.constant(1.0),
+        lambda: tf.constant(2.0))]
+    accept_prob_fn = lambda x: x[0] - 1.0
+    batch_size = 10
+
+    # Set up graph.
+    sample = tf.contrib.training.rejection_sample(
+        tensor_list, accept_prob_fn, batch_size)
+
+    with self.test_session() as sess:
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(coord=coord)
+
+      for _ in range(5):
+        sample_np = sess.run(sample)[0]
+        self.assertListEqual([2.0] * batch_size, list(sample_np))
+
+      coord.request_stop()
+      coord.join(threads)
+
+
+class ConditionalBatchTest(tf.test.TestCase):
+
   def testConditionallyEnqueueAndBatch(self):
     tf.set_random_seed(1234)
     tensor = tf.cond(
         tf.greater(.5, tf.random_uniform([])),
         lambda: tf.constant(1.0),
         lambda: tf.constant(2.0))
-    accept_prob = tensor - 1
+    keep_input = tf.equal(tensor, 2.0)
     batch_size = 4
 
     # Set up the test graph.
-    [batch] = sampling_ops._conditional_batch([tensor], accept_prob, batch_size)  # pylint: disable=protected-access
+    [batch] = sampling_ops._conditional_batch([tensor], keep_input, batch_size)  # pylint: disable=protected-access
 
     # Check conditional operation.
     with self.test_session():
@@ -411,13 +473,13 @@ class SamplingOpsTest(tf.test.TestCase):
 
   def testConditionallyEnqueueAndBatchTypes(self):
     tensor = tf.constant(1.0)
-    accept_prob = tensor - 1
+    keep_input = tf.constant(True)
     batch_size = 4
 
     # Check that output types are the same for 1 and 2-length input lists.
-    output1 = sampling_ops._conditional_batch([tensor], accept_prob, batch_size)  # pylint: disable=protected-access
+    output1 = sampling_ops._conditional_batch([tensor], keep_input, batch_size)  # pylint: disable=protected-access
     output2 = sampling_ops._conditional_batch(  # pylint: disable=protected-access
-        [tensor, tensor], accept_prob, batch_size)
+        [tensor, tensor], keep_input, batch_size)
     self.assertEqual(type(output1), type(output2))
 
 

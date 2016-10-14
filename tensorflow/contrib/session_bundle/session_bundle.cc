@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow {
 namespace serving {
@@ -85,7 +86,7 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
         io::JoinPath(export_dir, kAssetsDirectory, asset.filename()));
     inputs->push_back(
         {asset.tensor_binding().tensor_name(), assets_file_tensor});
-    }
+  }
 }
 
 // Historically, model exporter(exporter.py) takes only saver with
@@ -104,7 +105,7 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
 // distributed among the export.index and export.data-?????-of-????? files.
 string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
-  const char kVariablesIndexFilename[] = "export.index";  // V2 ckpts
+  const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
   if (Env::Default()->FileExists(
           io::JoinPath(export_dir, kVariablesFilename)) ||
@@ -158,8 +159,7 @@ Status LoadSessionBundleFromPathUsingRunOptionsInternal(
     // Use serving graph_def in MetaGraphDef collection_def.
     if (graph_collection_def.any_list().value_size() != 1) {
       return errors::FailedPrecondition(
-          "Expected exactly one serving GraphDef in : ",
-          DebugStringIfAvailable(bundle->meta_graph_def));
+          "Expected exactly one serving GraphDef in : ", export_dir);
     }
     const auto& any = graph_collection_def.any_list().value(0);
     GraphDef graph_def;
@@ -194,9 +194,8 @@ Status LoadSessionBundleFromPathUsingRunOptionsInternal(
   const auto init_op_it = collection_def_map.find(kInitOpKey);
   if (init_op_it != collection_def_map.end()) {
     if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(
-          strings::StrCat("Expected exactly one serving init op in : ",
-                          DebugStringIfAvailable(bundle->meta_graph_def)));
+      return errors::FailedPrecondition(strings::StrCat(
+          "Expected exactly one serving init op in : ", export_dir));
     }
     TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, asset_files,
                                  init_op_it->second.node_list().value(0),
