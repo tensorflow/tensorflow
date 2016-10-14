@@ -109,7 +109,7 @@ fi
 
 ## Find swig path
 if [ -z "$SWIG_PATH" ]; then
-  SWIG_PATH=`type -p swig 2> /dev/null`
+  SWIG_PATH=`type -p swig 2> /dev/null || true`
 fi
 if [[ ! -e "$SWIG_PATH" ]]; then
   echo "Can't find swig.  Ensure swig is in \$PATH or set \$SWIG_PATH."
