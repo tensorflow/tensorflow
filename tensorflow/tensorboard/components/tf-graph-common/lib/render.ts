@@ -1452,8 +1452,11 @@ function extractHighInOrOutDegree(renderNode: RenderGroupNodeInfo) {
   outDegreeUpperBound = Math.max(outDegreeUpperBound, minUpperBound);
   for (let i = validNodeCount - 1;
        nodeToOutDegree[sortedByOutDegree[i]] > outDegreeUpperBound; i--) {
-    if (graph.node(sortedByOutDegree[i]).isInExtract) {
-      // This node has already been extracted due to high in-degree. Ignore it.
+    let node = graph.node(sortedByOutDegree[i]);
+    if (!node || node.isInExtract) {
+      // This node has already been extracted due to high in-degree. It might
+      // have been removed from the graph in general (during in-degree
+      // extraction) due to a lack of neighbors. Do not extract this node twice.
       continue;
     }
 

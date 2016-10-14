@@ -139,7 +139,7 @@ def constant_initializer(value=0, dtype=dtypes.float32):
     >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
     ValueError: Too many elements provided. Needed at most 6, but received 8
-    ```
+  ```
   """
   def _initializer(shape, dtype=dtype, partition_info=None):
     return constant_op.constant(value, dtype=dtype, shape=shape)

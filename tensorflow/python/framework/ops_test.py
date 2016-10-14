@@ -364,6 +364,10 @@ class CreateOpTest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError):
       g.create_op("const", [], [dtypes.float32], None, name="myop1")
 
+    # Test unfinalize.
+    g._unsafe_unfinalize()
+    g.create_op("const", [], [dtypes.float32], None, name="myop1")
+
 
 class ApplyOpTest(test_util.TensorFlowTestCase):
 

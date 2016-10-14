@@ -39,7 +39,7 @@ Instructions for updating:
     labels: `int64` `Tensor` or `SparseTensor` with shape
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
-      has shape [batch_size, num_labels]. [D1, ... DN] must match `labels`.
+      has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
       Values should be in range [0, num_classes], where num_classes is the last
       dimension of `predictions`.
     k: Integer, k for @k metric.

@@ -80,6 +80,7 @@ functions on matrices to your graph.
 @@trace
 @@transpose
 
+@@eye
 @@matrix_diag
 @@matrix_diag_part
 @@matrix_band_part

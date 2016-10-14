@@ -119,12 +119,10 @@ limitations under the License.
 }
 
 #wrapper-notify-msg {
-  z-index: 1;
-  position: fixed;
-  top: 10px;
-  width: 100%;
+  align-items: center;
   display: flex;
   justify-content: center;
+  width: 300px;
 }
 
 #notify-msgs {
@@ -132,15 +130,12 @@ limitations under the License.
 }
 
 .notify-msg {
-  margin: 5px 0;
-  font-weight: 500;
-  color: black;
-  background-color: #FFF9C4;
-  padding: 5px;
-  border: 1px solid #FBC02D;
   backface-visibility: hidden;
+  font-weight: 500;
+  margin: 0;
   opacity: 1;
-  transition: opacity 0.3s ease-out;
+  padding: 0;
+  transition: opacity 0.3s ease-out, height 0.3s ease-out;
 }
 
 #warning-msg {
@@ -347,9 +342,9 @@ limitations under the License.
   overflow-y: auto;
 }
 </style>
-<div id="wrapper-notify-msg">
+<paper-dialog id="wrapper-notify-msg" modal>
   <div id="notify-msgs"></div>
-</div>
+</paper-dialog>
 <div id="warning-msg"></div>
 <div id="container">
   <div id="left-pane" class="ink-panel">
@@ -373,19 +368,13 @@ limitations under the License.
       </div>
       <div class="ink-fabs">
         <paper-icon-button id="reset-zoom" class="ink-fab" alt="Reset zoom to fit all points" icon="home"></paper-icon-button>
-        <paper-tooltip for="reset-zoom" position="bottom" animation-delay="0" fit-to-visible-bounds>Reset zoom to fit all points</paper-tooltip>
-
-        <paper-icon-button id="zoom-in" class="ink-fab" alt="Zoom in" icon="add"></paper-icon-button>
-        <paper-tooltip for="zoom-in" position="bottom" animation-delay="0" fit-to-visible-bounds>Zoom in</paper-tooltip>
-
-        <paper-icon-button id="zoom-out" class="ink-fab" alt="Zoom out" icon="remove"></paper-icon-button>
-        <paper-tooltip for="zoom-out" position="bottom" animation-delay="0" fit-to-visible-bounds>Zoom out</paper-tooltip>
+        <paper-tooltip for="reset-zoom" position="left" animation-delay="0">Reset zoom to fit all points</paper-tooltip>
       </div>
     </div>
     <div class="stage">
       <div id="scatter"></div>
       <vz-projector-metadata-card id="metadata-card"></vz-projector-metadata-card>
-      <paper-icon-button raised onclick="help3dDialog.open()" icon="3d-rotation" id="help-3d-icon"></paper-icon-button>
+      <paper-icon-button raised onclick="help3dDialog.open()" icon="help-outline" id="help-3d-icon"></paper-icon-button>
       <paper-tooltip animation-delay="0" for="help-3d-icon">Help with interaction controls.</paper-tooltip>
       <paper-dialog id="help3dDialog" with-backdrop>
         <div class="main" dialog-confirm autofocus>
@@ -409,6 +398,8 @@ limitations under the License.
     <div id="bookmark-panel-container">
       <vz-projector-bookmark-panel id="bookmark-panel"></vz-projector-bookmark-panel>
     </div>
+  </div>
 </div>
-</template>
+
+</template> <!-- global template -->
 </dom-module>

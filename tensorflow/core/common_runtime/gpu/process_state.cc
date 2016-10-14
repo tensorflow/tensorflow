@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 // If these flags need to be runtime configurable, consider adding
 // options to ConfigProto.
@@ -203,8 +204,17 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
     Allocator* allocator = nullptr;
     static constexpr bool kCudaHostMemoryUseBFC = true;
     if (kCudaHostMemoryUseBFC) {
+      // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
+      int64 cuda_host_mem_limit_in_mb = -1;
+      Status status = ReadInt64FromEnvVar("TF_CUDA_HOST_MEM_LIMIT_IN_MB",
+                                          1LL << 16 /*64GB max by default*/,
+                                          &cuda_host_mem_limit_in_mb);
+      if (!status.ok()) {
+        LOG(ERROR) << "GetCUDAHostAllocator: " << status.error_message();
+      }
+      int64 cuda_host_mem_limit = cuda_host_mem_limit_in_mb * (1LL << 20);
       allocator =
-          new BFCAllocator(new CUDAHostAllocator(se), 1LL << 36 /*64GB max*/,
+          new BFCAllocator(new CUDAHostAllocator(se), cuda_host_mem_limit,
                            true /*allow_growth*/, "cuda_host_bfc" /*name*/);
     } else {
       allocator = new PoolAllocator(

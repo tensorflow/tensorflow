@@ -506,7 +506,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       plugin = REGISTERED_PLUGINS[name]()
       # Initialize the plugin by passing the main http handler.
       plugin.initialize(self)
-      plugin_handlers = plugin.get_plugin_handlers(self._multiplexer.RunPaths())
+      plugin_handlers = plugin.get_plugin_handlers(self._multiplexer.RunPaths(),
+                                                   self._logdir)
       for route, handler in six.iteritems(plugin_handlers):
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
         data_handlers[path] = handler

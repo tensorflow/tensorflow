@@ -22,6 +22,7 @@ import math
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_full
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
@@ -211,7 +212,8 @@ class _WishartOperatorPD(distribution.Distribution):
                                     0.5 * self.df, self.dimension),
                                 beta=0.5,
                                 dtype=self.dtype,
-                                seed=seed)
+                                seed=distribution_util.gen_new_seed(
+                                    seed, "wishart"))
 
     # Complexity: O(nbk^2)
     x = array_ops.matrix_band_part(x, -1, 0)  # Tri-lower.

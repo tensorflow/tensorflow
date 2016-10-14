@@ -8,7 +8,7 @@ This module contains ops for generating summaries.
 ## Summary Ops
 - - -
 
-### `tf.summary.tensor_summary(display_name, tensor, description='', labels=None, collections=None, name=None)` {#tensor_summary}
+### `tf.summary.tensor_summary(name, tensor, summary_description=None, collections=None)` {#tensor_summary}
 
 Outputs a `Summary` protocol buffer with a serialized tensor.proto.
 
@@ -19,19 +19,12 @@ has one summary value containing the input tensor.
 ##### Args:
 
 
-*  <b>`display_name`</b>: A name to associate with the data series. Will be used to
-    organize output data and as a name in visualizers.
+*  <b>`name`</b>: A name for the generated node. Will also serve as the series name in
+    TensorBoard.
 *  <b>`tensor`</b>: A tensor of any type and shape to serialize.
-*  <b>`description`</b>: An optional long description of the data being output.
-*  <b>`labels`</b>: a list of strings used to specify how the data can be interpreted,
-    for example:
-    * `'encoding:image/jpg'` for a string tensor containing jpg images
-    * `'encoding:proto/X/Y/foo.proto'` for a string tensor containing Foos
-    * `'group:$groupName/$roleInGroup'` for a tensor that is related to
-       other tensors that are all in a group. (e.g. bounding boxes and images)
+*  <b>`summary_description`</b>: Optional summary_pb2.SummaryDescription()
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
-*  <b>`name`</b>: An optional name for the generated node (optional).
 
 ##### Returns:
 
@@ -41,7 +34,7 @@ has one summary value containing the input tensor.
 
 - - -
 
-### `tf.summary.scalar(display_name, tensor, description='', labels=None, collections=None, name=None)` {#scalar}
+### `tf.summary.scalar(name, tensor, summary_description=None, collections=None)` {#scalar}
 
 Outputs a `Summary` protocol buffer containing a single scalar value.
 
@@ -50,14 +43,12 @@ The generated Summary has a Tensor.proto containing the input Tensor.
 ##### Args:
 
 
-*  <b>`display_name`</b>: A name to associate with the data series. Will be used to
-    organize output data and as a name in visualizers.
+*  <b>`name`</b>: A name for the generated node. Will also serve as the series name in
+    TensorBoard.
 *  <b>`tensor`</b>: A tensor containing a single floating point or integer value.
-*  <b>`description`</b>: An optional long description of the data being output.
-*  <b>`labels`</b>: a list of strings used to attach metadata.
+*  <b>`summary_description`</b>: Optional summary_description_pb2.SummaryDescription
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
-*  <b>`name`</b>: An optional name for the generated node (optional).
 
 ##### Returns:
 

@@ -25,6 +25,7 @@ import sys
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 
 
@@ -444,18 +445,11 @@ class CursesUI(object):
       args: (list of str) The command arguments (i.e., not including the
         prefix).
     """
-
-    # TODO(cais): Support parsing of arguments surrounded by pairs of quotes
-    #   and with spaces in them.
-
     command = command.strip()
     if not command:
       return "", []
 
-    # Split and remove extra spaces.
-    command_items = command.split(" ")
-    command_items = [item for item in command_items if item]
-
+    command_items = command_parser.parse_command(command)
     return command_items[0], command_items[1:]
 
   def _screen_gather_textbox_str(self):
