@@ -1877,6 +1877,33 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
           predictions, labels, k, expected=streaming_average_precision[i],
           weights=weights)
 
+  def test_average_precision_some_labels_out_of_range(self):
+    """Tests that labels outside the [0, n_classes) range are ignored."""
+    labels_ex1 = (-1, 0, 1, 2, 3, 4, 7)
+    labels = np.array([labels_ex1], dtype=np.int64)
+    predictions_ex1 = (0.2, 0.1, 0.0, 0.4, 0.0, 0.5, 0.3)  # [5, 3, 6, 1, 2]
+    predictions = (predictions_ex1,)
+    precision_ex1 = (
+        0.0 / 1,
+        1.0 / 2,
+        1.0 / 3,
+        2.0 / 4
+    )
+    avg_precision_ex1 = (
+        0.0 / 1,
+        precision_ex1[1] / 2,
+        precision_ex1[1] / 3,
+        (precision_ex1[1] + precision_ex1[3]) / 4
+    )
+    for i in xrange(4):
+      k = i + 1
+      self._test_streaming_sparse_precision_at_k(
+          predictions, labels, k, expected=precision_ex1[i])
+      self._test_sparse_average_precision_at_k(
+          predictions, labels, k, expected=[avg_precision_ex1[i]])
+      self._test_streaming_sparse_average_precision_at_k(
+          predictions, labels, k, expected=avg_precision_ex1[i])
+
   def test_one_label_at_k1_nan(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     sparse_labels = _binary_2d_label_to_sparse_value(
@@ -1884,8 +1911,8 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
     dense_labels = np.array([[3], [2]], dtype=np.int64)
 
     for labels in (sparse_labels, dense_labels):
-      # Classes 0,1,2 have 0 predictions, class 4 is out of range.
-      for class_id in (0, 1, 2, 4):
+      # Classes 0,1,2 have 0 predictions, classes -1 and 4 are out of range.
+      for class_id in (-1, 0, 1, 2, 4):
         self._test_streaming_sparse_precision_at_k(
             predictions, labels, k=1, expected=NAN, class_id=class_id)
 
@@ -1916,8 +1943,8 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
     dense_labels = np.array([[2, 7, 8], [1, 2, 5]], dtype=np.int64)
 
     for labels in (sparse_labels, dense_labels):
-      # Classes 1,3,8 have 0 predictions, class 10 is out of range.
-      for class_id in (1, 3, 8, 10):
+      # Classes 1,3,8 have 0 predictions, classes -1 and 10 are out of range.
+      for class_id in (-1, 1, 3, 8, 10):
         self._test_streaming_sparse_precision_at_k(
             predictions, labels, k=5, expected=NAN, class_id=class_id)
 
@@ -1967,6 +1994,36 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
       self._test_streaming_sparse_precision_at_k(
           predictions, labels, k=5, expected=3.0 / 10)
 
+  def test_three_labels_at_k5_some_out_of_range(self):
+    """Tests that labels outside the [0, n_classes) range are ignored."""
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ]
+    sp_labels = tf.SparseTensorValue(
+        indices=[[0, 0], [0, 1], [0, 2], [0, 3],
+                 [1, 0], [1, 1], [1, 2], [1, 3]],
+        # values -1 and 10 are outside the [0, n_classes) range and are ignored.
+        values=np.array([2, 7, -1, 8,
+                         1, 2, 5, 10], np.int64),
+        shape=[2, 4])
+
+    # Class 2: 2 labels, 2 correct predictions.
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2, class_id=2)
+
+    # Class 5: 1 label, 1 correct prediction.
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 1, class_id=5)
+
+    # Class 7: 1 label, 1 incorrect prediction.
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=0.0 / 1, class_id=7)
+
+    # All classes: 10 predictions, 3 correct.
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=3.0 / 10)
+
   def test_3d_nan(self):
     predictions = [[
         [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
@@ -1983,8 +2040,8 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]])
 
-    # Classes 1,3,8 have 0 predictions, class 10 is out of range.
-    for class_id in (1, 3, 8, 10):
+    # Classes 1,3,8 have 0 predictions, classes -1 and 10 are out of range.
+    for class_id in (-1, 1, 3, 8, 10):
       self._test_streaming_sparse_precision_at_k(
           predictions, labels, k=5, expected=NAN, class_id=class_id)
 
@@ -2169,9 +2226,10 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         [[0, 0, 0, 1], [0, 0, 1, 0]])
     dense_labels = np.array([[3], [2]], dtype=np.int64)
 
-    # Classes 0,1 have 0 labels, 0 predictions, class 4 is out of range.
+    # Classes 0,1 have 0 labels, 0 predictions, classes -1 and 4 are out of
+    # range.
     for labels in (sparse_labels, dense_labels):
-      for class_id in (0, 1, 4):
+      for class_id in (-1, 0, 1, 4):
         self._test_streaming_sparse_recall_at_k(
             predictions, labels, k=1, expected=NAN,
             class_id=class_id)
@@ -2321,6 +2379,38 @@ class StreamingSparseRecallTest(tf.test.TestCase):
       # All classes: 6 labels, 3 correct.
       self._test_streaming_sparse_recall_at_k(
           predictions, labels, k=5, expected=3.0 / 6)
+
+  def test_three_labels_at_k5_some_out_of_range(self):
+    """Tests that labels outside the [0, n_classes) count in denominator."""
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
+    sp_labels = tf.SparseTensorValue(
+        indices=[[0, 0], [0, 1], [0, 2], [0, 3],
+                 [1, 0], [1, 1], [1, 2], [1, 3]],
+        # values -1 and 10 are outside the [0, n_classes) range.
+        values=np.array([2, 7, -1, 8,
+                         1, 2, 5, 10], np.int64),
+        shape=[2, 4])
+
+    # Class 2: 2 labels, both correct.
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=2.0 / 2,
+        class_id=2)
+
+    # Class 5: 1 label, incorrect.
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=1.0 / 1,
+        class_id=5)
+
+    # Class 7: 1 label, incorrect.
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=0.0 / 1,
+        class_id=7)
+
+    # All classes: 8 labels, 3 correct.
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=3.0 / 8)
 
   def test_3d_nan(self):
     predictions = [[

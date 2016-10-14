@@ -1312,7 +1312,8 @@ def streaming_sparse_recall_at_k(predictions,
   `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
   the recall_at_k frequency. This frequency is ultimately returned as
   `recall_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` + `recall_at_<k>`).
+  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
+  `false_negative_at_<k>`).
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
@@ -1335,12 +1336,13 @@ def streaming_sparse_recall_at_k(predictions,
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
-      Values should be in range [0, num_classes], where num_classes is the last
-      dimension of `predictions`.
+      Values should be in range [0, num_classes), where num_classes is the last
+      dimension of `predictions`. Values outside this range always count
+      towards `false_negative_at_<k>`.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
-      in range [0, num_classes], where num_classes is the last dimension of
-      `predictions`.
+      in range [0, num_classes), where num_classes is the last dimension of
+      `predictions`. If class_id is outside this range, the method returns NAN.
     ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
       the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
@@ -1435,12 +1437,13 @@ def streaming_sparse_precision_at_k(predictions,
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions`. Values should be in range [0, num_classes], where
-      num_classes is the last dimension of `predictions`.
+      `predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range are ignored.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes], where num_classes is the last dimension of
-      `predictions`.
+      `predictions`. If class_id is outside this range, the method returns NAN.
     ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
       the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
@@ -1602,8 +1605,9 @@ def sparse_average_precision_at_k(predictions, labels, k):
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions`. Values should be in range [0, num_classes], where
-      num_classes is the last dimension of `predictions`.
+      `predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range are ignored.
     k: Integer, k for @k metric. This will calculate an average precision for
       range `[1,k]`, as documented above.
 
@@ -1679,11 +1683,10 @@ def streaming_sparse_average_precision_at_k(predictions,
   applied to the result of `sparse_average_precision_at_k`
 
   `streaming_sparse_average_precision_at_k` creates two local variables,
-  `average_precision_at_<k>/count` and `average_precision_at_<k>/total`, that
+  `average_precision_at_<k>/total` and `average_precision_at_<k>/max`, that
   are used to compute the frequency. This frequency is ultimately returned as
-  `precision_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
-  `false_positive_at_<k>`).
+  `average_precision_at_<k>`: an idempotent operation that simply divides
+  `average_precision_at_<k>/total` by `average_precision_at_<k>/max`.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
@@ -1704,8 +1707,9 @@ def streaming_sparse_average_precision_at_k(predictions,
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions`. Values should be in range [0, num_classes], where
-      num_classes is the last dimension of `predictions`.
+      `predictions_`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range are ignored.
     k: Integer, k for @k metric. This will calculate an average precision for
       range `[1,k]`, as documented above.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
