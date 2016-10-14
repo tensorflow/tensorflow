@@ -40,6 +40,47 @@ from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
   """Returns shape for input and output of the data feeder."""
+  x_is_dict, y_is_dict = isinstance(x_shape, dict), y_shape is not None and isinstance(y_shape, dict)
+  if y_is_dict and n_classes is not None:
+    assert (isinstance(n_classes, dict))
+
+  if batch_size is None:
+    batch_size = x_shape.values()[0].shape[0] if x_is_dict else x_shape[0]
+  elif batch_size <= 0:
+    raise ValueError('Invalid batch_size %d.' % batch_size)
+
+  if x_is_dict:
+    input_shape = {}
+    for k, v in x_shape.items():
+      input_shape[k] = [batch_size] + (list(v[1:]) if len(v) > 1 else [1])
+  else:
+    x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
+    input_shape = [batch_size] + x_shape
+
+  if y_shape is None:
+    return input_shape, None, batch_size
+
+  def out_el_shape(out_shape, num_classes):
+    out_shape = list(out_shape[1:]) if len(out_shape) > 1 else []
+    # Skip first dimension if it is 1.
+    if out_shape and out_shape[0] == 1:
+      out_shape = out_shape[1:]
+    if num_classes is not None and num_classes > 1:
+      return [batch_size] + out_shape + [n_classes]
+    else:
+      return [batch_size] + out_shape
+
+  if not y_is_dict:
+    output_shape = out_el_shape(y_shape, n_classes)
+  else:
+    output_shape = dict([(k, out_el_shape(v, n_classes[k] if n_classes is not None and k in n_classes else None))
+                         for k, v in y_shape.items()])
+
+  return input_shape, output_shape, batch_size
+
+
+def _get_in_out_shapeObsolete(x_shape, y_shape, n_classes, batch_size=None):
+  """Returns shape for input and output of the data feeder."""
   if batch_size is None:
     batch_size = x_shape[0]
   elif batch_size <= 0:
@@ -246,35 +287,53 @@ class DataFeeder(object):
       input_dtype: DType of input.
       output_dtype: DType of output.
     """
-    self._x = check_array(x, dtype=x.dtype)
-    # self.n_classes is None means we're passing in raw target indices.
-    y_dtype = (
-        np.int64 if n_classes is not None and n_classes > 1 else np.float32)
+    x_is_dict, y_is_dict = isinstance(x, dict), y is not None and isinstance(y, dict)
+    if isinstance(y, list):
+      y = np.array(y)
+
+    self._x = dict([(k, check_array(v, v.dtype)) for k, v in x.items()]) if x_is_dict else check_array(x, x.dtype)
+    self._y = None if y is None else \
+      dict([(k, check_array(v, v.dtype)) for k, v in y.items()]) if x_is_dict else check_array(y, y.dtype)
+
+    # self.n_classes is not None means we're converting raw target indices to one-hot.
     if n_classes is not None:
-      self._y = (None if y is None else check_array(y, dtype=y_dtype))
-    elif isinstance(y, list):
-      self._y = np.array(y)
-    else:
-      self._y = y
+      if not y_is_dict:
+        assert (not isinstance(n_classes, dict))
+        y_dtype = (np.int64 if n_classes is not None and n_classes > 1 else np.float32)
+        self._y = (None if y is None else check_array(y, dtype=y_dtype))
+
     self.n_classes = n_classes
     self.max_epochs = epochs
+
+    x_shape = dict([(k, v.shape) for k, v in self._x.items()]) if x_is_dict else self._x.shape
+    y_shape = dict([(k, v.shape) for k, v in self._y.items()]) if y_is_dict else None if y is None else self._y.shape
+
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-        self._x.shape, None if self._y is None else self._y.shape, n_classes,
-        batch_size)
+      x_shape, y_shape, n_classes, batch_size)
+
     # Input dtype matches dtype of x.
-    self._input_dtype = _check_dtype(self._x.dtype)
+    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in self._x.items()]) if x_is_dict \
+      else _check_dtype(self._x.dtype)
+
+    # note: self._output_dtype = np.float32 when y is None
+    self._output_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in self._y.items()]) if y_is_dict \
+      else _check_dtype(self._y.dtype) if y is not None else np.float32
+
     # self.n_classes is None means we're passing in raw target indices
-    if n_classes is not None or self._y is None:
-      self._output_dtype = np.float32
-    else:
-      self._output_dtype = _check_dtype(self._y.dtype)
+    if n_classes is not None and y_is_dict:
+        for key in n_classes.keys():
+          if key in self._output_dtype:
+            self._output_dtype[key] = np.float32
+
     self._shuffle = shuffle
     self.random_state = np.random.RandomState(
-        42) if random_state is None else random_state
+      42) if random_state is None else random_state
+
+    num_samples = self._x.values()[0].shape[0] if x_is_dict else self._x.shape[0]
     if self._shuffle:
-      self.indices = self.random_state.permutation(self._x.shape[0])
+      self.indices = self.random_state.permutation(num_samples)
     else:
-      self.indices = np.array(range(self._x.shape[0]))
+      self.indices = np.array(range(num_samples))
     self.offset = 0
     self.epoch = 0
     self._epoch_placeholder = None
