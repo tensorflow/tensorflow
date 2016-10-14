@@ -72,7 +72,6 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // Create the inference context for this node with the existing input shapes.
   std::unique_ptr<shape_inference::InferenceContext> c(
       new shape_inference::InferenceContext(&node->def(), node->op_def(),
-                                            {} /* input_shapes_string */,
                                             input_shapes, input_tensors));
   if (!c->construction_status().ok()) {
     return c->construction_status();

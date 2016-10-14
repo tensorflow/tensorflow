@@ -267,15 +267,23 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
 
   if mode == estimator.ModeKeys.TRAIN:
     targets = _reshape_targets(targets)
-    loss = loss_fn(logits, targets,
-                   weight=_get_weight_tensor(features, weight_column_name))
+    weight = _get_weight_tensor(features, weight_column_name)
+    training_loss = loss_fn(logits, targets, weight=weight)
+    loss = _rescale_eval_loss(training_loss, weight)
 
     train_ops = [optimizers.optimize_loss(
-        loss=loss, global_step=contrib_variables.get_global_step(),
-        learning_rate=_LEARNING_RATE, optimizer=_get_optimizer(optimizer),
-        clip_gradients=gradient_clip_norm, name=parent_scope)]
+        loss=training_loss,
+        global_step=contrib_variables.get_global_step(),
+        learning_rate=_LEARNING_RATE,
+        optimizer=_get_optimizer(optimizer),
+        clip_gradients=gradient_clip_norm,
+        name=parent_scope,
+        # Empty summaries to prevent optimizers from logging the training_loss.
+        summaries=[])]
     if enable_centered_bias:
       train_ops.append(_centered_bias_step(targets, loss_fn, num_label_columns))
+
+    logging_ops.scalar_summary("loss", loss)
 
     return None, loss, control_flow_ops.group(*train_ops)
 

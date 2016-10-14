@@ -60,6 +60,8 @@ func TestNewTensor(t *testing.T) {
 		[]uint32{5},
 		uint64(5),
 		[]uint64{5},
+		// Mismatched dimensions
+		[][]float32{{1,2,3},{4}},
 	}
 
 	for _, test := range tests {

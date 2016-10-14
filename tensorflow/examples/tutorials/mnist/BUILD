@@ -88,6 +88,7 @@ py_test(
     ],
     main = "fully_connected_feed.py",
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # http://b/31795146
     deps = [
         ":input_data",
         ":mnist",
@@ -108,7 +109,10 @@ py_test(
     ],
     main = "mnist_with_summaries.py",
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/29184009
+    tags = [
+        "noasan",  # http://b/31795146
+        "notsan",  # http://b/29184009
+    ],
     deps = [
         ":input_data",
         "//tensorflow:tensorflow_py",

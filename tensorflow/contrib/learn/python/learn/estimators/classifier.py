@@ -126,7 +126,7 @@ class Classifier(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
 
     Args:
@@ -160,7 +160,7 @@ class Classifier(estimator.Estimator):
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted probabilty distributions for given features.
 
     Args:

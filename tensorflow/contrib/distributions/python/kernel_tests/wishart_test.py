@@ -149,6 +149,30 @@ class WishartCholeskyTest(tf.test.TestCase):
                           variance_estimate,
                           rtol=0.05)
 
+  # Test that sampling with the same seed twice gives the same results.
+  def testSampleMultipleTimes(self):
+    with self.test_session():
+      df = 4.
+      n_val = 100
+
+      tf.set_random_seed(654321)
+      chol_w1 = distributions.WishartCholesky(
+          df=df,
+          scale=chol(make_pd(1., 3)),
+          cholesky_input_output_matrices=False,
+          name="wishart1")
+      samples1 = chol_w1.sample_n(n_val, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      chol_w2 = distributions.WishartCholesky(
+          df=df,
+          scale=chol(make_pd(1., 3)),
+          cholesky_input_output_matrices=False,
+          name="wishart2")
+      samples2 = chol_w2.sample_n(n_val, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
+
   def testProb(self):
     with self.test_session():
       # Generate some positive definite (pd) matrices and their Cholesky

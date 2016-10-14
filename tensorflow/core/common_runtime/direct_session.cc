@@ -435,9 +435,19 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
-  const int64 build_cost_model =
-      options_.config.graph_options().build_cost_model();
-  if (do_trace || build_cost_model > 0) {
+
+  bool update_cost_model = false;
+  if (options_.config.graph_options().build_cost_model() > 0) {
+    const int64 build_cost_model_every =
+        options_.config.graph_options().build_cost_model();
+    const int64 build_cost_model_after =
+        options_.config.graph_options().build_cost_model_after();
+    update_cost_model =
+        ((executors_and_keys->step_count + 1 - build_cost_model_after) %
+             build_cost_model_every ==
+         0);
+  }
+  if (do_trace || update_cost_model) {
     run_state.collector.reset(
         new StepStatsCollector(run_metadata->mutable_step_stats()));
     args.stats_collector = run_state.collector.get();
@@ -479,7 +489,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Build and return the cost model as instructed.
   mutex_lock l(executor_lock_);
   ++executors_and_keys->step_count;
-  if (executors_and_keys->step_count == build_cost_model) {
+  if (update_cost_model) {
     // Build the cost model
     std::unordered_map<string, const Graph*> device_to_graph;
     for (const PerPartitionExecutorsAndLib& partition :

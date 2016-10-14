@@ -112,6 +112,7 @@ const FRAGMENT_SHADER_PICKING = `
   uniform bool isImage;
 
   void main() {
+    xyIndex; // Silence 'unused variable' warning.
     if (isImage) {
       gl_FragColor = vec4(vColor, 1);
     } else {

@@ -170,7 +170,8 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   return sparse_ids, sparse_weights
 
 
-def hashed_embedding_lookup(params, values, dimension, name=None):
+def hashed_embedding_lookup(params, values, dimension, name=None,
+                            hash_key=None):
   """Looks up embeddings using parameter hashing for each value in `values`.
 
   The i-th embedding component of a value v in `values` is found by retrieving
@@ -200,6 +201,9 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
     values: `Tensor` of values to be embedded.
     dimension: Embedding dimension
     name: An optional name for this op.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp
+      (optional).
 
   Returns:
     A tensor with shape [d0, ..., dn, dimension]
@@ -243,7 +247,8 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
     tensors_to_cross = [array_ops.tile(array_ops.expand_dims(
         math_ops.range(0, dimension), 0), array_ops.shape(values)), values]
     ids = sparse_feature_cross_op.sparse_feature_cross(
-        tensors_to_cross, hashed_output=True, num_buckets=num_params)
+        tensors_to_cross, hashed_output=True, num_buckets=num_params,
+        hash_key=hash_key)
     ids = sparse_ops.sparse_tensor_to_dense(ids)
 
     # No need to validate the indices since we have checked the params
@@ -260,7 +265,8 @@ def hashed_embedding_lookup_sparse(params,
                                    dimension,
                                    combiner=None,
                                    default_value=None,
-                                   name=None):
+                                   name=None,
+                                   hash_key=None):
   """Looks up embeddings of a sparse feature using parameter hashing.
 
   See `tf.contrib.layers.hashed_embedding_lookup` for embedding with hashing.
@@ -276,6 +282,9 @@ def hashed_embedding_lookup_sparse(params,
         the default.
     default_value: The value to use for an entry with no features.
     name: An optional name for this op.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp
+      (optional).
 
   Returns:
      Dense tensor with shape [N, dimension] with N the number of rows in
@@ -315,7 +324,8 @@ def hashed_embedding_lookup_sparse(params,
     values = sparse_values.values
     values, idx = array_ops.unique(values)
 
-    embeddings = hashed_embedding_lookup(params, values, dimension)
+    embeddings = hashed_embedding_lookup(params, values, dimension,
+                                         hash_key=hash_key)
 
     if combiner == "sum":
       embeddings = math_ops.sparse_segment_sum(embeddings, idx, segment_ids,

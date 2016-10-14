@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import categorical
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -295,8 +296,10 @@ class Mixture(distribution.Distribution):
           partitions=cat_samples,
           num_partitions=self.num_components)
       samples_class = [None for _ in range(self.num_components)]
+
       for c in range(self.num_components):
         n_class = array_ops.size(partitioned_samples_indices[c])
+        seed = distribution_util.gen_new_seed(seed, "mixture")
         samples_class_c = self.components[c].sample_n(n_class, seed=seed)
 
         # Pull out the correct batch entries from each index.

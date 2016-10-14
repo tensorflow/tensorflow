@@ -1476,6 +1476,7 @@ def bucketized_column(source_column, boundaries):
 class _CrossedColumn(_FeatureColumn,
                      collections.namedtuple("_CrossedColumn",
                                             ["columns", "hash_bucket_size",
+                                             "hash_key",
                                              "combiner", "ckpt_to_load_from",
                                              "tensor_name_in_ckpt"])):
   """Represents a cross transformation also known as conjuction or combination.
@@ -1536,6 +1537,7 @@ class _CrossedColumn(_FeatureColumn,
   def __new__(cls,
               columns,
               hash_bucket_size,
+              hash_key,
               combiner="sqrtn",
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None):
@@ -1560,7 +1562,8 @@ class _CrossedColumn(_FeatureColumn,
     sorted_columns = sorted(
         [column for column in columns], key=lambda column: column.name)
     return super(_CrossedColumn, cls).__new__(cls, tuple(sorted_columns),
-                                              hash_bucket_size, combiner,
+                                              hash_bucket_size, hash_key,
+                                              combiner,
                                               ckpt_to_load_from,
                                               tensor_name_in_ckpt)
 
@@ -1623,6 +1626,7 @@ class _CrossedColumn(_FeatureColumn,
         feature_tensors,
         hashed_output=True,
         num_buckets=self.hash_bucket_size,
+        hash_key=self.hash_key,
         name="cross")
 
   # pylint: disable=unused-argument
@@ -1650,7 +1654,8 @@ class _CrossedColumn(_FeatureColumn,
 
 def crossed_column(columns, hash_bucket_size, combiner=None,
                    ckpt_to_load_from=None,
-                   tensor_name_in_ckpt=None):
+                   tensor_name_in_ckpt=None,
+                   hash_key=None):
   """Creates a _CrossedColumn.
 
   Args:
@@ -1664,6 +1669,9 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
     tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp
+      (optional).
 
   Returns:
     A _CrossedColumn.
@@ -1682,6 +1690,7 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
   return _CrossedColumn(
       columns,
       hash_bucket_size,
+      hash_key,
       combiner=combiner,
       ckpt_to_load_from=ckpt_to_load_from,
       tensor_name_in_ckpt=tensor_name_in_ckpt)

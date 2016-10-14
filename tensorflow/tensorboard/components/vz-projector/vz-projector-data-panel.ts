@@ -170,8 +170,8 @@ export class DataPanel extends DataPanelPolymer {
       if (metadataFile) {
         this.dataProvider.retrieveMetadata(
             this.selectedRun, this.selectedTensor, metadata => {
-              this.updateMetadataUI(metadata.stats, metadataFile);
               this.projector.updateDataSet(ds, metadata);
+              this.updateMetadataUI(metadata.stats, metadataFile);
             });
       } else {
         this.projector.updateDataSet(ds, null);

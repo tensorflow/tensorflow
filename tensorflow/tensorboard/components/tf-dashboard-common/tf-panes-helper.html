@@ -70,7 +70,7 @@ downloadLinkUrlFunction property to an appropriate value.
           <template is="dom-repeat" items="[[_categoryCards(category, selectedRuns.*, run2tag.*)]]">
               <div class="card">
                 <div class="card-title-container" style="border-color: [[_titleBorderColor(item.run)]]">
-                  <div class="card-title">[[item.tag]]</div>
+                  <div class="card-title" inner-h-t-m-l="[[_break(item.tag)]]"></div>
                   <template is="dom-if" if="[[repeatForRuns]]">
                     <div class="card-subtitle" title="[[item.run]]">[[item.run]]</div>
                   </template>
@@ -342,6 +342,10 @@ downloadLinkUrlFunction property to an appropriate value.
       },
       // TODO(renatoutsch): implement the instance forwarding for two-way data
       // binding.
+      // Add breaks to input so it will wrap nicely
+      _break: function(ipt) {
+        return ipt.replace(/([\/_-])/g, "$1<wbr>")
+      },
     });
   </script>
 </dom-module>
