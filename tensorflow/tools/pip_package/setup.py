@@ -171,7 +171,7 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': [ EXTENSION_NAME,
+        'tensorflow': [EXTENSION_NAME,
                        'tensorboard/dist/bazel-html-imports.html',
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',

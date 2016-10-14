@@ -21,7 +21,7 @@ py_binary(
 )
 
 # On Windows, python binary is a zip file of runfiles tree.
-# Add everything to it's data dependency for generating a runfiles tree
+# Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
 py_binary(
     name = "simple_console_for_windows",

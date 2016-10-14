@@ -792,7 +792,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
       linkshared=1,
       deps=deps + extra_deps)
   native.genrule(
-      name = cc_library_pyd_name,
+      name = "gen_" + cc_library_pyd_name,
       srcs = [":" + cc_library_name],
       outs = [cc_library_pyd_name],
       cmd = "cp $< $@",

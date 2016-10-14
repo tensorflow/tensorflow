@@ -66,40 +66,38 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
+  elif [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
+    # Really old (0.2.1-) runfiles, without workspace name.
+    cp -R \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
+      "${TMPDIR}"
+    mkdir "${TMPDIR}/external"
+    cp_external \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
+      "${TMPDIR}/external"
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
   else
-    if [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
-      # Really old (0.2.1-) runfiles, without workspace name.
+    if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
+      # Old-style runfiles structure (--legacy_external_runfiles).
       cp -R \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
       cp_external \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
-      RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
     else
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
-        # Old-style runfiles structure (--legacy_external_runfiles).
-        cp -R \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-          "${TMPDIR}"
-        mkdir "${TMPDIR}/external"
-        cp_external \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
-          "${TMPDIR}/external"
-      else
-        # New-style runfiles structure (--nolegacy_external_runfiles).
-        cp -R \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-          "${TMPDIR}"
-        mkdir "${TMPDIR}/external"
-        # Note: this makes an extra copy of org_tensorflow.
-        cp_external \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
-          "${TMPDIR}/external"
-      fi
-      RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+      # New-style runfiles structure (--nolegacy_external_runfiles).
+      cp -R \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+        "${TMPDIR}"
+      mkdir "${TMPDIR}/external"
+      # Note: this makes an extra copy of org_tensorflow.
+      cp_external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+        "${TMPDIR}/external"
     fi
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers
