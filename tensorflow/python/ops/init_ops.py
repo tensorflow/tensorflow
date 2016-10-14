@@ -95,7 +95,10 @@ def constant_initializer(value=0, dtype=dtypes.float32):
 
   Returns:
     An initializer that generates tensors with constant values.
-
+    
+  Raises:  
+    ValueError: If total number of elements greater than required by tensor shape.
+    
   Examples:
     The following example can be rewritten using a numpy.ndarray instead
     of the `value` list, even reshaped, as shown in the two commented lines
@@ -138,8 +141,8 @@ def constant_initializer(value=0, dtype=dtypes.float32):
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
-    ValueError: Too many elements provided. Needed at most 6, but received 8
-    ```
+    ValueError: Too many elements provided. Needed at most 6, but received 8.
+  ``` 
   """
   def _initializer(shape, dtype=dtype, partition_info=None):
     return constant_op.constant(value, dtype=dtype, shape=shape)

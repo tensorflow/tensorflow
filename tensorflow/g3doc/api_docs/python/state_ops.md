@@ -2434,8 +2434,6 @@ tensor shape, the initializer will raise a `ValueError`.
 
 *  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
   ```
-
-
 - - -
 
 ### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer}
