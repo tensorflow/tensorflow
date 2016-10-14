@@ -35,6 +35,9 @@ then
   PROTOC=PATH_PROTOC
 fi
 
+# Ensure that protoc-gen-go is available in $PATH
+# Since ${PROTOC} will require it.
+export PATH=$PATH:${GOPATH}/bin
 mkdir -p ./internal/proto
 ${PROTOC} \
   -I ${TF_DIR} \
