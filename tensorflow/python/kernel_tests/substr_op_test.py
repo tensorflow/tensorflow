@@ -80,7 +80,7 @@ class SubstrOpTest(tf.test.TestCase):
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
-  def _testBroadcast(self, dtype):
+  def _testBroadcastUnimplemented(self, dtype):
     test_string = [[b"ten", b"eleven", b"twelve"],
                    [b"thirteen", b"fourteen", b"fifteen"],
                    [b"sixteen", b"seventeen", b"eighteen"]]
@@ -88,20 +88,7 @@ class SubstrOpTest(tf.test.TestCase):
     length = np.array([1, 2, 3], dtype)
     substr_op = tf.substr(test_string, position, length)
     with self.test_session():
-      substr = substr_op.eval()
-
-  def _testBadBroadcast(self, dtype):
-    test_string = [[b"ten", b"eleven", b"twelve"],
-                   [b"thirteen", b"fourteen", b"fifteen"],
-                   [b"sixteen", b"seventeen", b"eighteen"]]
-    position = np.array([1, 2, 3, 4], dtype)
-    length = np.array([1, 2, 3, 4], dtype)
-    expected_value = [[b"e", b"ev", b"lve"],
-                      [b"h", b"ur", b"tee"],
-                      [b"i", b"ve", b"hte"]]
-    substr_op = tf.substr(test_string, position, length)
-    with self.test_session():
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(tf.errors.UnimplementedError):
         substr = substr_op.eval()
 
   def _testOutOfRangeError(self, dtype):
@@ -129,14 +116,32 @@ class SubstrOpTest(tf.test.TestCase):
       with self.assertRaises(tf.errors.InvalidArgumentError):
         substr = substr_op.eval()
 
+  def _testMismatchPosLenShapes(self, dtype):
+    test_string = [[b"ten", b"eleven", b"twelve"],
+                   [b"thirteen", b"fourteen", b"fifteen"],
+                   [b"sixteen", b"seventeen", b"eighteen"]]
+    position = np.array([[1, 2, 3]], dtype)
+    length = np.array([2, 3, 4], dtype)
+    # Should fail: position/length have different rank
+    with self.assertRaises(ValueError):
+      substr_op = tf.substr(test_string, position, length)
+
+    position = np.array([[1, 2, 3],
+                         [1, 2, 3],
+                         [1, 2, 3]], dtype)
+    length = np.array([[2, 3, 4]], dtype)
+    # Should fail: postion/length have different dimensionality
+    with self.assertRaises(ValueError):
+      substr_op = tf.substr(test_string, position, length)
+
   def _testAll(self, dtype):
     self._testScalarString(dtype)
     self._testVectorStrings(dtype)
     self._testMatrixStrings(dtype)
     self._testElementWisePosLen(dtype)
-    # self._testBroadcast(dtype)
-    # self._testBadBroadcast(dtype)
+    self._testBroadcastUnimplemented(dtype)
     self._testOutOfRangeError(dtype)
+    self._testMismatchPosLenShapes(dtype)
 
   def testInt32(self):
     self._testAll(np.int32)
