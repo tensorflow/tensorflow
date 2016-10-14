@@ -97,7 +97,7 @@ def constant_initializer(value=0, dtype=dtypes.float32):
     An initializer that generates tensors with constant values.
     
   Raises:  
-    ValueError: When total number of elements in value is more than the number of elements required by the tensor shape as explained above.
+    ValueError: If total number of elements greater than required by tensor shape.
     
   Examples:
     The following example can be rewritten using a numpy.ndarray instead
