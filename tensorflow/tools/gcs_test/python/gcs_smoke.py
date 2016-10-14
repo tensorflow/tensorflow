@@ -53,7 +53,7 @@ def create_examples(num_examples, input_mean):
 def create_dir_test():
   # create_dir
   starttime = int(round(time.time() * 1000))
-  dir_name = "%s/%s" % (FLAGS.gcs_bucket_url, starttime)
+  dir_name = "%s/tf_gcs_test_%s" % (FLAGS.gcs_bucket_url, starttime)
   print("Creating dir %s" % dir_name)
   file_io.create_dir(dir_name)
   elapsed = int(round(time.time() * 1000)) - starttime
