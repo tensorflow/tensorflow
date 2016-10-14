@@ -83,7 +83,7 @@ class SparseConditionalAccumulator
 
   Status ValidateShape(
       std::tuple<const Tensor*, const Tensor*, const Tensor*>* tensor,
-      bool has_known_shape) EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      bool has_known_shape) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const Tensor* tensor_idx = std::get<0>(*tensor);
     const Tensor* tensor_val = std::get<1>(*tensor);
     const Tensor* tensor_shape = std::get<2>(*tensor);

@@ -74,11 +74,11 @@ class TrackingAllocator : public Allocator {
   std::pair<size_t, size_t> GetSizesAndUnRef();
 
  private:
+  mutex mu_;
   ~TrackingAllocator() override {}
   bool UnRef() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.
-  mutex mu_;
   // the number of calls to AllocateRaw that have not yet been matched
   // by a corresponding call to DeAllocateRaw, plus 1 if the Executor
   // has not yet read out the high watermark.

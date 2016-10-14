@@ -78,6 +78,7 @@ class CounterCell {
 // This class is thread-safe.
 template <int NumLabels>
 class Counter {
+  mutable mutex mu_;
  public:
   ~Counter() {
     // Deleted here, before the metric_def is destroyed.
@@ -110,8 +111,6 @@ class Counter {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
             })) {}
-
-  mutable mutex mu_;
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.

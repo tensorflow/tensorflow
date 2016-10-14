@@ -40,6 +40,7 @@ namespace tensorflow {
 namespace barrier {
 
 class Barrier : public ResourceBase {
+  mutex mu_;
  public:
   typedef std::vector<Tensor> Tuple;
   typedef std::function<void()> DoneCallback;
@@ -417,7 +418,6 @@ class Barrier : public ResourceBase {
 
  private:
   typedef std::vector<PersistentTensor> PersistentTuple;
-  mutex mu_;
   bool closed_ GUARDED_BY(mu_);
   bool queue_closed_ GUARDED_BY(mu_);
   bool queue_cancelled_ GUARDED_BY(mu_);
@@ -433,6 +433,7 @@ class Barrier : public ResourceBase {
 };
 
 class BarrierOp : public OpKernel {
+  mutex mu_;
  public:
   explicit BarrierOp(OpKernelConstruction* context)
       : OpKernel(context), barrier_handle_set_(false) {
@@ -511,7 +512,6 @@ class BarrierOp : public OpKernel {
   std::vector<TensorShape> value_component_shapes_;
   ContainerInfo cinfo_;
 
-  mutex mu_;
   PersistentTensor barrier_handle_ GUARDED_BY(mu_);
   bool barrier_handle_set_ GUARDED_BY(mu_);
 
@@ -611,7 +611,9 @@ class TakeManyOp : public BarrierOpKernel {
     DataTypeVector expected_inputs = {DT_STRING_REF, DT_INT32};
     // The first output is the insertion index, the second output is the key.
     DataTypeVector expected_outputs = {DT_INT64, DT_STRING};
-    for (DataType dt : barrier->component_types()) {
+    for (auto it  = barrier->component_types().begin(),
+              end = barrier->component_types().end(); it!= end; it++ ){
+      const DataType dt = *it;
       expected_outputs.push_back(dt);
     }
     OP_REQUIRES_OK_ASYNC(

@@ -162,6 +162,8 @@ class DirectSession : public Session {
     protobuf::RepeatedPtrField<DebugTensorWatch> debug_tensor_watches;
   };
 
+  mutex graph_def_lock_;
+
   // Initializes the base execution state given the 'graph',
   // if not already initialized.
   Status MaybeInitializeExecutionState(const GraphDef& graph,
@@ -227,7 +229,6 @@ class DirectSession : public Session {
   string session_handle_;
   bool graph_created_ GUARDED_BY(graph_def_lock_) = false;
 
-  mutex graph_def_lock_;
   GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
 
   // The thread-pools to use for running ops.

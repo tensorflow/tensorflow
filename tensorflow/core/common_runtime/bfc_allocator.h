@@ -295,6 +295,8 @@ class BFCAllocator : public VisitableAllocator {
    private:
     std::vector<AllocationRegion> regions_;
   };
+  // Structures mutable after construction
+  mutable mutex lock_;
 
   // Returns 'bytes' rounded up to the next highest kMinAllocationSize.
   size_t RoundedBytes(size_t bytes);
@@ -389,9 +391,6 @@ class BFCAllocator : public VisitableAllocator {
 
   std::unique_ptr<SubAllocator> suballocator_;
   string name_;
-
-  // Structures mutable after construction
-  mutable mutex lock_;
   RegionManager region_manager_ GUARDED_BY(lock_);
 
   std::vector<Chunk> chunks_;
