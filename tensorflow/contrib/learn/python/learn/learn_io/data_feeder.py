@@ -124,9 +124,10 @@ def setup_train_data_feeder(
   If `x` and `y` are iterators, use `StreamingDataFeeder`.
 
   Args:
-    x: numpy, pandas or Dask matrix or iterable.
-    y: numpy, pandas or Dask array or iterable.
-    n_classes: number of classes.
+    x: numpy, pandas or Dask matrix or dictionary of aforementioned. Also supports iterables.
+    y: numpy, pandas or Dask array or dictionary of aforementioned. Also supports iterables.
+    n_classes: number of classes. Must be None or same type as y. In case, y is dict ( or iterable returns dic)
+      n_classes[key] = n_classes for y[key]
     batch_size: size to split data into parts. Must be >= 1.
     shuffle: Whether to shuffle the inputs.
     epochs: Number of epochs to run.
@@ -174,7 +175,7 @@ def setup_predict_data_feeder(x, batch_size=None):
   """Returns an iterable for feeding into predict step.
 
   Args:
-    x: numpy, pandas, Dask array or iterable.
+    x: numpy, pandas, Dask array or dictionary of aforementioned. Also supports iterable.
     batch_size: Size of batches to split data into.
       If `None`, returns one batch of full size.
 
@@ -264,12 +265,13 @@ class DataFeeder(object):
     """Initializes a DataFeeder instance.
 
     Args:
-      x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]`.
+      x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]` or dictionary of aforementioned.
       y: Target vector, either floats for regression or class id for
         classification. If matrix, will consider as a sequence
-        of targets. Can be `None` for unsupervised setting.
+        of targets. Can be `None` for unsupervised setting. Also supports dictionary of targets.
       n_classes: Number of classes, 0 and 1 are considered regression, `None`
-        will pass through the input labels without one-hot conversion.
+        will pass through the input labels without one-hot conversion. Also, if y is dict, then
+        n_classes must be dict such that n_classes[key] = n_classes for target y[key], None otherwise.
       batch_size: Mini-batch size to accumulate.
       shuffle: Whether to shuffle `x`.
       random_state: Numpy `RandomState` object to reproduce sampling.
@@ -277,15 +279,15 @@ class DataFeeder(object):
         `StopIteration` exception.
 
     Attributes:
-      x: Input features.
-      y: Input target.
+      x: Input features (ndarray or dictionary of ndarrays).
+      y: Input target (ndarray or dictionary of ndarrays).
       n_classes: Number of classes (if `None`, pass through indices without
         one-hot conversion).
       batch_size: Mini-batch size to accumulate.
-      input_shape: Shape of the input.
-      output_shape: Shape of the output.
-      input_dtype: DType of input.
-      output_dtype: DType of output.
+      input_shape: Shape of the input ( or dictionary of shapes).
+      output_shape: Shape of the output ( or dictionary of shapes).
+      input_dtype: DType of input (or dictionary of shapes).
+      output_dtype: DType of output (or dictionary of shapes.
     """
     x_is_dict, y_is_dict = isinstance(x, dict), y is not None and isinstance(y, dict)
     if isinstance(y, list):
@@ -514,21 +516,22 @@ class StreamingDataFeeder(DataFeeder):
     """Initializes a StreamingDataFeeder instance.
 
     Args:
-      x: iterator that returns for each element, returns features.
-      y: iterator that returns for each element, returns 1 or many classes /
+      x: iterator that returns for each element or dictionary of single element, returns features.
+      y: iterator that returns for each element or dictionary of single element, returns 1 or many classes /
          regression values.
-      n_classes: indicator of how many classes the target has.
-      batch_size: Mini batch size to accumulate. If set None then assumes iterator to return batches.
+      n_classes: indicator of how many classes the target has. Can be dictionary of how many classes each target
+        in y in case y is a dictionary.
+      batch_size: Mini batch size to accumulate. If set None then assumes iterator to return already batched element.
 
     Attributes:
-      x: input features.
-      y: input target.
+      x: input features ( or dictionary of input features).
+      y: input target ( or dictionary of output features).
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
-      input_shape: shape of the input.
-      output_shape: shape of the output.
-      input_dtype: dtype of input.
-      output_dtype: dtype of output.
+      input_shape: shape of the input ( can be dictionary depending on x).
+      output_shape: shape of the output( can be dictionary depending on y).
+      input_dtype: dtype of input ( can be dictionary depending on x).
+      output_dtype: dtype of output ( can be dictionary depending on y).
     """
     # pylint: disable=invalid-name,super-init-not-called
     x_first_el = six.next(x)
