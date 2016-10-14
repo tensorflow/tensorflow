@@ -192,10 +192,10 @@ tf_kernel_library(
     ],
     prefix = "kernels/lstm_ops",
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
-        "//third_party/tensorflow/core:framework",
-        "//third_party/tensorflow/core:lib",
-        "//third_party/tensorflow/core/kernels:eigen_helpers",
     ],
 )
 
