@@ -88,27 +88,43 @@ int main(int argc, char** argv) {
     fprintf(stderr, "%s\n", argv[i]);
   }
 
-  CHECK(tensorflow::ParseFlags(
-      &argc, argv,
-      {tensorflow::Flag("graph_path", &FLAGS_graph_path),
-       tensorflow::Flag("run_meta_path", &FLAGS_run_meta_path),
-       tensorflow::Flag("op_log_path", &FLAGS_op_log_path),
-       tensorflow::Flag("checkpoint_path", &FLAGS_checkpoint_path),
-       tensorflow::Flag("max_depth", &FLAGS_max_depth),
-       tensorflow::Flag("min_bytes", &FLAGS_min_bytes),
-       tensorflow::Flag("min_micros", &FLAGS_min_micros),
-       tensorflow::Flag("min_params", &FLAGS_min_params),
-       tensorflow::Flag("min_float_ops", &FLAGS_min_float_ops),
-       tensorflow::Flag("device_regexes", &FLAGS_device_regexes),
-       tensorflow::Flag("order_by", &FLAGS_order_by),
-       tensorflow::Flag("account_type_regexes", &FLAGS_start_name_regexes),
-       tensorflow::Flag("trim_name_regexes", &FLAGS_trim_name_regexes),
-       tensorflow::Flag("show_name_regexes", &FLAGS_show_name_regexes),
-       tensorflow::Flag("hide_name_regexes", &FLAGS_hide_name_regexes),
-       tensorflow::Flag("account_displayed_op_only",
-                        &FLAGS_account_displayed_op_only),
-       tensorflow::Flag("select", &FLAGS_select),
-       tensorflow::Flag("dump_to_file", &FLAGS_dump_to_file)}));
+  std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("graph_path", &FLAGS_graph_path,
+                       "GraphDef proto text file name"),
+      tensorflow::Flag("run_meta_path", &FLAGS_run_meta_path,
+                       "RunMetadata proto binary file name"),
+      tensorflow::Flag("op_log_path", &FLAGS_op_log_path,
+                       "tensorflow::tfprof::OpLog proto binary file name"),
+      tensorflow::Flag("checkpoint_path", &FLAGS_checkpoint_path,
+                       "TensorFlow Checkpoint file name"),
+      tensorflow::Flag("max_depth", &FLAGS_max_depth, "max depth"),
+      tensorflow::Flag("min_bytes", &FLAGS_min_bytes, "min_bytes"),
+      tensorflow::Flag("min_micros", &FLAGS_min_micros, "min micros"),
+      tensorflow::Flag("min_params", &FLAGS_min_params, "min params"),
+      tensorflow::Flag("min_float_ops", &FLAGS_min_float_ops, "min float ops"),
+      tensorflow::Flag("device_regexes", &FLAGS_device_regexes,
+                       "device regexes"),
+      tensorflow::Flag("order_by", &FLAGS_order_by, "order by"),
+      tensorflow::Flag("account_type_regexes", &FLAGS_start_name_regexes,
+                       "start name regexes"),
+      tensorflow::Flag("trim_name_regexes", &FLAGS_trim_name_regexes,
+                       "trim name regexes"),
+      tensorflow::Flag("show_name_regexes", &FLAGS_show_name_regexes,
+                       "show name regexes"),
+      tensorflow::Flag("hide_name_regexes", &FLAGS_hide_name_regexes,
+                       "hide name regexes"),
+      tensorflow::Flag("account_displayed_op_only",
+                       &FLAGS_account_displayed_op_only,
+                       "account displayed op only"),
+      tensorflow::Flag("select", &FLAGS_select, "select"),
+      tensorflow::Flag("dump_to_file", &FLAGS_dump_to_file, "dump to file"),
+  };
+  tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_ok) {
+    printf("%s", usage.c_str());
+    return (2);
+  }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
   fprintf(stderr, "%s\n", FLAGS_graph_path.c_str());
