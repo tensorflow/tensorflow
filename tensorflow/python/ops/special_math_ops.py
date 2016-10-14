@@ -94,14 +94,23 @@ def einsum(axes, *inputs):
   """
   A generalized contraction between tensors of arbitrary dimension.
 
-  Like numpy.einsum, but does not support:
-  -- ellipses (subscripts like 'ij...,jk...->ik...')
-  -- subscripts that reduce to scalars
+  Like `numpy.einsum`, but does not support:
+  * Ellipses (subscripts like `ij...,jk...->ik...`)
+  * Subscripts that reduce to scalars
+
+  Raises a ValueError if:
+  * The format of `axes` is incorrect.
+  * The number of inputs implied by `axes` does not match `len(inputs)`.
+  * An axis appears in the output subscripts but not in any of the inputs.
+  * The number of dimensions of an input differs from the number of indices in its subscript.
+  * The input shapes are inconsistent along a particular axis.
   """
 
   match = re.match('([a-z,]+)->([a-z]+)', axes)
-  assert match, \
-    "Indices have incorrect format: %s" % axes
+  if not match:
+    raise ValueError(
+      "Indices have incorrect format: %s" % axes
+    )
 
   inputs = list(inputs)
   idx_in = match.group(1).split(',')
@@ -109,12 +118,16 @@ def einsum(axes, *inputs):
   idx_all = set(''.join(idx_in))
   indices = str(idx_all)
 
-  assert len(idx_in) == len(inputs), \
-    "Expected %d inputs but only got %d" % (len(idx_in), len(inputs))
+  if len(idx_in) != len(inputs):
+    raise ValueError(
+      "Expected %d inputs but only got %d" % (len(idx_in), len(inputs))
+    )
 
   missing_idx = set(idx_out).difference(idx_all)
-  assert not missing_idx, \
-    "Unknown ouput axes: %s" % missing_idx
+  if missing_idx:
+    raise ValueError(
+      "Unknown ouput axes: %s" % missing_idx
+    )
 
   def axis_cmp(ax1, ax2):
     i1, i2 = idx_out.find(ax1), idx_out.find(ax2)
@@ -124,10 +137,12 @@ def einsum(axes, *inputs):
 
   # transpose inputs so axes are in order
   for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
-    assert input_.get_shape().ndims == len(axes_), \
-      "Input %d with axes %s has incorrect" \
-      " number of dimensions (expected %d, got %d)" % (
-        i, axes_, len(axes_), input_.get_shape().ndims
+    if input_.get_shape().ndims != len(axes_):
+      raise ValueError(
+        "Input %d with axes %s has incorrect" \
+        " number of dimensions (expected %d, got %d)" % (
+          i, axes_, len(axes_), input_.get_shape().ndims
+        )
       )
 
     sorted_idx = sorted(axes_, cmp=axis_cmp)
@@ -153,8 +168,10 @@ def einsum(axes, *inputs):
         if isinstance(dim, int) and dim > 1:
           dims.append(dim)
 
-    assert len(set(dims)) <= 1, \
-      "Dimension mismatch on axis: %s" % ax
+    if len(set(dims)) > 1:
+      raise ValueError(
+        "Dimension mismatch on axis: %s" % ax
+      )
 
     if ax not in idx_out:
       reduction_idx.append(j)

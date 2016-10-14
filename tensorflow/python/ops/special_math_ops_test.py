@@ -180,7 +180,7 @@ class EinsumTest(tf.test.TestCase):
 
       try:
         result = tf.einsum(axes, *inputs)
-      except AssertionError as e:
+      except ValueError as e:
         print(e)
       assert result is None, \
         "An exception should have been thrown."
@@ -194,7 +194,7 @@ class EinsumTest(tf.test.TestCase):
       result = None
       try:
         result = tf.einsum(axes, *inputs)
-      except AssertionError:
+      except ValueError:
         pass
       assert result is None, "An exception should have been thrown."
 
