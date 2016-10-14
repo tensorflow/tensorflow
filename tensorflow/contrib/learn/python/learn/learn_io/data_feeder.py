@@ -378,19 +378,26 @@ class DataFeeder(object):
     Returns:
       Two placeholders for inputs and outputs.
     """
-    input_shape = [None] + self.input_shape[1:]
-    self._input_placeholder = array_ops.placeholder(
-        dtypes.as_dtype(self._input_dtype),
-        input_shape,
-        name='input')
-    if self.output_shape is None:
-      self._output_placeholder = None
-    else:
-      output_shape = [None] + self.output_shape[1:]
-      self._output_placeholder = array_ops.placeholder(
-          dtypes.as_dtype(self._output_dtype),
-          output_shape,
-          name='output')
+    def get_placeholder(shape, dtype, name_prepend):
+      if shape is None:
+        return None
+      if isinstance(shape, dict):
+        placeholder = {}
+        for key in shape.keys():
+          placeholder[key] = array_ops.placeholder(
+            dtypes.as_dtype(dtype[key]),
+            [None] + shape[key][1:],
+            name=name_prepend + '_' + key
+          )
+      else:
+        placeholder = array_ops.placeholder(
+          dtypes.as_dtype(dtype),
+          [None] + shape[1:],
+          name=name_prepend)
+      return placeholder
+
+    self._input_placeholder = get_placeholder(self.input_shape, self._input_dtype, 'input')
+    self._output_placeholder = get_placeholder(self.output_shape, self._output_dtype, 'output')
     return self._input_placeholder, self._output_placeholder
 
   def set_placeholders(self, input_placeholder, output_placeholder):
