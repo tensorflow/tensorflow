@@ -483,8 +483,10 @@ class GcsWritableFile : public WritableFile {
       // This means GCS doesn't have any bytes of the file yet.
       *uploaded = 0;
     } else {
+      StringPiece range_piece(received_range);
+      range_piece.Consume("bytes=");  // May or may not be present.
       std::vector<int32> range_parts;
-      if (!str_util::SplitAndParseAsInts(received_range, '-', &range_parts) ||
+      if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
           range_parts.size() != 2) {
         return errors::Internal(strings::StrCat(
             "Unexpected response from GCS when writing ", GetGcsPath(),
