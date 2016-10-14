@@ -3714,6 +3714,22 @@ class StreamingConcatTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       metrics.streaming_concat(tf.placeholder(tf.float32, [None, None]))
 
+  def testStreamingConcatReset(self):
+    with self.test_session() as sess:
+      values = tf.placeholder(tf.int32, [None])
+      concatenated, update_op = metrics.streaming_concat(values)
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAllEqual([], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [0, 1, 2]})
+      self.assertAllEqual([0, 1, 2], concatenated.eval())
+
+      sess.run(tf.initialize_local_variables())
+
+      sess.run([update_op], feed_dict={values: [3, 4]})
+      self.assertAllEqual([3, 4], concatenated.eval())
+
 
 class AggregateMetricsTest(tf.test.TestCase):
 
