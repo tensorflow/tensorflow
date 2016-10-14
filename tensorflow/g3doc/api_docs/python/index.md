@@ -748,6 +748,8 @@
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
+  * [`Sigmoid`](../../api_docs/python/contrib.distributions.bijector.md#Sigmoid)
+  * [`Softmax`](../../api_docs/python/contrib.distributions.bijector.md#Softmax)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:

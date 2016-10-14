@@ -144,8 +144,7 @@ Tips for implementing `inverse_log_det_jacobian`:
       Observe that `y = g(x) = g(g^{-1}(y))`.
       From the chain rule we have `I = g'(g^{-1}(y))*g^{-1}'(y).`
       Since `g` is a bijection and `g`, `g^{-1}` are differentiable, g{-1}' is
-      non-singular and:
-      `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
+      non-singular therefore: `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
       The claim follows from [properties of determinant](
 https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
 
