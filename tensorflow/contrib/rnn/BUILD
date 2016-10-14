@@ -198,4 +198,3 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
 )
-
