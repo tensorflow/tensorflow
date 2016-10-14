@@ -21,7 +21,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.debug import local_cli
+from tensorflow.python import debug as tf_debug
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -48,7 +48,7 @@ def main(_):
   sess.run(tf.initialize_all_variables())
 
   # Wrap the TensorFlow Session object for debugging.
-  sess = local_cli.LocalCLIDebugWrapperSession(sess)
+  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
   sess.run(n1)
 
