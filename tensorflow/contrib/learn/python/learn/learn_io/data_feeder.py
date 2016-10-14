@@ -699,6 +699,10 @@ class DaskDataFeeder(object):
       input_dtype: dtype of input.
       output_dtype: dtype of output.
     """
+
+    if isinstance(x, dict) or isinstance(y, dict):
+      raise ValueError("DaskDataFeeder does not support dictionaries at the moment.")
+
     # pylint: disable=invalid-name,super-init-not-called
     import dask.dataframe as dd  # pylint: disable=g-import-not-at-top
     # TODO(terrytangyuan): check x and y dtypes in dask_io like pandas
