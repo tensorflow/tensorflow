@@ -33,13 +33,13 @@ class Trainable(object):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
-      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
-      y: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of targets. The training target values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
+      x: Matrix of shape [n_samples, n_features...] or the dictionary of Matrices.
+         Can be iterator that returns arrays of features or dictionary of arrays of features.
+         The training input samples for fitting the model. If set, `input_fn` must be `None`.
+      y: Vector or matrix [n_samples] or [n_samples, n_outputs] or the dictionary of same.
+         Can be iterator that returns array of targets or dictionary of array of targets.
+          The training target values (class labels in classification, real numbers in regression).
+          If set, `input_fn` must be `None`.
       input_fn: Input function returning a tuple of:
           features - Dictionary of string feature name to `Tensor` or `Tensor`.
           target - `Tensor` or dictionary of `Tensor` with target labels.
