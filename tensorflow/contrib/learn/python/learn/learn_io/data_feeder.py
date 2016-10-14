@@ -80,27 +80,6 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
   return input_shape, output_shape, batch_size
 
 
-def _get_in_out_shapeObsolete(x_shape, y_shape, n_classes, batch_size=None):
-  """Returns shape for input and output of the data feeder."""
-  if batch_size is None:
-    batch_size = x_shape[0]
-  elif batch_size <= 0:
-    raise ValueError('Invalid batch_size %d.' % batch_size)
-  x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
-  input_shape = [batch_size] + x_shape
-  if y_shape is None:
-    return input_shape, None, batch_size
-  y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
-  # Skip first dimension if it is 1.
-  if y_shape and y_shape[0] == 1:
-    y_shape = y_shape[1:]
-  if n_classes is not None and n_classes > 1:
-    output_shape = [batch_size] + y_shape + [n_classes]
-  else:
-    output_shape = [batch_size] + y_shape
-  return input_shape, output_shape, batch_size
-
-
 def _data_type_filter(x, y):
   """Filter data types into acceptable format."""
   if HAS_DASK:
