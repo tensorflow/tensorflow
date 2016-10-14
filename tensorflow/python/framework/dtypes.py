@@ -547,8 +547,11 @@ def as_dtype(type_value):
       return string
 
   for key, val in _NP_TO_TF:
-    if key == type_value:
-      return val
+    try:
+      if key == type_value:
+        return val
+    except TypeError as e:
+      raise TypeError("Cannot convert {} to a dtype. {}".format(type_value, e))
 
   raise TypeError(
       "Cannot convert value %r to a TensorFlow DType." % type_value)
