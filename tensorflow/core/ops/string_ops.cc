@@ -316,6 +316,9 @@ string, then as many characters as possible are used.
 If `pos` is negative or specifies a character index larger than any of the input
 strings, then an `InvalidArgumentError` is thrown.
 
+`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
+Op creation.
+
 The output `Tensor` shape matches that of the input, with each substring's index
 matching up with its parent string.
 
