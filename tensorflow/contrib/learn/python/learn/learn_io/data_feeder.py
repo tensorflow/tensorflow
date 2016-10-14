@@ -542,14 +542,14 @@ class StreamingDataFeeder(DataFeeder):
     self.n_classes = n_classes
 
     x_is_dict, y_is_dict = isinstance(x_first_el, dict), y is not None and isinstance(y_first_el, dict)
-    if y_is_dict:
-      assert(n_classes is None or isinstance(n_classes, dict), "n_class must be None or dict if y is a dictionary")
+    if y_is_dict and n_classes is not None:
+      assert(isinstance(n_classes, dict))
 
     # extract shapes for first_elements
     x_first_el_shape = dict([(k, [1]+list(v.shape)) for k, v in x_first_el.items()]) if x_is_dict \
         else [1] + list(x_first_el.shape)
 
-    y_first_el_shape =  dict([(k, [1] + list(v.shape)) for k, v in y_first_el.items()]) if y_is_dict \
+    y_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in y_first_el.items()]) if y_is_dict \
         else ([1] + list(y_first_el.shape) if y is not None else None)
 
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape( x_first_el_shape, y_first_el_shape,
@@ -596,38 +596,70 @@ class StreamingDataFeeder(DataFeeder):
       Returns:
         Dict of input and output tensors.
       """
+
+      def init_array(shape, dtype):
+        if shape is None:
+          return None
+        else:
+          return dict([(k, np.zeros(shape[k], dtype[k])) for k in shape.keys()]) if isinstance(shape, dict) else \
+            np.zeros(shape, dtype=dtype)
+
+      def put_data_array(dest, index, source=None, n_classes=None):
+         if source is None:
+           dest = dest[:index, :]
+         elif n_classes is not None and n_classes > 1:
+           if len(self.output_shape) == 2:
+             dest.itemset((index, source), 1.0)
+           else:
+             for idx, value in enumerate(source):
+               dest.itemset(tuple([index, idx, value]), 1.0)
+         else:
+           dest[index, :] = source
+         return dest
+
+      def put_data_array_or_dict(holder, index, data=None, n_classes=None):
+        if holder is None:
+          return None
+        if isinstance(holder, dict):
+          assert(isinstance(data, dict))
+          for k, v in holder.items():
+            num_classes = n_classes[k] if (n_classes is not None and k in n_classes) else None
+            holder[k] = put_data_array(holder[k], index, data[k], num_classes)
+        else:
+          holder = put_data_array(holder, index, data, n_classes)
+        return holder
+
       if self.stopped:
         raise StopIteration
-      inp = np.zeros(self.input_shape, dtype=self._input_dtype)
-      if self._y is not None:
-        out = np.zeros(self.output_shape, dtype=self._output_dtype)
+
+      inp = init_array(self.input_shape, self._input_dtype)
+      out = init_array(self.output_shape, self._output_dtype)
+
       for i in xrange(self._batch_size):
         # Add handling when queue ends.
         try:
-          inp[i, :] = six.next(self._x)
+          next_inp = six.next(self._x)
+          inp = put_data_array_or_dict(inp, i, next_inp, None)
         except StopIteration:
           self.stopped = True
           if i == 0:
             raise
-          inp = inp[:i, :]
-          if self._y is not None:
-            out = out[:i]
+          inp = put_data_array_or_dict(inp, i, None, None)
+          out = put_data_array_or_dict(out, i, None, None)
           break
 
         if self._y is not None:
-          y = six.next(self._y)
-          if self.n_classes is not None and self.n_classes > 1:
-            if len(self.output_shape) == 2:
-              out.itemset((i, y), 1.0)
-            else:
-              for idx, value in enumerate(y):
-                out.itemset(tuple([i, idx, value]), 1.0)
-          else:
-            out[i] = y
-      if self._y is None:
-        return {self._input_placeholder.name: inp}
-      return {self._input_placeholder.name: inp,
-              self._output_placeholder.name: out}
+          next_out = six.next(self._y)
+          out = put_data_array_or_dict(out, i, next_out, self.n_classes)
+
+      # creating feed_dict
+      feed_dict = dict([(self._input_placeholder[k].name, inp[k]) for k in self._input_placeholder.keys()]) if \
+          isinstance(inp, dict) else {self._input_placeholder.name: inp}
+      if self._y is not None:
+        feed_dict.update(dict([(self._output_placeholder[k].name, out[k]) for k in self._output_placeholder.keys()]) \
+            if isinstance(out, dict) else {self._output_placeholder.name: out})
+
+      return feed_dict
 
     return _feed_dict_fn
 
