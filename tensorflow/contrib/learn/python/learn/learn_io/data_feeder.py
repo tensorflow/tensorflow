@@ -431,6 +431,33 @@ class DataFeeder(object):
       A function that when called samples a random subset of batch size
       from x and y.
     """
+    x_is_dict, y_is_dict = isinstance(self._x, dict), self._y is not None and isinstance(self._y, dict)
+
+    # Assign input features from random indices.
+    def extract(data, indices):
+      return (np.array(_access(data, indices)).reshape((indices.shape[0], 1))
+              if len(data.shape) == 1 else _access(data, indices))
+
+    # assign labels from random indices
+    def assign_label(data, shape, dtype, n_classes, indices):
+      shape[0] = indices.shape[0]
+      out = np.zeros(shape, dtype=dtype)
+      for i in xrange(out.shape[0]):
+        sample = indices[i]
+        # self.n_classes is None means we're passing in raw target indices
+        if n_classes is None:
+          out[i] = _access(data, sample)
+        else:
+          if n_classes > 1:
+            if len(shape) == 2:
+              out.itemset((i, int(_access(data, sample))), 1.0)
+            else:
+              for idx, value in enumerate(_access(data, sample)):
+                out.itemset(tuple([i, idx, value]), 1.0)
+          else:
+            out[i] = _access(data, sample)
+      return out
+
     def _feed_dict_fn():
       """Function that samples data into given placeholders."""
       if self.max_epochs is not None and self.epoch + 1 > self.max_epochs:
@@ -441,20 +468,18 @@ class DataFeeder(object):
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
       # Take next batch of indices.
-      end = min(self._x.shape[0], self.offset + self._batch_size)
+      x_len = self._x.values()[0].shape[0] if x_is_dict else self._x.shape[0]
+      end = min(x_len, self.offset + self._batch_size)
       batch_indices = self.indices[self.offset:end]
 
-      # Assign input features from random indices.
-      inp = (
-          np.array(_access(self._x, batch_indices)).reshape(
-              (batch_indices.shape[0], 1))
-          if len(self._x.shape) == 1 else _access(self._x, batch_indices))
-      feed_dict[self._input_placeholder.name] = inp
+      # adding input placeholder
+      feed_dict.update(dict([(self._input_placeholder[k].name, extract(v, batch_indices)) for k, v in self._x.items()])
+                       if x_is_dict else {self._input_placeholder.name, extract(self._x, batch_indices)})
 
       # move offset and reset it if necessary
       self.offset += self._batch_size
-      if self.offset >= self._x.shape[0]:
-        self.indices = self.random_state.permutation(self._x.shape[0])
+      if self.offset >= x_len:
+        self.indices = self.random_state.permutation(x_len) if self._shuffle else np.array(range(x_len))
         self.offset = 0
         self.epoch += 1
 
@@ -462,24 +487,15 @@ class DataFeeder(object):
       if self._output_placeholder is None:
         return feed_dict
 
-      # assign labels from random indices
-      self.output_shape[0] = batch_indices.shape[0]
-      out = np.zeros(self.output_shape, dtype=self._output_dtype)
-      for i in xrange(out.shape[0]):
-        sample = batch_indices[i]
-        # self.n_classes is None means we're passing in raw target indices
-        if self.n_classes is None:
-          out[i] = _access(self._y, sample)
-        else:
-          if self.n_classes > 1:
-            if len(self.output_shape) == 2:
-              out.itemset((i, int(_access(self._y, sample))), 1.0)
-            else:
-              for idx, value in enumerate(_access(self._y, sample)):
-                out.itemset(tuple([i, idx, value]), 1.0)
-          else:
-            out[i] = _access(self._y, sample)
-      feed_dict[self._output_placeholder.name] = out
+      # adding output placeholders
+      if y_is_dict:
+        for k, v in self._y.items():
+          n_classes = (self.n_classes[k] if k in n_classes else None) if self.n_classes is not None else None
+          shape, dtype = self.output_shape[k], self._output_dtype[k]
+          feed_dict.update({self._output_placeholder[k].name: assign_label(v, shape, dtype, n_classes, batch_indices)})
+      else:
+        shape, dtype, n_classes = self.output_shape, self._output_dtype, self.n_classes
+        feed_dict.update({self._output_placeholder.name: assign_label(self._y, shape, dtype, n_classes, batch_indices)})
 
       return feed_dict
 
