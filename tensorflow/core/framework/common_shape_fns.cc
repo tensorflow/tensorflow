@@ -457,7 +457,7 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 4) {
     return errors::InvalidArgument(
-        "AvgPool requires the stride attribute to contain 4 values, but "
+        "MaxPool requires the stride attribute to contain 4 values, but "
         "got: ",
         strides.size());
   }
@@ -466,7 +466,7 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
   if (kernel_sizes.size() != 4) {
     return errors::InvalidArgument(
-        "AvgPool requires the ksize attribute to contain 4 values, but got: ",
+        "MaxPool requires the ksize attribute to contain 4 values, but got: ",
         kernel_sizes.size());
   }
 
