@@ -356,7 +356,7 @@ export class DataSet implements scatterPlot.DataSet {
   /**
    * Search the dataset based on a metadata field.
    */
-  query(query: string, inRegexMode: boolean, fieldName: string,): number[] {
+  query(query: string, inRegexMode: boolean, fieldName: string): number[] {
     let predicate = getSearchPredicate(query, inRegexMode, fieldName);
     let matches: number[] = [];
     this.points.forEach((point, id) => {
