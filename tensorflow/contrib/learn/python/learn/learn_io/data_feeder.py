@@ -518,8 +518,8 @@ class StreamingDataFeeder(DataFeeder):
       x: iterator that returns for each element, returns features.
       y: iterator that returns for each element, returns 1 or many classes /
          regression values.
-      n_classes: indicator of how many classes the label has.
-      batch_size: Mini batch size to accumulate.
+      n_classes: indicator of how many classes the target has.
+      batch_size: Mini batch size to accumulate. If set None then assumes iterator to return batches.
 
     Attributes:
       x: input features.
@@ -541,19 +541,38 @@ class StreamingDataFeeder(DataFeeder):
       y_first_el = None
       self._y = None
     self.n_classes = n_classes
-    x_first_el = ops.convert_to_tensor(x_first_el)
-    y_first_el = ops.convert_to_tensor(y_first_el) if y is not None else None
-    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-        [1] + list(x_first_el.get_shape()),
-        [1] + list(y_first_el.get_shape()) if y is not None else None,
-        n_classes,
-        batch_size)
-    self._input_dtype = _check_dtype(x_first_el.dtype).as_numpy_dtype
+
+    x_is_dict, y_is_dict = isinstance(x_first_el, dict), y is not None and isinstance(y_first_el, dict)
+    if y_is_dict:
+      assert(n_classes is None or isinstance(n_classes, dict), "n_class must be None or dict if y is a dictionary")
+
+    # extract shapes for first_elements
+    x_first_el_shape = dict([(k, [1]+list(v.shape)) for k, v in x_first_el.items()]) if x_is_dict \
+        else [1] + list(x_first_el.shape)
+
+    y_first_el_shape =  dict([(k, [1] + list(v.shape)) for k, v in y_first_el.items()]) if y_is_dict \
+        else ([1] + list(y_first_el.shape) if y is not None else None)
+
+    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape( x_first_el_shape, y_first_el_shape,
+          n_classes, batch_size)
+
+    # Input dtype of x_first_el.
+    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in x_first_el.items()]) if x_is_dict \
+        else _check_dtype(x_first_el.dtype)
+
+    # Output dtype of y_first_el.
+    def check_y_dtype(el):
+      if isinstance(el, list) or isinstance(el, np.ndarray):
+        return _check_dtype(np.dtype(type(el[0])))
+      else:
+        return _check_dtype(np.dtype(type(el)))
+
     # Output types are floats, due to both softmaxes and regression req.
-    if n_classes is not None and n_classes > 0:
-      self._output_dtype = np.float32
-    elif y is not None:
-      self._output_dtype = _check_dtype(y_first_el.dtype).as_numpy_dtype
+    if n_classes is not None and n_classes > 0 and (y is None or not y_is_dict):
+        self._output_dtype = np.float32
+    else:
+      self._output_dtype = dict([(k, check_y_dtype(v)) for k, v in y_first_el.items()]) if y_is_dict \
+        else (check_y_dtype(y_first_el) if y is not None else None)
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
