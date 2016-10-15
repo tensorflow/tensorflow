@@ -24,11 +24,13 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -153,6 +155,24 @@ class ResourceMgr {
 
   TF_DISALLOW_COPY_AND_ASSIGN(ResourceMgr);
 };
+
+// Makes a resource handle with the specified type for a given container /
+// name.
+template <typename T>
+ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
+                                  const string& name);
+
+// Create a resource pointed by a given resource handle.
+template <typename T>
+Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
+
+// Looks up a resource pointed by a given resource handle.
+template <typename T>
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
+
+// Destroys a resource pointed by a given resource handle.
+template <typename T>
+Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
 
 // Policy helper to decide which container/shared_name to use for a
 // stateful kernel that accesses shared resource.
@@ -291,6 +311,58 @@ Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
     shared_name = tensor.flat<string>()(1);
   }
   return ctx->resource_manager()->Lookup(container, shared_name, resource);
+}
+
+template <typename T>
+ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
+                                  const string& name) {
+  ResourceHandle result;
+  result.set_device(ctx->device()->attributes().name());
+  result.set_container(container);
+  result.set_name(name);
+  auto type_index = MakeTypeIndex<T>();
+  result.set_hash_code(type_index.hash_code());
+  result.set_maybe_type_name(type_index.name());
+  return result;
+}
+
+namespace internal {
+
+template <typename T>
+Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
+  if (ctx->device()->attributes().name() != p.device()) {
+    return errors::InvalidArgument(
+        "Trying to access resource located in device ", p.device(),
+        " from device ", ctx->device()->attributes().name());
+  }
+  auto type_index = MakeTypeIndex<T>();
+  if (type_index.hash_code() != p.hash_code()) {
+    return errors::InvalidArgument(
+        "Trying to access resource using the wrong type. Expected ",
+        p.maybe_type_name(), " got ", type_index.name());
+  }
+  return Status::OK();
+}
+
+}  // namespace internal
+
+template <typename T>
+Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value) {
+  TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  return ctx->resource_manager()->Create(p.container(), p.name(), value);
+}
+
+template <typename T>
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      T** value) {
+  TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  return ctx->resource_manager()->Lookup(p.container(), p.name(), value);
+}
+
+template <typename T>
+Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
+  TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }
 
 }  //  end namespace tensorflow
