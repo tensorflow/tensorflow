@@ -485,7 +485,7 @@ class GcsWritableFile : public WritableFile {
     } else {
       StringPiece range_piece(received_range);
       range_piece.Consume("bytes=");  // May or may not be present.
-      std::vector<int32> range_parts;
+      std::vector<int64> range_parts;
       if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
           range_parts.size() != 2) {
         return errors::Internal(strings::StrCat(
