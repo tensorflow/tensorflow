@@ -563,7 +563,8 @@ def _py_wrap_cc_impl(ctx):
              inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
-             progress_message="SWIGing {input}".format(input=src.path))
+             progress_message="SWIGing {input}".format(input=src.path),
+             use_default_shell_env=True)
   return struct(files=set(outputs))
 
 _py_wrap_cc = rule(
