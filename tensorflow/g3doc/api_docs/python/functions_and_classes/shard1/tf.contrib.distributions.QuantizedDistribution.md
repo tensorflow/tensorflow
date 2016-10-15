@@ -50,20 +50,19 @@ entropy are better done with samples or approximations, and are not
 implemented by this class.
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.__init__(base_dist_cls, lower_cutoff=None, upper_cutoff=None, name='QuantizedDistribution', **base_dist_args)` {#QuantizedDistribution.__init__}
+#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, lower_cutoff=None, upper_cutoff=None, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
 
-Construct a Quantized Distribution.
+Construct a Quantized Distribution representing `Y = ceiling(X)`.
 
 Some properties are inherited from the distribution defining `X`.
 In particular, `validate_args` and `allow_nan_stats` are determined for this
-`QuantizedDistribution` by reading the additional kwargs passed as
-`base_dist_args`.
+`QuantizedDistribution` by reading the `distribution`.
 
 ##### Args:
 
 
-*  <b>`base_dist_cls`</b>: the base distribution class to transform. Must be a
-      subclass of `Distribution` implementing `cdf`.
+*  <b>`distribution`</b>: The base distribution class to transform. Typically an
+    instance of `Distribution`.
 *  <b>`lower_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's pdf/pmf should be defined at
@@ -74,13 +73,11 @@ In particular, `validate_args` and `allow_nan_stats` are determined for this
     `upper_cutoff - 1`.
     `upper_cutoff` must be strictly greater than `lower_cutoff`.
 *  <b>`name`</b>: The name for the distribution.
-*  <b>`**base_dist_args`</b>: kwargs to pass on to dist_cls on construction.
-    These determine the shape and dtype of this distribution.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `base_dist_cls` is not a subclass of
+*  <b>`TypeError`</b>: If `dist_cls` is not a subclass of
       `Distribution` or continuous.
 *  <b>`NotImplementedError`</b>: If the base distribution does not implement `cdf`.
 
@@ -104,13 +101,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.base_distribution` {#QuantizedDistribution.base_distribution}
-
-Base distribution, p(x).
 
 
 - - -
@@ -175,6 +165,13 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.distribution` {#QuantizedDistribution.distribution}
+
+Base distribution, p(x).
 
 
 - - -
