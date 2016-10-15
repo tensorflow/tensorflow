@@ -51,6 +51,36 @@ func TestOperationLifetime(t *testing.T) {
 	}
 }
 
+func TestOperationOutputListSize(t *testing.T) {
+	graph := NewGraph()
+	c1, err := Const(graph, "c1", int64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := Const(graph, "c2", [][]int64{{1, 2}, {3, 4}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The ShapeN op takes a list of tensors as input and a list as output.
+	op, err := graph.AddOperation(OpSpec{
+		Type:  "ShapeN",
+		Input: []Input{OutputList{c1, c2}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := op.OutputListSize("output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := n, 2; got != want {
+		t.Errorf("Got %d, want %d", got, want)
+	}
+	if got, want := op.NumOutputs(), 2; got != want {
+		t.Errorf("Got %d, want %d", got, want)
+	}
+}
+
 func TestOutputShape(t *testing.T) {
 	graph := NewGraph()
 	testdata := []struct {

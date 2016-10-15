@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, DataProto, DataSet, MetadataInfo, Projection, State} from './data';
+import * as logging from './logging';
 import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
@@ -108,6 +109,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
     this.dom = d3.select(this);
+    logging.setDomContainer(this);
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
     this.inspectorPanel.initialize(this);

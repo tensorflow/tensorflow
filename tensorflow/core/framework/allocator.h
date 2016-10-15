@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -213,6 +214,15 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~string();
   }
 
+  virtual void RunResourceCtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
+  }
+
+  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
+  virtual void RunResourceDtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+  }
+
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
@@ -228,6 +238,16 @@ inline void Allocator::RunCtor(string* p, size_t n) {
 template <>
 inline void Allocator::RunDtor(string* p, size_t n) {
   RunStringDtor(p, n);
+}
+
+template <>
+inline void Allocator::RunCtor(ResourceHandle* p, size_t n) {
+  RunResourceCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
+  RunResourceDtor(p, n);
 }
 
 // A tensorflow Op may need access to different kinds of memory that

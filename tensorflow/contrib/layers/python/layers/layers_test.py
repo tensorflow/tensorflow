@@ -1550,6 +1550,14 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(mean, expected_mean)
       self.assertAllClose(variance, expected_var)
 
+  def testEvalMovingVarsWithPartitioner(self):
+    # This test makes sure that the moving-mean and moving-variance logic works
+    # when `batch_norm` is called within a variable-scope that has a variable
+    # partitioner.
+    partitioner = tf.fixed_size_partitioner(2, axis=0)
+    with tf.variable_scope(tf.get_variable_scope(), partitioner=partitioner):
+      self.testEvalMovingVars()
+
   def _testReuseVars(self, fused):
     height, width = 3, 3
     batch_size = 10

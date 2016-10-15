@@ -120,6 +120,7 @@ time.
 @@streaming_sensitivity_at_specificity
 @@streaming_sparse_average_precision_at_k
 @@streaming_sparse_precision_at_k
+@@streaming_sparse_precision_at_top_k
 @@streaming_sparse_recall_at_k
 @@streaming_specificity_at_sensitivity
 @@streaming_concat
@@ -172,6 +173,7 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sensitivity_at_specificity
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_average_precision_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_specificity_at_sensitivity
 from tensorflow.contrib.metrics.python.ops.set_ops import set_difference

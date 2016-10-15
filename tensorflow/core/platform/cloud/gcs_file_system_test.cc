@@ -238,6 +238,17 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes 11-16/17\n"
                            "Put body: ntent2\n",
+                           "", errors::Unavailable("503"), 503),
+       new FakeHttpRequest("Uri: https://custom/upload/location\n"
+                           "Auth Token: fake_token\n"
+                           "Header Content-Range: bytes */17\n"
+                           "Put: yes\n",
+                           "", errors::Unavailable("308"), nullptr,
+                           {{"Range", "bytes=0-12"}}, 308),
+       new FakeHttpRequest("Uri: https://custom/upload/location\n"
+                           "Auth Token: fake_token\n"
+                           "Header Content-Range: bytes 13-16/17\n"
+                           "Put body: ent2\n",
                            "")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(

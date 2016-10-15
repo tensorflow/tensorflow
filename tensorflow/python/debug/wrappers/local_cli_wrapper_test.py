@@ -22,7 +22,7 @@ import shutil
 import tempfile
 
 from tensorflow.python.client import session
-from tensorflow.python.debug import local_cli
+from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -37,13 +37,14 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       shutil.rmtree(self._tmp_dir)
 
   def testConstructWrapper(self):
-    local_cli.LocalCLIDebugWrapperSession(session.Session(), log_usage=False)
+    local_cli_wrapper.LocalCLIDebugWrapperSession(
+        session.Session(), log_usage=False)
 
   def testConstructWrapperWithExistingEmptyDumpRoot(self):
     os.mkdir(self._tmp_dir)
     self.assertTrue(os.path.isdir(self._tmp_dir))
 
-    local_cli.LocalCLIDebugWrapperSession(
+    local_cli_wrapper.LocalCLIDebugWrapperSession(
         session.Session(), dump_root=self._tmp_dir, log_usage=False)
 
   def testConstructWrapperWithExistingNonEmptyDumpRoot(self):
@@ -54,7 +55,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegexp(
         ValueError, "dump_root path points to a non-empty directory"):
-      local_cli.LocalCLIDebugWrapperSession(
+      local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=self._tmp_dir, log_usage=False)
 
   def testConstructWrapperWithExistingFileDumpRoot(self):
@@ -64,7 +65,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(os.path.isfile(file_path))
     with self.assertRaisesRegexp(
         ValueError, "dump_root path points to a file"):
-      local_cli.LocalCLIDebugWrapperSession(
+      local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=file_path, log_usage=False)
 
 

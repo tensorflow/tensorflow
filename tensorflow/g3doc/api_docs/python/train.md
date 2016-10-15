@@ -3403,6 +3403,7 @@ Run: When `run()` is called, the monitored session does following things:
 
 
 Exit: At the `close()`, the monitored session does following things in order:
+
 * calls `hook.end()`
 * closes the queue runners and the session
 * surpresses `OutOfRange` error which indicates that all inputs have been
