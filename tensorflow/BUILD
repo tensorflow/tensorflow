@@ -45,12 +45,6 @@ config_setting(
 )
 
 config_setting(
-    name = "windows",
-    values = {"cpu": "x64_windows_msvc"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "ios",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",

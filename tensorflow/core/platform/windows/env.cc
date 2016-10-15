@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
 
-#pragma comment(lib, "Shlwapi.lib")
-
 namespace tensorflow {
 
 namespace {
