@@ -455,7 +455,7 @@ class DataFeeder(object):
 
       # adding input placeholder
       feed_dict.update(dict([(self._input_placeholder[k].name, extract(v, batch_indices)) for k, v in self._x.items()])
-                       if x_is_dict else {self._input_placeholder.name, extract(self._x, batch_indices)})
+                       if x_is_dict else {self._input_placeholder.name: extract(self._x, batch_indices)})
 
       # move offset and reset it if necessary
       self.offset += self._batch_size
@@ -596,7 +596,10 @@ class StreamingDataFeeder(DataFeeder):
              for idx, value in enumerate(source):
                dest.itemset(tuple([index, idx, value]), 1.0)
          else:
-           dest[index, :] = source
+           if len(dest.shape) > 1:
+             dest[index, :] = source
+           else:
+             dest[index] = source
          return dest
 
       def put_data_array_or_dict(holder, index, data=None, n_classes=None):
