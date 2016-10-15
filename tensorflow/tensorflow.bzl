@@ -140,12 +140,6 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
-def if_not_windows(a):
-  return select({
-      "//tensorflow:windows": [],
-      "//conditions:default": a,
-  })  
-
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
@@ -157,10 +151,6 @@ def tf_copts():
                     "-O2",
                   ],
                   "//tensorflow:darwin": [],
-                  "//tensorflow:windows": [
-                    "/DLANG_CXX11",
-                    "/D__VERSION__=\\\"MSVC\\\"",
-                  ],
                   "//tensorflow:ios": ["-std=c++11",],
                   "//conditions:default": ["-pthread"]}))
 
