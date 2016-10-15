@@ -491,15 +491,6 @@ class FillTest(tf.test.TestCase):
     np_ans = np.array([[0.15] * 3] * 2).astype(np.complex128)
     self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
 
-  def testFillQUint8(self):
-    np_ans = np.array([[42] * 3] * 2).astype(np.uint8)
-    with self.test_session(use_gpu=False):
-      val = tf.placeholder(dtype=tf.quint8, shape=())
-      tf_ans = tf.fill([2,3], val, name="fill")
-      out = tf_ans.eval(
-          feed_dict={val: np.array([42]).reshape([]).astype(np.uint8)})
-    self.assertAllClose(np_ans, out)
-
   def testFillString(self):
     np_ans = np.array([[b"yolo"] * 3] * 2)
     with self.test_session(use_gpu=False):
