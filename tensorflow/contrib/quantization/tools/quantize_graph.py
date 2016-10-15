@@ -298,7 +298,7 @@ class GraphRewriter(object):
     """Builds a mapping of node names to their defs from the graph."""
     nodes_map = {}
     for node in graph.node:
-      if node.name not in nodes_map.keys():
+      if node.name not in nodes_map:
         nodes_map[node.name] = node
       else:
         raise ValueError("Duplicate node names detected.")
