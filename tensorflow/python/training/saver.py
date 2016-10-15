@@ -1203,15 +1203,8 @@ class Saver(object):
     Args:
       checkpoint_paths: a list of checkpoint paths.
     """
-    last_checkpoints = []
-    for checkpoint_prefix in checkpoint_paths:
-      pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
-                                            self.saver_def.version)
-      fnames = file_io.get_matching_files(pathname)
-      if fnames:
-        mtime = int(file_io.stat(fnames[0]).mtime_nsec / 1e9)
-        last_checkpoints.append((checkpoint_prefix, mtime))
-    self.set_last_checkpoints_with_time(last_checkpoints)
+    mtimes = get_checkpoint_mtimes(checkpoint_paths)
+    self.set_last_checkpoints_with_time(list(zip(checkpoint_paths, mtimes)))
 
   def save(self,
            sess,
@@ -1641,6 +1634,68 @@ def export_meta_graph(filename=None,
         os.path.basename(filename),
         as_text=as_text)
   return meta_graph_def
+
+
+def checkpoint_exists(checkpoint_prefix):
+  """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
+
+  This is the recommended way to check if a checkpoint exists, since it takes
+  into account the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefix: the prefix of a V1 or V2 checkpoint, with V2 taking
+      priority.  Typically the result of `Saver.save()` or that of
+      `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
+      V1/V2.
+  Returns:
+    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+  """
+  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                        saver_pb2.SaverDef.V2)
+  if file_io.get_matching_files(pathname):
+    return True
+  elif file_io.get_matching_files(checkpoint_prefix):
+    return True
+  else:
+    return False
+
+
+def get_checkpoint_mtimes(checkpoint_prefixes):
+  """Returns the mtimes (modification timestamps) of the checkpoints.
+
+  Globs for the checkpoints pointed to by `checkpoint_prefixes`.  If the files
+  exist, collect their mtime.  Both V2 and V1 checkpoints are considered, in
+  that priority.
+
+  This is the recommended way to get the mtimes, since it takes into account
+  the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefixes: a list of checkpoint paths, typically the results of
+      `Saver.save()` or those of `tf.train.latest_checkpoint()`, regardless of
+      sharded/non-sharded or V1/V2.
+  Returns:
+    A list of mtimes (in microseconds) of the found checkpoints.
+  """
+  mtimes = []
+
+  def match_maybe_append(pathname):
+    fnames = file_io.get_matching_files(pathname)
+    if fnames:
+      mtimes.append(file_io.stat(fnames[0]).mtime_nsec / 1e9)
+      return True
+    return False
+
+  for checkpoint_prefix in checkpoint_prefixes:
+    # Tries V2's metadata file first.
+    pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                          saver_pb2.SaverDef.V2)
+    if match_maybe_append(pathname):
+      continue
+    # Otherwise, tries V1, where the prefix is the complete pathname.
+    match_maybe_append(checkpoint_prefix)
+
+  return mtimes
 
 
 ops.register_proto_function(

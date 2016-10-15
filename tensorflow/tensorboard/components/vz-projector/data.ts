@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateWarningMessage} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
 import * as scatterPlot from './scatterPlot';
-import {shuffle, getSearchPredicate} from './util';
+import {shuffle, getSearchPredicate, runAsyncTask} from './util';
+import * as logging from './logging';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
@@ -325,15 +325,16 @@ export class DataSet implements scatterPlot.DataSet {
     });
   }
 
-  mergeMetadata(info: MetadataInfo) {
-    if (info.pointsInfo.length !== this.points.length) {
-      updateWarningMessage(
+  mergeMetadata(metadata: MetadataInfo) {
+    if (metadata.pointsInfo.length !== this.points.length) {
+      logging.setWarningMessage(
           `Number of tensors (${this.points.length}) do not match` +
-          ` the number of lines in metadata (${info.pointsInfo.length}).`);
+          ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
     }
-    this.spriteImage = info.spriteImage;
-    this.datasetInfo = info.datasetInfo;
-    info.pointsInfo.forEach((m, i) => this.points[i].metadata = m);
+    this.spriteImage = metadata.spriteImage;
+    this.datasetInfo = metadata.datasetInfo;
+    metadata.pointsInfo.slice(0, this.points.length)
+        .forEach((m, i) => this.points[i].metadata = m);
   }
 
   stopTSNE() { this.tSNEShouldStop = true; }
@@ -355,7 +356,7 @@ export class DataSet implements scatterPlot.DataSet {
   /**
    * Search the dataset based on a metadata field.
    */
-  query(query: string, inRegexMode: boolean, fieldName: string,): number[] {
+  query(query: string, inRegexMode: boolean, fieldName: string): number[] {
     let predicate = getSearchPredicate(query, inRegexMode, fieldName);
     let matches: number[] = [];
     this.points.forEach((point, id) => {

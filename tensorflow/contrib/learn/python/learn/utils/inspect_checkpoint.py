@@ -23,8 +23,6 @@ import sys
 
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
-
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string("file_name", "", "Checkpoint filename")
 tf.app.flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
@@ -44,12 +42,12 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
   """
   try:
     if not tensor_name:
-      variables = checkpoints.list_variables(file_name)
+      variables = tf.contrib.framework.list_variables(file_name)
       for name, shape in variables:
         print("%s\t%s" % (name, str(shape)))
     else:
       print("tensor_name: ", tensor_name)
-      print(checkpoints.load_variable(file_name, tensor_name))
+      print(tf.contrib.framework.load_variable(file_name, tensor_name))
   except Exception as e:  # pylint: disable=broad-except
     print(str(e))
     if "corrupted compressed block contents" in str(e):

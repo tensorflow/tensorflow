@@ -71,11 +71,13 @@ class InvertPermutationOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("InvertPermutation").Device(DEVICE_CPU),
-                        InvertPermutationOp);
+REGISTER_KERNEL_BUILDER(
+    Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    InvertPermutationOp);
 
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
                         InvertPermutationOp);

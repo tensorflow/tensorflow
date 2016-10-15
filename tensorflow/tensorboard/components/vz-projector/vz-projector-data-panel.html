@@ -30,7 +30,7 @@ limitations under the License.
 <style include="vz-projector-styles"></style>
 <style>
 .container {
-  padding: 20px;
+  padding: 10px 20px 20px 20px;
 }
 
 input[type=file] {
@@ -42,8 +42,10 @@ input[type=file] {
 }
 
 .dirs {
+  color: rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
+  font-size: 12px;
   margin: 15px 0;
   line-height: 20px;
 }
@@ -79,35 +81,29 @@ paper-dropdown-menu paper-item {
 }
 
 .title {
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   color: black;
+  display: flex;
   font-weight: 500;
+  height: 50px;
+  padding-left: 20px;
 }
 
 #upload-buttons {
   display: flex;
   justify-content: space-between;
 }
+
+#normalize-data-checkbox {
+  margin: 10px 0;
+}
 </style>
-
+<div class="title">DATA</div>
 <div class="container">
-  <div class="title">DATA</div>
-  <div class="dirs">
-    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
-    <div class="dir">Metadata: <span id="metadata-file"></span></div>
-  </div>
-
-  <paper-checkbox id="normalize-data-checkbox" checked="{{normalizeData}}">
-    Normalize data
-    <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
-    <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
-      The data is normalized by shifting each point by the centroid and making
-      it unit norm.
-    </paper-tooltip>
-  </paper-checkbox>
-
   <!-- List of runs -->
   <template is="dom-if" if="[[_hasChoices(runNames)]]">
-    <paper-dropdown-menu no-animations vertical-align="bottom" label="[[_getNumRunsLabel(runNames)]] found">
+    <paper-dropdown-menu no-animations label="[[_getNumRunsLabel(runNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
         <template is="dom-repeat" items="[[runNames]]">
           <paper-item value="[[item]]" label="[[item]]">
@@ -120,7 +116,7 @@ paper-dropdown-menu paper-item {
 
   <template is="dom-if" if="[[tensorNames]]">
     <!-- List of tensors in checkpoint -->
-    <paper-dropdown-menu no-animations vertical-align="bottom" label="[[_getNumTensorsLabel(tensorNames)]] found">
+    <paper-dropdown-menu no-animations label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
           <paper-item value="[[item.name]]" label="[[item.name]]">
@@ -135,7 +131,7 @@ paper-dropdown-menu paper-item {
   </template>
   <!-- Label by -->
   <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
-    <paper-dropdown-menu no-animations vertical-align="bottom" label="Label by">
+    <paper-dropdown-menu no-animations label="Label by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedLabelOption}}">
         <template is="dom-repeat" items="[[labelOptions]]">
           <paper-item value="[[item]]" label="[[item]]">
@@ -148,7 +144,7 @@ paper-dropdown-menu paper-item {
 
   <!-- Color by -->
   <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
-    <paper-dropdown-menu id="colorby" no-animations vertical-align="bottom" label="Color by">
+    <paper-dropdown-menu id="colorby" no-animations label="Color by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
         <template is="dom-repeat" items="[[colorOptions]]">
           <paper-item class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item.name]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
@@ -160,7 +156,14 @@ paper-dropdown-menu paper-item {
     </paper-dropdown-menu>
     <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
   </template>
-
+  <paper-checkbox id="normalize-data-checkbox" checked="{{normalizeData}}">
+    Sphereize data
+    <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+    <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
+      The data is normalized by shifting each point by the centroid and making
+      it unit norm.
+    </paper-tooltip>
+  </paper-checkbox>
   <!-- Upload buttons -->
   <div id="upload-buttons">
     <!-- Upload data -->
@@ -173,6 +176,10 @@ paper-dropdown-menu paper-item {
       <button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload Metadata</button>
       <input type="file" id="file-metadata" name="file-metadata"/>
     </div>
+  </div>
+    <div class="dirs">
+    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
+    <div class="dir">Metadata: <span id="metadata-file"></span></div>
   </div>
 </div>
 <!-- Closing global template -->
