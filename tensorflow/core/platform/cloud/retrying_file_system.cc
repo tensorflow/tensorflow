@@ -57,8 +57,6 @@ Status CallWithRetries(const std::function<Status()>& f,
       return status;
     }
     const int64 delay_micros = initial_delay_microseconds << retries;
-    LOG(ERROR) << "The operation resulted in an error: " << status.ToString()
-               << " will be retried after " << delay_micros << " microseconds";
     WaitBeforeRetry(delay_micros);
     retries++;
   }

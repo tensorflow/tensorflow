@@ -29,6 +29,13 @@ class TensorTestHelper {
   static void set_shape(Tensor* t, const TensorShape& s) { t->set_shape(s); }
 };
 
+// To make TestCopies do the right thing.
+inline bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
+  return a.device() == b.device() && a.container() == b.container() &&
+         a.name() == b.name() && a.hash_code() == b.hash_code() &&
+         a.maybe_type_name() == b.maybe_type_name();
+}
+
 TEST(TensorTest, Default) {
   Tensor t;
   EXPECT_EQ(t.dtype(), DT_FLOAT);
@@ -141,6 +148,14 @@ TEST(Tensor_Float, Simple) {
     }
   }
   TestCopies<float>(t);
+}
+
+TEST(Tensor_ResourceHandle, Simple) {
+  Tensor t(DT_RESOURCE, TensorShape({}));
+  ResourceHandle tmp;
+  tmp.set_name("a");
+  t.flat<ResourceHandle>()(0) = tmp;
+  TestCopies<ResourceHandle>(t);
 }
 
 TEST(Tensor_UInt16, Simple) {

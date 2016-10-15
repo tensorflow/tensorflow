@@ -135,7 +135,7 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     _ = run_context
     if self._iter_count % self._every_n_iter == 0:
       stats = []
-      for tag in sorted(self._current_tensors.keys()):
+      for tag in self._current_tensors.keys():
         stats.append("%s = %s" % (tag, run_values.results[tag]))
       logging.info("%s", ", ".join(stats))
     self._iter_count += 1

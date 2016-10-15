@@ -14,10 +14,10 @@ operations. Here's an example taken from the [tf.contrib.learn quickstart
 tutorial](../tflearn/index.md):
 
 ```py
-training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
-                                                       target_dtype=np.int)
-test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
-                                                   target_dtype=np.int)
+training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TRAINING, target_dtype=np.int)
+test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TEST, target_dtype=np.int)
 ...
 
 classifier.fit(x=training_set.data,

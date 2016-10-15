@@ -68,6 +68,7 @@ def tf_android_core_proto_sources_relative():
         "framework/log_memory.proto",
         "framework/node_def.proto",
         "framework/op_def.proto",
+        "framework/resource_handle.proto",
         "framework/step_stats.proto",
         "framework/summary.proto",
         "framework/tensor.proto",
