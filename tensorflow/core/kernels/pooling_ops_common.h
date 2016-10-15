@@ -84,23 +84,30 @@ class MaxPoolingOp : public OpKernel {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
-    OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
+//    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+//    OP_REQUIRES(context, ksize_.size() == 4,
+//                errors::InvalidArgument("Sliding window ksize field must "
+//                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+    OP_REQUIRES(context, stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,      stride_,
+    const Tensor& ksize = context->input(1);
+    std::vector<int32> ksize_local(4);
+    const int32* array = reinterpret_cast<const int32*>(ksize.flat<int32>().data());
+    ksize_local[0]=array[0];
+    ksize_local[1]=array[1];
+    ksize_local[2]=array[2];
+    ksize_local[3]=array[3];
+    PoolParameters params{context,  ksize_local,      stride_,
                           padding_, FORMAT_NHWC, tensor_in.shape()};
     if (!context->status().ok()) {
       return;
