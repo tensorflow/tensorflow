@@ -7,6 +7,8 @@
 |-------------------|----------------------|------------------|----------------|
 | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-cpu)](https://ci.tensorflow.org/job/tensorflow-master-cpu) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-gpu_pip)](https://ci.tensorflow.org/job/tensorflow-master-gpu_pip) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-mac)](https://ci.tensorflow.org/job/tensorflow-master-mac) | [![Build Status](https://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-android)](https://ci.tensorflow.org/job/tensorflow-master-android) |
 
+<img src="https://codeship.com/projects/YOUR_PROJECT_UUID/status?branch=master">
+
 **TensorFlow** is an open source software library for numerical computation using
 data flow graphs.  Nodes in the graph represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
