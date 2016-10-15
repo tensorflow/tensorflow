@@ -945,7 +945,7 @@ def convolution2d_transpose(
   Raises:
     ValueError: if 'kernel_size' is not a list of length 2.
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if `C` dimension is None.
+    ValueError: if `C` dimension of `inputs` is None.
   """
   with variable_scope.variable_scope(
       scope, 'Conv2d_transpose', [inputs], reuse=reuse) as sc:
@@ -960,7 +960,7 @@ def convolution2d_transpose(
       h_axis, w_axis, c_axis = 1, 2, 3
     num_filters_in = inputs.get_shape()[c_axis].value
     if num_filters_in is None:
-      raise ValueError('`C` dimension must be known but is None.')
+      raise ValueError('`C` dimension of `inputs` must be known but is None.')
     weights_shape = [kernel_h, kernel_w, num_outputs, num_filters_in]
     weights_collections = utils.get_variable_collections(
         variables_collections, 'weights')

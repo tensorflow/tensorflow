@@ -792,7 +792,7 @@ def conv2d_transpose(value,
   Args:
     value: A 4-D `Tensor` of type `float` and shape
       `[batch, height, width, in_channels]` for `NHWC` data format or
-      `[batch, in_channels, height, width]` for `NCHW` data format .
+      `[batch, in_channels, height, width]` for `NCHW` data format.
     filter: A 4-D `Tensor` with the same type as `value` and shape
       `[height, width, output_channels, in_channels]`.  `filter`'s
       `in_channels` dimension must match that of `value`.
