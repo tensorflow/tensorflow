@@ -40,6 +40,7 @@ py_library(
         ":summary",
         ":training",
         "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/debug:debug_py",
     ],
 )
 

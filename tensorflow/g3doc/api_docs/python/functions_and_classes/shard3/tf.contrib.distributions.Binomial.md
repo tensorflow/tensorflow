@@ -135,7 +135,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.cdf(value, name='cdf')` {#Binomial.cdf}
+#### `tf.contrib.distributions.Binomial.cdf(value, name='cdf', **condition_kwargs)` {#Binomial.cdf}
 
 Cumulative distribution function.
 
@@ -150,6 +150,7 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -169,7 +170,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.Binomial.entropy(name='entropy')` {#Binomial.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
@@ -233,7 +234,7 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf')` {#Binomial.log_cdf}
+#### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Binomial.log_cdf}
 
 Log cumulative distribution function.
 
@@ -252,6 +253,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -262,7 +264,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_pdf(value, name='log_pdf')` {#Binomial.log_pdf}
+#### `tf.contrib.distributions.Binomial.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Binomial.log_pdf}
 
 Log probability density function.
 
@@ -271,6 +273,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -286,7 +289,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_pmf(value, name='log_pmf')` {#Binomial.log_pmf}
+#### `tf.contrib.distributions.Binomial.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Binomial.log_pmf}
 
 Log probability mass function.
 
@@ -295,6 +298,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -310,7 +314,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_prob(value, name='log_prob')` {#Binomial.log_prob}
+#### `tf.contrib.distributions.Binomial.log_prob(value, name='log_prob', **condition_kwargs)` {#Binomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -332,6 +336,7 @@ values.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -342,7 +347,7 @@ values.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_survival_function(value, name='log_survival_function')` {#Binomial.log_survival_function}
+#### `tf.contrib.distributions.Binomial.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Binomial.log_survival_function}
 
 Log survival function.
 
@@ -362,6 +367,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -468,7 +474,7 @@ Dictionary of parameters used by this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.pdf(value, name='pdf')` {#Binomial.pdf}
+#### `tf.contrib.distributions.Binomial.pdf(value, name='pdf', **condition_kwargs)` {#Binomial.pdf}
 
 Probability density function.
 
@@ -477,6 +483,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -492,7 +499,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.pmf(value, name='pmf')` {#Binomial.pmf}
+#### `tf.contrib.distributions.Binomial.pmf(value, name='pmf', **condition_kwargs)` {#Binomial.pmf}
 
 Probability mass function.
 
@@ -501,6 +508,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -516,7 +524,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.prob(value, name='prob')` {#Binomial.prob}
+#### `tf.contrib.distributions.Binomial.prob(value, name='prob', **condition_kwargs)` {#Binomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -538,6 +546,7 @@ values.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -548,7 +557,7 @@ values.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.sample(sample_shape=(), seed=None, name='sample')` {#Binomial.sample}
+#### `tf.contrib.distributions.Binomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Binomial.sample}
 
 Generate samples of the specified shape.
 
@@ -561,6 +570,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -570,7 +580,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.sample_n(n, seed=None, name='sample_n')` {#Binomial.sample_n}
+#### `tf.contrib.distributions.Binomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Binomial.sample_n}
 
 Generate `n` samples.
 
@@ -581,6 +591,7 @@ Generate `n` samples.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -602,7 +613,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.survival_function(value, name='survival_function')` {#Binomial.survival_function}
+#### `tf.contrib.distributions.Binomial.survival_function(value, name='survival_function', **condition_kwargs)` {#Binomial.survival_function}
 
 Survival function.
 
@@ -619,6 +630,7 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

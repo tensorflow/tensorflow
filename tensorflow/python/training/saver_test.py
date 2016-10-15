@@ -1692,5 +1692,39 @@ class WriteGraphTest(tf.test.TestCase):
                          "/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
 
 
+class SaverUtilsTest(tf.test.TestCase):
+
+  def testCheckpointExists(self):
+    for sharded in (False, True):
+      for version in (tf.train.SaverDef.V2, tf.train.SaverDef.V1):
+        with self.test_session(graph=tf.Graph()) as sess:
+          unused_v = tf.Variable(1.0, name="v")
+          tf.initialize_all_variables().run()
+          saver = tf.train.Saver(sharded=sharded, write_version=version)
+
+          path = os.path.join(self.get_temp_dir(), "%s-%s" % (sharded, version))
+          self.assertFalse(tf.train.checkpoint_exists(path))  # Not saved yet.
+
+          ckpt_prefix = saver.save(sess, path)
+          self.assertTrue(tf.train.checkpoint_exists(ckpt_prefix))
+
+          ckpt_prefix = tf.train.latest_checkpoint(self.get_temp_dir())
+          self.assertTrue(tf.train.checkpoint_exists(ckpt_prefix))
+
+  def testGetCheckpointMtimes(self):
+    prefixes = []
+    for version in (tf.train.SaverDef.V2, tf.train.SaverDef.V1):
+      with self.test_session(graph=tf.Graph()) as sess:
+        unused_v = tf.Variable(1.0, name="v")
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(write_version=version)
+        prefixes.append(
+            saver.save(sess, os.path.join(self.get_temp_dir(), str(version))))
+
+    mtimes = tf.train.get_checkpoint_mtimes(prefixes)
+    self.assertEqual(2, len(mtimes))
+    self.assertTrue(mtimes[1] >= mtimes[0])
+
+
 if __name__ == "__main__":
   tf.test.main()

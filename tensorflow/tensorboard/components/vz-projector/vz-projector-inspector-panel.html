@@ -33,7 +33,7 @@ limitations under the License.
 
 .container {
   display: block;
-  padding: 0 20px;
+  padding: 10px 20px 0 20px;
 }
 
 .buttons {
@@ -128,6 +128,10 @@ limitations under the License.
   color: #009EFE;
 }
 
+.neighbors {
+  margin-bottom: 30px;
+}
+
 .neighbors-options {
   margin-top: 6px;
 }
@@ -172,7 +176,7 @@ limitations under the License.
     <button class="button clear-selection">Clear selection</button>
   </div>
   <div class="search-by">
-    <vz-projector-input id="search-box" label="Query"></vz-projector-input>
+    <vz-projector-input id="search-box" label="Search"></vz-projector-input>
     <paper-dropdown-menu no-animations label="by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedMetadataField}}">
         <template is="dom-repeat" items="[[metadataFields]]">
@@ -187,10 +191,9 @@ limitations under the License.
 <div class="results">
   <div class="nn" style="display: none">
     <div class="neighbors">
-      Neighbors
       <div class="neighbors-options">
         <div class="slider num-nn">
-          <span class="option-label">quantity</span>
+          <span class="option-label">neighbors</span>
           <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
           <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
             The number of neighbors (in the original space) to show when clicking on a point.

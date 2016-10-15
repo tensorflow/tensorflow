@@ -23,13 +23,14 @@ import tempfile
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import linear
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 
 
@@ -233,7 +234,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   # pylint: enable=protected-access
 
   def get_variable_names(self):
-    return [name for name, _ in checkpoints.list_variables(self._model_dir)]
+    return [name for name, _ in list_variables(self._model_dir)]
 
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
@@ -252,16 +253,15 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
-    for name, _ in checkpoints.list_variables(self._model_dir):
+    for name, _ in list_variables(self._model_dir):
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = checkpoints.load_variable(self._model_dir, name)
+        values[name] = load_variable(self._model_dir, name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
 
   @property
   def bias_(self):
-    return checkpoints.load_variable(self._model_dir,
-                                     name="linear/bias_weight")
+    return load_variable(self._model_dir, name="linear/bias_weight")
