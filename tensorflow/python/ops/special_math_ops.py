@@ -96,11 +96,11 @@ def einsum(axes, *inputs):
 
   Like `numpy.einsum`, but does not support:
   * Ellipses (subscripts like `ij...,jk...->ik...`)
-  * Subscripts where an axis appears twice within a single input (e.g. 'ijj,jk->ik').
+  * Subscripts where an axis appears more than once for a single input (e.g. `ijj,jk->ik`).
 
   Args:
     axes: a `str` describing the contraction, in the same format as `numpy.einsum`.
-    inputs: the `Tensor`s to contract, whose shapes should be consistent with `axes`.
+    inputs: the inputs to contract (each one a `Tensor`), whose shapes should be consistent with `axes`.
 
   Returns:
     The contracted `Tensor`, with shape determined by `axes`.
@@ -112,12 +112,15 @@ def einsum(axes, *inputs):
                 or the number of dimensions of an input differs from the number of indices in its subscript,
                 or the input shapes are inconsistent along a particular axis.
   """
+  if '...' in axes:
+    raise ValueError("Subscripts with ellipses are not yet supported.")
 
   match = re.match('([a-z,]+)(->[a-z]*)?', axes)
   if not match:
     raise ValueError(
       "Indices have incorrect format: %s" % axes
     )
+
 
   inputs = list(inputs)
   idx_in = match.group(1).split(',')
@@ -167,6 +170,11 @@ def einsum(axes, *inputs):
       )
 
     sorted_idx = sorted(axes_, cmp=axis_cmp)
+
+    if len(set(axes_)) != len(axes_):
+      raise ValueError(
+        "Subscript not supported: an axis appears more than once: %s" % axes_
+      )
 
     if list(axes_) != sorted_idx:
       permuted = [axes_.find(ax) for ax in sorted_idx]

@@ -182,6 +182,9 @@ class EinsumTest(tf.test.TestCase):
 
     # incorrect number of dimensions
     'ij,jkl->kl',
+
+    # this is allowed in numpy but not implemented here yet
+    'iij,jk'
   ]
 
   dim_mismatch_cases = [
