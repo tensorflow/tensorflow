@@ -77,7 +77,8 @@ def vgg_a(inputs,
   Args:
     inputs: a tensor of size [batch_size, height, width, channels].
     num_classes: number of predicted classes.
-    is_training: whether or not the model is being trained.
+    is_training: whether or not the model is being trained. This argument is
+      being deprecated. Instead use `tf.contrib.framework.arg_scope`.
     dropout_keep_prob: the probability that activations are kept in the dropout
       layers during training.
     spatial_squeeze: whether or not should squeeze the spatial dimensions of the
