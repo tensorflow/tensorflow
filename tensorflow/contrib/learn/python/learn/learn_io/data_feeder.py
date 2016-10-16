@@ -66,7 +66,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
     if out_shape and out_shape[0] == 1:
       out_shape = out_shape[1:]
     if num_classes is not None and num_classes > 1:
-      return [batch_size] + out_shape + [n_classes]
+      return [batch_size] + out_shape + [num_classes]
     else:
       return [batch_size] + out_shape
 
