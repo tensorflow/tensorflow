@@ -45,7 +45,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
     assert (isinstance(n_classes, dict))
 
   if batch_size is None:
-    batch_size = x_shape.values()[0].shape[0] if x_is_dict else x_shape[0]
+    batch_size = x_shape.values()[0][0] if x_is_dict else x_shape[0]
   elif batch_size <= 0:
     raise ValueError('Invalid batch_size %d.' % batch_size)
 
