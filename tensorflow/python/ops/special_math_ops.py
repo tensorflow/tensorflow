@@ -96,17 +96,24 @@ def einsum(axes, *inputs):
 
   Like `numpy.einsum`, but does not support:
   * Ellipses (subscripts like `ij...,jk...->ik...`)
-  * Subscripts that reduce to scalars
+  * Subscripts where an axis appears twice within a single input (e.g. 'ijj,jk->ik').
 
-  Raises a ValueError if:
-  * The format of `axes` is incorrect.
-  * The number of inputs implied by `axes` does not match `len(inputs)`.
-  * An axis appears in the output subscripts but not in any of the inputs.
-  * The number of dimensions of an input differs from the number of indices in its subscript.
-  * The input shapes are inconsistent along a particular axis.
+  Args:
+    axes: a `str` describing the contraction, in the same format as `numpy.einsum`.
+    inputs: the `Tensor`s to contract, whose shapes should be consistent with `axes`.
+
+  Returns:
+    The contracted `Tensor`, with shape determined by `axes`.
+
+  Raises:
+    ValueError: If the format of `axes` is incorrect,
+                or the number of inputs implied by `axes` does not match `len(inputs)`,
+                or an axis appears in the output subscripts but not in any of the inputs,
+                or the number of dimensions of an input differs from the number of indices in its subscript,
+                or the input shapes are inconsistent along a particular axis.
   """
 
-  match = re.match('([a-z,]+)->([a-z]+)', axes)
+  match = re.match('([a-z,]+)(->[a-z]*)?', axes)
   if not match:
     raise ValueError(
       "Indices have incorrect format: %s" % axes
@@ -114,13 +121,27 @@ def einsum(axes, *inputs):
 
   inputs = list(inputs)
   idx_in = match.group(1).split(',')
-  idx_out = match.group(2)
   idx_all = set(''.join(idx_in))
   indices = str(idx_all)
 
+  if match.group(2):
+    idx_out = match.group(2)[2:]
+
+  else:
+    # infer the output subscripts if not given, assume alphabetical order
+    counts = {ax: 0 for ax in indices}
+    for axes in idx_in:
+      for ax in axes:
+        counts[ax] += 1
+
+    idx_out = ''.join(sorted(
+      ax for ax in indices
+      if counts[ax] == 1
+    ))
+
   if len(idx_in) != len(inputs):
     raise ValueError(
-      "Expected %d inputs but only got %d" % (len(idx_in), len(inputs))
+      "Expected %d inputs but got %d" % (len(idx_in), len(inputs))
     )
 
   missing_idx = set(idx_out).difference(idx_all)
