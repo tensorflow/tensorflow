@@ -472,7 +472,7 @@ class DataFeeder(object):
       # adding output placeholders
       if y_is_dict:
         for k, v in self._y.items():
-          n_classes = (self.n_classes[k] if k in n_classes else None) if self.n_classes is not None else None
+          n_classes = (self.n_classes[k] if k in self.n_classes else None) if self.n_classes is not None else None
           shape, dtype = self.output_shape[k], self._output_dtype[k]
           feed_dict.update({self._output_placeholder[k].name: assign_label(v, shape, dtype, n_classes, batch_indices)})
       else:
