@@ -1255,6 +1255,14 @@ class Saver(object):
           "`build()` should be called before save if defer_build==True")
     if latest_filename is None:
       latest_filename = "checkpoint"
+    if self._write_version != saver_pb2.SaverDef.V2:
+      logging.warning("*******************************************************")
+      logging.warning("TensorFlow's V1 checkpoint format is deprecated;"
+                      " V2 will become the default shortly after 10/31/2016.")
+      logging.warning("Consider switching to the more efficient V2 format now:")
+      logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
+      logging.warning("in order to prevent unforeseen breakage.")
+      logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
       raise ValueError("'latest_filename' must not contain path components")
