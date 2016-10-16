@@ -142,13 +142,35 @@ def setup_train_data_feeder(
 def _batch_data(x, batch_size=None):
   if (batch_size is not None) and (batch_size <= 0):
     raise ValueError('Invalid batch_size %d.' % batch_size)
-  chunk = []
+
+  x_first_el = six.next(x)
+  x = itertools.chain([x_first_el], x)
+
+  chunk = dict([(k, []) for k in x_first_el.keys()]) if isinstance(x_first_el, dict) else []
+  chunk_filled = False
   for data in x:
-    chunk.append(data)
-    if (batch_size is not None) and (len(chunk) >= batch_size):
-      yield np.matrix(chunk)
-      chunk = []
-  yield np.matrix(chunk)
+    if isinstance(data, dict):
+      for k, v in data.items():
+        chunk[k].append(v)
+        if (batch_size is not None) and (len(chunk[k]) >= batch_size):
+          chunk[k] = np.matrix(chunk[k])
+          chunk_filled = True
+      if chunk_filled:
+        yield chunk
+        chunk = dict([(k, []) for k in x_first_el.keys()]) if isinstance(x_first_el, dict) else []
+        chunk_filled = False
+    else:
+      chunk.append(data)
+      if (batch_size is not None) and (len(chunk) >= batch_size):
+        yield np.matrix(chunk)
+        chunk = []
+
+  if isinstance(x_first_el, dict):
+    for k, v in data.items():
+      chunk[k] = np.matrix(chunk[k])
+    yield chunk
+  else:
+    yield np.matrix(chunk)
 
 
 def setup_predict_data_feeder(x, batch_size=None):
@@ -160,7 +182,7 @@ def setup_predict_data_feeder(x, batch_size=None):
       If `None`, returns one batch of full size.
 
   Returns:
-    List or iterator of parts of data to predict on.
+    List or iterator ( or dictionary there of) of parts of data to predict on.
 
   Raises:
     ValueError: if `batch_size` <= 0.
