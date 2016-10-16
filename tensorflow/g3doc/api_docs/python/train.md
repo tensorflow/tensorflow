@@ -4238,6 +4238,7 @@ Initialize CheckpointSaverHook monitor.
 
 
 *  <b>`ValueError`</b>: One of `save_steps` or `save_secs` should be set.
+*  <b>`ValueError`</b>: Exactly one of saver or scaffold should be set.
 
 
 - - -
@@ -4420,6 +4421,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
       buffer, as output by TF summary methods like `scalar_summary` or
       `merge_all_summaries`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Exactly one of scaffold or summary_op should be set.
 
 
 - - -
