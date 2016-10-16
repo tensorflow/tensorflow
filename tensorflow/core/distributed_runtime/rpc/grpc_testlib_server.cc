@@ -75,6 +75,7 @@ Status FillServerDef(const string& job_spec, const string& job_name,
 }  // namespace tensorflow
 
 int main(int argc, char* argv[]) {
+  tensorflow::port::InitMain(argv[0], &argc, &argv);
   tensorflow::string job_spec;
   tensorflow::string job_name;
   int num_cpus = 1;
@@ -89,7 +90,6 @@ int main(int argc, char* argv[]) {
   };
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (!parse_result || argc != 1) {
     LOG(ERROR) << usage;
     return -1;
