@@ -215,6 +215,8 @@ _allowed_symbols.extend([
     'uint16_ref',
     'uint8',
     'uint8_ref',
+    'resource',
+    'resource_ref',
 ])
 
 # Export modules and constants.
