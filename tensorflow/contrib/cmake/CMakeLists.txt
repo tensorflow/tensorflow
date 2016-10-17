@@ -60,6 +60,7 @@ include(gif)
 include(png)
 include(jpeg)
 include(eigen)
+include(gemmlowp)
 include(jsoncpp)
 include(farmhash)
 include(highwayhash)
@@ -88,6 +89,7 @@ include_directories(
     ${png_INCLUDE_DIR}
     ${jpeg_INCLUDE_DIR}
     ${eigen_INCLUDE_DIRS}
+    ${gemmlowp_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}

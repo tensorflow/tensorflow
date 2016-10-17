@@ -2149,6 +2149,33 @@ py_binary(
     ],
 )
 
+# -----------------------------------------------------------------------------
+# Quantization
+
+py_test(
+    name = "dequantize_op_test",
+    size = "small",
+    srcs = ["ops/dequantize_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ops",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "quantized_conv_ops_test",
+    size = "small",
+    srcs = ["ops/quantized_conv_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ops",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

@@ -1925,4 +1925,14 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                                               padding=padding,
                                               name=name))
 
+
+ops.RegisterShape("QuantizedAvgPool")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedBiasAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedConv2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedMaxPool")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedRelu")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedRelu6")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedReluX")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizeDownAndShrinkRange")(common_shapes.call_cpp_shape_fn)
+
 # pylint: enable=invalid-name

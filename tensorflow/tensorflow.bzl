@@ -142,18 +142,21 @@ def if_not_mobile(a):
   })
 
 def tf_copts():
-  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY"] +
+  return (["-fno-exceptions",
+           "-DEIGEN_AVOID_STL_ARRAY",
+           "-Iexternal/gemmlowp",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          select({"//tensorflow:android": [
-                    "-std=c++11",
-                    "-DMIN_LOG_LEVEL=0",
-                    "-DTF_LEAN_BINARY",
-                    "-O2",
-                  ],
-                  "//tensorflow:darwin": [],
-                  "//tensorflow:ios": ["-std=c++11",],
-                  "//conditions:default": ["-pthread"]}))
+          select({
+              "//tensorflow:android": [
+                  "-std=c++11",
+                  "-DMIN_LOG_LEVEL=0",
+                  "-DTF_LEAN_BINARY",
+                  "-O2",
+              ],
+              "//tensorflow:darwin": [],
+              "//tensorflow:ios": ["-std=c++11",],
+              "//conditions:default": ["-pthread"]}))
 
 def tf_opts_nortti_if_android():
   return if_android([

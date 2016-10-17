@@ -277,6 +277,12 @@ classes when using one of the sampled loss functions above.
 
 @@compute_accidental_hits
 
+### Quantization ops
+
+@@quantized_relu_x
+@@quantized_max_pool
+@@quantized_avg_pool
+
 """
 from __future__ import absolute_import
 from __future__ import division
