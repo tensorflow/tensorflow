@@ -574,12 +574,15 @@ def _py_wrap_cc_impl(ctx):
   args += ["-outdir", py_out.dirname]
   args += [src.path]
   outputs = [cc_out, py_out]
-  ctx.action(executable=ctx.executable.swig_binary,
-             arguments=args,
+  # TODO(pcloudy): Move args to arguments after
+  # https://github.com/bazelbuild/bazel/issues/1926 is fixed
+  ctx.action(command=" ".join(["tensorflow/tools/swig/swig.sh"] + args),
+             arguments=[],
              mnemonic="PythonSwig",
              inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
+             use_default_shell_env=True,
              progress_message="SWIGing {input}".format(input=src.path))
   return struct(files=set(outputs))
 
@@ -602,12 +605,6 @@ _py_wrap_cc = rule(
         )),
         "module_name": attr.string(mandatory = True),
         "py_module_name": attr.string(mandatory = True),
-        "swig_binary": attr.label(
-            default = Label("//tensorflow:swig"),
-            cfg = "host",
-            executable = True,
-            allow_files = True,
-        ),
     },
     outputs = {
         "cc_out": "%{module_name}.cc",

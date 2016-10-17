@@ -63,16 +63,9 @@ package_group(
     packages = ["//tensorflow/..."],
 )
 
-filegroup(
+sh_binary(
     name = "swig",
-    srcs = select({
-        "//tensorflow:windows" : [
-	    "tools/swig/swig.bat"
-        ],
-        "//conditions:default": [
-            "tools/swig/swig.sh"
-        ],
-    }),
+    srcs = ["tools/swig/swig.sh"],
     data = glob(["tools/swig/**"]),
 )
 
