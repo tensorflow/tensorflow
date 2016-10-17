@@ -121,11 +121,10 @@ def einsum(axes, *inputs):
       "Indices have incorrect format: %s" % axes
     )
 
-
   inputs = list(inputs)
   idx_in = match.group(1).split(',')
   idx_all = set(''.join(idx_in))
-  indices = str(idx_all)
+  indices = ''.join(sorted(idx_all))
 
   if match.group(2):
     idx_out = match.group(2)[2:]
@@ -133,8 +132,8 @@ def einsum(axes, *inputs):
   else:
     # infer the output subscripts if not given, assume alphabetical order
     counts = {ax: 0 for ax in indices}
-    for axes in idx_in:
-      for ax in axes:
+    for axes_ in idx_in:
+      for ax in axes_:
         counts[ax] += 1
 
     idx_out = ''.join(sorted(
@@ -153,11 +152,12 @@ def einsum(axes, *inputs):
       "Unknown ouput axes: %s" % missing_idx
     )
 
-  def axis_cmp(ax1, ax2):
-    i1, i2 = idx_out.find(ax1), idx_out.find(ax2)
-    if i1 == i2:
-      return indices.find(ax1) - indices.find(ax2)
-    return i1 - i2
+  axis_order = {}
+  for ax in indices:
+    if ax not in idx_out:
+      axis_order[ax] = len(axis_order)
+  for ax in idx_out:
+    axis_order[ax] = len(axis_order)
 
   # transpose inputs so axes are in order
   for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
@@ -169,7 +169,7 @@ def einsum(axes, *inputs):
         )
       )
 
-    sorted_idx = sorted(axes_, cmp=axis_cmp)
+    sorted_idx = sorted(axes_, key=axis_order.get)
 
     if len(set(axes_)) != len(axes_):
       raise ValueError(
@@ -187,7 +187,7 @@ def einsum(axes, *inputs):
             for tensor in inputs]
 
   # validate shapes for broadcasting
-  for j, ax in enumerate(sorted(idx_all, cmp=axis_cmp)):
+  for j, ax in enumerate(sorted(idx_all, key=axis_order.get)):
     dims = []
     for i, idx in enumerate(idx_in):
       if ax not in idx:

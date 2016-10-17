@@ -167,7 +167,6 @@ class EinsumTest(tf.test.TestCase):
     'ea,fb,gc,hd,abcd->efgh',
     'ea,fb,abcd,gc,hd->efgh',
     'abhe,hidj,jgba,hiab,gab',
-    'bde,cdh,agdb,hica,ibd,hgicd,hiac',
   ]
 
   invalid_cases = [
