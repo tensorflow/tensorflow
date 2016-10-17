@@ -1093,12 +1093,12 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
-        "//conditions:default": glob([
+        "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
-        ]),
+        ],
     }),
     hdrs = [
         "framework/op_segment.h",
