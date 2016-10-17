@@ -532,7 +532,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
           dtype = initial_state[0].dtype
 
       # create the actual cell
-      if sequence_length:
+      if sequence_length is not None:
         sequence_length = ops.convert_to_tensor(sequence_length)
       initial_cell_state, initial_output = initial_state  # pylint: disable=unpacking-non-sequence
       cell_states, outputs = self._call_cell(inputs, initial_cell_state,

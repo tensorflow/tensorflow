@@ -42,7 +42,7 @@ Instructions for updating:
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions_idx`. Values should be in range [0, num_classes], where
+      `predictions`. Values should be in range [0, num_classes], where
       num_classes is the last dimension of `predictions`.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be

@@ -74,7 +74,6 @@ Status RunCppShapeInferenceImpl(
 
   // Run shape inference.
   tensorflow::shape_inference::InferenceContext c(&node, op_reg_data->op_def,
-                                                  {} /* input_shape_strings */,
                                                   input_shapes, input_tensors);
   TF_RETURN_IF_ERROR(c.construction_status());
 

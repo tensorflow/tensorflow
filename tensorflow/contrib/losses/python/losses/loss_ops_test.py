@@ -779,12 +779,6 @@ class MeanSquaredErrorTest(tf.test.TestCase):
     self._predictions = tf.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
     self._targets = tf.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
-  def testDeprecatedName(self):
-    loss = tf.contrib.losses.sum_of_squares(
-        self._predictions, self._predictions)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
-
   def testValueErrorThrownWhenWeightIsNone(self):
     with self.test_session():
       with self.assertRaises(ValueError):
@@ -874,13 +868,6 @@ class MeanPairwiseSquaresErrorTest(tf.test.TestCase):
           total[b] += tmp
 
     self._expected_losses = np.divide(total, 9.0)
-
-  def testDeprecatedName(self):
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
-        predictions=tf.constant(self._predictions),
-        targets=tf.constant(self._targets))
-    with self.test_session():
-      self.assertAlmostEqual(np.sum(self._expected_losses), loss.eval(), 3)
 
   def testValueErrorThrownWhenWeightIsNone(self):
     with self.test_session():

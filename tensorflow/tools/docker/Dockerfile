@@ -29,6 +29,7 @@ RUN pip --no-cache-dir install \
         matplotlib \
         numpy \
         scipy \
+        sklearn \
         && \
     python -m ipykernel.kernelspec
 

@@ -20,10 +20,10 @@ const ASYNC_DELAY_MS = 25;
 const WARNING_DURATION_MS = 5000;
 
 /**
- * Animation duration for the user message which should align with `transition`
- * css property in `.notify-msg` in `vz-projector.html`.
+ * Animation duration for the user message which should be +20ms more than the
+ * `transition` css property in `.notify-msg` in `vz-projector.html`.
  */
-const MSG_ANIMATION_DURATION = 300;
+const MSG_ANIMATION_DURATION_MSEC = 300 + 20;
 
 
 /**
@@ -60,6 +60,7 @@ export function runAsyncTask<T>(message: string, task: () => T,
 }
 
 let msgId = 0;
+let numActiveMessages = 0;
 
 /**
  * Updates the user message with the provided id.
@@ -70,6 +71,7 @@ let msgId = 0;
  * @return The id of the message.
  */
 export function updateMessage(msg: string, id: string = null): string {
+  let dialog = d3.select('#wrapper-notify-msg').node() as any;
   if (id == null) {
     id = (msgId++).toString();
   }
@@ -80,12 +82,19 @@ export function updateMessage(msg: string, id: string = null): string {
     msgDiv = d3.select('#notify-msgs').insert('div', ':first-child')
       .attr('class', 'notify-msg')
       .attr('id', divId);
+    numActiveMessages++;
   }
   if (msg == null) {
+    numActiveMessages--;
+    if (numActiveMessages === 0) {
+      dialog.close();
+    }
     msgDiv.style('opacity', 0);
-    setTimeout(() => msgDiv.remove(), MSG_ANIMATION_DURATION);
+    msgDiv.style('height', 0);
+    setTimeout(() => msgDiv.remove(), MSG_ANIMATION_DURATION_MSEC);
   } else {
     msgDiv.text(msg);
+    dialog.open();
   }
   return id;
 }

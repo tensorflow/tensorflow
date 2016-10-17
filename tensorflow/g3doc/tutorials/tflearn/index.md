@@ -2,21 +2,23 @@
 
 TensorFlow’s high-level machine learning API (tf.contrib.learn) makes it easy to
 configure, train, and evaluate a variety of machine learning models. In this
-tutorial, you’ll use tf.contrib.learn to construct a
-[neural network](https://en.wikipedia.org/wiki/Artificial_neural_network)
-classifier and train it on the [Iris data set](https://en.wikipedia.org/wiki/Iris_flower_data_set)
-to predict flower species based on sepal/petal geometry. You'll write code to
-perform the following five steps:
+tutorial, you’ll use tf.contrib.learn to construct a [neural
+network](https://en.wikipedia.org/wiki/Artificial_neural_network) classifier and
+train it on the [Iris data
+set](https://en.wikipedia.org/wiki/Iris_flower_data_set) to predict flower
+species based on sepal/petal geometry. You'll write code to perform the
+following five steps:
 
 1.  Load CSVs containing Iris training/test data into a TensorFlow `Dataset`
-2.  Construct a [neural network classifier](../../api_docs/python/contrib.learn.md#DNNClassifier)
+2.  Construct a [neural network
+    classifier](../../api_docs/python/contrib.learn.md#DNNClassifier)
 3.  Fit the model using the training data
 4.  Evaluate the accuracy of the model
 5.  Classify new samples
 
-NOTE: Remember to
-[install TensorFlow on your machine](../../get_started/os_setup.md#download-and-setup)
-before getting started with this tutorial.
+NOTE: Remember to [install TensorFlow on your
+machine](../../get_started/os_setup.md#download-and-setup) before getting
+started with this tutorial.
 
 ## Complete Neural Network Source Code
 
@@ -35,10 +37,14 @@ IRIS_TRAINING = "iris_training.csv"
 IRIS_TEST = "iris_test.csv"
 
 # Load datasets.
-training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
-                                                       target_dtype=np.int)
-test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
-                                                   target_dtype=np.int)
+training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TRAINING,
+    target_dtype=np.int,
+    features_dtype=np.float32)
+test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TEST,
+    target_dtype=np.int,
+    features_dtype=np.float32)
 
 # Specify that all features have real-value data
 feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
@@ -62,7 +68,7 @@ print('Accuracy: {0:f}'.format(accuracy_score))
 # Classify two new flower samples.
 new_samples = np.array(
     [[6.4, 3.2, 4.5, 1.5], [5.8, 3.1, 5.0, 1.7]], dtype=float)
-y = classifier.predict(new_samples)
+y = list(classifier.predict(new_samples, as_iterable=True))
 print('Predictions: {}'.format(str(y)))
 ```
 
@@ -87,8 +93,8 @@ and [*Iris virginica*](https://www.flickr.com/photos/33397993@N05/3352169862)
 Each row contains the following data for each flower sample:
 [sepal](https://en.wikipedia.org/wiki/Sepal) length, sepal width,
 [petal](https://en.wikipedia.org/wiki/Petal) length, petal width, and flower
-species. Flower species are represented as integers, with 0 denoting
-*Iris setosa*, 1 denoting *Iris versicolor*, and 2 denoting *Iris virginica*.
+species. Flower species are represented as integers, with 0 denoting *Iris
+setosa*, 1 denoting *Iris versicolor*, and 2 denoting *Iris virginica*.
 
 Sepal Length | Sepal Width | Petal Length | Petal Width | Species
 :----------- | :---------- | :----------- | :---------- | :-------
@@ -107,8 +113,10 @@ Sepal Length | Sepal Width | Petal Length | Petal Width | Species
 For this tutorial, the Iris data has been randomized and split into two separate
 CSVs:
 
-*   A training set of 120 samples ([iris_training.csv](http://download.tensorflow.org/data/iris_training.csv))
-*   A test set of 30 samples ([iris_test.csv](http://download.tensorflow.org/data/iris_test.csv)).
+*   A training set of 120 samples
+    ([iris_training.csv](http://download.tensorflow.org/data/iris_training.csv))
+*   A test set of 30 samples
+    ([iris_test.csv](http://download.tensorflow.org/data/iris_test.csv)).
 
 Place these files in the same directory as your Python code.
 
@@ -124,13 +132,17 @@ import numpy as np
 ```
 
 Next, load the training and test sets into `Dataset`s using the
-[`load_csv()`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)
-method in `learn.datasets.base`. The `load_csv()` method takes two required
-arguments:
+[`load_csv_with_header()`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)
+method in `learn.datasets.base`. The `load_csv_with_header()` method takes three
+required arguments:
 
 *   `filename`, which takes the filepath to the CSV file
-*   `target_dtype`, which takes the [`numpy` datatype](http://docs.scipy.org/doc/numpy/user/basics.types.html)
-    of the dataset's target value.
+*   `target_dtype`, which takes the [`numpy`
+    datatype](http://docs.scipy.org/doc/numpy/user/basics.types.html) of the
+    dataset's target value.
+*   `features_dtype`, which takes the [`numpy`
+    datatype](http://docs.scipy.org/doc/numpy/user/basics.types.html) of the
+    dataset's feature values.
 
 Here, the target (the value you're training the model to predict) is flower
 species, which is an integer from 0&ndash;2, so the appropriate `numpy` datatype
@@ -142,25 +154,28 @@ IRIS_TRAINING = "iris_training.csv"
 IRIS_TEST = "iris_test.csv"
 
 # Load datasets.
-training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
-                                                       target_dtype=np.int)
-test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
-                                                   target_dtype=np.int)
+training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TRAINING,
+    target_dtype=np.int,
+    features_dtype=np.float32)
+test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TEST,
+    target_dtype=np.int,
+    features_dtype=np.float32)
 ```
 
-`Dataset`s in tf.contrib.learn are
-[named tuples](https://docs.python.org/2/library/collections.html#collections.namedtuple);
+`Dataset`s in tf.contrib.learn are [named
+tuples](https://docs.python.org/2/library/collections.html#collections.namedtuple);
 you can access feature data and target values via the `data` and `target`
 fields. Here, `training_set.data` and `training_set.target` contain the feature
 data and target values for the training set, respectively, and `test_set.data`
 and `test_set.target` contain feature data and target values for the test set.
 
-Later on, in
-["Fit the DNNClassifier to the Iris Training Data,"](#fit-dnnclassifier)
-you'll use `training_set.data` and `training_set.target` to train your model,
-and in ["Evaluate Model Accuracy,"](#evaluate-accuracy) you'll use
-`test_set.data` and `test_set.target`. But first, you'll construct your model in
-the next section.
+Later on, in ["Fit the DNNClassifier to the Iris Training
+Data,"](#fit-dnnclassifier) you'll use `training_set.data` and
+`training_set.target` to train your model, and in ["Evaluate Model
+Accuracy,"](#evaluate-accuracy) you'll use `test_set.data` and
+`test_set.target`. But first, you'll construct your model in the next section.
 
 ## Construct a Deep Neural Network Classifier
 
@@ -169,8 +184,8 @@ tf.contrib.learn offers a variety of predefined models, called
 use "out of the box" to run training and evaluation operations on your data.
 Here, you'll configure a Deep Neural Network Classifier model to fit the Iris
 data. Using tf.contrib.learn, you can instantiate your
-[`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier)
-with just a couple lines of code:
+[`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier) with
+just a couple lines of code:
 
 ```python
 # Specify that all features have real-value data
@@ -193,14 +208,14 @@ accordingly to `4` to hold all the data.
 Then, the code creates a `DNNClassifier` model using the following arguments:
 
 *   `feature_columns=feature_columns`. The set of feature columns defined above.
-*   `hidden_units=[10, 20, 10]`. Three
-    [hidden layers](http://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw),
+*   `hidden_units=[10, 20, 10]`. Three [hidden
+    layers](http://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw),
     containing 10, 20, and 10 neurons, respectively.
 *   `n_classes=3`. Three target classes, representing the three Iris species.
 *   `model_dir=/tmp/iris_model`. The directory in which TensorFlow will save
     checkpoint data during model training. For more on logging and monitoring
-    with TensorFlow, see
-    [Logging and Monitoring Basics with tf.contrib.learn](../monitors/index.md).
+    with TensorFlow, see [Logging and Monitoring Basics with
+    tf.contrib.learn](../monitors/index.md).
 
 ## Fit the DNNClassifier to the Iris Training Data {#fit-dnnclassifier}
 
@@ -271,7 +286,7 @@ You can predict their species with the following code:
 # Classify two new flower samples.
 new_samples = np.array(
     [[6.4, 3.2, 4.5, 1.5], [5.8, 3.1, 5.0, 1.7]], dtype=float)
-y = classifier.predict(new_samples)
+y = list(classifier.predict(new_samples, as_iterable=True))
 print('Predictions: {}'.format(str(y)))
 ```
 
@@ -293,7 +308,8 @@ second sample is *Iris virginica*.
     [Large-scale Linear Models with TensorFlow](../linear/overview.md).
 
 *   To build your own Estimator using tf.contrib.learn APIs, check out [Building
-    Machine Learning Estimator in TensorFlow](http://terrytangyuan.github.io/2016/07/08/understand-and-build-tensorflow-estimator/).
+    Machine Learning Estimator in
+    TensorFlow](http://terrytangyuan.github.io/2016/07/08/understand-and-build-tensorflow-estimator/).
 
 *   To experiment with neural network modeling and visualization in the browser,
     check out [Deep Playground](http://playground.tensorflow.org/).

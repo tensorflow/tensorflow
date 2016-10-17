@@ -44,8 +44,9 @@ LIMIT_NUM_POINTS = 50000
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
 
-  def get_plugin_handlers(self, run_paths):
-    self.configs, self.config_fpaths = self._read_config_files(run_paths)
+  def get_plugin_handlers(self, run_paths, logdir):
+    self.configs, self.config_fpaths = self._read_config_files(run_paths,
+                                                               logdir)
     self.readers = {}
 
     return {
@@ -56,7 +57,12 @@ class ProjectorPlugin(TBPlugin):
         BOOKMARKS_ROUTE: self._serve_bookmarks,
     }
 
-  def _read_config_files(self, run_paths):
+  def _read_config_files(self, run_paths, logdir):
+    # If there are no summary event files, the projector can still work,
+    # thus treating the `logdir` as the model checkpoint directory.
+    if not run_paths:
+      run_paths['.'] = logdir
+
     configs = {}
     config_fpaths = {}
     for run_name, logdir in run_paths.items():
@@ -110,11 +116,18 @@ class ProjectorPlugin(TBPlugin):
       return embedding_info.bookmarks_path
     return None
 
+  def _canonical_tensor_name(self, tensor_name):
+    if ':' not in tensor_name:
+      return tensor_name + ':0'
+    else:
+      return tensor_name
+
   def _get_embedding_info_for_tensor(self, tensor_name, config):
     if not config.embedding:
       return None
     for info in config.embedding:
-      if info.tensor_name == tensor_name:
+      if (self._canonical_tensor_name(info.tensor_name) ==
+          self._canonical_tensor_name(tensor_name)):
         return info
     return None
 

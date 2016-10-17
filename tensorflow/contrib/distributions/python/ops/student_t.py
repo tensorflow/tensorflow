@@ -177,22 +177,17 @@ class StudentT(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    # We use 2 uniform random floats to generate polar random variates.
-    # http://dl.acm.org/citation.cfm?id=179631
-    # Theorem 2. Let G, H be iid variates, uniformly distributed on [0,1].
-    # Let theta = 2*pi*H, let R = sqrt(df*(G^(-2/df) - 1)) for df > 0.
-    # Let X = R*cos(theta), and let Y = R*sin(theta).
-    # Then X ~ t_df and Y ~ t_df.
-    # The variates X and Y are not independent.
-    shape = array_ops.concat(0, ([2, n], self.batch_shape()))
-    uniform = random_ops.random_uniform(shape=shape,
-                                        dtype=self.dtype,
-                                        seed=seed)
-    samples_g, samples_h = array_ops.unpack(uniform, num=2)
-    theta = (2. * math.pi) * samples_h
-    r = math_ops.sqrt(self.df *
-                      (math_ops.pow(samples_g, -2 / self.df) - 1))
-    samples = r * math_ops.cos(theta)
+    # The sampling method comes from the well known fact that if X ~ Normal(0,
+    # 1), and Z ~ Chi2(df), then X / sqrt(Z / df) ~ StudentT(df).
+    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    normal_sample = random_ops.random_normal(
+        shape, dtype=self.dtype, seed=seed)
+    half = constant_op.constant(0.5, self.dtype)
+    df = self.df * array_ops.ones(self.batch_shape(), dtype=self.dtype)
+    gamma_sample = random_ops.random_gamma(
+        [n,], half * df, beta=half, dtype=self.dtype,
+        seed=distribution_util.gen_new_seed(seed, salt="student_t"))
+    samples = normal_sample / math_ops.sqrt(gamma_sample / df)
     return samples * self.sigma + self.mu
 
   def _log_prob(self, x):

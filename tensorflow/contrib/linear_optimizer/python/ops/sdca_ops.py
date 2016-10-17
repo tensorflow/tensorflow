@@ -278,7 +278,8 @@ class SdcaModel(object):
     ```python
     # Create a solver with the desired parameters.
     lr = tf.contrib.linear_optimizer.SdcaModel(examples, variables, options)
-    opt_op = lr.minimize()
+    min_op = lr.minimize()
+    opt_op = lr.update_weights(min_op)
 
     predictions = lr.predictions(examples)
     # Primal loss + L1 loss + L2 loss.
@@ -565,34 +566,45 @@ class SdcaModel(object):
         for w, u in zip(self._slots['unshrinked_dense_features_weights'], dfw):
           update_ops.append(w.assign_add(u))
 
-        with ops.control_dependencies(update_ops):
-          update_ops = []
-          # Copy over unshrinked weights to user provided variables.
-          for i, name in enumerate(
-              ['sparse_features_weights', 'dense_features_weights']):
-            for var, slot_var in zip(self._variables[name],
-                                     self._slots['unshrinked_' + name]):
-              update_ops.append(var.assign(slot_var))
-
-          update_group = control_flow_ops.group(*update_ops)
-
-          # Apply proximal step.
-          with ops.control_dependencies([update_group]):
-            shrink_ops = []
-            for name in ['sparse_features_weights', 'dense_features_weights']:
-              for var in self._variables[name]:
-                with ops.device(var.device):
-                  shrink_ops.append(
-                      sdca_shrink_l1(
-                          self._convert_n_to_tensor(
-                              [var], as_ref=True),
-                          l1=self._symmetric_l1_regularization(),
-                          l2=self._symmetric_l2_regularization()))
-            shrink_l1 = control_flow_ops.group(*shrink_ops)
       if not global_step:
-        return shrink_l1
-      with ops.control_dependencies([shrink_l1]):
+        return control_flow_ops.group(*update_ops)
+      with ops.control_dependencies(update_ops):
         return state_ops.assign_add(global_step, 1, name=name).op
+
+  def update_weights(self, train_op):
+    """Updates the model weights.
+
+    This function must be called on at least one worker after `minimize`.
+    In distributed training this call can be omitted on non-chief workers to
+    speed up training.
+
+    Args:
+      train_op: The operation returned by the `minimize` call.
+
+    Returns:
+      An Operation that updates the model weights.
+    """
+    with ops.control_dependencies([train_op]):
+      update_ops = []
+      # Copy over unshrinked weights to user provided variables.
+      for name in ['sparse_features_weights', 'dense_features_weights']:
+        for var, slot_var in zip(self._variables[name],
+                                 self._slots['unshrinked_' + name]):
+          update_ops.append(var.assign(slot_var))
+
+    # Apply proximal step.
+    with ops.control_dependencies(update_ops):
+      update_ops = []
+      for name in ['sparse_features_weights', 'dense_features_weights']:
+        for var in self._variables[name]:
+          with ops.device(var.device):
+            update_ops.append(
+                sdca_shrink_l1(
+                    self._convert_n_to_tensor(
+                        [var], as_ref=True),
+                    l1=self._symmetric_l1_regularization(),
+                    l2=self._symmetric_l2_regularization()))
+      return control_flow_ops.group(*update_ops)
 
   def approximate_duality_gap(self):
     """Add operations to compute the approximate duality gap.

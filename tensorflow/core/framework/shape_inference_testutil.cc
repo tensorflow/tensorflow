@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -35,8 +35,16 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
   std::vector<string> ins_v = str_util::Split(ins, ';');
   std::unique_ptr<const NodeDef> new_node_def;
 
-  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def, ins_v,
-                                      op.input_tensors);
+  InferenceContext::ShapeManager manager;
+  std::vector<ShapeHandle> in_shapes;
+  for (const string& spec : ins_v) {
+    ShapeHandle shape;
+    TF_RETURN_IF_ERROR(MakeShapeFromString(&manager, spec, &shape));
+    in_shapes.push_back(shape);
+  }
+
+  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def,
+                                      in_shapes, op.input_tensors);
   TF_RETURN_IF_ERROR(c.construction_status());
   if (op_reg_data->shape_inference_fn == nullptr) {
     return errors::InvalidArgument(
@@ -196,6 +204,50 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
       }
     }
   }
+  return Status::OK();
+}
+
+// static
+Status ShapeInferenceTestutil::MakeShapeFromString(
+    InferenceContext::ShapeManager* manager, const string& spec,
+    ShapeHandle* output) {
+  if (spec == "?") {
+    *output = manager->UnknownShape();
+    return Status::OK();
+  }
+
+  std::vector<DimensionHandle> dims;
+  strings::Scanner scanner(spec);
+  scanner.OneLiteral("[");
+  while (scanner.Peek() != ']') {
+    if (scanner.Peek() == '?') {
+      scanner.OneLiteral("?");
+      dims.push_back(manager->MakeDim(InferenceContext::kUnknownDim));
+    } else {
+      scanner.RestartCapture().Many(strings::Scanner::DIGIT);
+      StringPiece match;
+      int64 dim_size = 0;
+
+      if (!scanner.GetResult(nullptr, &match) ||
+          !strings::safe_strto64(match, &dim_size)) {
+        return errors::InvalidArgument("Could not parse number in ", spec);
+      }
+
+      dims.push_back(manager->MakeDim(dim_size));
+    }
+
+    if (scanner.Peek() == ',') {
+      scanner.OneLiteral(",");
+    } else if (scanner.Peek() != ']') {
+      return errors::InvalidArgument(
+          "Invalid input spec (] not found in dim shape): ", spec);
+    }
+  }
+  if (!scanner.OneLiteral("]").Eos().GetResult()) {
+    return errors::InvalidArgument("Malformed shape spec: did not end in ']'.");
+  }
+  *output = manager->MakeShape(dims);
+
   return Status::OK();
 }
 
