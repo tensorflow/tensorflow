@@ -1241,7 +1241,8 @@ def real_valued_column(column_name,
       value will be applied as the default value for every dimension. If a
       list of values is provided, the length of the list should be equal to the
       value of `dimension`.
-    dtype: defines the type of values. Default value is tf.float32.
+    dtype: defines the type of values. Default value is tf.float32. Must be a
+      non-quantized, real integer or floating point type.
     normalizer: If not None, a function that can be used to normalize the value
       of the real valued column after default_value is applied for parsing.
       Normalizer function takes the input tensor as its argument, and returns

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -142,7 +143,8 @@ class Scaffold(object):
       self._saver = Scaffold.get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True, allow_empty=True))
+          lambda: training_saver.Saver(sharded=True, allow_empty=True,
+                                       write_version=saver_pb2.SaverDef.V1))
     # pylint: enable=g-long-lambda
     self._saver.build()
 
@@ -370,6 +372,7 @@ class MonitoredSession(object):
 
 
   Exit: At the `close()`, the monitored session does following things in order:
+
   * calls `hook.end()`
   * closes the queue runners and the session
   * surpresses `OutOfRange` error which indicates that all inputs have been

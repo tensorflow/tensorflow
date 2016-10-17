@@ -75,6 +75,7 @@ class BCastGradArgsOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
+                            .TypeConstraint<int32>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")
@@ -82,6 +83,7 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                         BCastGradArgsOp);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")

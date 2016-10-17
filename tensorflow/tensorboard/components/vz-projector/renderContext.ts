@@ -42,6 +42,9 @@ export class LabelRenderParams {
  * RenderContext contains all of the state required to color and render the data
  * set. ScatterPlot passes this to every attached visualizer as part of the
  * render callback.
+ * TODO(nicholsonc): This should only contain the data that's changed between
+ * each frame. Data like colors / scale factors / labels should be recomputed
+ * only when they change.
  */
 export class RenderContext {
   camera: THREE.Camera;
@@ -58,9 +61,9 @@ export class RenderContext {
   constructor(
       camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
       screenHeight: number, nearestCameraSpacePointZ: number,
-      farthestCameraSpacePointZ: number,
-      labelAccessor: (index: number) => string, pointColors: Float32Array,
-      pointScaleFactors: Float32Array, labels: LabelRenderParams) {
+      farthestCameraSpacePointZ: number, pointColors: Float32Array,
+      pointScaleFactors: Float32Array, labelAccessor: (index: number) => string,
+      labels: LabelRenderParams) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;

@@ -25,10 +25,10 @@ import tempfile
 
 # Google-internal import(s).
 from tensorflow.python.debug import debug_data
-from tensorflow.python.debug import framework
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.framework import ops
 
 
@@ -121,9 +121,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def on_session_init(self, request):
     """Overrides on-session-init callback.
-
-    Actions taken:
-      1) Start the CLI.
 
     Args:
       request: An instance of OnSessionInitRequest.

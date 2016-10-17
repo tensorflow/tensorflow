@@ -27,6 +27,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
+def _is_numeric_dtype_enum(datatype_enum):
+  return (datatype_enum != types_pb2.DT_INVALID and
+          datatype_enum != types_pb2.DT_RESOURCE and
+          datatype_enum != types_pb2.DT_RESOURCE_REF)
+
+
 class TypesTest(test_util.TensorFlowTestCase):
 
   def testAllTypesConstructible(self):
@@ -45,7 +51,7 @@ class TypesTest(test_util.TensorFlowTestCase):
 
   def testAllTypesConvertibleToNumpyDtype(self):
     for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
+      if not _is_numeric_dtype_enum(datatype_enum):
         continue
       dtype = tf.as_dtype(datatype_enum)
       numpy_dtype = dtype.as_numpy_dtype
@@ -190,7 +196,7 @@ class TypesTest(test_util.TensorFlowTestCase):
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max
     for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
+      if not _is_numeric_dtype_enum(datatype_enum):
         continue
       dtype = tf.as_dtype(datatype_enum)
       numpy_dtype = dtype.as_numpy_dtype

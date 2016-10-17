@@ -179,69 +179,6 @@ limitations under the License.
   background: #e3e3e3;
 }
 
-/* - Tabs */
-
-.ink-tab-group {
-  display: flex;
-  justify-content: space-around;
-  box-sizing: border-box;
-  height: 100%;
-  margin: 0 12px;
-}
-
-.ink-tab-group .ink-tab {
-  font-weight: 300;
-  color: rgba(0, 0, 0, 0.5);
-  text-align: center;
-  text-transform: uppercase;
-  line-height: 60px;
-  cursor: pointer;
-  padding: 0 12px;
-}
-
-.ink-tab-group .ink-tab:hover {
-  color: black;
-}
-
-.ink-tab-group .ink-tab.active {
-  font-weight: 500;
-  color: black;
-  border-bottom: 2px solid black;
-
-}
-
-/* - Panel */
-
-.ink-panel {
-  display: flex;
-  flex-direction: column;
-  font-size: 14px;
-}
-
-.ink-panel h4 {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 5px;
-  margin-bottom: 10px;
-}
-
-.ink-panel-header {
-  height: 60px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.ink-panel-content {
-  display: none;
-  height: 100%;
-  padding: 20px 0;
-}
-
-.ink-panel-content.active {
-  display: block;
-}
-
 .status-bar-panel {
   display: flex;
   align-items: center;
@@ -251,23 +188,6 @@ limitations under the License.
   border-left: 1px solid rgba(0, 0, 0, 0.5);
   margin-left: 5px;
   padding-left: 5px;
-}
-
-.ink-panel-content h3 {
-  font-weight: 500;
-  font-size: 14px;
-  text-transform: uppercase;
-  margin-top: 20px;
-  margin-bottom: 5px;
-}
-
-.ink-panel-header h3 {
-  margin: 0;
-  font-weight: 500;
-  font-size: 14px;
-  line-height: 60px;
-  text-transform: uppercase;
-  padding: 0 24px;
 }
 
 /* - Menubar */
@@ -348,8 +268,8 @@ limitations under the License.
 <div id="warning-msg"></div>
 <div id="container">
   <div id="left-pane" class="ink-panel">
-    <vz-projector-projections-panel id="projections-panel"></vz-projector-projections-panel>
     <vz-projector-data-panel id="data-panel"></vz-projector-data-panel>
+    <vz-projector-projections-panel id="projections-panel"></vz-projector-projections-panel>
   </div>
   <div id="main" class="ink-panel">
     <div class="ink-panel-menubar">
@@ -362,7 +282,7 @@ limitations under the License.
       <paper-icon-button id="labels3DMode" alt="Enable/disable 3D labels mode" toggles icon="flip-to-front"></paper-icon-button>
       <paper-tooltip for="labels3DMode" position="bottom" animation-delay="0" fit-to-visible-bounds>Enable/disable 3D labels mode</paper-tooltip>
       <div class="status-bar-panel">
-        <div class="status-bar-entry">Number of points: <span class="numDataPoints">Loading...</span></div>
+        <div class="status-bar-entry">Points: <span class="numDataPoints">Loading...</span></div>
         <div class="status-bar-entry">Dimension: <span class="dim">Loading...</span></div>
         <div id="status-bar" class="status-bar-entry" style="display: none;"></div>
       </div>

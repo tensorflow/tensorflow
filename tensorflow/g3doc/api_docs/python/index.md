@@ -748,6 +748,8 @@
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
+  * [`Sigmoid`](../../api_docs/python/contrib.distributions.bijector.md#Sigmoid)
+  * [`Softmax`](../../api_docs/python/contrib.distributions.bijector.md#Softmax)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
@@ -1001,6 +1003,7 @@
   * [`streaming_sensitivity_at_specificity`](../../api_docs/python/contrib.metrics.md#streaming_sensitivity_at_specificity)
   * [`streaming_sparse_average_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_average_precision_at_k)
   * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
+  * [`streaming_sparse_precision_at_top_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_top_k)
   * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
   * [`streaming_specificity_at_sensitivity`](../../api_docs/python/contrib.metrics.md#streaming_specificity_at_sensitivity)
 
@@ -1013,7 +1016,6 @@
   * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
-  * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
   * [`weighted_resample`](../../api_docs/python/contrib.training.md#weighted_resample)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
