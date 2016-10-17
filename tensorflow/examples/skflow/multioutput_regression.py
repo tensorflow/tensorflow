@@ -21,9 +21,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.metrics import mean_squared_error
+import tensorflow as tf
 
 from tensorflow.contrib import learn
 
@@ -37,8 +39,9 @@ regressors = []
 options = [[2], [10, 10], [20, 20]]
 for hidden_units in options:
   def tanh_dnn(X, y):
-    features = learn.ops.dnn(X, hidden_units=hidden_units,
-      activation=learn.tf.tanh)
+    dnn = lambda inputs, num_outputs, scope: tf.contrib.layers.legacy_fully_connected(
+        inputs, num_outputs, weight_init=None, activation_fn=learn.tf.tanh)
+    features = tf.contrib.layers.stack(X, dnn, hidden_units)
     return learn.models.linear_regression(features, y)
 
   regressor = learn.TensorFlowEstimator(model_fn=tanh_dnn, n_classes=0,
