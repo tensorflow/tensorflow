@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
+load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 
 cc_library(
     name = "gtest",
@@ -124,6 +125,21 @@ cc_library(
     }),
     deps = [
         "@local_config_cuda//cuda:cudart",
+    ],
+)
+
+cc_library(
+    name = "sycl",
+    data = [
+        "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
+    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_sycl/sycl/lib",
+        ],
+    }),
+    deps = [
+        "@local_config_sycl//sycl:syclrt",
     ],
 )
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 from argparse import ArgumentParser
 import os
@@ -7,11 +7,11 @@ import re
 import sys
 import pipes
 
-CPU_CXX_COMPILER = ('/usr/bin/clang++-3.6')
-CPU_C_COMPILER = ('/usr/bin/clang-3.6')
+CPU_CXX_COMPILER = ('%{host_cxx_compiler}')
+CPU_C_COMPILER = ('%{host_c_compiler}')
 
 CURRENT_DIR = os.path.dirname(sys.argv[0])
-COMPUTECPP_ROOT = CURRENT_DIR +"/../"
+COMPUTECPP_ROOT = CURRENT_DIR +"/../sycl/"
 COMPUTECPP_DRIVER= COMPUTECPP_ROOT+"bin/compute++"
 COMPUTECPP_INCLUDE = COMPUTECPP_ROOT+"include"
 

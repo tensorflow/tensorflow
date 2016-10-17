@@ -47,7 +47,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/local/include"
   cxx_builtin_include_directory: "/usr/include"
 
-  #cxx_builtin_include_directory: {COMPUTECPP_INCLUDE}
+  cxx_builtin_include_directory: "%{computecpp_toolkit_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
 
