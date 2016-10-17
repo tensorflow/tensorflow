@@ -52,6 +52,7 @@ function main() {
   fi
 
   if is_windows; then
+    rm -rf ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     mkdir -p ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzipping simple_console_for_windows.zip to create runfiles tree..."
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
@@ -102,14 +103,14 @@ function main() {
 
   # protobuf pip package doesn't ship with header files. Copy the headers
   # over so user defined ops can be compiled.
-  # TODO(pcloudy): rsync doesn't work well in msys on Windows
-  # Find an alternative for this on Windows
-  if ! is_windows; then
-    mkdir -p ${TMPDIR}/google
-    rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
-      $RUNFILES/external/protobuf ${TMPDIR}/google
-    rsync -a $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
-  fi
+  mkdir -p ${TMPDIR}/google
+  mkdir -p ${TMPDIR}/third_party
+  pushd ${RUNFILES%org_tensorflow}
+  for header in $(find protobuf -name \*.h); do
+    cp --parents "$header" ${TMPDIR}/google;
+  done
+  popd
+  cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}
