@@ -919,12 +919,17 @@ learning_step = (
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
-    'ExponentialDecay'
+    'ExponentialDecay'.
 
 ##### Returns:
 
   A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
 
 
 
@@ -3403,6 +3408,7 @@ Run: When `run()` is called, the monitored session does following things:
 
 
 Exit: At the `close()`, the monitored session does following things in order:
+
 * calls `hook.end()`
 * closes the queue runners and the session
 * surpresses `OutOfRange` error which indicates that all inputs have been
@@ -4237,6 +4243,7 @@ Initialize CheckpointSaverHook monitor.
 
 
 *  <b>`ValueError`</b>: One of `save_steps` or `save_secs` should be set.
+*  <b>`ValueError`</b>: Exactly one of saver or scaffold should be set.
 
 
 - - -
@@ -4419,6 +4426,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
       buffer, as output by TF summary methods like `scalar_summary` or
       `merge_all_summaries`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Exactly one of scaffold or summary_op should be set.
 
 
 - - -

@@ -40,7 +40,7 @@ class BaseBijectorTest(tf.test.TestCase):
 
 
 class IdentityBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the Y = g(X) = X transformation."""
+  """Tests correctness of the Y = g(X) = X transformation."""
 
   def testBijector(self):
     with self.test_session():
@@ -57,7 +57,7 @@ class IdentityBijectorTest(tf.test.TestCase):
 
 
 class ExpBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the Y = g(X) = exp(X) transformation."""
+  """Tests correctness of the Y = g(X) = exp(X) transformation."""
 
   def testBijector(self):
     with self.test_session():
@@ -75,7 +75,7 @@ class ExpBijectorTest(tf.test.TestCase):
 
 
 class InlineBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the inline constructed bijector."""
+  """Tests correctness of the inline constructed bijector."""
 
   def testBijector(self):
     with self.test_session():
@@ -98,7 +98,7 @@ class InlineBijectorTest(tf.test.TestCase):
 
 
 class ScaleAndShiftBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the Y = scale * x + loc transformation."""
+  """Tests correctness of the Y = scale * x + loc transformation."""
 
   def testProperties(self):
     with self.test_session():
@@ -388,6 +388,64 @@ class SoftplusBijectorTest(tf.test.TestCase):
       self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(
           ildj, bijector.inverse_and_inverse_log_det_jacobian(y)[1].eval())
+
+
+class SoftmaxBijectorTest(tf.test.TestCase):
+  """Tests correctness of the Y = g(X) = exp(X) / sum(exp(X)) transformation."""
+
+  def testBijectorScalar(self):
+    with self.test_session():
+      softmax = bijectors.Softmax()  # scalar by default
+      self.assertEqual("Softmax", softmax.name)
+      x = np.log([[2., 3, 4],
+                  [4., 8, 12]])
+      y = [[[2./3, 1./3],
+            [3./4, 1./4],
+            [4./5, 1./5]],
+           [[4./5, 1./5],
+            [8./9, 1./9],
+            [12./13, 1./13]]]
+      self.assertAllClose(y, softmax.forward(x).eval())
+      self.assertAllClose(x, softmax.inverse(y).eval())
+      self.assertAllClose(-np.sum(np.log(y), axis=2),
+                          softmax.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
+
+  def testBijectorVector(self):
+    with self.test_session():
+      softmax = bijectors.Softmax(event_ndims=1)
+      self.assertEqual("Softmax", softmax.name)
+      x = np.log([[2., 3, 4],
+                  [4., 8, 12]])
+      y = [[0.2, 0.3, 0.4, 0.1],
+           [0.16, 0.32, 0.48, 0.04]]
+      self.assertAllClose(y, softmax.forward(x).eval())
+      self.assertAllClose(x, softmax.inverse(y).eval())
+      self.assertAllClose(-np.sum(np.log(y), axis=1),
+                          softmax.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
+
+
+class SigmoidBijectorTest(tf.test.TestCase):
+  """Tests correctness of the Y = g(X) = (1 + exp(-X))^-1 transformation."""
+
+  def testBijector(self):
+    with self.test_session():
+      sigmoid = bijectors.Sigmoid()
+      self.assertEqual("Sigmoid", sigmoid.name)
+      x = np.log([[2., 3, 4],
+                  [4., 8, 12]])
+      y = [[[2./3, 1./3],
+            [3./4, 1./4],
+            [4./5, 1./5]],
+           [[4./5, 1./5],
+            [8./9, 1./9],
+            [12./13, 1./13]]]
+      self.assertAllClose(y, sigmoid.forward(x).eval())
+      self.assertAllClose(x, sigmoid.inverse(y).eval())
+      self.assertAllClose(-np.sum(np.log(y), axis=2),
+                          sigmoid.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
 
 
 if __name__ == "__main__":

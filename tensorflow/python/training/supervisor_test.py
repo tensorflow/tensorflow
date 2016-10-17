@@ -52,17 +52,22 @@ def _test_dir(test_name):
 
 class SupervisorTest(tf.test.TestCase):
 
-  def _wait_for_glob(self, pattern, timeout_secs):
+  def _wait_for_glob(self, pattern, timeout_secs, for_checkpoint=True):
     """Wait for a checkpoint file to appear.
 
     Args:
       pattern: A string.
       timeout_secs: How long to wait for in seconds.
+      for_checkpoint: whether we're globbing for checkpoints.
     """
     end_time = time.time() + timeout_secs
     while time.time() < end_time:
-      if len(tf.gfile.Glob(pattern)) >= 1:
-        return
+      if for_checkpoint:
+        if tf.train.checkpoint_exists(pattern):
+          return
+      else:
+        if len(tf.gfile.Glob(pattern)) >= 1:
+          return
       time.sleep(0.05)
     self.assertFalse(True, "Glob never matched any file: %s" % pattern)
 
@@ -547,7 +552,8 @@ class SupervisorTest(tf.test.TestCase):
       sv.prepare_or_wait_for_session(server.target)
       save_path = sv.save_path
       self._wait_for_glob(save_path, 3.0)
-      self._wait_for_glob(os.path.join(logdir, "*events*"), 3.0)
+      self._wait_for_glob(
+          os.path.join(logdir, "*events*"), 3.0, for_checkpoint=False)
       # Wait to make sure everything is written to file before stopping.
       time.sleep(1)
       sv.stop()
@@ -708,7 +714,8 @@ class SupervisorTest(tf.test.TestCase):
       sess = sv.prepare_or_wait_for_session("")
       save_path = sv.save_path
       self._wait_for_glob(save_path, 3.0)
-      self._wait_for_glob(os.path.join(logdir, "*events*"), 3.0)
+      self._wait_for_glob(
+          os.path.join(logdir, "*events*"), 3.0, for_checkpoint=False)
       # Wait to make sure everything is written to file before stopping.
       time.sleep(1)
       sv.stop()
@@ -757,7 +764,8 @@ class SupervisorTest(tf.test.TestCase):
       # This is where the checkpoint will appear, with step number 123.
       save_path = "%s-123" % sv.save_path
       self._wait_for_glob(save_path, 3.0)
-      self._wait_for_glob(os.path.join(logdir, "*events*"), 3.0)
+      self._wait_for_glob(
+          os.path.join(logdir, "*events*"), 3.0, for_checkpoint=False)
       # Wait to make sure everything is written to file before stopping.
       time.sleep(1)
       sv.stop()

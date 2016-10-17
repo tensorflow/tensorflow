@@ -26,7 +26,6 @@ import tensorflow as tf
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
@@ -363,7 +362,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -376,7 +375,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(25, step)
 
@@ -390,7 +389,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -403,7 +402,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(15, step)
 
@@ -417,7 +416,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -430,7 +429,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -612,7 +611,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -622,7 +621,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(25, step)
 
@@ -633,7 +632,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -643,7 +642,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 max_steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(15, step)
 

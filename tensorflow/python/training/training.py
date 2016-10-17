@@ -210,10 +210,12 @@ from tensorflow.python.training.monitored_session import SessionCreator
 from tensorflow.python.training.monitored_session import ChiefSessionCreator
 from tensorflow.python.training.monitored_session import WorkerSessionCreator
 from tensorflow.python.training.monitored_session import MonitoredSession
+from tensorflow.python.training.saver import Saver
+from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import generate_checkpoint_state_proto
+from tensorflow.python.training.saver import get_checkpoint_mtimes
 from tensorflow.python.training.saver import get_checkpoint_state
 from tensorflow.python.training.saver import latest_checkpoint
-from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
