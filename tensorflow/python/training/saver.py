@@ -1261,7 +1261,7 @@ class Saver(object):
                       " V2 will become the default shortly after 10/31/2016.")
       logging.warning("Consider switching to the more efficient V2 format now:")
       logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
-      logging.warning("in order to prevent unforeseen breakage.")
+      logging.warning("to prevent breakage.")
       logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
