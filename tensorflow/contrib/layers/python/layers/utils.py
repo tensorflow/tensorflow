@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+from collections import OrderedDict
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -107,7 +108,7 @@ def convert_collection_to_dict(collection):
   Returns:
     A dictionary of {get_tensor_alias(tensor): tensor}
   """
-  return {get_tensor_alias(t): t for t in ops.get_collection(collection)}
+  return OrderedDict((get_tensor_alias(t), t) for t in ops.get_collection(collection))
 
 
 def constant_value(value_or_tensor_or_var, dtype=None):
