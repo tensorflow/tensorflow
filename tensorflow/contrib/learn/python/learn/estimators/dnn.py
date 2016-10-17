@@ -60,11 +60,6 @@ _PROBABILITIES = "probabilities"
 _LEARNING_RATE = 0.05
 
 
-def _as_iterable(preds, output):
-  for pred in preds:
-    yield pred[output]
-
-
 def _get_feature_dict(features):
   if isinstance(features, dict):
     return features
@@ -490,7 +485,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
 
     Args:
@@ -510,14 +505,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     batch_size=batch_size, outputs=[_CLASSES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_CLASSES)
+      return (pred[_CLASSES][0] for pred in preds)
     return preds[_CLASSES].reshape(-1)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns prediction probabilities for given features.
 
     Args:
@@ -538,7 +533,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     outputs=[_PROBABILITIES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_PROBABILITIES)
+      return (pred[_PROBABILITIES] for pred in preds)
     return preds[_PROBABILITIES]
 
   def get_variable_names(self):

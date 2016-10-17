@@ -30,6 +30,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
@@ -641,7 +642,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size, outputs=[_CLASSES],
@@ -650,8 +654,11 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       return _as_iterable(preds, output=_CLASSES)
     return preds[_CLASSES]
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
-                    as_iterable=False):
+                    as_iterable=True):
     """Runs inference to determine the class probability predictions."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
