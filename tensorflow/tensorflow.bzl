@@ -512,6 +512,9 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
 
   cuda_deps = ["//tensorflow/core:gpu_lib"]
   if gpu_srcs:
+    for gpu_src in gpu_srcs:
+      if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
+        fail("{} not allowed in gpu_srcs. .cc sources must end with .cu.cc".format(gpu_src))
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
