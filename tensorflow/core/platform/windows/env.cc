@@ -52,7 +52,16 @@ class StdThread : public Thread {
 
 class WindowsEnv : public Env {
  public:
-  WindowsEnv() {}
+  WindowsEnv()
+      : GetSystemTimePreciseAsFileTime_(NULL) {
+    HMODULE module = GetModuleHandle("kernel32.dll");
+    if (module != NULL) {
+      auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
+          module, "GetSystemTimePreciseAsFileTime");
+      GetSystemTimePreciseAsFileTime_ = func;
+    }
+  }
+
   ~WindowsEnv() override {
     LOG(FATAL) << "Env::Default() must not be destroyed";
   }
@@ -62,11 +71,30 @@ class WindowsEnv : public Env {
   }
 
   uint64 NowMicros() override {
-    FILETIME temp;
-    GetSystemTimeAsFileTime(&temp);
-    uint64 now_ticks =
-        (uint64)temp.dwLowDateTime + ((uint64)(temp.dwHighDateTime) << 32LL);
-    return now_ticks / 10LL;
+    if (GetSystemTimePreciseAsFileTime_ != NULL) {
+      // all std::chrono clocks on windows proved to return
+      // values that may repeat that is not good enough for some uses.
+      constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
+      constexpr int64_t kFtToMicroSec = 10;
+
+      // This interface needs to return system time and not
+      // just any microseconds because it is often used as an argument
+      // to TimedWait() on condition variable
+      FILETIME system_time;
+      GetSystemTimePreciseAsFileTime_(&system_time);
+
+      LARGE_INTEGER li;
+      li.LowPart = system_time.dwLowDateTime;
+      li.HighPart = system_time.dwHighDateTime;
+      // Subtract unix epoch start
+      li.QuadPart -= kUnixEpochStartTicks;
+      // Convert to microsecs
+      li.QuadPart /= kFtToMicroSec;
+      return li.QuadPart;
+    }
+    using namespace std::chrono;
+    return duration_cast<microseconds>(
+        system_clock::now().time_since_epoch()).count();
   }
 
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
@@ -102,11 +130,17 @@ class WindowsEnv : public Env {
                               void** symbol) override {
     return errors::Unimplemented("WindowsEnv::GetSymbolFromLibrary");
   }
+
+ private:
+  typedef VOID(WINAPI * FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
+  FnGetSystemTimePreciseAsFileTime GetSystemTimePreciseAsFileTime_;
 };
 
 }  // namespace
 
 REGISTER_FILE_SYSTEM("", WindowsFileSystem);
+REGISTER_FILE_SYSTEM("file", LocalWinFileSystem);
+
 Env* Env::Default() {
   static Env* default_env = new WindowsEnv;
   return default_env;
