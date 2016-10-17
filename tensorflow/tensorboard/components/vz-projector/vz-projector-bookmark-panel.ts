@@ -84,7 +84,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
       this.notifyPath('savedStates.' + i + '.isSelected', false, false);
     }
 
-    this.push('savedStates', currentState);
+    this.push('savedStates', currentState as any);
   }
 
   /** Handles a click on the download bookmarks button. */
@@ -133,7 +133,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
   loadAllStates(savedStates: State[]) {
     for (let i = 0; i < savedStates.length; i++) {
       savedStates[i].isSelected = false;
-      this.push('savedStates', savedStates[i]);
+      this.push('savedStates', savedStates[i] as any);
     }
   }
 
