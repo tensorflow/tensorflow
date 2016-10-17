@@ -51,7 +51,8 @@ def create_examples(num_examples, input_mean):
   return examples
 
 def create_dir_test():
-  # create_dir
+  """Verifies file_io directory handling methods ."""
+
   starttime = int(round(time.time() * 1000))
   dir_name = "%s/tf_gcs_test_%s" % (FLAGS.gcs_bucket_url, starttime)
   print("Creating dir %s" % dir_name)
@@ -59,9 +60,10 @@ def create_dir_test():
   elapsed = int(round(time.time() * 1000)) - starttime
   print("Created directory in: %d milliseconds" % elapsed)
   # Check that the directory exists.
-  print("%s directory exists: %s" % (dir_name, file_io.is_directory(dir_name)))
+  dir_exists = file_io.is_directory(dir_name)
+  print("%s directory exists: %s" % (dir_name, dir_exists))
 
-  # List.
+  # List contents of just created directory.
   starttime = int(round(time.time() * 1000))
   print("Listing directory %s." % dir_name)
   print(file_io.list_directory(dir_name))
