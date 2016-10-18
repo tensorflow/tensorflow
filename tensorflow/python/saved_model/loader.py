@@ -188,7 +188,7 @@ def load(sess, tags, export_dir):
   variables_path = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.VARIABLES_DIRECTORY),
-      compat.as_bytes(constants.VARIABLES_FILENAME_SHARDED))
+      compat.as_bytes(constants.VARIABLES_FILENAME))
 
   # Restore the variables using the built saver in the provided session.
   saver.restore(sess, variables_path)

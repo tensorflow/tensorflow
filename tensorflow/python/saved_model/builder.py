@@ -256,7 +256,7 @@ class SavedModelBuilder(object):
     saver = tf_saver.Saver(
         variables.all_variables(),
         sharded=True,
-        write_version=saver_pb2.SaverDef.V1)
+        write_version=saver_pb2.SaverDef.V2)
     meta_graph_def = saver.export_meta_graph()
 
     # Tag the meta graph def and add it to the SavedModel.
@@ -305,7 +305,7 @@ class SavedModelBuilder(object):
     saver = tf_saver.Saver(
         variables.all_variables(),
         sharded=True,
-        write_version=saver_pb2.SaverDef.V1)
+        write_version=saver_pb2.SaverDef.V2)
     saver.save(sess, variables_path, write_meta_graph=False)
     meta_graph_def = saver.export_meta_graph()
 
