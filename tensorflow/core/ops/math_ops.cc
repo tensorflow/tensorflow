@@ -217,14 +217,24 @@ Computes numerical negative value element-wise.
 I.e., \\(y = -x\\).
 )doc");
 
-REGISTER_OP("Inv")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Inv").UNARY().Doc(R"doc(
 Computes the reciprocal of x element-wise.
 I.e., \\(y = 1 / x\\).
 )doc");
 
 REGISTER_OP("InvGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the inverse of `x` wrt its input.
+
+Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+is the corresponding input gradient.
+)doc");
+
+REGISTER_OP("Reciprocal").UNARY().Doc(R"doc(
+Computes the reciprocal of x element-wise.
+I.e., \\(y = 1 / x\\).
+)doc");
+
+REGISTER_OP("ReciprocalGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
 Computes the gradient for the inverse of `x` wrt its input.
 
 Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
