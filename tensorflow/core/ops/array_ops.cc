@@ -1823,12 +1823,11 @@ REGISTER_OP("StridedSlice")
       TF_RETURN_IF_ERROR(c->Merge(begin_shape, strides_shape, &begin_shape));
       DimensionHandle sparse_dims_dim = c->Dim(begin_shape, 0);
 
-      const Tensor* begin_value = c->input_tensor(1);
-      const Tensor* end_value = c->input_tensor(2);
       const Tensor* strides_value = c->input_tensor(3);
-      if (begin_value == nullptr || end_value == nullptr ||
-          strides_value == nullptr || !c->RankKnown(input) ||
-          !c->ValueKnown(sparse_dims_dim)) {
+      // TODO(aselle,allenl): If we had a stride_mask it would be possible to do
+      // more shape inference here (e.g. for x[3, ::T]).
+      if (!c->RankKnown(input) || !c->ValueKnown(sparse_dims_dim) ||
+          strides_value == nullptr) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
@@ -1848,6 +1847,9 @@ REGISTER_OP("StridedSlice")
       TF_RETURN_IF_ERROR(c->GetAttr("new_axis_mask", &new_axis_mask));
       TF_RETURN_IF_ERROR(c->GetAttr("shrink_axis_mask", &shrink_axis_mask));
 
+      const Tensor* begin_value = c->input_tensor(1);
+      const Tensor* end_value = c->input_tensor(2);
+
       TensorShapeProto processing_shape, final_shape;
       ShapeReadWriteFromTensorShapeProto wrapped_processing_shape(
           &processing_shape);
@@ -1855,7 +1857,7 @@ REGISTER_OP("StridedSlice")
       bool is_identity, is_simple_slice, slice_dim0;
       gtl::InlinedVector<int64, 4> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
-          *begin_value, *end_value, *strides_value,
+          begin_value, end_value, *strides_value,
           ShapeReadWriteFromTensorShapeProto(&input_shape_proto), begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
           &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
