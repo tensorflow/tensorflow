@@ -173,29 +173,30 @@ int Main(int argc, char** argv) {
   string output_prefix = "";
   bool show_sizes = false;
 
-  const bool parse_result = ParseFlags(
-      &argc, argv, {
-                       Flag("graph", &graph),                          //
-                       Flag("input_layer", &input_layer),              //
-                       Flag("input_layer_shape", &input_layer_shape),  //
-                       Flag("input_layer_type", &input_layer_type),    //
-                       Flag("output_layer", &output_layer),            //
-                       Flag("num_runs", &num_runs),                    //
-                       Flag("run_delay", &run_delay),                  //
-                       Flag("num_threads", &num_threads),              //
-                       Flag("benchmark_name", &benchmark_name),        //
-                       Flag("output_prefix", &output_prefix),          //
-                       Flag("show_sizes", &show_sizes),                //
-                   });
+  std::vector<Flag> flag_list = {
+      Flag("graph", &graph, "graph file name"),
+      Flag("input_layer", &input_layer, "input layer name"),
+      Flag("input_layer_shape", &input_layer_shape, "input layer shape"),
+      Flag("input_layer_type", &input_layer_type, "input layer type"),
+      Flag("output_layer", &output_layer, "output layer name"),
+      Flag("num_runs", &num_runs, "number of runs"),
+      Flag("run_delay", &run_delay, "delay between runs in seconds"),
+      Flag("num_threads", &num_threads, "number of threads"),
+      Flag("benchmark_name", &benchmark_name, "benchmark name"),
+      Flag("output_prefix", &output_prefix, "benchmark output prefix"),
+      Flag("show_sizes", &show_sizes, "whether to show sizes"),
+  };
+  string usage = Flags::Usage(argv[0], flag_list);
+  const bool parse_result = Flags::Parse(&argc, argv, flag_list);
 
   if (!parse_result) {
-    LOG(ERROR) << "Error parsing command-line flags.";
+    LOG(ERROR) << usage;
     return -1;
   }
 
   ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1];
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return -1;
   }
 

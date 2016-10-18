@@ -609,7 +609,7 @@ export class ScatterPlot {
   update() {
     this.getPointsCoordinates();
     this.visualizers.forEach(v => {
-      v.onUpdate();
+      v.onUpdate(this.dataSet);
     });
     this.render();
   }
@@ -633,7 +633,7 @@ export class ScatterPlot {
     const rc = new RenderContext(
         this.camera, this.orbitCameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.labelAccessor, this.pointColors, this.pointScaleFactors,
+        this.pointColors, this.pointScaleFactors, this.labelAccessor,
         this.labels);
 
     // Render first pass to picking target. This render fills pickingTexture

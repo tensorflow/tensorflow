@@ -83,7 +83,7 @@ export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
 
   onPickingRender(renderContext: RenderContext) {}
   onRender(renderContext: RenderContext) {}
-  onUpdate() {}
+  onUpdate(dataSet: DataSet) {}
   onResize(newWidth: number, newHeight: number) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

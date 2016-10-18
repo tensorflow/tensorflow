@@ -259,6 +259,13 @@ Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
 )doc");
 
+REGISTER_OP("Round").UNARY().Doc(R"doc(
+Rounds the values of a tensor to the nearest integer, element-wise.
+
+Rounds half to even.  Also known as bankers rounding. If you want to round
+according to the current system rounding mode use std::cint.
+)doc");
+
 REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
 Computes the gradient for the rsqrt of `x` wrt its input.
 

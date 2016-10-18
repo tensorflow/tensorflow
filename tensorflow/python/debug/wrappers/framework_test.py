@@ -24,7 +24,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.debug import debug_data
-from tensorflow.python.debug import framework
+from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
