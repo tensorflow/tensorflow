@@ -27,9 +27,9 @@ export let ProjectionsPanelPolymer = PolymerElement({
     is3d: {type: Boolean, observer: '_dimensionsObserver'},
     // PCA projection.
     pcaComponents: {type: Array, value: d3.range(1, 11)},
-    pcaX: {type: Number, value: 1, observer: 'showPCA'},
-    pcaY: {type: Number, value: 2, observer: 'showPCA'},
-    pcaZ: {type: Number, value: 3, observer: 'showPCA'},
+    pcaX: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
+    pcaY: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
+    pcaZ: {type: Number, value: 3, observer: 'showPCAIfEnabled'},
     // Custom projection.
     selectedSearchByMetadataOption: {
       type: String,
@@ -152,6 +152,31 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       .style('font-size', '14px');
   }
 
+  setPCAComponentUIValues(componentDimensions: number[]) {
+    this.pcaX = componentDimensions[0];
+    this.pcaY = componentDimensions[1];
+
+    if (componentDimensions.length === 3) {
+      this.pcaZ = componentDimensions[2];
+    }
+
+    this.setZDropdownEnabled(componentDimensions.length === 3);
+  }
+
+  getPCAComponentUIValues(): number[] {
+    const componentDimensions = [this.pcaX, this.pcaY];
+    if (this.is3d) {
+      componentDimensions.push(this.pcaZ);
+    }
+    return componentDimensions;
+  }
+
+  private setZDropdownEnabled(enabled: boolean) {
+    if (this.zDropdown) {
+      this.zDropdown.attr('disabled', enabled ? null : true);
+    }
+  }
+
   dataSetUpdated(dataSet: DataSet, dim: number) {
     this.currentDataSet = dataSet;
     this.dim = dim;
@@ -165,9 +190,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   _dimensionsObserver() {
-    if (this.zDropdown) {
-      this.zDropdown.attr('disabled', this.is3d ? null : true);
-    }
+    this.setZDropdownEnabled(this.is3d);
     this.beginProjection(this.currentProjection);
   }
 
@@ -224,15 +247,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private showTSNE() {
-    this.projector.setProjection(
-        'tsne', this.is3d ? 3 : 2,
-        // Accessors.
-        i => this.currentDataSet.points[i].projections['tsne-0'],
-        i => this.currentDataSet.points[i].projections['tsne-1'],
-        this.is3d ? (i => this.currentDataSet.points[i].projections['tsne-2']) :
-                    null,
-        // Axis labels.
-        'tsne-0', 'tsne-1', true /** deferUpdate */);
+    const dataSet = this.currentDataSet;
+    if (dataSet == null) {
+      return;
+    }
+    const accessors =
+        dataSet.getPointAccessors('tsne', [0, 1, this.is3d ? 2 : null]);
+    this.projector.setProjection('tsne', this.is3d ? 3 : 2, accessors);
 
     if (!this.currentDataSet.hasTSNERun) {
       this.runTSNE();
@@ -257,24 +278,23 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         });
   }
 
+  // tslint:disable-next-line:no-unused-variable
+  private showPCAIfEnabled() {
+    if (this.polymerChangesTriggerReprojection) {
+      this.showPCA();
+    }
+  }
+
   private showPCA() {
     if (this.currentDataSet == null) {
       return;
     }
     this.currentDataSet.projectPCA().then(() => {
       // Polymer properties are 1-based.
-      let x = this.pcaX - 1;
-      let y = this.pcaY - 1;
-      let z = this.pcaZ - 1;
+      const accessors = this.currentDataSet.getPointAccessors(
+          'pca', [this.pcaX - 1, this.pcaY - 1, this.pcaZ - 1]);
 
-      this.projector.setProjection(
-          'pca', this.is3d ? 3 : 2,
-          // Accessors.
-          i => this.currentDataSet.points[i].projections['pca-' + x],
-          i => this.currentDataSet.points[i].projections['pca-' + y],
-          i => this.currentDataSet.points[i].projections['pca-' + z],
-          // Axis labels.
-          'pca-' + x, 'pca-' + y);
+      this.projector.setProjection('pca', this.is3d ? 3 : 2, accessors);
     });
   }
 
@@ -284,23 +304,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         this.centroids.yDown == null) {
       return;
     }
-    let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
+    const xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
     this.currentDataSet.projectLinear(xDir, 'linear-x');
 
-    let yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
+    const yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
     this.currentDataSet.projectLinear(yDir, 'linear-y');
 
-    let xLabel = this.centroidValues.xLeft + ' → ' + this.centroidValues.xRight;
-    let yLabel = this.centroidValues.yUp + ' → ' + this.centroidValues.yDown;
+    const accessors =
+        this.currentDataSet.getPointAccessors('custom', ['x', 'y']);
 
-    this.projector.setProjection(
-        'custom', 2,
-        // Accessors.
-        i => this.currentDataSet.points[i].projections['linear-x'],
-        i => this.currentDataSet.points[i].projections['linear-y'],
-        null,  // Z accessor.
-        // Axis labels.
-        xLabel, yLabel);
+    this.projector.setProjection('custom', 2, accessors);
   }
 
   clearCentroids(): void {

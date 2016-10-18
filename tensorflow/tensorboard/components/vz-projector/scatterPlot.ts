@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {PointAccessor} from './data';
 import {HoverContext} from './hoverContext';
 import {LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -109,9 +110,7 @@ export class ScatterPlot {
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
 
   // Accessors for rendering and labeling the points.
-  private xAccessor: (index: number) => number;
-  private yAccessor: (index: number) => number;
-  private zAccessor: (index: number) => number;
+  private pointAccessors: [PointAccessor, PointAccessor, PointAccessor];
 
   // Scaling functions for each axis.
   private xScale: d3.scale.Linear<number, number>;
@@ -205,10 +204,10 @@ export class ScatterPlot {
     cameraControls.addEventListener('end', () => {});
   }
 
-  private makeCamera3D(cameraDef: CameraDef) {
+  private makeCamera3D(cameraDef: CameraDef, w: number, h: number) {
     let camera: THREE.PerspectiveCamera;
     {
-      const aspectRatio = this.width / this.height;
+      const aspectRatio = w / h;
       camera = new THREE.PerspectiveCamera(
           PERSP_CAMERA_FOV_VERTICAL, aspectRatio, PERSP_CAMERA_NEAR_CLIP_PLANE,
           PERSP_CAMERA_FAR_CLIP_PLANE);
@@ -310,7 +309,7 @@ export class ScatterPlot {
     if (cameraDef.orthographic) {
       this.makeCamera2D(cameraDef, this.width, this.height);
     } else {
-      this.makeCamera3D(cameraDef);
+      this.makeCamera3D(cameraDef, this.width, this.height);
     }
     this.orbitCameraControls.minDistance = MIN_ZOOM;
     this.orbitCameraControls.maxDistance = MAX_ZOOM;
@@ -508,29 +507,32 @@ export class ScatterPlot {
    * methods.
    */
   private getPointsCoordinates() {
+    const xAccessor = this.pointAccessors[0];
+    const yAccessor = this.pointAccessors[1];
+    const zAccessor = this.pointAccessors[2];
+
     // Determine max and min of each axis of our data.
-    const xExtent = d3.extent(this.dataSet.points, (p, i) => this.xAccessor(i));
-    const yExtent = d3.extent(this.dataSet.points, (p, i) => this.yAccessor(i));
+    const xExtent = d3.extent(this.dataSet.points, (p, i) => xAccessor(i));
+    const yExtent = d3.extent(this.dataSet.points, (p, i) => yAccessor(i));
     const range = [-CUBE_LENGTH / 2, CUBE_LENGTH / 2];
 
     this.xScale.domain(xExtent).range(range);
     this.yScale.domain(yExtent).range(range);
 
-    if (this.zAccessor) {
-      const zExtent =
-          d3.extent(this.dataSet.points, (p, i) => this.zAccessor(i));
+    if (zAccessor) {
+      const zExtent = d3.extent(this.dataSet.points, (p, i) => zAccessor(i));
       this.zScale.domain(zExtent).range(range);
     }
 
     // Determine 3d coordinates of each data point.
     this.dataSet.points.forEach((d, i) => {
-      d.projectedPoint[0] = this.xScale(this.xAccessor(i));
-      d.projectedPoint[1] = this.yScale(this.yAccessor(i));
+      d.projectedPoint[0] = this.xScale(xAccessor(i));
+      d.projectedPoint[1] = this.yScale(yAccessor(i));
     });
 
-    if (this.zAccessor) {
+    if (zAccessor) {
       this.dataSet.points.forEach((d, i) => {
-        d.projectedPoint[2] = this.zScale(this.zAccessor(i));
+        d.projectedPoint[2] = this.zScale(zAccessor(i));
       });
     } else {
       this.dataSet.points.forEach((d, i) => {
@@ -716,13 +718,9 @@ export class ScatterPlot {
     this.renderer.render(this.scene, this.camera);
   }
 
-  setPointAccessors(
-      xAccessor: (index: number) => number,
-      yAccessor: (index: number) => number,
-      zAccessor: (index: number) => number) {
-    this.xAccessor = xAccessor;
-    this.yAccessor = yAccessor;
-    this.zAccessor = zAccessor;
+  setPointAccessors(pointAccessors:
+                        [PointAccessor, PointAccessor, PointAccessor]) {
+    this.pointAccessors = pointAccessors;
   }
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
@@ -773,7 +771,6 @@ export class ScatterPlot {
 
   showAxes(show: boolean) {}
   showTickLabels(show: boolean) {}
-  setAxisLabels(xLabel: string, yLabel: string) {}
 
   resize(render = true) {
     const [oldW, oldH] = [this.width, this.height];

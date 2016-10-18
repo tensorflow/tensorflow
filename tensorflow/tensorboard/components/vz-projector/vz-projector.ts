@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataProto, DataSet, MetadataInfo, Projection, State} from './data';
+import {ColorOption, DataProto, DataSet, MetadataInfo, PointAccessor, Projection, State} from './data';
 import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
@@ -407,21 +407,19 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   setProjection(
       projection: Projection, dimensionality: number,
-      xAccessor: (index: number) => number,
-      yAccessor: (index: number) => number,
-      zAccessor: (index: number) => number, xAxisLabel: string,
-      yAxisLabel: string, deferUpdate = false) {
+      pointAccessors: [PointAccessor, PointAccessor, PointAccessor]) {
     this.selectedProjection = projection;
-    this.scatterPlot.setCameraDefForNextCameraCreation(null);
     this.scatterPlot.setDimensions(dimensionality);
     this.scatterPlot.showTickLabels(false);
-    this.scatterPlot.setPointAccessors(xAccessor, yAccessor, zAccessor);
-    this.scatterPlot.setAxisLabels(xAxisLabel, yAxisLabel);
-    if (!deferUpdate) {
+    this.scatterPlot.setPointAccessors(pointAccessors);
+
+    /* tsne needs to do an iteration for the points to look reasonable */
+    if (projection !== 'tsne') {
       this.scatterPlot.update();
     }
 
     this.scatterPlot.recreateScene();
+    this.scatterPlot.setCameraDefForNextCameraCreation(null);
   }
 
   notifyProjectionsUpdated() {
@@ -442,6 +440,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     state.selectedProjection = this.selectedProjection;
     state.is3d = this.projectionsPanel.is3d;
+    if (this.selectedProjection === 'pca') {
+      state.componentDimensions =
+          this.projectionsPanel.getPCAComponentUIValues();
+    }
     state.selectedPoints = this.selectedPointIndices;
     state.cameraDef = this.scatterPlot.getCameraDef();
 
@@ -463,6 +465,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     this.projectionsPanel.disablePolymerChangesTriggerReprojection();
     this.projectionsPanel.is3d = state.is3d;
+    if (state.selectedProjection === 'pca') {
+      this.projectionsPanel.setPCAComponentUIValues(state.componentDimensions);
+    }
     this.projectionsPanel.showTab(state.selectedProjection);
     this.projectionsPanel.enablePolymerChangesTriggerReprojection();
 
@@ -471,9 +476,13 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.selectedLabelOption = state.selectedLabelOption;
 
     this.scatterPlot.setCameraDefForNextCameraCreation(state.cameraDef);
-    this.scatterPlot.setDimensions(state.cameraDef.orthographic ? 2 : 3);
-    this.scatterPlot.recreateScene();
-    this.updateScatterPlot();
+
+    {
+      const accessors = this.currentDataSet.getPointAccessors(
+          state.selectedProjection, state.componentDimensions);
+      this.setProjection(
+          state.selectedProjection, state.is3d ? 3 : 2, accessors);
+    }
 
     this.notifySelectionChanged(state.selectedPoints);
   }

@@ -21,6 +21,7 @@ import * as logging from './logging';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
+export type PointAccessor = (index: number) => number;
 
 export interface PointMetadata {
   [key: string]: number | string;
@@ -43,7 +44,7 @@ export interface ColumnStats {
   name: string;
   isNumeric: boolean;
   tooManyUniqueValues: boolean;
-  uniqueEntries?: {label: string, count: number}[];
+  uniqueEntries?: Array<{label: string, count: number}>;
   min: number;
   max: number;
 }
@@ -180,6 +181,22 @@ export class DataSet implements scatterPlot.DataSet {
       }
     }
     return traces;
+  }
+
+  getPointAccessors(projection: Projection, components: (number|string)[]):
+      [PointAccessor, PointAccessor, PointAccessor] {
+    if (components.length > 3) {
+      throw new RangeError('components length must be <= 3');
+    }
+    const accessors: [PointAccessor, PointAccessor, PointAccessor] =
+        [null, null, null];
+    const prefix = (projection === 'custom') ? 'linear' : projection;
+    for (let i = 0; i < components.length; ++i) {
+      accessors[i] =
+          (index =>
+               this.points[index].projections[prefix + '-' + components[i]]);
+    }
+    return accessors;
   }
 
   /**
@@ -411,6 +428,9 @@ export interface State {
 
   /** The selected projection tab. */
   selectedProjection?: Projection;
+
+  /** The projection component dimensions (for PCA) */
+  componentDimensions?: number[];
 
   /** The computed projections of the tensors. */
   projections?: Array<{[key: string]: number}>;
