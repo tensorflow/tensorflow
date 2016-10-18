@@ -1407,10 +1407,10 @@ And a label array such as: `[2, 2, 3]`
 The confusion matrix returned would be the following one:
 
 ```python
-    [[0, 0, 0]
-     [0, 1, 0]
-     [0, 1, 0]
-     [0, 0, 1]]
+    [[0, 0, 0, 0]
+     [0, 0, 1, 0]
+     [0, 0, 1, 0]
+     [0, 0, 0, 1]]
 ```
 
 If `weights` is not None, then the confusion matrix elements are the
