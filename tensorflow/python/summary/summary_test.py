@@ -41,7 +41,9 @@ class ScalarSummaryTest(tf.test.TestCase):
       return tf.summary.scalar('name', c)
 
     for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
+      if (datatype_enum == types_pb2.DT_INVALID or
+          datatype_enum == types_pb2.DT_RESOURCE or
+          datatype_enum == types_pb2.DT_RESOURCE_REF):
         continue
       dtype = tf.as_dtype(datatype_enum)
       if dtype.is_quantized:

@@ -17,19 +17,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution as distributions
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 
 
-class TransformedDistribution(distribution.Distribution):
+_condition_kwargs_dict = {
+    "bijector_kwargs": ("Python dictionary of arg names/values "
+                        "forwarded to the bijector."),
+    "distribution_kwargs": ("Python dictionary of arg names/values "
+                            "forwarded to the distribution."),
+}
+
+
+class TransformedDistribution(distributions.Distribution):
   """A Transformed Distribution.
 
-  A Transformed Distribution models `p(y)` given a base distribution `p(x)`, and
-  a deterministic, invertible, differentiable transform, `Y = g(X)`. The
+  A `TransformedDistribution` models `p(y)` given a base distribution `p(x)`,
+  and a deterministic, invertible, differentiable transform, `Y = g(X)`. The
   transform is typically an instance of the `Bijector` class and the base
   distribution is typically an instance of the `Distribution` class.
+
+  A `Bijector` is expected to implement the following functions:
+  - `forward`,
+  - `inverse`,
+  - `inverse_log_det_jacobian`.
+  The semantics of these functions are outlined in the `Bijector` documentation.
 
   Shapes, type, and reparameterization are taken from the base distribution.
 
@@ -44,7 +58,7 @@ class TransformedDistribution(distribution.Distribution):
 
       Mathematically:
 
-      ```
+      ```none
       Y = g(X)
       ```
 
@@ -58,7 +72,7 @@ class TransformedDistribution(distribution.Distribution):
 
       Mathematically:
 
-      ```
+      ```none
       (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
       ```
 
@@ -73,7 +87,7 @@ class TransformedDistribution(distribution.Distribution):
 
       Mathematically:
 
-      ```
+      ```none
       (log o P o g^{-1})(y)
       ```
 
@@ -92,7 +106,7 @@ class TransformedDistribution(distribution.Distribution):
   ```python
   ds = tf.contrib.distributions
   log_normal = ds.TransformedDistribution(
-    base_distribution=ds.Normal(mu=mu, sigma=sigma),
+    distribution=ds.Normal(mu=mu, sigma=sigma),
     bijector=ds.bijector.Exp(),
     name="LogNormalTransformedDistribution")
   ```
@@ -102,7 +116,7 @@ class TransformedDistribution(distribution.Distribution):
   ```python
   ds = tf.contrib.distributions
   log_normal = ds.TransformedDistribution(
-    base_distribution=ds.Normal(mu=mu, sigma=sigma),
+    distribution=ds.Normal(mu=mu, sigma=sigma),
     bijector=ds.bijector.Inline(
       forward_fn=tf.exp,
       inverse_fn=tf.log,
@@ -116,7 +130,7 @@ class TransformedDistribution(distribution.Distribution):
   ```python
   ds = tf.contrib.distributions
   normal = ds.TransformedDistribution(
-    base_distribution=ds.Normal(mu=0, sigma=1),
+    distribution=ds.Normal(mu=0, sigma=1),
     bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
     name="NormalTransformedDistribution")
   ```
@@ -124,36 +138,42 @@ class TransformedDistribution(distribution.Distribution):
   """
 
   def __init__(self,
-               base_distribution,
+               distribution,
                bijector,
-               name="TransformedDistribution"):
+               name=None):
     """Construct a Transformed Distribution.
 
     Args:
-      base_distribution: The base distribution class to transform. Typically an
+      distribution: The base distribution class to transform. Typically an
         instance of `Distribution`.
       bijector: The object responsible for calculating the transformation.
         Typically an instance of `Bijector`.
-      name: The name for the distribution.
+      name: The name for the distribution. Default:
+        `bijector.name + distribution.name`.
     """
+    name = name or bijector.name + distribution.name
     with ops.name_scope(name) as ns:
-      self._base_distribution = base_distribution
+      self._distribution = distribution
       self._bijector = bijector
       self._inverse_cache = {}
+      parameters = {}
+      for k, v in distribution.parameters.items():
+        parameters["distribution_" + k] = v
+      for k, v in bijector.parameters.items():
+        parameters["bijector_" + k] = v
       super(TransformedDistribution, self).__init__(
-          dtype=self._base_distribution.dtype,
-          parameters={"base_distribution": base_distribution,
-                      "bijector": bijector},
-          is_continuous=self._base_distribution.is_continuous,
-          is_reparameterized=self._base_distribution.is_reparameterized,
-          validate_args=self._base_distribution.validate_args,
-          allow_nan_stats=self._base_distribution.allow_nan_stats,
+          dtype=self._distribution.dtype,
+          parameters=parameters,
+          is_continuous=self._distribution.is_continuous,
+          is_reparameterized=self._distribution.is_reparameterized,
+          validate_args=self._distribution.validate_args,
+          allow_nan_stats=self._distribution.allow_nan_stats,
           name=ns)
 
   @property
-  def base_distribution(self):
+  def distribution(self):
     """Base distribution, p(x)."""
-    return self._base_distribution
+    return self._distribution
 
   @property
   def bijector(self):
@@ -161,66 +181,103 @@ class TransformedDistribution(distribution.Distribution):
     return self._bijector
 
   def _batch_shape(self):
-    return self.base_distribution.batch_shape()
+    return self.distribution.batch_shape()
 
   def _get_batch_shape(self):
-    return self.base_distribution.get_batch_shape()
+    return self.distribution.get_batch_shape()
 
   def _event_shape(self):
-    return self.base_distribution.event_shape()
+    return self.distribution.event_shape()
 
   def _get_event_shape(self):
-    return self.base_distribution.get_event_shape()
+    return self.distribution.get_event_shape()
 
   @distribution_util.AppendDocstring(
       """Samples from the base distribution and then passes through
-      the bijector's forward transform.""")
-  def _sample_n(self, n, seed=None):
-    raw_samples = self.base_distribution.sample_n(n=n, seed=seed)
-    samples = self.bijector.forward(raw_samples)
-    self._inverse_cache[samples] = raw_samples
-    return samples
+      the bijector's forward transform.""",
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _sample_n(self, n, seed=None,
+                bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self.distribution.sample(sample_shape=n, seed=seed,
+                                 **distribution_kwargs)
+    # Recall that a bijector is named for its forward transform, i.e.,
+    # `Y = g(X)`,
+    y = self.bijector.forward(x, **bijector_kwargs)
+    self._inverse_cache[y] = x
+    return y
 
   @distribution_util.AppendDocstring(
       """Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
-      distribution and `y` was not returned from `sample`.""")
-  def _log_prob(self, y):
-    x = self._inverse_possibly_from_cache(y)
-    inverse_log_det_jacobian = self.bijector.inverse_log_det_jacobian(y)
-    return self.base_distribution.log_prob(x) + inverse_log_det_jacobian
+      distribution and `y` was not returned from `sample`.""",
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _log_prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self._inverse_possibly_from_cache(y, bijector_kwargs)
+    inverse_log_det_jacobian = self.bijector.inverse_log_det_jacobian(
+        y, **bijector_kwargs)
+    return (self.distribution.log_prob(x, **distribution_kwargs) +
+            inverse_log_det_jacobian)
 
   @distribution_util.AppendDocstring(
       """Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
       inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
-      distribution and `y` was not returned from `sample`.""")
-  def _prob(self, y):
-    return math_ops.exp(self._log_prob(y))
+      distribution and `y` was not returned from `sample`.""",
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self._inverse_possibly_from_cache(y, bijector_kwargs)
+    inverse_det_jacobian = math_ops.exp(self.bijector.inverse_log_det_jacobian(
+        y, **bijector_kwargs))
+    return (self.distribution.prob(x, **distribution_kwargs) *
+            inverse_det_jacobian)
 
-  def _log_cdf(self, y):
-    x = self._inverse_possibly_from_cache(y)
-    return self.base_distribution.log_cdf(x)
+  @distribution_util.AppendDocstring(
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _log_cdf(self, y, bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self._inverse_possibly_from_cache(y, bijector_kwargs)
+    return self.distribution.log_cdf(x, distribution_kwargs)
 
-  def _cdf(self, y):
-    x = self._inverse_possibly_from_cache(y)
-    return self.base_distribution.cdf(x)
+  @distribution_util.AppendDocstring(
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _cdf(self, y, bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self._inverse_possibly_from_cache(y, bijector_kwargs)
+    return self.distribution.cdf(x, **distribution_kwargs)
 
-  def _log_survival_function(self, y):
-    x = self._inverse_possibly_from_cache(y)
-    return self.base_distribution.log_survival_function(x)
+  @distribution_util.AppendDocstring(
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _log_survival_function(self, y,
+                             bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self._inverse_possibly_from_cache(y, bijector_kwargs)
+    return self.distribution.log_survival_function(x, **distribution_kwargs)
 
-  def _survival_function(self, y):
-    x = self._inverse_possibly_from_cache(y)
-    return self.base_distribution.survival_function(x)
+  @distribution_util.AppendDocstring(
+      condition_kwargs_dict=_condition_kwargs_dict)
+  def _survival_function(self, y,
+                         bijector_kwargs=None, distribution_kwargs=None):
+    bijector_kwargs = bijector_kwargs or {}
+    distribution_kwargs = distribution_kwargs or {}
+    x = self._inverse_possibly_from_cache(y, bijector_kwargs)
+    return self.distribution.survival_function(x, **distribution_kwargs)
 
-  def _inverse_possibly_from_cache(self, y):
+  def _inverse_possibly_from_cache(self, y, bijector_kwargs):
     """Return `self._inverse(y)`, possibly using cached value."""
     y = ops.convert_to_tensor(y, name="y")
     if y in self._inverse_cache:
       return self._inverse_cache[y]
     else:
-      return self.bijector.inverse(y)
+      return self.bijector.inverse(y, **bijector_kwargs)

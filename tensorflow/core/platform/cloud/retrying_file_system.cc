@@ -57,8 +57,6 @@ Status CallWithRetries(const std::function<Status()>& f,
       return status;
     }
     const int64 delay_micros = initial_delay_microseconds << retries;
-    LOG(ERROR) << "The operation resulted in an error: " << status.ToString()
-               << " will be retried after " << delay_micros << " microseconds";
     WaitBeforeRetry(delay_micros);
     retries++;
   }
@@ -213,6 +211,15 @@ Status RetryingFileSystem::RenameFile(const string& src, const string& target) {
 Status RetryingFileSystem::IsDirectory(const string& dirname) {
   return CallWithRetries(
       std::bind(&FileSystem::IsDirectory, base_file_system_.get(), dirname),
+      initial_delay_microseconds_);
+}
+
+Status RetryingFileSystem::DeleteRecursively(const string& dirname,
+                                             int64* undeleted_files,
+                                             int64* undeleted_dirs) {
+  return CallWithRetries(
+      std::bind(&FileSystem::DeleteRecursively, base_file_system_.get(),
+                dirname, undeleted_files, undeleted_dirs),
       initial_delay_microseconds_);
 }
 

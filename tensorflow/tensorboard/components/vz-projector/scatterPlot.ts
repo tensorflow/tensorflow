@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {PointAccessor} from './data';
 import {HoverContext} from './hoverContext';
 import {LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -82,6 +83,14 @@ export enum Mode {
   HOVER
 }
 
+/** Defines a camera, suitable for serialization. */
+export class CameraDef {
+  orthographic: boolean = false;
+  position: Point3D;
+  target: Point3D;
+  zoom: number;
+}
+
 /**
  * Maintains a three.js instantiation and context,
  * animation state, and all other logic that's
@@ -101,9 +110,7 @@ export class ScatterPlot {
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
 
   // Accessors for rendering and labeling the points.
-  private xAccessor: (index: number) => number;
-  private yAccessor: (index: number) => number;
-  private zAccessor: (index: number) => number;
+  private pointAccessors: [PointAccessor, PointAccessor, PointAccessor];
 
   // Scaling functions for each axis.
   private xScale: d3.scale.Linear<number, number>;
@@ -125,6 +132,7 @@ export class ScatterPlot {
   private light: THREE.PointLight;
   private selectionSphere: THREE.Mesh;
 
+  private cameraDef: CameraDef|null = null;
   private camera: THREE.Camera;
   private orbitCameraControls: any;
   private orbitAnimationId: number;
@@ -159,6 +167,7 @@ export class ScatterPlot {
     this.scene.add(this.light);
 
     this.setDimensions(3);
+    this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
     this.renderer.render(this.scene, this.camera);
 
     this.addAxesToScene();
@@ -195,15 +204,19 @@ export class ScatterPlot {
     cameraControls.addEventListener('end', () => {});
   }
 
-  private makeCamera3D() {
+  private makeCamera3D(cameraDef: CameraDef, w: number, h: number) {
     let camera: THREE.PerspectiveCamera;
     {
-      const aspectRatio = this.width / this.height;
+      const aspectRatio = w / h;
       camera = new THREE.PerspectiveCamera(
           PERSP_CAMERA_FOV_VERTICAL, aspectRatio, PERSP_CAMERA_NEAR_CLIP_PLANE,
           PERSP_CAMERA_FAR_CLIP_PLANE);
-      camera.position.copy(START_CAMERA_POS_3D);
-      camera.lookAt(START_CAMERA_TARGET_3D);
+      camera.position.set(
+          cameraDef.position[0], cameraDef.position[1], cameraDef.position[2]);
+      const at = new THREE.Vector3(
+          cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
+      camera.lookAt(at);
+      camera.zoom = cameraDef.zoom;
     }
 
     const occ =
@@ -223,8 +236,10 @@ export class ScatterPlot {
     this.addCameraControlsEventListeners(this.orbitCameraControls);
   }
 
-  private makeCamera2D(w: number, h: number) {
+  private makeCamera2D(cameraDef: CameraDef, w: number, h: number) {
     let camera: THREE.OrthographicCamera;
+    const target = new THREE.Vector3(
+        cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
     {
       const aspectRatio = w / h;
       let left = -ORTHO_CAMERA_FRUSTUM_HALF_EXTENT;
@@ -241,15 +256,19 @@ export class ScatterPlot {
       }
       camera =
           new THREE.OrthographicCamera(left, right, top, bottom, -1000, 1000);
-      camera.position.copy(START_CAMERA_POS_2D);
+      camera.position.set(
+          cameraDef.position[0], cameraDef.position[1], cameraDef.position[2]);
       camera.up = new THREE.Vector3(0, 1, 0);
-      camera.lookAt(START_CAMERA_TARGET_2D);
+      camera.lookAt(target);
+      camera.zoom = cameraDef.zoom;
     }
 
     const occ =
         new (THREE as any).OrbitControls(camera, this.renderer.domElement);
 
+    occ.target = target;
     occ.enableRotate = false;
+    occ.enableDamping = false;
     occ.autoRotate = false;
     occ.mouseButtons.ORBIT = null;
     occ.mouseButtons.PAN = THREE.MOUSE.LEFT;
@@ -263,11 +282,34 @@ export class ScatterPlot {
     this.addCameraControlsEventListeners(occ);
   }
 
-  private recreateCamera(dimensionality: number) {
-    if (dimensionality === 2) {
-      this.makeCamera2D(this.width, this.height);
-    } else if (dimensionality === 3) {
-      this.makeCamera3D();
+  private makeDefaultCameraDef(dimensionality: number): CameraDef {
+    const def = new CameraDef();
+    def.orthographic = (dimensionality === 2);
+    def.zoom = 1.0;
+    if (def.orthographic) {
+      def.position =
+          [START_CAMERA_POS_2D.x, START_CAMERA_POS_2D.y, START_CAMERA_POS_2D.z];
+      def.target = [
+        START_CAMERA_TARGET_2D.x, START_CAMERA_TARGET_2D.y,
+        START_CAMERA_TARGET_2D.z
+      ];
+    } else {
+      def.position =
+          [START_CAMERA_POS_3D.x, START_CAMERA_POS_3D.y, START_CAMERA_POS_3D.z];
+      def.target = [
+        START_CAMERA_TARGET_3D.x, START_CAMERA_TARGET_3D.y,
+        START_CAMERA_TARGET_3D.z
+      ];
+    }
+    return def;
+  }
+
+  /** Recreate the scatter plot camera from a definition structure. */
+  recreateCamera(cameraDef: CameraDef) {
+    if (cameraDef.orthographic) {
+      this.makeCamera2D(cameraDef, this.width, this.height);
+    } else {
+      this.makeCamera3D(cameraDef, this.width, this.height);
     }
     this.orbitCameraControls.minDistance = MIN_ZOOM;
     this.orbitCameraControls.maxDistance = MAX_ZOOM;
@@ -465,29 +507,32 @@ export class ScatterPlot {
    * methods.
    */
   private getPointsCoordinates() {
+    const xAccessor = this.pointAccessors[0];
+    const yAccessor = this.pointAccessors[1];
+    const zAccessor = this.pointAccessors[2];
+
     // Determine max and min of each axis of our data.
-    const xExtent = d3.extent(this.dataSet.points, (p, i) => this.xAccessor(i));
-    const yExtent = d3.extent(this.dataSet.points, (p, i) => this.yAccessor(i));
+    const xExtent = d3.extent(this.dataSet.points, (p, i) => xAccessor(i));
+    const yExtent = d3.extent(this.dataSet.points, (p, i) => yAccessor(i));
     const range = [-CUBE_LENGTH / 2, CUBE_LENGTH / 2];
 
     this.xScale.domain(xExtent).range(range);
     this.yScale.domain(yExtent).range(range);
 
-    if (this.zAccessor) {
-      const zExtent =
-          d3.extent(this.dataSet.points, (p, i) => this.zAccessor(i));
+    if (zAccessor) {
+      const zExtent = d3.extent(this.dataSet.points, (p, i) => zAccessor(i));
       this.zScale.domain(zExtent).range(range);
     }
 
     // Determine 3d coordinates of each data point.
     this.dataSet.points.forEach((d, i) => {
-      d.projectedPoint[0] = this.xScale(this.xAccessor(i));
-      d.projectedPoint[1] = this.yScale(this.yAccessor(i));
+      d.projectedPoint[0] = this.xScale(xAccessor(i));
+      d.projectedPoint[1] = this.yScale(yAccessor(i));
     });
 
-    if (this.zAccessor) {
+    if (zAccessor) {
       this.dataSet.points.forEach((d, i) => {
-        d.projectedPoint[2] = this.zScale(this.zAccessor(i));
+        d.projectedPoint[2] = this.zScale(zAccessor(i));
       });
     } else {
       this.dataSet.points.forEach((d, i) => {
@@ -504,12 +549,31 @@ export class ScatterPlot {
     return this.dimensionality === 3;
   }
 
+  /** Set 2d vs 3d mode. */
   setDimensions(dimensionality: number) {
     if ((dimensionality !== 2) && (dimensionality !== 3)) {
       throw new RangeError('dimensionality must be 2 or 3');
     }
     this.dimensionality = dimensionality;
-    this.recreateCamera(dimensionality);
+    const def = this.cameraDef || this.makeDefaultCameraDef(dimensionality);
+    this.recreateCamera(def);
+  }
+
+  /** Gets the current camera information, suitable for serialization. */
+  getCameraDef(): CameraDef {
+    const def = new CameraDef();
+    const pos = this.camera.position;
+    const tgt = this.orbitCameraControls.target;
+    def.orthographic = !this.sceneIs3D();
+    def.position = [pos.x, pos.y, pos.z];
+    def.target = [tgt.x, tgt.y, tgt.z];
+    def.zoom = (this.camera as any).zoom;
+    return def;
+  }
+
+  /** Sets parameters for the next camera recreation. */
+  setCameraDefForNextCameraCreation(def: CameraDef) {
+    this.cameraDef = def;
   }
 
   /** Gets the current camera position. */
@@ -609,7 +673,7 @@ export class ScatterPlot {
   update() {
     this.getPointsCoordinates();
     this.visualizers.forEach(v => {
-      v.onUpdate();
+      v.onUpdate(this.dataSet);
     });
     this.render();
   }
@@ -633,7 +697,7 @@ export class ScatterPlot {
     const rc = new RenderContext(
         this.camera, this.orbitCameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.labelAccessor, this.pointColors, this.pointScaleFactors,
+        this.pointColors, this.pointScaleFactors, this.labelAccessor,
         this.labels);
 
     // Render first pass to picking target. This render fills pickingTexture
@@ -654,13 +718,9 @@ export class ScatterPlot {
     this.renderer.render(this.scene, this.camera);
   }
 
-  setPointAccessors(
-      xAccessor: (index: number) => number,
-      yAccessor: (index: number) => number,
-      zAccessor: (index: number) => number) {
-    this.xAccessor = xAccessor;
-    this.yAccessor = yAccessor;
-    this.zAccessor = zAccessor;
+  setPointAccessors(pointAccessors:
+                        [PointAccessor, PointAccessor, PointAccessor]) {
+    this.pointAccessors = pointAccessors;
   }
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
@@ -699,7 +759,7 @@ export class ScatterPlot {
   getMode(): Mode { return this.mode; }
 
   resetZoom() {
-    this.recreateCamera(this.dimensionality);
+    this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
     this.render();
   }
 
@@ -711,7 +771,6 @@ export class ScatterPlot {
 
   showAxes(show: boolean) {}
   showTickLabels(show: boolean) {}
-  setAxisLabels(xLabel: string, yLabel: string) {}
 
   resize(render = true) {
     const [oldW, oldH] = [this.width, this.height];

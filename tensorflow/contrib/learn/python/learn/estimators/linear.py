@@ -30,6 +30,9 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
@@ -37,7 +40,6 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
@@ -640,7 +642,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size, outputs=[_CLASSES],
@@ -649,8 +654,11 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       return _as_iterable(preds, output=_CLASSES)
     return preds[_CLASSES]
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
-                    as_iterable=False):
+                    as_iterable=True):
     """Runs inference to determine the class probability predictions."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
@@ -661,10 +669,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return preds[_PROBABILITIES]
 
   def get_variable_names(self):
-    return [name for name, _ in checkpoints.list_variables(self._model_dir)]
+    return [name for name, _ in list_variables(self._model_dir)]
 
   def get_variable_value(self, name):
-    return checkpoints.load_variable(self.model_dir, name)
+    return load_variable(self.model_dir, name)
 
   def export(self,
              export_dir,
@@ -698,11 +706,11 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
-    for name, _ in checkpoints.list_variables(self._model_dir):
+    for name, _ in list_variables(self._model_dir):
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = checkpoints.load_variable(self._model_dir, name)
+        values[name] = load_variable(self._model_dir, name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
@@ -713,8 +721,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def bias_(self):
-    return checkpoints.load_variable(self._model_dir,
-                                     name="linear/bias_weight")
+    return load_variable(self._model_dir, name="linear/bias_weight")
 
   @property
   def config(self):
