@@ -300,10 +300,10 @@ class BaseEstimator(
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
 
-    # Create a run configuration
+    # Create a run configuration.
     if config is None:
       self._config = BaseEstimator._Config()
-      logging.warning('Using default config.')
+      logging.info('Using default config.')
     else:
       self._config = config
     logging.info('Using config: %s', str(vars(self._config)))
@@ -503,7 +503,7 @@ class BaseEstimator(
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds toa 
+        key into the features dict returned by `input_fn` that corresponds to a
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).

@@ -23,6 +23,7 @@ import six
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -544,6 +545,7 @@ def _get_rnn_cell(cell_type, num_units, num_layers):
   return cell
 
 
+@experimental
 def multi_value_rnn_regressor(num_units,
                               sequence_feature_columns,
                               context_feature_columns=None,
@@ -596,6 +598,7 @@ def multi_value_rnn_regressor(num_units,
                                  dtype=cell_dtype)
 
 
+@experimental
 def multi_value_rnn_classifier(num_classes,
                                num_units,
                                sequence_feature_columns,
@@ -650,6 +653,7 @@ def multi_value_rnn_classifier(num_classes,
                                  dtype=cell_dtype)
 
 
+@experimental
 def single_value_rnn_regressor(num_units,
                                sequence_feature_columns,
                                context_feature_columns=None,
@@ -702,6 +706,7 @@ def single_value_rnn_regressor(num_units,
                                   dtype=cell_dtype)
 
 
+@experimental
 def single_value_rnn_classifier(num_classes,
                                 num_units,
                                 sequence_feature_columns,

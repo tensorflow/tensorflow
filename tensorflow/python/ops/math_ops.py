@@ -556,11 +556,13 @@ def imag(input, name=None):
 def round(x, name=None):
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
+  Rounds half to even.  Also known as bankers rounding. If you want to round
+  according to the current system rounding mode use tf::cint.
   For example:
 
   ```python
-  # 'a' is [0.9, 2.5, 2.3, -4.4]
-  tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
+  # 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
+  tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
   Args:
@@ -574,7 +576,12 @@ def round(x, name=None):
   if x.dtype.is_integer:
     return x
   else:
+    # TODO(nolivia): Switch to new Round op
+    # return gen_math_ops.round(x, name=name)
     return gen_math_ops.floor(x + 0.5, name=name)
+
+
+ops.RegisterShape("Round")(common_shapes.call_cpp_shape_fn)
 
 
 def cast(x, dtype, name=None):

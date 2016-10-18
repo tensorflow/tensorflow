@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/** Delay for running async tasks, in milliseconds. */
-const ASYNC_DELAY_MS = 25;
-
 /** Duration in ms for showing warning messages to the user */
 const WARNING_DURATION_MS = 5000;
 
@@ -25,42 +22,13 @@ const WARNING_DURATION_MS = 5000;
  */
 const MSG_ANIMATION_DURATION_MSEC = 300 + 20;
 
-
-/**
- * Runs an expensive task asynchronously with some delay
- * so that it doesn't block the UI thread immediately.
- *
- * @param message The message to display to the user.
- * @param task The expensive task to run.
- * @param msgId Optional. ID of an existing message. If provided, will overwrite
- *     an existing message and won't automatically clear the message when the
- *     task is done.
- * @return The value returned by the task.
- */
-export function runAsyncTask<T>(message: string, task: () => T,
-    msgId: string = null): Promise<T> {
-  let autoClear = (msgId == null);
-  msgId = updateMessage(message, msgId);
-  return new Promise<T>((resolve, reject) => {
-    d3.timer(() => {
-      try {
-        let result = task();
-        // Clearing the old message.
-        if (autoClear) {
-          updateMessage(null, msgId);
-        }
-        resolve(result);
-      } catch (ex) {
-        updateMessage('Error: ' + ex.message);
-        reject(ex);
-      }
-      return true;
-    }, ASYNC_DELAY_MS);
-  });
-}
-
+let dom: HTMLElement = null;
 let msgId = 0;
 let numActiveMessages = 0;
+
+export function setDomContainer(domElement: HTMLElement) {
+  dom = domElement;
+}
 
 /**
  * Updates the user message with the provided id.
@@ -70,16 +38,21 @@ let numActiveMessages = 0;
  *     is assigned.
  * @return The id of the message.
  */
-export function updateMessage(msg: string, id: string = null): string {
-  let dialog = d3.select('#wrapper-notify-msg').node() as any;
+export function setModalMessage(msg: string, id: string = null): string {
+  if (dom == null) {
+    console.warn('Can\'t show modal message before the dom is initialized');
+    return;
+  }
   if (id == null) {
     id = (msgId++).toString();
   }
+  let dialog = dom.querySelector('#wrapper-notify-msg') as any;
+  let msgsContainer = dom.querySelector('#notify-msgs') as HTMLElement;
   let divId = `notify-msg-${id}`;
-  let msgDiv = d3.select('#' + divId);
+  let msgDiv = d3.select(dom.querySelector('#' + divId));
   let exists = msgDiv.size() > 0;
   if (!exists) {
-    msgDiv = d3.select('#notify-msgs').insert('div', ':first-child')
+    msgDiv = d3.select(msgsContainer).insert('div', ':first-child')
       .attr('class', 'notify-msg')
       .attr('id', divId);
     numActiveMessages++;
@@ -102,8 +75,9 @@ export function updateMessage(msg: string, id: string = null): string {
 /**
  * Shows a warning message to the user for a certain amount of time.
  */
-export function updateWarningMessage(msg: string): void {
-  let warningDiv = d3.select('#warning-msg');
+export function setWarningMessage(msg: string): void {
+  let warningMsg = dom.querySelector('#warning-msg') as HTMLElement;
+  let warningDiv = d3.select(warningMsg);
   warningDiv.style('display', 'block').text('Warning: ' + msg);
 
   // Hide the warning message after a certain timeout.
