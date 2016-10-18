@@ -1322,6 +1322,7 @@ cuda_py_test(
     srcs = ["svd_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 20,
+    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 filegroup(
