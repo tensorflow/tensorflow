@@ -37,18 +37,15 @@ providing the desired rate for each example. If you wish to specify relative
 rates, rather than absolute ones, use ['weighted_resample'](#weighted_resample)
 (which also returns the actual resampling rate used for each output example).
 
-Use ['stratified_sample'](#stratified_sample) or
-['stratified_sample_unknown_dist'](#stratified_sample_unknown_dist) to
-resample without replacement from the data to achieve a desired mix of
-class proportions that the Tensorflow graph sees. For instance, if you
-have a binary classification dataset that is 99.9% class 1, a common
-approach is to resample from the data so that the data is more
-balanced.
+Use ['stratified_sample'](#stratified_sample) to resample without replacement
+from the data to achieve a desired mix of class proportions that the Tensorflow
+graph sees. For instance, if you have a binary classification dataset that is
+99.9% class 1, a common approach is to resample from the data so that the data
+is more balanced.
 
 @@rejection_sample
 @@resample_at_rate
 @@stratified_sample
-@@stratified_sample_unknown_dist
 @@weighted_resample
 
 ## Bucketing

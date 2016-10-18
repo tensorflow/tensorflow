@@ -312,7 +312,7 @@ REGISTER_OP("MatrixSolve")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       return MatrixSolveShapeFn(c, true /* square (*/);
     })

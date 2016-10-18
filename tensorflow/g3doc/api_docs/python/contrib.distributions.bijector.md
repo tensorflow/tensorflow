@@ -146,6 +146,37 @@ Subclass Requirements:
   `inverse_log_det_jacobian` then he or she may also wish to implement these
   functions to avoid computing the `inverse_log_det_jacobian` or the
   `inverse`, respectively.
+
+
+Tips for implementing `inverse_log_det_jacobian`:
+
+- In rare cases it may be easier to compute the Jacobian of the forward
+  transformation rather than the inverse. The two are equivalent up to sign.
+
+  - Claim:
+
+      Assume `Y=g(X)` is a bijection whose derivative exists and is nonzero
+      for its domain, i.e., `d/dX g(X)!=0`. Then:
+
+      ```none
+      (log o det o jacobian o g^{-1})(Y) = -(log o det o jacobian o g)(X)
+      ```
+
+  - Proof:
+
+      From the nonzero, differentiability of `g`, the [inverse function
+      theorem](https://en.wikipedia.org/wiki/Inverse_function_theorem) implies
+      `g^{-1}` is differentiable in the image of `g`.
+      Observe that `y = g(x) = g(g^{-1}(y))`.
+      From the chain rule we have `I = g'(g^{-1}(y))*g^{-1}'(y).`
+      Since `g` is a bijection and `g`, `g^{-1}` are differentiable, g{-1}' is
+      non-singular therefore: `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
+      The claim follows from [properties of determinant](
+https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
+
+- It is generally preferable to implement the Jacobian of the inverse. Doing
+  so should have better numerical stability and is likely to share operations
+  with the `inverse` implementation.
 - - -
 
 #### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, parameters=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
@@ -191,7 +222,7 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.forward(x, name='forward')` {#Bijector.forward}
+#### `tf.contrib.distributions.bijector.Bijector.forward(x, name='forward', **condition_kwargs)` {#Bijector.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -200,6 +231,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -215,15 +247,16 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse(x, name='inverse')` {#Bijector.inverse}
+#### `tf.contrib.distributions.bijector.Bijector.inverse(y, name='inverse', **condition_kwargs)` {#Bijector.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -232,7 +265,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -240,7 +273,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse_and_inverse_log_det_jacobian(x, name='inverse_and_inverse_log_det_jacobian')` {#Bijector.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Bijector.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Bijector.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -252,8 +285,9 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -262,7 +296,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
@@ -270,20 +304,20 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse_log_det_jacobian(x, name='inverse_log_det_jacobian')` {#Bijector.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Bijector.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Bijector.inverse_log_det_jacobian}
 
-Returns the (log o det o Jacobian o inverse)(x).
+Returns the (log o det o Jacobian o inverse)(y).
 
-Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-Note that forward_log_det_jacobian is the negative of this function. (See
-is_constant_jacobian for related proof.)
+Note that `forward_log_det_jacobian` is the negative of this function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -292,7 +326,7 @@ is_constant_jacobian for related proof.)
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -342,6 +376,196 @@ Returns True if Tensor arguments will be validated.
 
 - - -
 
+### `class tf.contrib.distributions.bijector.Exp` {#Exp}
+
+Bijector which computes Y = g(X) = exp(X).
+
+Example Use:
+
+```python
+# Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
+# batch ndim and 2 event ndims (i.e., vector of matrices).
+exp = Exp(batch_ndims=1, event_ndims=2)
+x = [[[1., 2],
+       [3, 4]],
+      [[5, 6],
+       [7, 8]]]
+exp(x) == exp.forward(x)
+log(x) == exp.inverse(x)
+```
+
+Note: the exp(.) is applied element-wise but the Jacobian is a reduction
+over the event space.
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.__init__(event_ndims=0, validate_args=False, name='Exp')` {#Exp.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.dtype` {#Exp.dtype}
+
+dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.forward(x, name='forward', **condition_kwargs)` {#Exp.forward}
+
+Returns the forward `Bijector` evaluation, i.e., X = g(Y).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.inverse(y, name='inverse', **condition_kwargs)` {#Exp.inverse}
+
+Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Exp.inverse_and_inverse_log_det_jacobian}
+
+Returns both the inverse evaluation and inverse_log_det_jacobian.
+
+Enables possibly more efficient calculation when both inverse and
+corresponding Jacobian are needed.
+
+See `inverse()`, `inverse_log_det_jacobian()` for more details.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Exp.inverse_log_det_jacobian}
+
+Returns the (log o det o Jacobian o inverse)(y).
+
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
+
+Note that `forward_log_det_jacobian` is the negative of this function.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.is_constant_jacobian` {#Exp.is_constant_jacobian}
+
+Returns true iff the Jacobian is not a function of x.
+
+Note: Jacobian is either constant for both forward and inverse or neither.
+
+##### Returns:
+
+  `Boolean`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.name` {#Exp.name}
+
+Returns the string name of this `Bijector`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.parameters` {#Exp.parameters}
+
+Returns this `Bijector`'s parameters as a name/value dictionary.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.shaper` {#Exp.shaper}
+
+Returns shape object used to manage shape constraints.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.validate_args` {#Exp.validate_args}
+
+Returns True if Tensor arguments will be validated.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.bijector.Identity` {#Identity}
 
 Bijector which computes Y = g(X) = X.
@@ -372,7 +596,7 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.forward(x, name='forward')` {#Identity.forward}
+#### `tf.contrib.distributions.bijector.Identity.forward(x, name='forward', **condition_kwargs)` {#Identity.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -381,6 +605,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -396,15 +621,16 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse(x, name='inverse')` {#Identity.inverse}
+#### `tf.contrib.distributions.bijector.Identity.inverse(y, name='inverse', **condition_kwargs)` {#Identity.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -413,7 +639,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -421,7 +647,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse_and_inverse_log_det_jacobian(x, name='inverse_and_inverse_log_det_jacobian')` {#Identity.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Identity.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Identity.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -433,8 +659,9 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -443,7 +670,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
@@ -451,20 +678,20 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse_log_det_jacobian(x, name='inverse_log_det_jacobian')` {#Identity.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Identity.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Identity.inverse_log_det_jacobian}
 
-Returns the (log o det o Jacobian o inverse)(x).
+Returns the (log o det o Jacobian o inverse)(y).
 
-Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-Note that forward_log_det_jacobian is the negative of this function. (See
-is_constant_jacobian for related proof.)
+Note that `forward_log_det_jacobian` is the negative of this function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -473,7 +700,7 @@ is_constant_jacobian for related proof.)
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -566,7 +793,7 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.forward(x, name='forward')` {#Inline.forward}
+#### `tf.contrib.distributions.bijector.Inline.forward(x, name='forward', **condition_kwargs)` {#Inline.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -575,6 +802,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -590,15 +818,16 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse(x, name='inverse')` {#Inline.inverse}
+#### `tf.contrib.distributions.bijector.Inline.inverse(y, name='inverse', **condition_kwargs)` {#Inline.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -607,7 +836,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -615,7 +844,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse_and_inverse_log_det_jacobian(x, name='inverse_and_inverse_log_det_jacobian')` {#Inline.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Inline.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Inline.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -627,8 +856,9 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -637,7 +867,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
@@ -645,20 +875,20 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse_log_det_jacobian(x, name='inverse_log_det_jacobian')` {#Inline.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Inline.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Inline.inverse_log_det_jacobian}
 
-Returns the (log o det o Jacobian o inverse)(x).
+Returns the (log o det o Jacobian o inverse)(y).
 
-Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-Note that forward_log_det_jacobian is the negative of this function. (See
-is_constant_jacobian for related proof.)
+Note that `forward_log_det_jacobian` is the negative of this function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -667,7 +897,7 @@ is_constant_jacobian for related proof.)
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -710,193 +940,6 @@ Returns shape object used to manage shape constraints.
 - - -
 
 #### `tf.contrib.distributions.bijector.Inline.validate_args` {#Inline.validate_args}
-
-Returns True if Tensor arguments will be validated.
-
-
-
-- - -
-
-### `class tf.contrib.distributions.bijector.Exp` {#Exp}
-
-Bijector which computes Y = g(X) = exp(X).
-
-Example Use:
-
-```python
-# Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
-# batch ndim and 2 event ndims (i.e., vector of matrices).
-exp = Exp(batch_ndims=1, event_ndims=2)
-x = [[[1., 2],
-       [3, 4]],
-      [[5, 6],
-       [7, 8]]]
-exp(x) == exp.forward(x)
-log(x) == exp.inverse(x)
-```
-
-Note: the exp(.) is applied element-wise but the Jacobian is a reduction
-over the event space.
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.__init__(event_ndims=0, validate_args=False, name='Exp')` {#Exp.__init__}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.dtype` {#Exp.dtype}
-
-dtype of `Tensor`s transformable by this distribution.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.forward(x, name='forward')` {#Exp.forward}
-
-Returns the forward `Bijector` evaluation, i.e., X = g(Y).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.inverse(x, name='inverse')` {#Exp.inverse}
-
-Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" evaluation.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
-    `_inverse_and_inverse_log_det_jacobian` are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.inverse_and_inverse_log_det_jacobian(x, name='inverse_and_inverse_log_det_jacobian')` {#Exp.inverse_and_inverse_log_det_jacobian}
-
-Returns both the inverse evaluation and inverse_log_det_jacobian.
-
-Enables possibly more efficient calculation when both inverse and
-corresponding Jacobian are needed.
-
-See `inverse()`, `inverse_log_det_jacobian()` for more details.
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
-    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.inverse_log_det_jacobian(x, name='inverse_log_det_jacobian')` {#Exp.inverse_log_det_jacobian}
-
-Returns the (log o det o Jacobian o inverse)(x).
-
-Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
-
-Note that forward_log_det_jacobian is the negative of this function. (See
-is_constant_jacobian for related proof.)
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
-    `_inverse_and_inverse_log_det_jacobian` are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.is_constant_jacobian` {#Exp.is_constant_jacobian}
-
-Returns true iff the Jacobian is not a function of x.
-
-Note: Jacobian is either constant for both forward and inverse or neither.
-
-##### Returns:
-
-  `Boolean`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.name` {#Exp.name}
-
-Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.parameters` {#Exp.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.shaper` {#Exp.shaper}
-
-Returns shape object used to manage shape constraints.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.validate_args` {#Exp.validate_args}
 
 Returns True if Tensor arguments will be validated.
 
@@ -962,7 +1005,7 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward(x, name='forward')` {#ScaleAndShift.forward}
+#### `tf.contrib.distributions.bijector.ScaleAndShift.forward(x, name='forward', **condition_kwargs)` {#ScaleAndShift.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -971,6 +1014,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -986,15 +1030,16 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse(x, name='inverse')` {#ScaleAndShift.inverse}
+#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse(y, name='inverse', **condition_kwargs)` {#ScaleAndShift.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1003,7 +1048,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -1011,7 +1056,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_and_inverse_log_det_jacobian(x, name='inverse_and_inverse_log_det_jacobian')` {#ScaleAndShift.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -1023,8 +1068,9 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1033,7 +1079,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
@@ -1041,20 +1087,20 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_log_det_jacobian(x, name='inverse_log_det_jacobian')` {#ScaleAndShift.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.inverse_log_det_jacobian}
 
-Returns the (log o det o Jacobian o inverse)(x).
+Returns the (log o det o Jacobian o inverse)(y).
 
-Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-Note that forward_log_det_jacobian is the negative of this function. (See
-is_constant_jacobian for related proof.)
+Note that `forward_log_det_jacobian` is the negative of this function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1063,7 +1109,7 @@ is_constant_jacobian for related proof.)
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -1125,8 +1171,382 @@ Returns True if Tensor arguments will be validated.
 
 
 
+- - -
 
-## Other Functions and Classes
+### `class tf.contrib.distributions.bijector.Sigmoid` {#Sigmoid}
+
+Bijector which computes Y = g(X) = (1 + exp(-X))^-1.
+
+Equivalent to: `bijector.Softmax(event_ndims=0)`.
+
+See `bijector.Softmax` for more details.
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.__init__(validate_args=False, name='Sigmoid')` {#Sigmoid.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.dtype` {#Sigmoid.dtype}
+
+dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.forward(x, name='forward', **condition_kwargs)` {#Sigmoid.forward}
+
+Returns the forward `Bijector` evaluation, i.e., X = g(Y).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.inverse(y, name='inverse', **condition_kwargs)` {#Sigmoid.inverse}
+
+Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Sigmoid.inverse_and_inverse_log_det_jacobian}
+
+Returns both the inverse evaluation and inverse_log_det_jacobian.
+
+Enables possibly more efficient calculation when both inverse and
+corresponding Jacobian are needed.
+
+See `inverse()`, `inverse_log_det_jacobian()` for more details.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Sigmoid.inverse_log_det_jacobian}
+
+Returns the (log o det o Jacobian o inverse)(y).
+
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
+
+Note that `forward_log_det_jacobian` is the negative of this function.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.is_constant_jacobian` {#Sigmoid.is_constant_jacobian}
+
+Returns true iff the Jacobian is not a function of x.
+
+Note: Jacobian is either constant for both forward and inverse or neither.
+
+##### Returns:
+
+  `Boolean`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.name` {#Sigmoid.name}
+
+Returns the string name of this `Bijector`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.parameters` {#Sigmoid.parameters}
+
+Returns this `Bijector`'s parameters as a name/value dictionary.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.shaper` {#Sigmoid.shaper}
+
+Returns shape object used to manage shape constraints.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Sigmoid.validate_args` {#Sigmoid.validate_args}
+
+Returns True if Tensor arguments will be validated.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.bijector.Softmax` {#Softmax}
+
+Bijector which computes `Y = g(X) = exp([X 0]) / sum(exp([X 0]))`.
+
+To implement [softmax](https://en.wikipedia.org/wiki/Softmax_function) as a
+bijection, the forward transformation appends a value to the input and the
+inverse removes this coordinate.  The appended coordinate represents a pivot,
+e.g., `softmax(x) = exp(x-c) / sum(exp(x-c))` where `c` is the implicit last
+coordinate.
+
+Because we append a coordinate, this bijector only supports `event_ndim in [0,
+1]`, i.e., scalars and vectors.
+
+Example Use:
+
+```python
+bijector.Softmax(event_ndims=1).forward(tf.log([2, 3, 4]))
+# Result: [0.2, 0.3, 0.4, 0.1]
+# Extra result: 0.1
+
+bijector.Softmax(event_ndims=1).inverse([0.2, 0.3, 0.4, 0.1])
+# Result: tf.log([2, 3, 4])
+# Extra coordinate removed.
+```
+
+At first blush it may seem like the [Invariance of domain](
+https://en.wikipedia.org/wiki/Invariance_of_domain) theorem implies this
+implementation is not a bijection.  However, the appended dimension
+makes the (forward) image non-open and the theorem does not directly apply.
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.__init__(event_ndims=0, validate_args=False, name='Softmax')` {#Softmax.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.dtype` {#Softmax.dtype}
+
+dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.forward(x, name='forward', **condition_kwargs)` {#Softmax.forward}
+
+Returns the forward `Bijector` evaluation, i.e., X = g(Y).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.inverse(y, name='inverse', **condition_kwargs)` {#Softmax.inverse}
+
+Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Softmax.inverse_and_inverse_log_det_jacobian}
+
+Returns both the inverse evaluation and inverse_log_det_jacobian.
+
+Enables possibly more efficient calculation when both inverse and
+corresponding Jacobian are needed.
+
+See `inverse()`, `inverse_log_det_jacobian()` for more details.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Softmax.inverse_log_det_jacobian}
+
+Returns the (log o det o Jacobian o inverse)(y).
+
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
+
+Note that `forward_log_det_jacobian` is the negative of this function.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.is_constant_jacobian` {#Softmax.is_constant_jacobian}
+
+Returns true iff the Jacobian is not a function of x.
+
+Note: Jacobian is either constant for both forward and inverse or neither.
+
+##### Returns:
+
+  `Boolean`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.name` {#Softmax.name}
+
+Returns the string name of this `Bijector`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.parameters` {#Softmax.parameters}
+
+Returns this `Bijector`'s parameters as a name/value dictionary.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.shaper` {#Softmax.shaper}
+
+Returns shape object used to manage shape constraints.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softmax.validate_args` {#Softmax.validate_args}
+
+Returns True if Tensor arguments will be validated.
+
+
+
 - - -
 
 ### `class tf.contrib.distributions.bijector.Softplus` {#Softplus}
@@ -1171,7 +1591,7 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.forward(x, name='forward')` {#Softplus.forward}
+#### `tf.contrib.distributions.bijector.Softplus.forward(x, name='forward', **condition_kwargs)` {#Softplus.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -1180,6 +1600,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1195,15 +1616,16 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.inverse(x, name='inverse')` {#Softplus.inverse}
+#### `tf.contrib.distributions.bijector.Softplus.inverse(y, name='inverse', **condition_kwargs)` {#Softplus.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1212,7 +1634,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.
@@ -1220,7 +1642,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.inverse_and_inverse_log_det_jacobian(x, name='inverse_and_inverse_log_det_jacobian')` {#Softplus.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Softplus.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Softplus.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -1232,8 +1654,9 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1242,7 +1665,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
@@ -1250,20 +1673,20 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.inverse_log_det_jacobian(x, name='inverse_log_det_jacobian')` {#Softplus.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Softplus.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Softplus.inverse_log_det_jacobian}
 
-Returns the (log o det o Jacobian o inverse)(x).
+Returns the (log o det o Jacobian o inverse)(y).
 
-Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-Note that forward_log_det_jacobian is the negative of this function. (See
-is_constant_jacobian for related proof.)
+Note that `forward_log_det_jacobian` is the negative of this function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -1272,7 +1695,7 @@ is_constant_jacobian for related proof.)
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
     `_inverse_and_inverse_log_det_jacobian` are implemented.

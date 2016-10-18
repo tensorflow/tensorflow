@@ -74,6 +74,9 @@ or join multiple tensors together.
 @@boolean_mask
 @@one_hot
 @@sequence_mask
+@@dequantize
+@@quantize_v2
+@@quantized_concat
 
 """
 from __future__ import absolute_import
@@ -2318,3 +2321,9 @@ def squeeze(input, squeeze_dims=None, name=None):
   if np.isscalar(squeeze_dims):
     squeeze_dims = [squeeze_dims]
   return gen_array_ops._squeeze(input, squeeze_dims, name)
+
+
+# TODO(cwhipkey): Verify and enable shape functions for these.
+ops.RegisterShape("QuantizeV2")(None)
+ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
+ops.RegisterShape("QuantizedConcat")(None)

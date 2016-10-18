@@ -72,6 +72,9 @@ class GcsFileSystem : public FileSystem {
 
   Status IsDirectory(const string& fname) override;
 
+  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+                           int64* undeleted_dirs) override;
+
  private:
   Status BucketExists(const string& bucket);
   Status ObjectExists(const string& bucket, const string& object);

@@ -27,11 +27,14 @@ def my_model(X, y):
   """
   This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability.
 
-  Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and 
-  CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
+  Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and
+  CUDNN 6.5 V2 from NVIDIA need to be installed beforehand.
   """
   with tf.device('/gpu:1'):
-    layers = learn.ops.dnn(X, [10, 20, 10], dropout=0.5)
+    dnn = lambda inputs, num_outputs, scope: tf.contrib.layers.dropout(
+        tf.contrib.layers.legacy_fully_connected(
+            inputs, num_outputs, weight_init=None, activation_fn=tf.nn.relu))
+    layers = tf.contrib.layers.stack(X, dnn, [10, 20, 10])
   with tf.device('/gpu:2'):
     return learn.models.logistic_regression(layers, y)
 

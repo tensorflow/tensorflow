@@ -61,7 +61,7 @@ export interface ScatterPlotVisualizer {
    * Called when the projector updates application state (projection style,
    * etc). Generally followed by a render.
    */
-  onUpdate();
+  onUpdate(dataSet: DataSet);
   /**
    * Called when the canvas size changes.
    */

@@ -150,6 +150,17 @@ class ReductionOp : public OpKernel {
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &out));
 
+    if (helper.ndims() == 0 ||
+        (helper.ndims() == 1 && !helper.reduce_first_axis())) {
+      // Special case. Reduces nothing.  It is unclear why this is
+      // necessary, but tests fail without it.  Look into why this
+      // case occurs.
+      if (!out->CopyFrom(data, helper.out_shape())) {
+        ctx->SetStatus(errors::Internal("Error during reduction copy."));
+      }
+      return;
+    }
+
     // We must allocate temp tensors using the same alloc attr as
     // output(0) because it is returned as output(0) in the end.
     const AllocatorAttributes alloc_attr = ctx->output_alloc_attr(0);
