@@ -27,6 +27,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
@@ -67,7 +68,7 @@ class SavedModelTest(tf.test.TestCase):
       v = tf.Variable(42, name="v")
       sess.run(tf.initialize_all_variables())
       self.assertEqual(42, v.eval())
-      builder.add_meta_graph_and_variables(sess, [constants.TAG_TRAINING])
+      builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
@@ -76,7 +77,7 @@ class SavedModelTest(tf.test.TestCase):
       v = tf.Variable(43, name="v")
       sess.run(tf.initialize_all_variables())
       self.assertEqual(43, v.eval())
-      builder.add_meta_graph([constants.TAG_SERVING])
+      builder.add_meta_graph([tag_constants.SERVING])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
@@ -92,13 +93,13 @@ class SavedModelTest(tf.test.TestCase):
 
     # Restore the graph with a single predefined tag whose variables were saved.
     with self.test_session(graph=tf.Graph()) as sess:
-      loader.load(sess, [constants.TAG_TRAINING], export_dir)
+      loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
     # Restore the graph with a single predefined tag whose variables were not
     # saved.
     with self.test_session(graph=tf.Graph()) as sess:
-      loader.load(sess, [constants.TAG_SERVING], export_dir)
+      loader.load(sess, [tag_constants.SERVING], export_dir)
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
     # Restore the graph with multiple tags. Provide duplicate tags to test set

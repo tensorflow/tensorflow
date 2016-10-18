@@ -12,19 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Constants for SavedModel save and restore operations.
+"""Common tags used for graphs in SavedModel.
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-ASSETS_DIRECTORY = "assets"
-ASSETS_KEY = "saved_model_assets"
+# Tag for the `serving` graph.
+SERVING = "serve"
 
-SAVED_MODEL_SCHEMA_VERSION = 1
-SAVED_MODEL_FILENAME_PB = "saved_model.pb"
-SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
-
-VARIABLES_DIRECTORY = "variables"
-VARIABLES_FILENAME = "variables"
+# Tag for the `training` graph.
+TRAINING = "train"
