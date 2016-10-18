@@ -80,7 +80,7 @@ def ParseEventFilesSpec(logdir):
     else:
       run_name = None
       path = specification
-    if not gcs.IsGCSPath(path):
+    if not (gcs.IsGCSPath(path) or path.startswith('hdfs://')):
       path = os.path.realpath(path)
     files[path] = run_name
   return files
