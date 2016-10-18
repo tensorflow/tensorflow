@@ -108,6 +108,13 @@ string MaybeAppendSlash(const string& name) {
   return name;
 }
 
+// io::JoinPath() doesn't work in cases when we want an empty subpath
+// to result in an appended slash in order for directory markers
+// to be processed correctly: "gs://a/b" + "" should give "gs://a/b/".
+string JoinGcsPath(const string& path, const string& subpath) {
+  return strings::StrCat(MaybeAppendSlash(path), subpath);
+}
+
 Status ParseJson(StringPiece json, Json::Value* result) {
   Json::Reader reader;
   if (!reader.parse(json.ToString(), *result)) {
@@ -483,8 +490,10 @@ class GcsWritableFile : public WritableFile {
       // This means GCS doesn't have any bytes of the file yet.
       *uploaded = 0;
     } else {
-      std::vector<int32> range_parts;
-      if (!str_util::SplitAndParseAsInts(received_range, '-', &range_parts) ||
+      StringPiece range_piece(received_range);
+      range_piece.Consume("bytes=");  // May or may not be present.
+      std::vector<int64> range_parts;
+      if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
           range_parts.size() != 2) {
         return errors::Internal(strings::StrCat(
             "Unexpected response from GCS when writing ", GetGcsPath(),
@@ -964,12 +973,8 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   std::vector<string> children;
   TF_RETURN_IF_ERROR(GetChildrenBounded(src, UINT64_MAX, &children, true));
   for (const string& subpath : children) {
-    // io::JoinPath() wouldn't work here, because we want an empty subpath
-    // to result in an appended slash in order for directory markers
-    // to be processed correctly: "gs://a/b" + "" should give "gs:/a/b/".
     TF_RETURN_IF_ERROR(
-        RenameObject(strings::StrCat(MaybeAppendSlash(src), subpath),
-                     strings::StrCat(MaybeAppendSlash(target), subpath)));
+        RenameObject(JoinGcsPath(src, subpath), JoinGcsPath(target, subpath)));
   }
   return Status::OK();
 }
@@ -1037,6 +1042,40 @@ Status GcsFileSystem::IsDirectory(const string& fname) {
   }
   return errors::NotFound(
       strings::StrCat("The specified path ", fname, " was not found."));
+}
+
+Status GcsFileSystem::DeleteRecursively(const string& dirname,
+                                        int64* undeleted_files,
+                                        int64* undeleted_dirs) {
+  if (!undeleted_files || !undeleted_dirs) {
+    return errors::Internal(
+        "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");
+  }
+  *undeleted_files = 0;
+  *undeleted_dirs = 0;
+  if (!IsDirectory(dirname).ok()) {
+    *undeleted_dirs = 1;
+    return Status(
+        error::NOT_FOUND,
+        strings::StrCat(dirname, " doesn't exist or not a directory."));
+  }
+  std::vector<string> all_objects;
+  // Get all children in the directory recursively.
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, UINT64_MAX, &all_objects,
+                                        true /* recursive */));
+  for (const string& object : all_objects) {
+    const string& full_path = JoinGcsPath(dirname, object);
+    // Delete all objects including directory markers for subfolders.
+    if (!DeleteFile(full_path).ok()) {
+      if (IsDirectory(full_path).ok()) {
+        // The object is a directory marker.
+        (*undeleted_dirs)++;
+      } else {
+        (*undeleted_files)++;
+      }
+    }
+  }
+  return Status::OK();
 }
 
 REGISTER_FILE_SYSTEM("gs", RetryingGcsFileSystem);

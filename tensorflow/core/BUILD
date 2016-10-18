@@ -151,7 +151,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        # TODO(josh11b): Make many of these internal.
         "lib/core/arena.h",
         "lib/core/bitmap.h",
         "lib/core/bits.h",
@@ -167,11 +166,13 @@ cc_library(
         "lib/gtl/cleanup.h",
         "lib/gtl/inlined_vector.h",
         "lib/gtl/priority_queue_util.h",
-        "lib/hash/crc32c.h",  # TODO(josh11b): make internal
+        "lib/hash/crc32c.h",
         "lib/histogram/histogram.h",
-        "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
+        "lib/io/buffered_inputstream.h",
+        "lib/io/inputstream_interface.h",
         "lib/io/path.h",
         "lib/io/proto_encode_helper.h",
+        "lib/io/random_inputstream.h",
         "lib/io/record_reader.h",
         "lib/io/record_writer.h",
         "lib/io/table.h",
@@ -182,13 +183,13 @@ cc_library(
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
-        "lib/monitoring/mobile_counter.h",
         "lib/monitoring/metric_def.h",
+        "lib/monitoring/mobile_counter.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
-        "lib/random/simple_philox.h",  # TODO(josh11b): make internal
-        "lib/strings/numbers.h",  # TODO(josh11b): make internal
-        "lib/strings/str_util.h",  # TODO(josh11b): make internal
+        "lib/random/simple_philox.h",
+        "lib/strings/numbers.h",
+        "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/cpu_info.h",
@@ -200,12 +201,12 @@ cc_library(
         "platform/logging.h",
         "platform/macros.h",
         "platform/mem.h",
-        "platform/net.h",
         "platform/mutex.h",
+        "platform/net.h",
         "platform/notification.h",
         "platform/prefetch.h",
         "platform/profile_utils/cpu_utils.h",
-        "platform/protobuf.h",  # TODO(josh11b): make internal
+        "platform/protobuf.h",
         "platform/stacktrace.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
@@ -528,6 +529,7 @@ cc_library(
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
+        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:sdca_ops",
@@ -742,6 +744,7 @@ cc_library(
     deps = [
         ":protos_cc",
         "//third_party/eigen3",
+        "@gemmlowp//:gemmlowp",
     ],
     alwayslink = 1,
 )
@@ -1007,10 +1010,8 @@ cc_library(
         "lib/gtl/stl_util.h",
         "lib/gtl/top_n.h",
         "lib/hash/hash.h",
-        "lib/io/buffered_inputstream.h",
-        "lib/io/inputstream_interface.h",
+        "lib/io/inputbuffer.h",
         "lib/io/iterator.h",
-        "lib/io/random_inputstream.h",
         "lib/io/snappy/snappy_inputbuffer.h",
         "lib/io/snappy/snappy_outputbuffer.h",
         "lib/io/zlib_compression_options.h",
@@ -1030,6 +1031,7 @@ cc_library(
         "platform/denormal.h",
         "platform/host_info.h",
         "platform/platform.h",
+        "platform/protobuf_internal.h",
         "platform/tensor_coding.h",
         "platform/tracing.h",
     ],

@@ -919,12 +919,17 @@ learning_step = (
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
-    'ExponentialDecay'
+    'ExponentialDecay'.
 
 ##### Returns:
 
   A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
 
 
 
@@ -4238,6 +4243,7 @@ Initialize CheckpointSaverHook monitor.
 
 
 *  <b>`ValueError`</b>: One of `save_steps` or `save_secs` should be set.
+*  <b>`ValueError`</b>: Exactly one of saver or scaffold should be set.
 
 
 - - -
@@ -4402,7 +4408,7 @@ such as saving a last checkpoint.
 Saves summaries every N steps.
 - - -
 
-#### `tf.train.SummarySaverHook.__init__(save_steps=100, save_secs=None, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
+#### `tf.train.SummarySaverHook.__init__(save_steps=None, save_secs=None, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
 
 Initializes a `SummarySaver` monitor.
 
@@ -4420,6 +4426,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
       buffer, as output by TF summary methods like `scalar_summary` or
       `merge_all_summaries`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Exactly one of scaffold or summary_op should be set.
 
 
 - - -
