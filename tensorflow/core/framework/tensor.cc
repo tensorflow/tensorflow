@@ -677,7 +677,6 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
-    
 //from left dim to right dim , recursive print
 template <typename T>
 void PrintOneDim(T *data, int dim_index, gtl::InlinedVector<int64, 4> shape,
@@ -701,8 +700,7 @@ void PrintOneDim(T *data, int dim_index, gtl::InlinedVector<int64, 4> shape,
     strings::StrAppend(result, "]");
   }
 }
-    
-    
+
 template <typename T>
 string SummarizeArray(int64 limit, int64 num_elts, const char* data,
                       TensorShape tensor_shape) {
