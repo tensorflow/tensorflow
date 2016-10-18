@@ -418,11 +418,8 @@ export interface State {
   /** The indices of selected points. */
   selectedPoints?: number[];
 
-  /** Camera positioning (x, y, z). */
-  cameraPosition?: vector.Point3D;
-
-  /** Camera target (x, y, z). */
-  cameraTarget?: vector.Point3D;
+  /** Camera state (2d/3d, position, target, zoom, etc). */
+  cameraDef?: scatterPlot.CameraDef;
 
   /** Color by option. */
   selectedColorOptionName?: string;

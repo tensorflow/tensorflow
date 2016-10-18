@@ -50,6 +50,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   private projector: Projector;
   private currentProjection: Projection;
+  private polymerChangesTriggerReprojection: boolean;
 
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
@@ -82,6 +83,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private zDropdown: d3.Selection<HTMLElement>;
 
   initialize(projector: Projector) {
+    this.polymerChangesTriggerReprojection = true;
     this.projector = projector;
 
     this.is3d = true;
@@ -101,6 +103,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dom = d3.select(this);
     this.zDropdown = this.dom.select('#z-dropdown');
     this.searchByMetadataOptions = ['label'];
+  }
+
+  disablePolymerChangesTriggerReprojection() {
+    this.polymerChangesTriggerReprojection = false;
+  }
+
+  enablePolymerChangesTriggerReprojection() {
+    this.polymerChangesTriggerReprojection = true;
   }
 
   private setupUIControls() {
@@ -158,11 +168,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     if (this.zDropdown) {
       this.zDropdown.attr('disabled', this.is3d ? null : true);
     }
-    if (this.currentProjection === 'pca') {
-      this.showPCA();
-    } else if (this.currentProjection === 'tsne') {
-      this.showTSNE();
-    }
+    this.beginProjection(this.currentProjection);
   }
 
   metadataChanged(metadata: MetadataInfo) {
@@ -199,15 +205,21 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       this.style.height = this.$['main'].clientHeight + 'px';
     });
 
-    if (id === 'pca') {
-      this.currentDataSet.stopTSNE();
-      this.showPCA();
-    } else if (id === 'tsne') {
-      this.showTSNE();
-    } else if (id === 'custom') {
-      this.currentDataSet.stopTSNE();
-      this.computeAllCentroids();
-      this.reprojectCustom();
+    this.beginProjection(id);
+  }
+
+  private beginProjection(projection: string) {
+    if (this.polymerChangesTriggerReprojection) {
+      if (projection === 'pca') {
+        this.currentDataSet.stopTSNE();
+        this.showPCA();
+      } else if (projection === 'tsne') {
+        this.showTSNE();
+      } else if (projection === 'custom') {
+        this.currentDataSet.stopTSNE();
+        this.computeAllCentroids();
+        this.reprojectCustom();
+      }
     }
   }
 
