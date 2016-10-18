@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/util/tensor_bundle:naming",
     ],
 )
 

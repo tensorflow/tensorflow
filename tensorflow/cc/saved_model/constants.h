@@ -36,10 +36,6 @@ constexpr char kSavedModelVariablesDirectory[] = "variables";
 // SavedModel variables filename.
 constexpr char kSavedModelVariablesFilename[] = "variables";
 
-// SavedModel sharded variables filename.
-constexpr char kSavedModelVariablesShardedFilename[] =
-    "variables-\?\?\?\?\?-of-\?\?\?\?\?";
-
 // Commonly used tags.
 constexpr char kSavedModelTagServe[] = "serve";
 constexpr char kSavedModelTagTrain[] = "train";

@@ -700,16 +700,20 @@ def train(train_op,
 
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
-                        sync_replicas_optimizer.SyncReplicasOptimizer):
+                        (sync_replicas_optimizer.SyncReplicasOptimizer,
+                         sync_replicas_optimizer.SyncReplicasOptimizerV2)):
         raise ValueError(
-            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer or '
+            'tf.train.SyncReplicasOptimizerV2.')
 
       # Need to create these BEFORE the supervisor finalizes the graph:
       with ops.control_dependencies([init_op]):
         init_tokens_op = sync_optimizer.get_init_tokens_op()
       init_op = init_tokens_op
       chief_queue_runner = sync_optimizer.get_chief_queue_runner()
-      cleanup_op = sync_optimizer.get_clean_up_op()
+      if isinstance(sync_optimizer,
+                    sync_replicas_optimizer.SyncReplicasOptimizer):
+        cleanup_op = sync_optimizer.get_clean_up_op()
 
     if train_step_kwargs == _USE_DEFAULT:
       with ops.name_scope('train_step'):

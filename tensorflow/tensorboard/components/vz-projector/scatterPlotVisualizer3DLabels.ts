@@ -194,7 +194,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private createLabelGeometry() {
+  private createLabelGeometry(dataSet: DataSet) {
     this.processLabelVerts();
     this.createColorBuffers();
 
@@ -220,7 +220,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     this.geometry.addAttribute('color', colors);
 
     let lettersSoFar = 0;
-    for (let i = 0; i < this.dataSet.points.length; i++) {
+    for (let i = 0; i < dataSet.points.length; i++) {
       let label: string = this.labelAccessor(i).toString();
       let leftOffset = 0;
       // Determine length of word in pixels.
@@ -267,8 +267,8 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       }
     }
 
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      let pp = this.dataSet.points[i].projectedPoint;
+    for (let i = 0; i < dataSet.points.length; i++) {
+      let pp = dataSet.points[i].projectedPoint;
       this.labelVertexMap[i].forEach((j) => {
         this.positions.setXYZ(j, pp[0], pp[1], pp[2]);
       });
@@ -287,10 +287,10 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private createLabels() {
+  private createLabels(dataSet: DataSet) {
     this.destroyLabels();
     if (this.labelAccessor) {
-      this.createLabelGeometry();
+      this.createLabelGeometry(dataSet);
     }
   }
 
@@ -320,7 +320,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
     this.scene = scene;
     if (this.labelsMesh == null) {
-      this.createLabels();
+      this.createLabels(this.dataSet);
     }
     if (this.labelsMesh) {
       scene.add(this.labelsMesh);
@@ -333,7 +333,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
 
   onSetLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
-    this.onUpdate();
+    this.onUpdate(this.dataSet);
   }
 
   onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
@@ -361,8 +361,8 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     colors.needsUpdate = true;
   }
 
-  onUpdate() {
-    this.createLabels();
+  onUpdate(dataSet: DataSet) {
+    this.createLabels(dataSet);
     if (this.labelsMesh && this.scene) {
       this.scene.add(this.labelsMesh);
     }

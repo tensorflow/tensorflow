@@ -1,7 +1,7 @@
 Saves summaries every N steps.
 - - -
 
-#### `tf.train.SummarySaverHook.__init__(save_steps=100, save_secs=None, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
+#### `tf.train.SummarySaverHook.__init__(save_steps=None, save_secs=None, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
 
 Initializes a `SummarySaver` monitor.
 
@@ -19,6 +19,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
       buffer, as output by TF summary methods like `scalar_summary` or
       `merge_all_summaries`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Exactly one of scaffold or summary_op should be set.
 
 
 - - -
