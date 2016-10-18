@@ -51,7 +51,7 @@ if (tensorflow_ENABLE_GPU)
     file(GLOB tf_stream_executor_gpu_srcs
         "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*.cc"
     )
-    list(APPEND tf_stream_executor_srcs tf_stream_executor_gpu_srcs)
+    list(APPEND tf_stream_executor_srcs ${tf_stream_executor_gpu_srcs})
 endif()    
 
 #file(GLOB_RECURSE tf_stream_executor_test_srcs
