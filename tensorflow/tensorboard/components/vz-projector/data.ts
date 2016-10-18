@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateWarningMessage} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
 import * as scatterPlot from './scatterPlot';
-import {shuffle, getSearchPredicate} from './util';
+import {shuffle, getSearchPredicate, runAsyncTask} from './util';
+import * as logging from './logging';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
+export type PointAccessor = (index: number) => number;
 
 export interface PointMetadata {
   [key: string]: number | string;
@@ -43,7 +44,7 @@ export interface ColumnStats {
   name: string;
   isNumeric: boolean;
   tooManyUniqueValues: boolean;
-  uniqueEntries?: {label: string, count: number}[];
+  uniqueEntries?: Array<{label: string, count: number}>;
   min: number;
   max: number;
 }
@@ -180,6 +181,22 @@ export class DataSet implements scatterPlot.DataSet {
       }
     }
     return traces;
+  }
+
+  getPointAccessors(projection: Projection, components: (number|string)[]):
+      [PointAccessor, PointAccessor, PointAccessor] {
+    if (components.length > 3) {
+      throw new RangeError('components length must be <= 3');
+    }
+    const accessors: [PointAccessor, PointAccessor, PointAccessor] =
+        [null, null, null];
+    const prefix = (projection === 'custom') ? 'linear' : projection;
+    for (let i = 0; i < components.length; ++i) {
+      accessors[i] =
+          (index =>
+               this.points[index].projections[prefix + '-' + components[i]]);
+    }
+    return accessors;
   }
 
   /**
@@ -327,7 +344,7 @@ export class DataSet implements scatterPlot.DataSet {
 
   mergeMetadata(metadata: MetadataInfo) {
     if (metadata.pointsInfo.length !== this.points.length) {
-      updateWarningMessage(
+      logging.setWarningMessage(
           `Number of tensors (${this.points.length}) do not match` +
           ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
     }
@@ -356,7 +373,7 @@ export class DataSet implements scatterPlot.DataSet {
   /**
    * Search the dataset based on a metadata field.
    */
-  query(query: string, inRegexMode: boolean, fieldName: string,): number[] {
+  query(query: string, inRegexMode: boolean, fieldName: string): number[] {
     let predicate = getSearchPredicate(query, inRegexMode, fieldName);
     let matches: number[] = [];
     this.points.forEach((point, id) => {
@@ -412,17 +429,17 @@ export interface State {
   /** The selected projection tab. */
   selectedProjection?: Projection;
 
+  /** The projection component dimensions (for PCA) */
+  componentDimensions?: number[];
+
   /** The computed projections of the tensors. */
   projections?: Array<{[key: string]: number}>;
 
   /** The indices of selected points. */
   selectedPoints?: number[];
 
-  /** Camera positioning (x, y, z). */
-  cameraPosition?: vector.Point3D;
-
-  /** Camera target (x, y, z). */
-  cameraTarget?: vector.Point3D;
+  /** Camera state (2d/3d, position, target, zoom, etc). */
+  cameraDef?: scatterPlot.CameraDef;
 
   /** Color by option. */
   selectedColorOptionName?: string;

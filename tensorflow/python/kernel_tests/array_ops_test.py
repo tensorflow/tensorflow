@@ -507,6 +507,21 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
         self.tensorShapeEqual(a[::-1, :, tf.newaxis, ::-2],
                               tensor_shape.TensorShape([5, None, 1, 4]))
 
+  def testTensorValuedIndexShape(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        defined_shape_tensor = tf.placeholder(tf.float32, shape=(5, 3, 7))
+        index_value = tf.placeholder(tf.int32, shape=())
+        a = StridedSliceShapeChecker(defined_shape_tensor)
+        self.tensorShapeEqual(a[index_value], tensor_shape.TensorShape([3, 7]))
+        self.tensorShapeEqual(a[index_value, ::-1],
+                              tensor_shape.TensorShape([3, 7]))
+        self.tensorShapeEqual(a[index_value, ::-2],
+                              tensor_shape.TensorShape([2, 7]))
+        other_scalar = tf.placeholder(tf.int32, shape=())
+        self.tensorShapeEqual(a[index_value, other_scalar:2],
+                              tensor_shape.TensorShape([None, 7]))
+
 
 class GradSliceChecker(object):
   """Tests that we can compute a gradient for var^2."""

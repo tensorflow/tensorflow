@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateMessage} from './async';
+import {runAsyncTask} from './util';
+import * as logging from './logging';
 import {ColumnStats, DataPoint, DataSet, DatasetMetadata, MetadataInfo, PointMetadata, State, DataProto} from './data';
 
 
@@ -87,9 +88,9 @@ class ServerDataProvider implements DataProvider {
   }
 
   retrieveRuns(callback: (runs: string[]) => void): void {
-    let msgId = updateMessage('Fetching runs...');
+    let msgId = logging.setModalMessage('Fetching runs...');
     d3.json(`${this.routePrefix}/runs`, (err, runs) => {
-      updateMessage(null, msgId);
+      logging.setModalMessage(null, msgId);
       callback(runs);
     });
   }
@@ -101,9 +102,9 @@ class ServerDataProvider implements DataProvider {
       return;
     }
 
-    let msgId = updateMessage('Fetching checkpoint info...');
+    let msgId = logging.setModalMessage('Fetching checkpoint info...');
     d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
-      updateMessage(null, msgId);
+      logging.setModalMessage(null, msgId);
       this.runCheckpointInfoCache[run] = checkpointInfo;
       callback(checkpointInfo);
     });
@@ -111,7 +112,7 @@ class ServerDataProvider implements DataProvider {
 
   retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void) {
     // Get the tensor.
-    updateMessage('Fetching tensor values...', TENSORS_MSG_ID);
+    logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
     d3.text(
         `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
         (err: Error, tsv: string) => {
@@ -127,7 +128,7 @@ class ServerDataProvider implements DataProvider {
 
   retrieveMetadata(run: string, tensorName: string,
       callback: (r: MetadataInfo) => void) {
-    updateMessage('Fetching metadata...', METADATA_MSG_ID);
+    logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
     d3.text(
         `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`,
         (err: Error, rawMetadata: string) => {
@@ -156,11 +157,11 @@ class ServerDataProvider implements DataProvider {
 
   getBookmarks(
       run: string, tensorName: string, callback: (r: State[]) => void) {
-    let msgId = updateMessage('Fetching bookmarks...');
+    let msgId = logging.setModalMessage('Fetching bookmarks...');
     d3.json(
         `${this.routePrefix}/bookmarks?run=${run}&name=${tensorName}`,
         (err, bookmarks) => {
-          updateMessage(null, msgId);
+          logging.setModalMessage(null, msgId);
           if (!err) {
             callback(bookmarks as State[]);
           }
@@ -320,18 +321,19 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
         numDim = dataPoint.vector.length;
       }
       if (numDim !== dataPoint.vector.length) {
-        updateMessage('Parsing failed. Vector dimensions do not match');
+        logging.setModalMessage(
+            'Parsing failed. Vector dimensions do not match');
         throw Error('Parsing failed');
       }
       if (numDim <= 1) {
-        updateMessage(
+        logging.setModalMessage(
             'Parsing failed. Found a vector with only one dimension?');
         throw Error('Parsing failed');
       }
     });
     return data;
   }, TENSORS_MSG_ID).then(dataPoints => {
-    updateMessage(null, TENSORS_MSG_ID);
+    logging.setModalMessage(null, TENSORS_MSG_ID);
     return dataPoints;
   });
 }
@@ -417,7 +419,7 @@ function parseMetadata(content: string): Promise<MetadataInfo> {
       pointsInfo: pointsMetadata
     } as MetadataInfo;
   }, METADATA_MSG_ID).then(metadata => {
-    updateMessage(null, METADATA_MSG_ID);
+    logging.setModalMessage(null, METADATA_MSG_ID);
     return metadata;
   });
 }
@@ -518,11 +520,11 @@ class DemoDataProvider implements DataProvider {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.fpath}`;
-    updateMessage('Fetching tensors...', TENSORS_MSG_ID);
+    logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
     d3.text(url, (error: Error, dataString: string) => {
       if (error) {
         console.error(error);
-        updateMessage('Error loading data.');
+        logging.setModalMessage('Error loading data.');
         return;
       }
       parseTensors(dataString, separator).then(points => {
@@ -537,7 +539,7 @@ class DemoDataProvider implements DataProvider {
     let dataSetPromise: Promise<MetadataInfo> = null;
     if (demoDataSet.metadata_path) {
       dataSetPromise = new Promise<MetadataInfo>((resolve, reject) => {
-        updateMessage('Fetching metadata...', METADATA_MSG_ID);
+        logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
         d3.text(
             `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.metadata_path}`,
             (err: Error, rawMetadata: string) => {
@@ -554,7 +556,7 @@ class DemoDataProvider implements DataProvider {
     let spritesPromise: Promise<HTMLImageElement> = null;
     if (demoDataSet.metadata && demoDataSet.metadata.image) {
       let spriteFilePath = demoDataSet.metadata.image.sprite_fpath;
-      spriteMsgId = updateMessage('Fetching sprite image...');
+      spriteMsgId = logging.setModalMessage('Fetching sprite image...');
       spritesPromise =
           fetchImage(`${DemoDataProvider.DEMO_FOLDER}/${spriteFilePath}`);
     }
@@ -562,7 +564,7 @@ class DemoDataProvider implements DataProvider {
     // Fetch the metadata and the image in parallel.
     Promise.all([dataSetPromise, spritesPromise]).then(values => {
       if (spriteMsgId) {
-        updateMessage(null, spriteMsgId);
+        logging.setModalMessage(null, spriteMsgId);
       }
       let [metadata, spriteImage] = values;
       metadata.spriteImage = spriteImage;

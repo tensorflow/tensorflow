@@ -179,9 +179,12 @@ class TensorForestEstimator(estimator.BaseEstimator):
       else:
         return np.argmax(probabilities, axis=1)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_with_keys(
       self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Same as predict but also returns the example keys."""
     results = super(TensorForestEstimator, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,

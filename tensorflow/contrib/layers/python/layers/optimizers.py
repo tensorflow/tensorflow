@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.contrib import framework as contrib_framework
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -82,9 +83,14 @@ def optimize_loss(loss,
       E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
-    loss: Tensor, 0 dimensional.
-    global_step: Tensor, step counter for each update.
-    learning_rate: float or Tensor, magnitude of update per each training step.
+    loss: Scalar `Tensor`.
+    global_step: Scalar int `Tensor`, step counter for each update. If not
+                 supplied, it will be fetched from the default graph (see
+                 `tf.contrib.framework.get_global_step` for details). If it's
+                 not been created, no step will be incremented with each weight
+                 update. `learning_rate_decay_fn` requires `global_step`.
+    learning_rate: float or `Tensor`, magnitude of update per each training
+                   step. Can be `None`.
     optimizer: string, class or optimizer instance, used as trainer.
                string should be name of optimizer, like 'SGD',
                  'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
@@ -104,6 +110,7 @@ def optimize_loss(loss,
                             Can be used to implement any learning rate decay
                             functions.
                             For example: `tf.train.exponential_decay`.
+                            Ignored if `learning_rate` is not supplied.
     update_ops: list of update `Operation`s to execute at each step. If `None`,
                 uses elements of UPDATE_OPS collection. The order of execution
                 between `update_ops` and `loss` is non-deterministic.
@@ -113,15 +120,27 @@ def optimize_loss(loss,
     summaries: List of internal quantities to visualize on tensorboard. If not
                set only the loss and the learning rate will be reported. The
                complete list is in OPTIMIZER_SUMMARIES.
-    colocate_gradients_with_ops: If True, try colocating gradients with the 
+    colocate_gradients_with_ops: If True, try colocating gradients with the
                                  corresponding op.
 
   Returns:
     Training op.
 
   Raises:
-    ValueError: if optimizer is wrong type.
+    ValueError: if:
+        * `loss` is an invalid type or shape.
+        * `global_step` is an invalid type or shape.
+        * `learning_rate` is an invalid type or value.
+        * `optimizer` is wrong type.
+        * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
+          `global_step` is available.
   """
+  loss = ops.convert_to_tensor(loss)
+  contrib_framework.assert_scalar(loss)
+  if global_step is None:
+    global_step = contrib_framework.get_global_step()
+  else:
+    contrib_framework.assert_global_step(global_step)
   with vs.variable_scope(name, "OptimizeLoss", [loss, global_step]):
     # Update ops take UPDATE_OPS collection if not provided.
     if update_ops is None:
@@ -137,6 +156,8 @@ def optimize_loss(loss,
           and learning_rate.get_shape().ndims == 0):
         lr = learning_rate
       elif isinstance(learning_rate, float):
+        if learning_rate < 0.0:
+          raise ValueError("Invalid learning_rate %s.", learning_rate)
         lr = vs.get_variable(
             "learning_rate", [], trainable=False,
             initializer=init_ops.constant_initializer(learning_rate))
@@ -147,6 +168,8 @@ def optimize_loss(loss,
     if summaries is None:
       summaries = ["loss", "learning_rate"]
     if learning_rate is not None and learning_rate_decay_fn is not None:
+      if global_step is None:
+        raise ValueError("global_step is required for learning_rate_decay_fn.")
       lr = learning_rate_decay_fn(lr, global_step)
       if "learning_rate" in summaries:
         logging_ops.scalar_summary("learning_rate", lr)
@@ -188,8 +211,9 @@ def optimize_loss(loss,
       variables = vars_.trainable_variables()
 
     # Compute gradients.
-    gradients = opt.compute_gradients(loss, variables,
-                                      colocate_gradients_with_ops=colocate_gradients_with_ops)
+    gradients = opt.compute_gradients(
+        loss, variables,
+        colocate_gradients_with_ops=colocate_gradients_with_ops)
 
     # Optionally add gradient noise.
     if gradient_noise_scale is not None:

@@ -64,11 +64,11 @@ class GMM(estimator.Estimator, TransformerMixin):
       initial_clusters: specifies how to initialize the clusters for training.
         See gmm_ops.gmm for the possible values.
       covariance_type: one of "full", "diag".
-      batch_size: See TensorFlowEstimator
-      steps: See TensorFlowEstimator
-      continue_training: See TensorFlowEstimator
-      config: See TensorFlowEstimator
-      verbose: See TensorFlowEstimator
+      batch_size: See Estimator
+      steps: See Estimator
+      continue_training: See Estimator
+      config: See Estimator
+      verbose: See Estimator
     """
     super(GMM, self).__init__(
         model_dir=model_dir,
@@ -87,7 +87,7 @@ class GMM(estimator.Estimator, TransformerMixin):
   def fit(self, x, y=None, monitors=None, logdir=None, steps=None):
     """Trains a GMM clustering on x.
 
-    Note: See TensorFlowEstimator for logic for continuous training and graph
+    Note: See Estimator for logic for continuous training and graph
       construction across multiple calls to fit.
 
     Args:

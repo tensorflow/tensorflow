@@ -85,7 +85,7 @@ Inverse scale parameter.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.cdf(value, name='cdf')` {#Chi2.cdf}
+#### `tf.contrib.distributions.Chi2.cdf(value, name='cdf', **condition_kwargs)` {#Chi2.cdf}
 
 Cumulative distribution function.
 
@@ -100,6 +100,7 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -126,7 +127,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.Chi2.entropy(name='entropy')` {#Chi2.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 Additional documentation from `Gamma`:
 
@@ -201,7 +202,7 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_cdf(value, name='log_cdf')` {#Chi2.log_cdf}
+#### `tf.contrib.distributions.Chi2.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Chi2.log_cdf}
 
 Log cumulative distribution function.
 
@@ -220,6 +221,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -230,7 +232,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_pdf(value, name='log_pdf')` {#Chi2.log_pdf}
+#### `tf.contrib.distributions.Chi2.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Chi2.log_pdf}
 
 Log probability density function.
 
@@ -239,6 +241,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -254,7 +257,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_pmf(value, name='log_pmf')` {#Chi2.log_pmf}
+#### `tf.contrib.distributions.Chi2.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Chi2.log_pmf}
 
 Log probability mass function.
 
@@ -263,6 +266,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -278,7 +282,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_prob(value, name='log_prob')` {#Chi2.log_prob}
+#### `tf.contrib.distributions.Chi2.log_prob(value, name='log_prob', **condition_kwargs)` {#Chi2.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -287,6 +291,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -297,7 +302,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_survival_function(value, name='log_survival_function')` {#Chi2.log_survival_function}
+#### `tf.contrib.distributions.Chi2.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Chi2.log_survival_function}
 
 Log survival function.
 
@@ -317,6 +322,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -402,7 +408,7 @@ Dictionary of parameters used by this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.pdf(value, name='pdf')` {#Chi2.pdf}
+#### `tf.contrib.distributions.Chi2.pdf(value, name='pdf', **condition_kwargs)` {#Chi2.pdf}
 
 Probability density function.
 
@@ -411,6 +417,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -426,7 +433,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.pmf(value, name='pmf')` {#Chi2.pmf}
+#### `tf.contrib.distributions.Chi2.pmf(value, name='pmf', **condition_kwargs)` {#Chi2.pmf}
 
 Probability mass function.
 
@@ -435,6 +442,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -450,7 +458,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.prob(value, name='prob')` {#Chi2.prob}
+#### `tf.contrib.distributions.Chi2.prob(value, name='prob', **condition_kwargs)` {#Chi2.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -459,6 +467,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -469,7 +478,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample')` {#Chi2.sample}
+#### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Chi2.sample}
 
 Generate samples of the specified shape.
 
@@ -482,6 +491,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -491,7 +501,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n')` {#Chi2.sample_n}
+#### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Chi2.sample_n}
 
 Generate `n` samples.
 
@@ -507,6 +517,7 @@ See the documentation for tf.random_gamma for more details.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -528,7 +539,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.survival_function(value, name='survival_function')` {#Chi2.survival_function}
+#### `tf.contrib.distributions.Chi2.survival_function(value, name='survival_function', **condition_kwargs)` {#Chi2.survival_function}
 
 Survival function.
 
@@ -545,6 +556,7 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

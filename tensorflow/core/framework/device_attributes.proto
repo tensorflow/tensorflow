@@ -19,6 +19,7 @@ enum BusAdjacency {
 };
 
 message DeviceAttributes {
+  // Fully specified name of the device within a cluster.
   string name = 1;
 
   // String representation of device_type.

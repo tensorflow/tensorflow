@@ -74,8 +74,10 @@ class GraphMgr {
   void ExecuteAsync(const string& handle, const int64 step_id,
                     const ExecutorOpts& opts, StepStatsCollector* collector,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in, NamedTensors* out,
-                    StatusCallback done);
+                    const NamedTensors& in, StatusCallback done);
+
+  Status SendInputs(const int64 step_id, const NamedTensors& in);
+  Status RecvOutputs(const int64 step_id, NamedTensors* out);
 
   // Deregisters a graph.
   Status Deregister(const string& handle);
@@ -126,8 +128,14 @@ class GraphMgr {
   // mechanism to gc these graphs.
   std::unordered_map<string, Item*> table_;
 
-  void RunAllDone(Item* item, Rendezvous* rendezvous, NamedTensors* out,
-                  StatusCallback done, Status run_status);
+  void StartParallelExecutors(const string& handle, Item* item,
+                              Rendezvous* rendezvous,
+                              StepStatsCollector* collector,
+                              CancellationManager* cancellation_manager,
+                              StatusCallback done);
+
+  Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
+  Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
 
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options, Item* item);

@@ -124,11 +124,11 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
 
 
 def main(_):
-  export_dir_pb = "/tmp/saved_model/half_plus_two"
+  export_dir_pb = "/tmp/saved_model/v2_half_plus_two_unsharded"
   _generate_saved_model_for_half_plus_two(export_dir_pb)
   print("SavedModel generated at: %s" % export_dir_pb)
 
-  export_dir_pbtxt = "/tmp/saved_model/half_plus_two_pbtxt"
+  export_dir_pbtxt = "/tmp/saved_model/v2_half_plus_two_pbtxt"
   _generate_saved_model_for_half_plus_two(export_dir_pbtxt, as_text=True)
   print("SavedModel generated at: %s" % export_dir_pbtxt)
 

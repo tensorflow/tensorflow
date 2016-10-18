@@ -50,8 +50,8 @@ wrapper:
 
 ```python
 if FLAGS.debug:
-  sess = local_cli.LocalCLIDebugWrapperSession(sess)
-  sess.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
+  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+  sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 ```
 
 This wrapper has the same interface as Session, so debugging requires no other
@@ -299,3 +299,8 @@ Frequently-asked questions:
        model, check out
        [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
        and other profiling tools for TensorFlow.
+
+*   **Q**: How do I link tfdbg against my Session in Bazel?<br />
+**A**: In your BUILD rule, declare the dependency: `"//tensorflow:tensorflow_py"`.
+       In your Python file, do:
+         `from tensorflow.python import debug import tf_debug`
