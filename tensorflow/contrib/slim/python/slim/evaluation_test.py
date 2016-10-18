@@ -315,7 +315,7 @@ class SingleEvaluationTest(tf.test.TestCase):
     # First, save out the current model to a checkpoint:
     init_op = tf.group(tf.initialize_all_variables(),
                        tf.initialize_local_variables())
-    saver = tf.train.Saver()
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V1)
     with self.test_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)

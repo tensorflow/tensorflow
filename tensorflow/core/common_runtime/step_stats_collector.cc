@@ -156,7 +156,8 @@ void StepStatsCollector::BuildCostModel(
           cm->RecordMaxMemorySize(node, i, Bytes(output.tensor_description()
                                                      .allocation_description()
                                                      .allocated_bytes()),
-                                  stats.output(i).tensor_description().shape());
+                                  stats.output(i).tensor_description().shape(),
+                                  node->output_types()[i]);
           cm->RecordAllocationId(node, i, output.tensor_description()
                                               .allocation_description()
                                               .allocation_id());

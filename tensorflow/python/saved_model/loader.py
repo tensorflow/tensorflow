@@ -26,7 +26,8 @@ load and the location of the SavedModel.
 Upon a load, the subset of variables and assets supplied as part of the specific
 meta graph def, will be restored into the supplied session. The values of the
 variables though will correspond to the saved values from the first meta graph
-added to the SavedModel using `add_graph_and_variables(...)` in `builder.py`.
+added to the SavedModel using `add_meta_graph_and_variables(...)` in
+`builder.py`.
 
 TODO(sukritiramesh): Add support for a single init or main op to run upon load.
 
@@ -37,15 +38,16 @@ builder = saved_model_builder.SavedModelBuilder(export_dir)
 
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_graph_and_variables(sess,
-                                  ["foo-tag"],
-                                  signature_def_map=foo_signatures,
-                                  asset_collection=foo_assets)
+  builder.add_meta_graph_and_variables(sess,
+                                       ["foo-tag"],
+                                       signature_def_map=foo_signatures,
+                                       assets_collection=foo_assets)
 ...
 
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_graph(["bar-tag", "baz-tag"])
+  builder.add_meta_graph(["bar-tag", "baz-tag"],
+                         assets_collection=bar_baz_assets)
 ...
 
 builder.save()
@@ -64,6 +66,7 @@ from __future__ import print_function
 import os
 
 from google.protobuf import text_format
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
@@ -116,6 +119,37 @@ def _parse_saved_model(export_dir):
   return saved_model
 
 
+def _get_asset_tensors(export_dir, meta_graph_def_to_load):
+  """Gets the asset tensors, if defined in the meta graph def to load.
+
+  Args:
+    export_dir: Directory where the SavedModel is located.
+    meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+
+  Returns:
+    A dictionary of asset tensors, keyed by the name of the asset tensor. The
+    value in the map corresponds to the absolute path of the asset file.
+  """
+  # Collection-def that may contain the assets key.
+  collection_def = meta_graph_def_to_load.collection_def
+
+  asset_tensor_dict = {}
+  if constants.ASSETS_KEY in collection_def:
+    # Location of the assets for SavedModel.
+    assets_directory = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes(constants.ASSETS_DIRECTORY))
+    assets_any_proto = collection_def[constants.ASSETS_KEY].any_list.value
+    # Process each asset and add it to the asset tensor dictionary.
+    for asset_any_proto in assets_any_proto:
+      asset_proto = meta_graph_pb2.AssetFileDef()
+      asset_any_proto.Unpack(asset_proto)
+      asset_tensor_dict[asset_proto.tensor_info.name] = os.path.join(
+          compat.as_bytes(assets_directory),
+          compat.as_bytes(asset_proto.filename))
+  return asset_tensor_dict
+
+
 def load(sess, tags, export_dir):
   """Loads the model from a SavedModel as specified by tags.
 
@@ -128,7 +162,7 @@ def load(sess, tags, export_dir):
         to be loaded are located.
 
   Returns:
-    The `MetaGraphDef` protocol buffer loaloadded in the provided session. This
+    The `MetaGraphDef` protocol buffer loaded in the provided session. This
     can be used to further extract signature-defs, collection-defs, etc.
 
   Raises:
@@ -154,10 +188,13 @@ def load(sess, tags, export_dir):
   variables_path = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.VARIABLES_DIRECTORY),
-      compat.as_bytes(constants.VARIABLES_FILENAME_SHARDED))
+      compat.as_bytes(constants.VARIABLES_FILENAME))
 
   # Restore the variables using the built saver in the provided session.
   saver.restore(sess, variables_path)
+
+  # Get asset tensors, if any.
+  _get_asset_tensors(export_dir, meta_graph_def_to_load)
 
   # Return the meta graph def that was loaded into the session.
   return meta_graph_def_to_load
