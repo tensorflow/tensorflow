@@ -740,12 +740,10 @@ def update_checkpoint_state(save_dir,
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
 
-  # Saves to a tmp file first.  On success, *atomically* renames it back.
-  # This prevents a potential read/write race between this function and
-  # get_checkpoint_state().
-  temp_pathname = coord_checkpoint_filename + ".tmp." + uuid.uuid4().hex
-  file_io.write_string_to_file(temp_pathname, text_format.MessageToString(ckpt))
-  file_io.rename(temp_pathname, coord_checkpoint_filename, overwrite=True)
+  # Preventing potential read/write race condition by *atomically* writing to a
+  # file.
+  file_io.atomic_write_string_to_file(coord_checkpoint_filename,
+                                      text_format.MessageToString(ckpt))
 
 
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
