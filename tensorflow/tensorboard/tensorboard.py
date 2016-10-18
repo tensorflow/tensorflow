@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015-2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ from tensorflow.tensorboard.backend import server
 
 FLAGS = None
 
-
 def main(unused_argv=None):
+  FLAGS = parse_argument()
   logdir = os.path.expanduser(FLAGS.logdir)
   event_file = os.path.expanduser(FLAGS.event_file)
 
@@ -103,8 +103,7 @@ def main(unused_argv=None):
 
   tb_server.serve_forever()
 
-
-if __name__ == '__main__':
+def parse_argument():
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--logdir',
@@ -200,5 +199,7 @@ if __name__ == '__main__':
       help='How often the backend should load more data.'
   )
   FLAGS = parser.parse_args()
+  return FLAGS
 
+if __name__ == '__main__':
   app.run()
