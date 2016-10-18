@@ -302,12 +302,14 @@ add_library(pywrap_tensorflow SHARED
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 target_include_directories(pywrap_tensorflow PUBLIC
     ${PYTHON_INCLUDE_DIR}
     ${NUMPY_INCLUDE_DIR}
 )
 target_link_libraries(pywrap_tensorflow
+    ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
     tf_protos_cc
     ${PYTHON_LIBRARIES}
