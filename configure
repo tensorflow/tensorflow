@@ -444,6 +444,7 @@ while true; do
   COMPUTECPP_TOOLKIT_PATH=""
 done
 
+export TF_NEED_OPENCL
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 

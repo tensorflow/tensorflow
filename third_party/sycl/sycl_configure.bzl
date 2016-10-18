@@ -11,6 +11,12 @@ _HOST_CXX_COMPILER = "HOST_CXX_COMPILER"
 _HOST_C_COMPILER= "HOST_C_COMPILER"
 _COMPUTECPP_TOOLKIT_PATH = "COMPUTECPP_TOOLKIT_PATH"
 
+def _enable_sycl(repository_ctx):
+  if "TF_NEED_OPENCL" in repository_ctx.os.environ:
+    enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL"].strip()
+    return enable_sycl == "1"
+  return False
+  
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
   red = "\033[0;31m"
@@ -99,33 +105,80 @@ def _file(repository_ctx, label):
       Label("//third_party/sycl/%s.tpl" % label),
       {})
 
-def _sycl_autoconf_imp(repository_ctx):
-  """Implementation of the sycl_autoconf rule."""
+_DUMMY_CROSSTOOL_BZL_FILE = """
+def error_sycl_disabled():
+  fail("ERROR: Building with --config=sycl but TensorFlow is not configured " +
+       "to build with SYCL support. Please re-run ./configure and enter 'Y' " +
+       "at the prompt to build with SYCL support.")
 
-  # copy template files
+  native.genrule(
+      name = "error_gen_crosstool",
+      outs = ["CROSSTOOL"],
+      cmd = "echo 'Should not be run.' && exit 1",
+  )
+
+  native.filegroup(
+      name = "crosstool",
+      srcs = [":CROSSTOOL"],
+      output_licenses = ["unencumbered"],
+  )
+"""
+
+
+_DUMMY_CROSSTOOL_BUILD_FILE = """
+load("//crosstool:error_sycl_disabled.bzl", "error_sycl_disabled")
+
+error_sycl_disabled()
+"""
+
+def _create_dummy_repository(repository_ctx):
+  # Set up BUILD file for sycl/.
   _file(repository_ctx, "sycl:build_defs.bzl")
   _file(repository_ctx, "sycl:BUILD")
   _file(repository_ctx, "sycl:platform.bzl")
-  _file(repository_ctx, "crosstool:BUILD")
-  _tpl(repository_ctx, "crosstool:computecpp",
-  {
-    "%{host_cxx_compiler}" : find_cc(repository_ctx),
-    "%{host_c_compiler}" : find_c(repository_ctx),
-  })
 
-  computecpp_root = find_computecpp_root(repository_ctx);
-  _check_dir(repository_ctx, computecpp_root)
+  # Create dummy files for the SYCL toolkit since they are still required by
+  # tensorflow/sycl/platform/default/build_config:sycl.
+  repository_ctx.file("sycl/include/sycl.hpp", "")
+  repository_ctx.file("sycl/lib/libComputeCpp.so", "")
 
-  _tpl(repository_ctx, "crosstool:CROSSTOOL",
-  {
-    "%{computecpp_toolkit_path}" : computecpp_root,
-  })
+  # If sycl_configure is not configured to build with SYCL support, and the user
+  # attempts to build with --config=sycl, add a dummy build rule to intercept
+  # this and fail with an actionable error message.
+  repository_ctx.file("crosstool/error_sycl_disabled.bzl",
+                      _DUMMY_CROSSTOOL_BZL_FILE)
+  repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
-  # symlink libraries
-  _check_lib(repository_ctx, computecpp_root+"/lib", "libComputeCpp.so" )
-  _symlink_dir(repository_ctx, computecpp_root + "/lib", "sycl/lib")
-  _symlink_dir(repository_ctx, computecpp_root + "/include", "sycl/include")
-  _symlink_dir(repository_ctx, computecpp_root + "/bin", "sycl/bin")
+
+def _sycl_autoconf_imp(repository_ctx):
+  """Implementation of the sycl_autoconf rule."""
+  if not _enable_sycl(repository_ctx):
+    _create_dummy_repository(repository_ctx)
+  else:
+    # copy template files
+    _file(repository_ctx, "sycl:build_defs.bzl")
+    _file(repository_ctx, "sycl:BUILD")
+    _file(repository_ctx, "sycl:platform.bzl")
+    _file(repository_ctx, "crosstool:BUILD")
+    _tpl(repository_ctx, "crosstool:computecpp",
+    {
+      "%{host_cxx_compiler}" : find_cc(repository_ctx),
+      "%{host_c_compiler}" : find_c(repository_ctx),
+    })
+
+    computecpp_root = find_computecpp_root(repository_ctx);
+    _check_dir(repository_ctx, computecpp_root)
+
+    _tpl(repository_ctx, "crosstool:CROSSTOOL",
+    {
+      "%{computecpp_toolkit_path}" : computecpp_root,
+    })
+
+    # symlink libraries
+    _check_lib(repository_ctx, computecpp_root+"/lib", "libComputeCpp.so" )
+    _symlink_dir(repository_ctx, computecpp_root + "/lib", "sycl/lib")
+    _symlink_dir(repository_ctx, computecpp_root + "/include", "sycl/include")
+    _symlink_dir(repository_ctx, computecpp_root + "/bin", "sycl/bin")
 
 sycl_configure = repository_rule(
   implementation = _sycl_autoconf_imp,
