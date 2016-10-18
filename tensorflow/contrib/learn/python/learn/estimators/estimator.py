@@ -214,8 +214,12 @@ def _make_metrics_ops(metrics, features, targets, predictions):
       predictions.
 
   Returns:
-    A dict mapping the friendly given in `metrics` to the result of calling the
-    given metric function.
+    `dict` whose keys are summary names, and values are the result of the
+    metric, either:
+      - `Tensor` values (in which case only the result of the last eval batch
+        will be summarized).
+      - `tuple` of 2 `Tensor` objects, update op and value. The update op will
+        be run once each eval step, and the value written to summary.
 
   Raises:
     ValueError: If metrics specifications do not work with the type of
@@ -263,6 +267,13 @@ def _make_metrics_ops(metrics, features, targets, predictions):
             'Metrics: %s, Targets: %s.' % (metrics, targets))
       result[name] = metric(predictions, targets)
   return result
+
+
+def _maybe_add_streaming_mean(result, key, value):
+  if key in result:
+    logging.warning('Metrics already contains %s, skipping.', key)
+    return
+  result[key] = metrics_lib.streaming_mean(value)
 
 
 class BaseEstimator(
@@ -572,7 +583,7 @@ class BaseEstimator(
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
-      metrics: Dict of metrics to run. If None, the default metric functions
+      metrics: Dict of metrics to run. If `None`, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
         model outputs to evaluate against which targets with which metric
@@ -1042,14 +1053,28 @@ class Estimator(BaseEstimator):
         `../metric_spec.py`.
 
     Returns:
-      metrics: `dict` of `Tensor` objects.
+      `dict` whose keys are summary names, and values are either:
+        - `Tensor` values (in which case only the result of the last eval batch
+          will be summarized).
+        - `tuple` of 2 `Tensor` objects, update op and value. The update op will
+          be run once each eval step, and the value written to summary.
 
     Raises:
       ValueError: if `metrics` don't match `targets`.
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
-    result = {'loss': metrics_lib.streaming_mean(loss)}
-    result.update(_make_metrics_ops(metrics, features, targets, predictions))
+    result = _make_metrics_ops(metrics, features, targets, predictions)
+    _maybe_add_streaming_mean(result, 'loss', loss)
+
+    # TODO(ptucker): Work-around until we have an easier way to specify metrics
+    # from model_fn.
+    if predictions is not None:
+      if isinstance(predictions, dict):
+        for k, v in six.iteritems(predictions):
+          _maybe_add_streaming_mean(result, k, v)
+      else:
+        _maybe_add_streaming_mean(result, 'predictions', predictions)
+
     return result
 
   def _get_predict_ops(self, features):
