@@ -69,7 +69,7 @@ go_repositories()
 git_repository(
     name = "io_bazel_rules_web",
     remote = "https://github.com/bazelbuild/rules_web.git",
-    tag = "v0.0.2",
+    tag = "0.0.3",
 )
 
 load("@io_bazel_rules_web//web:repositories.bzl", "web_test_repositories")
