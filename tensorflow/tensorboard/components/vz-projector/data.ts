@@ -325,15 +325,16 @@ export class DataSet implements scatterPlot.DataSet {
     });
   }
 
-  mergeMetadata(info: MetadataInfo) {
-    if (info.pointsInfo.length !== this.points.length) {
+  mergeMetadata(metadata: MetadataInfo) {
+    if (metadata.pointsInfo.length !== this.points.length) {
       updateWarningMessage(
           `Number of tensors (${this.points.length}) do not match` +
-          ` the number of lines in metadata (${info.pointsInfo.length}).`);
+          ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
     }
-    this.spriteImage = info.spriteImage;
-    this.datasetInfo = info.datasetInfo;
-    info.pointsInfo.forEach((m, i) => this.points[i].metadata = m);
+    this.spriteImage = metadata.spriteImage;
+    this.datasetInfo = metadata.datasetInfo;
+    metadata.pointsInfo.slice(0, this.points.length)
+        .forEach((m, i) => this.points[i].metadata = m);
   }
 
   stopTSNE() { this.tSNEShouldStop = true; }
