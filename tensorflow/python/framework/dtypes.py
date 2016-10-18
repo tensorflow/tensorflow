@@ -149,7 +149,7 @@ class DType(object):
 
   @property
   def is_floating(self):
-    """Returns whether this is a (real) floating point type."""
+    """Returns whether this is a (non-quantized, real) floating point type."""
     return self.is_numpy_compatible and issubclass(self.as_numpy_dtype,
                                                    np.floating)
 
