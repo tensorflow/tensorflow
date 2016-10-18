@@ -94,7 +94,7 @@ Returns a reference `DType` based on this `DType`.
 
 #### `tf.DType.is_floating` {#DType.is_floating}
 
-Returns whether this is a (real) floating point type.
+Returns whether this is a (non-quantized, real) floating point type.
 
 
 - - -
