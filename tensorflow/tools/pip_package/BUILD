@@ -26,8 +26,6 @@ py_binary(
 py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
     data = [
         "MANIFEST.in",
         "README",
@@ -59,6 +57,8 @@ py_binary(
         # "//tensorflow/models/image/mnist:convolutional",
         # "//tensorflow/tensorboard",
     ],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 sh_binary(
