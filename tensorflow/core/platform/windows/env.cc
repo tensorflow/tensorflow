@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <thread>
 #include <vector>
+#include <string>
 
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/load_library.h"
@@ -94,13 +95,41 @@ class WindowsEnv : public Env {
     });
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return errors::Unimplemented("WindowsEnv::LoadLibrary");
+  Status LoadLibrary(const char *library_filename, void** handle) override {
+    std::string file_name = library_filename;
+    std::replace(file_name.begin(), file_name.end(), '/', '\\');
+
+    HMODULE hModule = LoadLibraryEx(file_name.c_str(), NULL,
+      LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!hModule) {
+      return errors::NotFound(file_name + " not found");
+    }
+    *handle = hModule;
+    return Status::OK();
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                              void** symbol) override {
-    return errors::Unimplemented("WindowsEnv::GetSymbolFromLibrary");
+    void** symbol) override {
+    FARPROC found_symbol;
+
+    found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
+    if (found_symbol == NULL) {
+      return errors::NotFound(std::string(symbol_name) + " not found");
+    }
+    *symbol = (void **)found_symbol;
+    return Status::OK();
+  }
+
+  string FormatLibraryFileName(const string& name, const string& version)
+    override {
+    string filename;
+    if (version.size() == 0) {
+      filename = name + ".dll";
+    }
+    else {
+      filename = name + version + ".dll";
+    }
+    return filename;
   }
 };
 
