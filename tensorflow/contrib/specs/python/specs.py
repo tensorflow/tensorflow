@@ -143,7 +143,7 @@ class LocalImport(object):
   def __enter__(self):
     self.frame = inspect.currentframe()
     bindings = self.frame.f_back.f_globals
-    self.old = {k: bindings.get(k, None) for k in self.names.keys()}
+    self.old = {k: bindings.get(k, None) for k in self.names}
     bindings.update(self.names)
 
   def __exit__(self, some_type, value, traceback):

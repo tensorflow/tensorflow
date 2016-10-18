@@ -120,7 +120,7 @@ def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):
   """
   # We don't call multiplexer.Reload() here because that would make
   # AddRunsFromDirectory block until the runs have all loaded.
-  for path in path_to_run.keys():
+  for path in path_to_run:
     if gcs.IsGCSPath(path):
       gcs.CheckIsSupported()
       logging.info(
