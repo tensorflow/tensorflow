@@ -218,7 +218,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       
       self.assertAllClose(y_tf, y_np, 1e-6)
 
-def test_adjust_gamma_greater_one(self):
+  def test_adjust_gamma_greater_one(self):
     """Verifying the output with expected results for gamma
     correction with gamma equal to two"""
     with self.test_session():
