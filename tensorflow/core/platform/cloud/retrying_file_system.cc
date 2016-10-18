@@ -214,4 +214,13 @@ Status RetryingFileSystem::IsDirectory(const string& dirname) {
       initial_delay_microseconds_);
 }
 
+Status RetryingFileSystem::DeleteRecursively(const string& dirname,
+                                             int64* undeleted_files,
+                                             int64* undeleted_dirs) {
+  return CallWithRetries(
+      std::bind(&FileSystem::DeleteRecursively, base_file_system_.get(),
+                dirname, undeleted_files, undeleted_dirs),
+      initial_delay_microseconds_);
+}
+
 }  // namespace tensorflow
