@@ -22,6 +22,11 @@ cc_library(
 )
 
 cc_library(
+    name = "tag_constants",
+    hdrs = ["tag_constants.h"],
+)
+
+cc_library(
     name = "loader",
     srcs = ["loader.cc"],
     hdrs = ["loader.h"],
@@ -46,6 +51,7 @@ tf_cc_test(
         ":constants",
         ":loader",
         ":signature_constants",
+        ":tag_constants",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
