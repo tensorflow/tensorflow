@@ -44,5 +44,10 @@ apt-get install -y --no-install-recommends \
     wget \
     zip \
     zlib1g-dev
+
+# Install ca-certificates, and update the certificate store.
+apt-get install ca-certificates-java
+update-ca-certificates -f
+
 apt-get clean
 rm -rf /var/lib/apt/lists/*
