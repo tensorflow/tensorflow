@@ -677,14 +677,51 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
+
+/**
+ * from left dim to right dim , recursive print
+ */
+template<typename T>
+void PrintOneDim(T* data, int dim_index, gtl::InlinedVector<int64, 4> shape,
+		int64 limit, string* result, int64* data_index, int shape_size) {
+  int element_count = shape[dim_index];
+  //the bottom of the tensor
+  if (dim_index == shape_size - 1) {
+    for (int i = 0; i < element_count; i++) {
+      if (*data_index >= limit) {
+        return;
+      }
+      if (i > 0)
+        strings::StrAppend(result, " ");
+      strings::StrAppend(result, data[(*data_index)++]);
+    }
+    return;
+  }
+  //loop every element of one dim
+  for (int i = 0; i < element_count; i++) {
+    strings::StrAppend(result, "[");
+    //as for each element ,print the sub-element
+    PrintOneDim(data, dim_index + 1, shape, limit, result, data_index,
+				shape_size);
+    strings::StrAppend(result, "]");
+  }
+}
+
 template <typename T>
-string SummarizeArray(int64 limit, int64 num_elts, const char* data) {
+string SummarizeArray(int64 limit, int64 num_elts, const char* data
+    ,TensorShape tensor_shape) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
-  for (int64 i = 0; i < limit; ++i) {
-    if (i > 0) strings::StrAppend(&ret, " ");
-    strings::StrAppend(&ret, array[i]);
-  }
+
+  int64 data_index = 0;
+  gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
+  int shape_size = tensor_shape.dims();
+  PrintOneDim(array, 0, shape, limit, &ret, &data_index, shape_size);
+
+//  for (int64 i = 0; i < limit; ++i) {
+//    if (i > 0) strings::StrAppend(&ret, " ");
+//    strings::StrAppend(&ret, array[i]);
+//  }
   if (num_elts > limit) strings::StrAppend(&ret, "...");
   return ret;
 }
@@ -700,40 +737,40 @@ string Tensor::SummarizeValue(int64 max_entries) const {
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
     case DT_HALF:
-      return SummarizeArray<Eigen::half>(limit, num_elts, data);
+      return SummarizeArray<Eigen::half>(limit, num_elts, data, shape_);
       break;
     case DT_FLOAT:
-      return SummarizeArray<float>(limit, num_elts, data);
+      return SummarizeArray<float>(limit, num_elts, data, shape_);
       break;
     case DT_DOUBLE:
-      return SummarizeArray<double>(limit, num_elts, data);
+      return SummarizeArray<double>(limit, num_elts, data, shape_);
       break;
     case DT_INT32:
-      return SummarizeArray<int32>(limit, num_elts, data);
+      return SummarizeArray<int32>(limit, num_elts, data, shape_);
       break;
     case DT_UINT8:
     case DT_QUINT8:
-      return SummarizeArray<uint8>(limit, num_elts, data);
+      return SummarizeArray<uint8>(limit, num_elts, data, shape_);
       break;
     case DT_UINT16:
     case DT_QUINT16:
-      return SummarizeArray<uint16>(limit, num_elts, data);
+      return SummarizeArray<uint16>(limit, num_elts, data, shape_);
       break;
     case DT_INT16:
     case DT_QINT16:
-      return SummarizeArray<int16>(limit, num_elts, data);
+      return SummarizeArray<int16>(limit, num_elts, data, shape_);
       break;
     case DT_INT8:
     case DT_QINT8:
-      return SummarizeArray<int8>(limit, num_elts, data);
+      return SummarizeArray<int8>(limit, num_elts, data, shape_);
       break;
     case DT_INT64:
-      return SummarizeArray<int64>(limit, num_elts, data);
+      return SummarizeArray<int64>(limit, num_elts, data, shape_);
       break;
     case DT_BOOL:
       // TODO(tucker): Is it better to emit "True False..."?  This
       // will emit "1 0..." which is more compact.
-      return SummarizeArray<bool>(limit, num_elts, data);
+      return SummarizeArray<bool>(limit, num_elts, data, shape_);
       break;
     default: {
       // All irregular cases
