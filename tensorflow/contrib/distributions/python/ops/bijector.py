@@ -30,10 +30,13 @@ To apply a `Bijector`, use `distributions.TransformedDistribution`.
 ## Bijectors
 
 @@Bijector
+@@Exp
 @@Identity
 @@Inline
-@@Exp
 @@ScaleAndShift
+@@Sigmoid
+@@Softmax
+@@Softplus
 
 """
 from __future__ import absolute_import
@@ -42,12 +45,15 @@ from __future__ import print_function
 
 import abc
 import contextlib
+import numpy as np
 import six
 
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -163,9 +169,23 @@ class Bijector(object):
 
   Subclass Requirements:
 
-  - Subclasses are expected to implement `_forward` and one or both of:
+  - Typically subclasses implement `_forward` and one or both of:
       - `_inverse`, `_inverse_log_det_jacobian`,
       - `_inverse_and_inverse_log_det_jacobian`.
+
+  - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
+    like `QuantizedDistribution`) then depending on your use, you may not need
+    to implement all of `_forward` and `_inverese` functions.  For example:
+    - If you only require `sample`, it is sufficient to only implement
+      `_forward`.
+    - If you only need probablity functions (e.g., `prob`, `cdf`, `survival`),
+      it is sufficient to only implement `_inverse` (and related).
+    - If you only call a probability function on the output of a call to
+      `sample`, then `_inverse` can be implemented as a cache lookup.
+    See `Example Use` [above] which shows how these functions are used to
+    transform a distribution.  (Note: `_forward` could theoretically be
+    implemented as a cache lookup but this would require controlling the
+    underlying sample generation mechanism.)
 
   - If computation can be shared among `_inverse` and
     `_inverse_log_det_jacobian` it is preferable to implement
@@ -178,6 +198,38 @@ class Bijector(object):
     `inverse_log_det_jacobian` then he or she may also wish to implement these
     functions to avoid computing the `inverse_log_det_jacobian` or the
     `inverse`, respectively.
+
+
+  Tips for implementing `inverse_log_det_jacobian`:
+
+  - In rare cases it may be easier to compute the Jacobian of the forward
+    transformation rather than the inverse. The two are equivalent up to sign.
+
+    - Claim:
+
+        Assume `Y=g(X)` is a bijection whose derivative exists and is nonzero
+        for its domain, i.e., `d/dX g(X)!=0`. Then:
+
+        ```none
+        (log o det o jacobian o g^{-1})(Y) = -(log o det o jacobian o g)(X)
+        ```
+
+    - Proof:
+
+        From the nonzero, differentiability of `g`, the [inverse function
+        theorem](https://en.wikipedia.org/wiki/Inverse_function_theorem) implies
+        `g^{-1}` is differentiable in the image of `g`.
+        Observe that `y = g(x) = g(g^{-1}(y))`.
+        From the chain rule we have `I = g'(g^{-1}(y))*g^{-1}'(y).`
+        Since `g` is a bijection and `g`, `g^{-1}` are differentiable, g{-1}' is
+        non-singular therefore: `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
+        The claim follows from [properties of determinant](
+  https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
+
+  - It is generally preferable to implement the Jacobian of the inverse. Doing
+    so should have better numerical stability and is likely to share operations
+    with the `inverse` implementation.
+
   """
 
   @abc.abstractmethod
@@ -270,12 +322,13 @@ class Bijector(object):
   def _forward(self, x):
     raise NotImplementedError("forward is not implemented.")
 
-  def forward(self, x, name="forward"):
+  def forward(self, x, name="forward", **condition_kwargs):
     """Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
     Args:
       x: `Tensor`. The input to the "forward" evaluation.
       name: The name to give this op.
+      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       `Tensor`.
@@ -288,77 +341,87 @@ class Bijector(object):
     with self._name_scope(name, [x]):
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
-      return self._forward(x)
+      return self._forward(x, **condition_kwargs)
 
-  def _inverse(self, x):
+  def _inverse(self, y):
     raise NotImplementedError("inverse is not implemented")
 
-  def inverse(self, x, name="inverse"):
+  def inverse(self, y, name="inverse", **condition_kwargs):
     """Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
     Args:
-      x: `Tensor`. The input to the "inverse" evaluation.
+      y: `Tensor`. The input to the "inverse" evaluation.
       name: The name to give this op.
+      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       `Tensor`.
 
     Raises:
-      TypeError: if `self.dtype` is specified and `x.dtype` is not
+      TypeError: if `self.dtype` is specified and `y.dtype` is not
         `self.dtype`.
       NotImplementedError: if neither `_inverse` nor
         `_inverse_and_inverse_log_det_jacobian` are implemented.
     """
-    with self._name_scope(name, [x]):
-      x = ops.convert_to_tensor(x, name="x")
-      self._maybe_assert_dtype(x)
+    with self._name_scope(name, [y]):
+      y = ops.convert_to_tensor(y, name="y")
+      self._maybe_assert_dtype(y)
       try:
-        return self._inverse(x)
-      except NotImplementedError:
+        return self._inverse(y, **condition_kwargs)
+      except NotImplementedError as original_error:
         # Since _inverse was not implemented, try to see if it's implemented
         # by the _inverse_and_inverse_log_det_jacobian member.
-        return self._inverse_and_inverse_log_det_jacobian(x)[0]
+        try:
+          return self._inverse_and_inverse_log_det_jacobian(
+              y, **condition_kwargs)[0]
+        except NotImplementedError:
+          raise original_error
 
-  def _inverse_log_det_jacobian(self, x):
-    raise NotImplementedError("inverse_log_det_jacobian is not implemented")
+  def _inverse_log_det_jacobian(self, y):
+    raise NotImplementedError("inverse_log_det_jacobian is not implemented.")
 
-  def inverse_log_det_jacobian(self, x, name="inverse_log_det_jacobian"):
-    """Returns the (log o det o Jacobian o inverse)(x).
+  def inverse_log_det_jacobian(
+      self, y, name="inverse_log_det_jacobian", **condition_kwargs):
+    """Returns the (log o det o Jacobian o inverse)(y).
 
-    Mathematically, returns: log(det(dY/dX g^{-1}))(Y).
+    Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-    Note that forward_log_det_jacobian is the negative of this function. (See
-    is_constant_jacobian for related proof.)
+    Note that `forward_log_det_jacobian` is the negative of this function.
 
     Args:
-      x: `Tensor`. The input to the "inverse" Jacobian evaluation.
+      y: `Tensor`. The input to the "inverse" Jacobian evaluation.
       name: The name to give this op.
+      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       `Tensor`.
 
     Raises:
-      TypeError: if `self.dtype` is specified and `x.dtype` is not
+      TypeError: if `self.dtype` is specified and `y.dtype` is not
         `self.dtype`.
       NotImplementedError: if neither `_inverse_log_det_jacobian` nor
         `_inverse_and_inverse_log_det_jacobian` are implemented.
     """
-    with self._name_scope(name, [x]):
-      x = ops.convert_to_tensor(x, name="x")
-      self._maybe_assert_dtype(x)
+    with self._name_scope(name, [y]):
+      y = ops.convert_to_tensor(y, name="y")
+      self._maybe_assert_dtype(y)
       try:
-        return self._inverse_log_det_jacobian(x)
-      except NotImplementedError:
+        return self._inverse_log_det_jacobian(y, **condition_kwargs)
+      except NotImplementedError as original_error:
         # Since _inverse_log_det_jacobian was not implemented, try to see if
         # it's implemented by the _inverse_and_inverse_log_det_jacobian member.
-        return self._inverse_and_inverse_log_det_jacobian(x)[1]
+        try:
+          return self._inverse_and_inverse_log_det_jacobian(
+              y, **condition_kwargs)[1]
+        except NotImplementedError:
+          raise original_error
 
-  def _inverse_and_inverse_log_det_jacobian(self, x):
+  def _inverse_and_inverse_log_det_jacobian(self, y):
     raise NotImplementedError(
         "inverse_and_inverse_log_det_jacobian is not implemented.")
 
   def inverse_and_inverse_log_det_jacobian(
-      self, x, name="inverse_and_inverse_log_det_jacobian"):
+      self, y, name="inverse_and_inverse_log_det_jacobian", **condition_kwargs):
     """Returns both the inverse evaluation and inverse_log_det_jacobian.
 
     Enables possibly more efficient calculation when both inverse and
@@ -367,28 +430,34 @@ class Bijector(object):
     See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
     Args:
-      x: `Tensor`. The input to the "inverse" Jacobian evaluation.
+      y: `Tensor`. The input to the "inverse" Jacobian evaluation.
       name: The name to give this op.
+      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       `Tensor`.
 
     Raises:
-      TypeError: if `self.dtype` is specified and `x.dtype` is not
+      TypeError: if `self.dtype` is specified and `y.dtype` is not
         `self.dtype`.
       NotImplementedError: if neither `_inverse_and_inverse_log_det_jacobian`
         nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
     """
-    with self._name_scope(name, [x]):
-      x = ops.convert_to_tensor(x, name="x")
-      self._maybe_assert_dtype(x)
+    with self._name_scope(name, [y]):
+      y = ops.convert_to_tensor(y, name="y")
+      self._maybe_assert_dtype(y)
       try:
-        return self._inverse_and_inverse_log_det_jacobian(x)
-      except NotImplementedError:
+        return self._inverse_and_inverse_log_det_jacobian(
+            y, **condition_kwargs)
+      except NotImplementedError as original_error:
         # Since _inverse_and_inverse_log_det_jacobian was not implemented, try
         # to see if we can separately use _inverse and
         # _inverse_log_det_jacobian members.
-        return self._inverse(x), self._inverse_log_det_jacobian(x)
+        try:
+          return (self._inverse(y, **condition_kwargs),
+                  self._inverse_log_det_jacobian(y, **condition_kwargs))
+        except NotImplementedError:
+          raise original_error
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
@@ -433,11 +502,11 @@ class Identity(Bijector):
   def _forward(self, x):
     return x
 
-  def _inverse(self, x):
-    return x
+  def _inverse(self, y):
+    return y
 
-  def _inverse_log_det_jacobian(self, x):
-    return constant_op.constant(0., dtype=x.dtype)
+  def _inverse_log_det_jacobian(self, y):
+    return constant_op.constant(0., dtype=y.dtype)
 
 
 class Inline(Bijector):
@@ -526,21 +595,21 @@ class Exp(Bijector):
   def _forward(self, x):
     return math_ops.exp(x)
 
-  def _inverse(self, x):
-    return math_ops.log(x)
+  def _inverse(self, y):
+    return math_ops.log(y)
 
-  def _inverse_log_det_jacobian(self, x):
+  def _inverse_log_det_jacobian(self, y):
     if self.shaper is None:
       raise ValueError("Jacobian cannot be computed with unknown event_ndims")
-    _, _, event_dims = self.shaper.get_dims(x)
-    return -math_ops.reduce_sum(math_ops.log(x), reduction_indices=event_dims)
+    _, _, event_dims = self.shaper.get_dims(y)
+    return -math_ops.reduce_sum(math_ops.log(y), reduction_indices=event_dims)
 
-  def _inverse_and_inverse_log_det_jacobian(self, x):
+  def _inverse_and_inverse_log_det_jacobian(self, y):
     if self.shaper is None:
       raise ValueError("Jacobian cannot be computed with unknown event_ndims")
-    y = math_ops.log(x)
+    x = math_ops.log(y)
     _, _, event_dims = self.shaper.get_dims(x)
-    return y, -math_ops.reduce_sum(y, reduction_indices=event_dims)
+    return x, -math_ops.reduce_sum(x, reduction_indices=event_dims)
 
 
 class ScaleAndShift(Bijector):
@@ -674,14 +743,14 @@ class ScaleAndShift(Bijector):
     x += self.loc
     return x
 
-  def _inverse(self, x):
-    x -= self.loc
+  def _inverse(self, y):
+    x = y - self.loc
     x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
     x = linalg_ops.matrix_triangular_solve(self.scale, x)
     x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
     return x
 
-  def _inverse_log_det_jacobian(self, x):  # pylint: disable=unused-argument
+  def _inverse_log_det_jacobian(self, y):  # pylint: disable=unused-argument
     return -math_ops.reduce_sum(
         math_ops.log(array_ops.matrix_diag_part(self.scale)),
         reduction_indices=[-1])
@@ -759,3 +828,160 @@ class Softplus(Bijector):
     ildj = -math_ops.reduce_sum(
         log_one_minus_exp_neg, reduction_indices=event_dims)
     return y, ildj
+
+
+class Softmax(Bijector):
+  """Bijector which computes `Y = g(X) = exp([X 0]) / sum(exp([X 0]))`.
+
+  To implement [softmax](https://en.wikipedia.org/wiki/Softmax_function) as a
+  bijection, the forward transformation appends a value to the input and the
+  inverse removes this coordinate.  The appended coordinate represents a pivot,
+  e.g., `softmax(x) = exp(x-c) / sum(exp(x-c))` where `c` is the implicit last
+  coordinate.
+
+  Because we append a coordinate, this bijector only supports `event_ndim in [0,
+  1]`, i.e., scalars and vectors.
+
+  Example Use:
+
+  ```python
+  bijector.Softmax(event_ndims=1).forward(tf.log([2, 3, 4]))
+  # Result: [0.2, 0.3, 0.4, 0.1]
+  # Extra result: 0.1
+
+  bijector.Softmax(event_ndims=1).inverse([0.2, 0.3, 0.4, 0.1])
+  # Result: tf.log([2, 3, 4])
+  # Extra coordinate removed.
+  ```
+
+  At first blush it may seem like the [Invariance of domain](
+  https://en.wikipedia.org/wiki/Invariance_of_domain) theorem implies this
+  implementation is not a bijection.  However, the appended dimension
+  makes the (forward) image non-open and the theorem does not directly apply.
+  """
+
+  def __init__(self,
+               event_ndims=0,
+               validate_args=False,
+               name="Softmax"):
+    self._parameters = {}
+    self._name = name
+    with self._name_scope("init", values=[event_ndims]):
+      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
+      event_ndims = tensor_util.constant_value(event_ndims)
+      if event_ndims is None or event_ndims not in [0, 1]:
+        raise ValueError("`event_ndims` must be a TF constant which is 0 or 1")
+    self._static_event_ndims = event_ndims
+    super(Softmax, self).__init__(
+        batch_ndims=0,  # We'll regard all non-event dims as sample dims.
+        event_ndims=event_ndims,
+        validate_args=validate_args,
+        name=name)
+
+  def _forward(self, x):
+    y = x
+    # Pad the event_ndims with a zeros vector. We need this because it lets
+    # us infer the scale in the inverse function.
+    if self._static_event_ndims == 0:
+      y = array_ops.expand_dims(y, dim=-1)
+      zeros = array_ops.zeros_like(y)
+    else:
+      shape = array_ops.concat(0, (array_ops.shape(x)[:-1], [1]))
+      zeros = array_ops.zeros(shape, dtype=y.dtype)
+    y = array_ops.concat(array_ops.rank(y)-1, (y, zeros))
+
+    # Set shape hints.
+    if x.get_shape().ndims is not None:
+      shape = x.get_shape().as_list()
+      if self._static_event_ndims == 0:
+        shape += [2]
+      elif shape[-1] is not None:
+        shape[-1] += 1
+      shape = tensor_shape.TensorShape(shape)
+      y.get_shape().assert_is_compatible_with(shape)
+      y.set_shape(shape)
+
+    # Since we only support event_ndims in [0, 1] and we do padding, we always
+    # reduce over the last dimension, i.e., dim=-1 (which is the default).
+    return nn_ops.softmax(y)
+
+  def _inverse(self, y):
+    # To derive the inverse mapping note that:
+    #   y[i] = exp(x[i]) / normalization
+    # and
+    #   y[end] = 1 / normalization.
+    # Thus:
+    # x[i] = log(exp(x[i])) - log(y[end]) - log(normalization)
+    #      = log(exp(x[i])/normalization) - log(y[end])
+    #      = log(y[i]) - log(y[end])
+    shape = (np.asarray(y.get_shape().as_list(), dtype=np.int32)
+             if y.get_shape().is_fully_defined()
+             else array_ops.shape(y, name="shape"))
+    ndims = y.get_shape().ndims or math_ops.rank(y, name="ndims")
+
+    # Do this first to make sure CSE catches that it'll happen again in
+    # _inverse_log_det_jacobian.
+    x = math_ops.log(y)
+
+    # We now extract the last coordinate of the rightmost dimension.
+    # Our trick is to slice from [0,0,...,shape[-1]-1] to shape[:-1]+[1].
+    begin = array_ops.one_hot(indices=ndims-1,
+                              depth=ndims,
+                              on_value=shape[-1]-np.array(1, dtype=shape.dtype),
+                              dtype=shape.dtype)
+    size = array_ops.concat(0, (shape[:-1], np.asarray([1], dtype=shape.dtype)))
+    log_normalization = -array_ops.slice(x, begin, size)
+
+    # Here we slice out all but the last coordinate; see above for idea.
+    begin = array_ops.zeros_like(shape)
+    size = array_ops.concat(0, (shape[:-1], [shape[-1]-1]))
+    x = array_ops.slice(x, begin, size)
+
+    x += log_normalization
+
+    if self._static_event_ndims == 0:
+      x = array_ops.squeeze(x, squeeze_dims=[ndims-1])
+
+    # Set shape hints.
+    if y.get_shape().ndims is not None:
+      shape = y.get_shape().as_list()
+      if self._static_event_ndims == 0:
+        shape = shape[:-1]
+      elif shape[-1] is not None:
+        shape[-1] -= 1
+      shape = tensor_shape.TensorShape(shape)
+      x.get_shape().assert_is_compatible_with(shape)
+      x.set_shape(shape)
+
+    return x
+
+  def _inverse_log_det_jacobian(self, y):
+    # WLOG, consider the vector case:
+    #   x = log(y[:-1]) - log(y[-1])
+    # where,
+    #   y[-1] = 1 - sum(y[:-1]).
+    # We have:
+    #   det{ dX/dY } = det{ diag(1 ./ y[:-1]) + 1 / y[-1] }
+    #                = det{ inv{ diag(y[:-1]) - y[:-1]' y[:-1] } }   (1)
+    #                = 1 / det{ diag(y[:-1]) - y[:-1]' y[:-1] }
+    #                = 1 / { (1 + y[:-1]' inv(diag(y[:-1])) y[:-1]) *
+    #                        det(diag(y[:-1])) }                     (2)
+    #                = 1 / { y[-1] prod(y[:-1]) }
+    #                = 1 / prod(y)
+    # (1) - https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
+    #       or by noting that det{ dX/dY } = 1 / det{ dY/X } from Bijector
+    #       docstring "Tip".
+    # (2) - https://en.wikipedia.org/wiki/Matrix_determinant_lemma
+    return -math_ops.reduce_sum(math_ops.log(y), reduction_indices=-1)
+
+
+class Sigmoid(Softmax):
+  """Bijector which computes Y = g(X) = (1 + exp(-X))^-1.
+
+  Equivalent to: `bijector.Softmax(event_ndims=0)`.
+
+  See `bijector.Softmax` for more details.
+  """
+
+  def __init__(self, validate_args=False, name="Sigmoid"):
+    super(Sigmoid, self).__init__(validate_args=validate_args, name=name)

@@ -125,6 +125,7 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -327,8 +328,9 @@ def evaluate_once(master,
 
   global_step = variables.get_or_create_global_step()
 
-  saver = tf_saver.Saver(variables_to_restore or
-                         variables.get_variables_to_restore())
+  saver = tf_saver.Saver(
+      variables_to_restore or variables.get_variables_to_restore(),
+      write_version=saver_pb2.SaverDef.V1)
 
   summary_writer = summary_io.SummaryWriter(logdir)
 
@@ -466,4 +468,3 @@ def evaluation_loop(master,
   logging.info(
       'Timed-out waiting for new checkpoint file. Exiting evaluation loop.')
   return final_op_value
-
