@@ -208,7 +208,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     if not (isinstance(input_map, dict)
             and all(isinstance(k, compat.bytes_or_text_types)
-                    for k in input_map.keys())):
+                    for k in input_map)):
       raise TypeError('input_map must be a dictionary mapping strings to '
                       'Tensor objects.')
   if return_elements is not None:
