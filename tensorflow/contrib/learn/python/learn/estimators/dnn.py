@@ -35,7 +35,6 @@ from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import ops
@@ -59,11 +58,6 @@ _PROBABILITIES = "probabilities"
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
 _LEARNING_RATE = 0.05
-
-
-def _as_iterable(preds, output):
-  for pred in preds:
-    yield pred[output]
 
 
 def _get_feature_dict(features):
@@ -381,9 +375,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
       n_classes: number of target classes. Default is binary classification.
         It must be greater than 1.
       weight_column_name: A string defining feature column name representing
@@ -491,7 +485,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
 
     Args:
@@ -511,14 +505,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     batch_size=batch_size, outputs=[_CLASSES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_CLASSES)
+      return (pred[_CLASSES][0] for pred in preds)
     return preds[_CLASSES].reshape(-1)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns prediction probabilities for given features.
 
     Args:
@@ -539,7 +533,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     outputs=[_PROBABILITIES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_PROBABILITIES)
+      return (pred[_PROBABILITIES] for pred in preds)
     return preds[_PROBABILITIES]
 
   def get_variable_names(self):
@@ -594,11 +588,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def weights_(self):
-    hiddenlayer_weights = [checkpoints.load_variable(
+    hiddenlayer_weights = [load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/weights" % i))
                            for i, _ in enumerate(self._hidden_units)]
-    logits_weights = [checkpoints.load_variable(
-        self._model_dir, name="dnn/logits/weights")]
+    logits_weights = [load_variable(self._model_dir, name="dnn/logits/weights")]
     return hiddenlayer_weights + logits_weights
 
   @property
@@ -607,13 +600,11 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def bias_(self):
-    hiddenlayer_bias = [checkpoints.load_variable(
+    hiddenlayer_bias = [load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/biases" % i))
                         for i, _ in enumerate(self._hidden_units)]
-    logits_bias = [checkpoints.load_variable(
-        self._model_dir, name="dnn/logits/biases")]
-    centered_bias = [checkpoints.load_variable(
-        self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
+    logits_bias = [load_variable(self._model_dir, name="dnn/logits/biases")]
+    centered_bias = [load_variable(self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
     return hiddenlayer_bias + logits_bias + centered_bias
 
   @property
@@ -698,9 +689,9 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.

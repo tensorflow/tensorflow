@@ -66,6 +66,9 @@ class RetryingFileSystem : public FileSystem {
 
   Status IsDirectory(const string& dir) override;
 
+  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+                           int64* undeleted_dirs) override;
+
  private:
   std::unique_ptr<FileSystem> base_file_system_;
   const int64 initial_delay_microseconds_;

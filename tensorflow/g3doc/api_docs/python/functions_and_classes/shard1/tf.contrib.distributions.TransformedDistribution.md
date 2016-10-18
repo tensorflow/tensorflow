@@ -1,9 +1,15 @@
 A Transformed Distribution.
 
-A Transformed Distribution models `p(y)` given a base distribution `p(x)`, and
-a deterministic, invertible, differentiable transform, `Y = g(X)`. The
+A `TransformedDistribution` models `p(y)` given a base distribution `p(x)`,
+and a deterministic, invertible, differentiable transform, `Y = g(X)`. The
 transform is typically an instance of the `Bijector` class and the base
 distribution is typically an instance of the `Distribution` class.
+
+A `Bijector` is expected to implement the following functions:
+- `forward`,
+- `inverse`,
+- `inverse_log_det_jacobian`.
+The semantics of these functions are outlined in the `Bijector` documentation.
 
 Shapes, type, and reparameterization are taken from the base distribution.
 
@@ -18,7 +24,7 @@ associated with rv `X` in the following ways:
 
     Mathematically:
 
-    ```
+    ```none
     Y = g(X)
     ```
 
@@ -32,7 +38,7 @@ associated with rv `X` in the following ways:
 
     Mathematically:
 
-    ```
+    ```none
     (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
     ```
 
@@ -47,7 +53,7 @@ associated with rv `X` in the following ways:
 
     Mathematically:
 
-    ```
+    ```none
     (log o P o g^{-1})(y)
     ```
 
@@ -66,7 +72,7 @@ distribution:
 ```python
 ds = tf.contrib.distributions
 log_normal = ds.TransformedDistribution(
-  base_distribution=ds.Normal(mu=mu, sigma=sigma),
+  distribution=ds.Normal(mu=mu, sigma=sigma),
   bijector=ds.bijector.Exp(),
   name="LogNormalTransformedDistribution")
 ```
@@ -76,7 +82,7 @@ A `LogNormal` made from callables:
 ```python
 ds = tf.contrib.distributions
 log_normal = ds.TransformedDistribution(
-  base_distribution=ds.Normal(mu=mu, sigma=sigma),
+  distribution=ds.Normal(mu=mu, sigma=sigma),
   bijector=ds.bijector.Inline(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
@@ -90,24 +96,25 @@ Another example constructing a Normal from a StandardNormal:
 ```python
 ds = tf.contrib.distributions
 normal = ds.TransformedDistribution(
-  base_distribution=ds.Normal(mu=0, sigma=1),
+  distribution=ds.Normal(mu=0, sigma=1),
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(base_distribution, bijector, name='TransformedDistribution')` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, name=None)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
 ##### Args:
 
 
-*  <b>`base_distribution`</b>: The base distribution class to transform. Typically an
+*  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
     Typically an instance of `Bijector`.
-*  <b>`name`</b>: The name for the distribution.
+*  <b>`name`</b>: The name for the distribution. Default:
+    `bijector.name + distribution.name`.
 
 
 - - -
@@ -129,13 +136,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.base_distribution` {#TransformedDistribution.base_distribution}
-
-Base distribution, p(x).
 
 
 - - -
@@ -167,7 +167,7 @@ Function transforming x => y.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf')` {#TransformedDistribution.cdf}
+#### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf', **condition_kwargs)` {#TransformedDistribution.cdf}
 
 Cumulative distribution function.
 
@@ -177,17 +177,33 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 cdf(x) := P[X <= x]
 ```
 
+
+Additional documentation from `TransformedDistribution`:
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.distribution` {#TransformedDistribution.distribution}
+
+Base distribution, p(x).
 
 
 - - -
@@ -201,7 +217,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.TransformedDistribution.entropy(name='entropy')` {#TransformedDistribution.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
@@ -265,7 +281,7 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf')` {#TransformedDistribution.log_cdf}
+#### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf', **condition_kwargs)` {#TransformedDistribution.log_cdf}
 
 Log cumulative distribution function.
 
@@ -279,11 +295,20 @@ Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
 
+
+Additional documentation from `TransformedDistribution`:
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -294,7 +319,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_pdf(value, name='log_pdf')` {#TransformedDistribution.log_pdf}
+#### `tf.contrib.distributions.TransformedDistribution.log_pdf(value, name='log_pdf', **condition_kwargs)` {#TransformedDistribution.log_pdf}
 
 Log probability density function.
 
@@ -303,6 +328,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -318,7 +344,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_pmf(value, name='log_pmf')` {#TransformedDistribution.log_pmf}
+#### `tf.contrib.distributions.TransformedDistribution.log_pmf(value, name='log_pmf', **condition_kwargs)` {#TransformedDistribution.log_pmf}
 
 Log probability mass function.
 
@@ -327,6 +353,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -342,7 +369,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
+#### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob', **condition_kwargs)` {#TransformedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -350,16 +377,22 @@ Log probability density/mass function (depending on `is_continuous`).
 Additional documentation from `TransformedDistribution`:
 
 Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
-where `g^{-1}` is the inverse of `transform`.
+      where `g^{-1}` is the inverse of `transform`.
 
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
+      Also raises a `ValueError` if `inverse` was not provided to the
+      distribution and `y` was not returned from `sample`.
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -370,7 +403,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_survival_function(value, name='log_survival_function')` {#TransformedDistribution.log_survival_function}
+#### `tf.contrib.distributions.TransformedDistribution.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#TransformedDistribution.log_survival_function}
 
 Log survival function.
 
@@ -385,11 +418,20 @@ log_survival_function(x) = Log[ P[X > x] ]
 Typically, different numerical approximations can be used for the log
 survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
+
+Additional documentation from `TransformedDistribution`:
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -469,7 +511,7 @@ Dictionary of parameters used by this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.pdf(value, name='pdf')` {#TransformedDistribution.pdf}
+#### `tf.contrib.distributions.TransformedDistribution.pdf(value, name='pdf', **condition_kwargs)` {#TransformedDistribution.pdf}
 
 Probability density function.
 
@@ -478,6 +520,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -493,7 +536,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.pmf(value, name='pmf')` {#TransformedDistribution.pmf}
+#### `tf.contrib.distributions.TransformedDistribution.pmf(value, name='pmf', **condition_kwargs)` {#TransformedDistribution.pmf}
 
 Probability mass function.
 
@@ -502,6 +545,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -517,7 +561,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
+#### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob', **condition_kwargs)` {#TransformedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -525,16 +569,22 @@ Probability density/mass function (depending on `is_continuous`).
 Additional documentation from `TransformedDistribution`:
 
 Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
-inverse of `transform`.
+      inverse of `transform`.
 
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
+      Also raises a `ValueError` if `inverse` was not provided to the
+      distribution and `y` was not returned from `sample`.
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -545,7 +595,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample(sample_shape=(), seed=None, name='sample')` {#TransformedDistribution.sample}
+#### `tf.contrib.distributions.TransformedDistribution.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#TransformedDistribution.sample}
 
 Generate samples of the specified shape.
 
@@ -558,6 +608,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -567,7 +618,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n')` {#TransformedDistribution.sample_n}
+#### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#TransformedDistribution.sample_n}
 
 Generate `n` samples.
 
@@ -575,7 +626,12 @@ Generate `n` samples.
 Additional documentation from `TransformedDistribution`:
 
 Samples from the base distribution and then passes through
-the bijector's forward transform.
+      the bijector's forward transform.
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -584,6 +640,7 @@ the bijector's forward transform.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -605,7 +662,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.survival_function(value, name='survival_function')` {#TransformedDistribution.survival_function}
+#### `tf.contrib.distributions.TransformedDistribution.survival_function(value, name='survival_function', **condition_kwargs)` {#TransformedDistribution.survival_function}
 
 Survival function.
 
@@ -617,11 +674,20 @@ survival_function(x) = P[X > x]
                      = 1 - cdf(x).
 ```
 
+
+Additional documentation from `TransformedDistribution`:
+
+##### <b>`condition_kwargs`</b>:
+
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

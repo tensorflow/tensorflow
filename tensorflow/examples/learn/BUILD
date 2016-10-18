@@ -19,6 +19,13 @@ py_binary(
 )
 
 py_binary(
+    name = "hdf5_classification",
+    srcs = ["hdf5_classification.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
     name = "iris",
     srcs = ["iris.py"],
     srcs_version = "PY2AND3",

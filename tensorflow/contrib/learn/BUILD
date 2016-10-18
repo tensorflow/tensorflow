@@ -25,18 +25,6 @@ py_library(
 )
 
 py_test(
-    name = "base_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/base_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "data_feeder_test",
     size = "small",
     srcs = ["python/learn/learn_io/data_feeder_test.py"],
@@ -438,18 +426,6 @@ py_test(
     name = "random_forest_test",
     size = "medium",
     srcs = ["python/learn/estimators/random_forest_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "rnn_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/rnn_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
