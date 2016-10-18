@@ -58,8 +58,7 @@ export interface DataProvider {
   retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void);
 
   /**
-   * Fetches the metadata for the specified tensor and merges it with the
-   * specified data source.
+   * Fetches the metadata for the specified tensor.
    */
   retrieveMetadata(run: string, tensorName: string,
       callback: (r: MetadataInfo) => void): void;

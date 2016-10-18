@@ -513,29 +513,36 @@ def batch_norm(
                                        trainable=trainable)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections.
-    moving_mean_collections = utils.get_variable_collections(
-        variables_collections, 'moving_mean')
-    moving_mean_initializer = param_initializers.get('moving_mean',
-                                                     init_ops.zeros_initializer)
-    moving_mean = variables.model_variable(
-        'moving_mean',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=moving_mean_initializer,
-        trainable=False,
-        collections=moving_mean_collections)
-    moving_variance_collections = utils.get_variable_collections(
-        variables_collections, 'moving_variance')
-    moving_variance_initializer = param_initializers.get(
-        'moving_variance', init_ops.ones_initializer)
-    moving_variance = variables.model_variable(
-        'moving_variance',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=moving_variance_initializer,
-        trainable=False,
-        collections=moving_variance_collections)
+    # appropiate collections. We disable variable partitioning while creating
+    # them, because assign_moving_average is not yet supported for partitioned
+    # variables.
+    partitioner = variable_scope.get_variable_scope().partitioner
+    try:
+      variable_scope.get_variable_scope().set_partitioner(None)
+      moving_mean_collections = utils.get_variable_collections(
+          variables_collections, 'moving_mean')
+      moving_mean_initializer = param_initializers.get(
+          'moving_mean', init_ops.zeros_initializer)
+      moving_mean = variables.model_variable(
+          'moving_mean',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=moving_mean_initializer,
+          trainable=False,
+          collections=moving_mean_collections)
+      moving_variance_collections = utils.get_variable_collections(
+          variables_collections, 'moving_variance')
+      moving_variance_initializer = param_initializers.get(
+          'moving_variance', init_ops.ones_initializer)
+      moving_variance = variables.model_variable(
+          'moving_variance',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=moving_variance_initializer,
+          trainable=False,
+          collections=moving_variance_collections)
+    finally:
+      variable_scope.get_variable_scope().set_partitioner(partitioner)
 
     # If `is_training` doesn't have a constant value, because it is a `Tensor`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
