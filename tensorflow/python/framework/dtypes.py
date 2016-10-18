@@ -218,24 +218,19 @@ class DType(object):
         raise TypeError("Cannot find maximum value of %s." % self)
 
   @property
-  def limits(self, clip_negative=None):
+  def limits(self, clip_negative=True):
     """Return intensity limits, i.e. (min, max) tuple, of the dtype.
     Args:
       clip_negative : bool, optional
           If True, clip the negative range (i.e. return 0 for min intensity)
           even if the image dtype allows negative values.
-          The default behavior (None) is equivalent to True.
     Returns
       min, max : tuple
         Lower and upper intensity limits.
     """
-    if clip_negative is None:
-        clip_negative = True
-        #warn('The default of `clip_negative` in `skimage.util.dtype_limits` '
-        #     'will change to `False` in version 0.15.')
     min, max = dtype_range[self.as_numpy_dtype]
     if clip_negative:
-        min = 0
+      min = 0
     return min, max
 
   def is_compatible_with(self, other):
