@@ -163,16 +163,18 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_ARGMAX_GPU(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                 \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
-                          ArgMaxOp<GPUDevice, type>);    \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                 \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
+#define REGISTER_ARGMAX_GPU(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                     \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("dimension"),      \
+                          ArgMaxOp<GPUDevice, type>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMin")                     \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("dimension"),      \
                           ArgMinOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);

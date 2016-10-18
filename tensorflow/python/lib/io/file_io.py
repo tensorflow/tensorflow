@@ -344,12 +344,12 @@ def is_directory(dirname):
 
   Returns:
     True, if the path is a directory; False otherwise
-
-  Raises:
-    errors.OpError: If the path doesn't exist or other errors
   """
-  status = pywrap_tensorflow.TF_NewStatus()
-  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
+    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 def list_directory(dirname):

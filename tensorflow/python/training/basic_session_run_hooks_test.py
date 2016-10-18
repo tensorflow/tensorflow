@@ -173,6 +173,15 @@ class CheckpointSaverHookTest(tf.test.TestCase):
   def tearDown(self):
     shutil.rmtree(self.model_dir, ignore_errors=True)
 
+  def test_raise_when_saver_and_scaffold_both_missing(self):
+    with self.assertRaises(ValueError):
+      tf.train.CheckpointSaverHook(self.model_dir)
+
+  def test_raise_when_saver_and_scaffold_both_present(self):
+    with self.assertRaises(ValueError):
+      tf.train.CheckpointSaverHook(
+          self.model_dir, saver=self.scaffold.saver, scaffold=self.scaffold)
+
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
       tf.train.CheckpointSaverHook(self.model_dir, save_secs=10, save_steps=20)
@@ -329,6 +338,15 @@ class SummarySaverHookTest(tf.test.TestCase):
     global_step = tf.contrib.framework.get_or_create_global_step()
     self.train_op = tf.assign_add(global_step, 1)
 
+  def test_raise_when_scaffold_and_summary_op_both_missing(self):
+    with self.assertRaises(ValueError):
+      tf.train.SummarySaverHook()
+
+  def test_raise_when_scaffold_and_summary_op_both_present(self):
+    with self.assertRaises(ValueError):
+      tf.train.SummarySaverHook(scaffold=tf.train.Scaffold(),
+                                summary_op=self.summary_op)
+
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
       tf.train.SummarySaverHook(
@@ -369,7 +387,6 @@ class SummarySaverHookTest(tf.test.TestCase):
 
   def test_save_secs_saving_once_every_step(self):
     hook = tf.train.SummarySaverHook(
-        save_steps=None,
         save_secs=0.5,
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
@@ -395,7 +412,6 @@ class SummarySaverHookTest(tf.test.TestCase):
 
   def test_save_secs_saving_once_every_three_steps(self):
     hook = tf.train.SummarySaverHook(
-        save_steps=None,
         save_secs=0.9,
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
