@@ -48,6 +48,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC -D__VERSION__=\"MSVC\")
+  # Suppress warnings to reduce build log size.
+  add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
   set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} /MP)
 endif()
 
