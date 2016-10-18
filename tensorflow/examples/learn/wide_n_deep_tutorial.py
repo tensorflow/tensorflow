@@ -180,6 +180,10 @@ def train_and_eval():
       skiprows=1,
       engine="python")
 
+  # remove NaN elements
+  df_train = df_train.dropna(how='any', axis=0)
+  df_test = df_test.dropna(how='any', axis=0)
+
   df_train[LABEL_COLUMN] = (
       df_train["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)
   df_test[LABEL_COLUMN] = (
