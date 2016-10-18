@@ -131,9 +131,23 @@ partitioning:
 
 Subclass Requirements:
 
-- Subclasses are expected to implement `_forward` and one or both of:
+- Typically subclasses implement `_forward` and one or both of:
     - `_inverse`, `_inverse_log_det_jacobian`,
     - `_inverse_and_inverse_log_det_jacobian`.
+
+- If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
+  like `QuantizedDistribution`) then depending on your use, you may not need
+  to implement all of `_forward` and `_inverese` functions.  For example:
+  - If you only require `sample`, it is sufficient to only implement
+    `_forward`.
+  - If you only need probablity functions (e.g., `prob`, `cdf`, `survival`),
+    it is sufficient to only implement `_inverse` (and related).
+  - If you only call a probability function on the output of a call to
+    `sample`, then `_inverse` can be implemented as a cache lookup.
+  See `Example Use` [above] which shows how these functions are used to
+  transform a distribution.  (Note: `_forward` could theoretically be
+  implemented as a cache lookup but this would require controlling the
+  underlying sample generation mechanism.)
 
 - If computation can be shared among `_inverse` and
   `_inverse_log_det_jacobian` it is preferable to implement
