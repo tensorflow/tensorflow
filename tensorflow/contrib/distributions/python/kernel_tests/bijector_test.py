@@ -23,8 +23,114 @@ import math
 import numpy as np
 import tensorflow as tf
 
+distributions = tf.contrib.distributions
 bijectors = tf.contrib.distributions.bijector
 rng = np.random.RandomState(42)
+
+
+def assert_strictly_increasing(array):
+  np.testing.assert_array_less(0.0, np.diff(array))
+
+
+def assert_strictly_decreasing(array):
+  np.testing.assert_array_less(np.diff(array), 0.0)
+
+
+def assert_strictly_monotonic(array):
+  if array[0] < array[-1]:
+    assert_strictly_increasing(array)
+  else:
+    assert_strictly_decreasing(array)
+
+
+def assert_scalar_congruency(
+    bijector, lower_x, upper_x, n=10000, rtol=0.01, sess=None):
+  """Assert `bijector`'s forward/inverse/inverse_log_det_jacobian are congruent.
+
+  We draw samples `X ~ U(lower_x, upper_x)`, then feed these through the
+  `bijector` in order to check that:
+
+  1. the forward is strictly monotonic.
+  2. the forward/inverse methods are inverses of each other.
+  3. the jacobian is the correct change of measure.
+
+  This can only be used for a Bijector mapping open subsets of the real line
+  to themselves.  This is due to the fact that this test compares the pdf
+  before/after transformation with the Lebesgue measure on the line.
+
+  Args:
+    bijector:  Instance of Bijector
+    lower_x:  Python scalar.
+    upper_x:  Python scalar.  Must have `lower_x < upper_x`, and both must be in
+      the domain of the `bijector`.  The `bijector` should probably not produce
+      huge variation in values in the interval `(lower_x, upper_x)`, or else
+      the variance based check of the Jacobian will require small `rtol` or
+      huge `n`.
+    n:  Number of samples to draw for the checks.
+    rtol:  Positive number.  Used for the Jacobian check.
+    sess:  `tf.Session`.  Defaults to the default session.
+
+  Raises:
+    AssertionError:  If tests fail.
+  """
+
+  # Checks and defaults.
+  assert bijector.shaper.event_ndims.eval() == 0
+  if sess is None:
+    sess = tf.get_default_session()
+
+  # Should be monotonic over this interval
+  ten_x_pts = np.linspace(lower_x, upper_x, num=10).astype(np.float32)
+  if bijector.dtype is not None:
+    ten_x_pts = ten_x_pts.astype(bijector.dtype.as_numpy_dtype)
+  forward_on_10_pts = bijector.forward(ten_x_pts)
+
+  # Set the lower/upper limits in the range of the bijector.
+  lower_y, upper_y = sess.run(
+      [bijector.forward(lower_x), bijector.forward(upper_x)])
+  if upper_y < lower_y:  # If bijector.forward is a decreasing function.
+    lower_y, upper_y = upper_y, lower_y
+
+  # Uniform samples from the domain, range.
+  uniform_x_samps = distributions.Uniform(a=lower_x, b=upper_x).sample(n)
+  uniform_y_samps = distributions.Uniform(a=lower_y, b=upper_y).sample(n)
+
+  # These compositions should be the identity.
+  inverse_forward_x = bijector.inverse(bijector.forward(uniform_x_samps))
+  forward_inverse_y = bijector.forward(bijector.inverse(uniform_y_samps))
+
+  # For a < b, and transformation y = y(x),
+  # (b - a) = \int_a^b dx = \int_{y(a)}^{y(b)} |dx/dy| dy
+  # "integral" below is a Monte Carlo approximation to the right hand side,
+  # which should then be close to the left, which is (b - a).
+  dx_dy = tf.exp(bijector.inverse_log_det_jacobian(uniform_y_samps))
+  # E[|dx/dy|] under Uniform[lower_y, upper_y]
+  # = \int_{y(a)}^{y(b)} |dx/dy| dP(u), where dP(u) is the uniform measure
+  expectation_of_dx_dy_under_uniform = tf.reduce_mean(dx_dy)
+  # dy = dP(u) * (upper_y - lower_y)
+  integral = (upper_y - lower_y) * expectation_of_dx_dy_under_uniform
+
+  (
+      forward_on_10_pts_v,
+      integral_v,
+      uniform_x_samps_v, uniform_y_samps_v,
+      inverse_forward_x_v, forward_inverse_y_v,
+  ) = sess.run(
+      [
+          forward_on_10_pts,
+          integral,
+          uniform_x_samps, uniform_y_samps,
+          inverse_forward_x, forward_inverse_y,
+      ])
+
+  assert_strictly_monotonic(forward_on_10_pts_v)
+  # Composition of forward/inverse should be the identity.
+  np.testing.assert_allclose(
+      inverse_forward_x_v, uniform_x_samps_v, atol=1e-5, rtol=1e-3)
+  np.testing.assert_allclose(
+      forward_inverse_y_v, uniform_y_samps_v, atol=1e-5, rtol=1e-3)
+  # Change of measure should be correct.
+  np.testing.assert_allclose(upper_x - lower_x, integral_v, atol=0, rtol=rtol)
 
 
 class BaseBijectorTest(tf.test.TestCase):
@@ -40,7 +146,7 @@ class BaseBijectorTest(tf.test.TestCase):
 
 
 class IdentityBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the Y = g(X) = X transformation."""
+  """Tests correctness of the Y = g(X) = X transformation."""
 
   def testBijector(self):
     with self.test_session():
@@ -55,9 +161,14 @@ class IdentityBijectorTest(tf.test.TestCase):
       self.assertAllEqual(x, rev.eval())
       self.assertAllEqual(0., jac.eval())
 
+  def testScalarCongruency(self):
+    with self.test_session():
+      bijector = bijectors.Identity()
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
+
 
 class ExpBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the Y = g(X) = exp(X) transformation."""
+  """Tests correctness of the Y = g(X) = exp(X) transformation."""
 
   def testBijector(self):
     with self.test_session():
@@ -73,9 +184,14 @@ class ExpBijectorTest(tf.test.TestCase):
       self.assertAllClose(np.log(x), rev.eval())
       self.assertAllClose([[0., -math.log(2.)]], jac.eval())
 
+  def testScalarCongruency(self):
+    with self.test_session():
+      bijector = bijectors.Exp()
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
+
 
 class InlineBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the inline constructed bijector."""
+  """Tests correctness of the inline constructed bijector."""
 
   def testBijector(self):
     with self.test_session():
@@ -98,7 +214,7 @@ class InlineBijectorTest(tf.test.TestCase):
 
 
 class ScaleAndShiftBijectorTest(tf.test.TestCase):
-  """Tests the correctness of the Y = scale * x + loc transformation."""
+  """Tests correctness of the Y = scale * x + loc transformation."""
 
   def testProperties(self):
     with self.test_session():
@@ -329,6 +445,11 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
       self.assertAllClose(
           [0.], sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
 
+  def testScalarCongruency(self):
+    with self.test_session():
+      bijector = bijectors.ScaleAndShift(loc=3.6, scale=0.42, event_ndims=0)
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
+
 
 class SoftplusBijectorTest(tf.test.TestCase):
   """Tests the correctness of the Y = g(X) = Log[1 + exp(X)] transformation."""
@@ -388,6 +509,69 @@ class SoftplusBijectorTest(tf.test.TestCase):
       self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(
           ildj, bijector.inverse_and_inverse_log_det_jacobian(y)[1].eval())
+
+  def testScalarCongruency(self):
+    with self.test_session():
+      bijector = bijectors.Softplus(event_ndims=0)
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
+
+
+class SoftmaxBijectorTest(tf.test.TestCase):
+  """Tests correctness of the Y = g(X) = exp(X) / sum(exp(X)) transformation."""
+
+  def testBijectorScalar(self):
+    with self.test_session():
+      softmax = bijectors.Softmax()  # scalar by default
+      self.assertEqual("Softmax", softmax.name)
+      x = np.log([[2., 3, 4],
+                  [4., 8, 12]])
+      y = [[[2./3, 1./3],
+            [3./4, 1./4],
+            [4./5, 1./5]],
+           [[4./5, 1./5],
+            [8./9, 1./9],
+            [12./13, 1./13]]]
+      self.assertAllClose(y, softmax.forward(x).eval())
+      self.assertAllClose(x, softmax.inverse(y).eval())
+      self.assertAllClose(-np.sum(np.log(y), axis=2),
+                          softmax.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
+
+  def testBijectorVector(self):
+    with self.test_session():
+      softmax = bijectors.Softmax(event_ndims=1)
+      self.assertEqual("Softmax", softmax.name)
+      x = np.log([[2., 3, 4],
+                  [4., 8, 12]])
+      y = [[0.2, 0.3, 0.4, 0.1],
+           [0.16, 0.32, 0.48, 0.04]]
+      self.assertAllClose(y, softmax.forward(x).eval())
+      self.assertAllClose(x, softmax.inverse(y).eval())
+      self.assertAllClose(-np.sum(np.log(y), axis=1),
+                          softmax.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
+
+
+class SigmoidBijectorTest(tf.test.TestCase):
+  """Tests correctness of the Y = g(X) = (1 + exp(-X))^-1 transformation."""
+
+  def testBijector(self):
+    with self.test_session():
+      sigmoid = bijectors.Sigmoid()
+      self.assertEqual("Sigmoid", sigmoid.name)
+      x = np.log([[2., 3, 4],
+                  [4., 8, 12]])
+      y = [[[2./3, 1./3],
+            [3./4, 1./4],
+            [4./5, 1./5]],
+           [[4./5, 1./5],
+            [8./9, 1./9],
+            [12./13, 1./13]]]
+      self.assertAllClose(y, sigmoid.forward(x).eval())
+      self.assertAllClose(x, sigmoid.inverse(y).eval())
+      self.assertAllClose(-np.sum(np.log(y), axis=2),
+                          sigmoid.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
 
 
 if __name__ == "__main__":

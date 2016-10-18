@@ -166,16 +166,11 @@ struct Helper<string> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     Buffer<string>* buf = new Buffer<string>(a, n);
     string* strings = buf->template base<string>();
-    if (strings == nullptr) {
+    if (strings == nullptr || !port::DecodeStringList(in, strings, n)) {
       buf->Unref();
       return nullptr;
     }
-    if (port::DecodeStringList(in, strings, n)) {
-      return buf;
-    } else {
-      buf->Unref();
-      return nullptr;
-    }
+    return buf;
   }
 
   // Returns the estimated memory usage of "n" elements of type T
@@ -186,6 +181,39 @@ struct Helper<string> {
     const string* p = in->base<const string>();
     for (int i = 0; i < n; ++i, ++p) tot += p->size();
     return tot;
+  }
+};
+
+template <>
+struct Helper<ResourceHandle> {
+  // Proto message uses RepeatedFieldType to hold repeated T.
+  typedef protobuf::RepeatedPtrField<string> RepeatedFieldType;
+
+  // Encodes "n" elements of type ResourceHandle stored in "in" into destination
+  // "out", which is usually the TensorProto::tensor_content.
+  template <typename Destination>
+  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+    port::EncodeResourceHandleList(in->base<const ResourceHandle>(), n, out);
+  }
+
+  // Decodes "n" elements of type string from "in" and constructs a
+  // buffer out of it. Returns nullptr if the decoding fails. "in" is
+  // usually the TensorProto::tensor_content.
+  template <typename Source>
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+    auto* buf = new Buffer<ResourceHandle>(a, n);
+    ResourceHandle* ps = buf->template base<ResourceHandle>();
+    if (ps == nullptr || !port::DecodeResourceHandleList(in, ps, n)) {
+      buf->Unref();
+      return nullptr;
+    }
+    return buf;
+  }
+
+  // Returns the estimated memory usage of "n" elements of type T
+  // stored in buffer "in".
+  static int64 TotalBytes(TensorBuffer* in, int n) {
+    return n * sizeof(ResourceHandle);
   }
 };
 
@@ -237,6 +265,21 @@ struct ProtoHelper<int64> {
   static void Fill(const int64* data, size_t n, TensorProto* proto) {
     protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
     proto->mutable_int64_val()->Swap(&copy);
+  }
+};
+
+template <>
+struct ProtoHelper<ResourceHandle> {
+  static const ResourceHandle* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const ResourceHandle*>(
+        &(*proto.resource_handle_val().begin()));
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.resource_handle_val().size();
+  }
+  static void Fill(const ResourceHandle* data, size_t n, TensorProto* proto) {
+    protobuf::RepeatedPtrField<ResourceHandle> copy(data, data + n);
+    proto->mutable_resource_handle_val()->Swap(&copy);
   }
 };
 
@@ -510,6 +553,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     CASE(qint16, SINGLE_ARG(STMTS))                   \
     CASE(bfloat16, SINGLE_ARG(STMTS))                 \
     CASE(Eigen::half, SINGLE_ARG(STMTS))              \
+    CASE(ResourceHandle, SINGLE_ARG(STMTS))           \
     case DT_INVALID:                                  \
       LOG(FATAL) << "Type not set";                   \
       break;                                          \

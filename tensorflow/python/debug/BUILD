@@ -16,6 +16,17 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
+    name = "debug_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":debug_utils",
+        ":local_cli_wrapper",
+    ],
+)
+
+py_library(
     name = "debug_data",
     srcs = ["debug_data.py"],
     srcs_version = "PY2AND3",
@@ -32,7 +43,7 @@ py_library(
 
 py_library(
     name = "framework",
-    srcs = ["framework.py"],
+    srcs = ["wrappers/framework.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
@@ -82,8 +93,8 @@ py_library(
 )
 
 py_library(
-    name = "local_cli",
-    srcs = ["local_cli.py"],
+    name = "local_cli_wrapper",
+    srcs = ["wrappers/local_cli_wrapper.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":analyzer_cli",
@@ -99,10 +110,7 @@ py_binary(
     name = "debug_fibonacci",
     srcs = ["examples/debug_fibonacci.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":local_cli",
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -110,8 +118,6 @@ py_binary(
     srcs = ["examples/debug_mnist.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":debug_data",
-        ":local_cli",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
     ],
@@ -151,9 +157,7 @@ py_test(
 py_test(
     name = "framework_test",
     size = "small",
-    srcs = [
-        "framework_test.py",
-    ],
+    srcs = ["wrappers/framework_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
@@ -255,14 +259,14 @@ cuda_py_test(
 )
 
 py_test(
-    name = "local_cli_test",
+    name = "local_cli_wrapper_test",
     size = "small",
     srcs = [
-        "local_cli_test.py",
+        "wrappers/local_cli_wrapper_test.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":local_cli",
+        ":local_cli_wrapper",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
     ],

@@ -772,6 +772,9 @@ def embedding_attention_seq2seq(encoder_inputs,
   input_size]). Then it runs attention decoder, initialized with the last
   encoder state, on embedded decoder_inputs and attending to encoder outputs.
 
+  Warning: when output_projection is None, the size of the attention vectors
+  and variables will be made proportional to num_decoder_symbols, can be large.
+
   Args:
     encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
     decoder_inputs: A list of 1D int32 Tensors of shape [batch_size].

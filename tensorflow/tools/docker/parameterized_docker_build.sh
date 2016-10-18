@@ -128,8 +128,10 @@ else
 fi
 
 if [[ ${TF_DOCKER_BUILD_TYPE} == "cpu" ]]; then
-  :
+  DOCKER_BINARY="docker"
 elif   [[ ${TF_DOCKER_BUILD_TYPE} == "gpu" ]]; then
+  DOCKER_BINARY="nvidia-docker"
+
   FINAL_TAG="${FINAL_TAG}-gpu"
   if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
     # There is already a dot in the tag, use "-"
@@ -243,17 +245,18 @@ fi
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
 
-docker build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
+"${DOCKER_BINARY}" build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
-  echo "docker build of ${IMG} succeeded"
+  echo "${DOCKER_BINARY} build of ${IMG} succeeded"
 else
-  die "FAIL: docker build of ${IMG} with Dockerfile ${DOCKERFILE} failed"
+  die "FAIL: ${DOCKER_BINARY} build of ${IMG} with Dockerfile ${DOCKERFILE} "\
+"failed"
 fi
 
 
 # Make sure that there is no other containers of the same image running
 # TODO(cais): Move to an earlier place.
-if [[ ! -z $(docker ps | grep "${IMG}") ]]; then
+if [[ ! -z $("${DOCKER_BINARY}" ps | grep "${IMG}") ]]; then
   die "ERROR: It appears that there are docker containers of the image "\
 "${IMG} running. Please stop them before proceeding"
 fi
@@ -266,7 +269,7 @@ echo "  (Log file is at: ${DOCKER_RUN_LOG}"
 echo ""
 
 if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
-  docker run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
+  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
       -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
       2>&1 > "${DOCKER_RUN_LOG}" &
 
@@ -275,7 +278,7 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   while [[ -z ${CONTAINER_ID} ]]; do
     sleep 1
     echo "Polling for container ID..."
-    CONTAINER_ID=$(docker ps | grep "${IMG}" | awk '{print $1}')
+    CONTAINER_ID=$("${DOCKER_BINARY}" ps | grep "${IMG}" | awk '{print $1}')
   done
 
   echo "ID of the running docker container: ${CONTAINER_ID}"
@@ -301,10 +304,10 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 
   # Stop the running docker container
   sleep 1
-  docker stop --time=0 ${CONTAINER_ID}
+  "${DOCKER_BINARY}" stop --time=0 ${CONTAINER_ID}
 
 else
-  docker run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
+  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
       -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
       bash -c \
       "cd /tensorflow; tensorflow/tools/ci_build/builds/test_tutorials.sh"
@@ -332,9 +335,9 @@ fi
 # Apply the final image name and tag
 FINAL_IMG="${FINAL_IMAGE_NAME}:${FINAL_TAG}"
 
-DOCKER_VER=$(docker version | grep Version | head -1 | awk '{print $NF}')
+DOCKER_VER=$("${DOCKER_BINARY}" version | grep Version | head -1 | awk '{print $NF}')
 if [[ -z "${DOCKER_VER}" ]]; then
-  die "ERROR: Failed to determine docker version"
+  die "ERROR: Failed to determine ${DOCKER_BINARY} version"
 fi
 DOCKER_MAJOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 1)
 DOCKER_MINOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 2)
@@ -345,7 +348,7 @@ if [[ "${DOCKER_MAJOR_VER}" -le 1 ]] && \
   FORCE_TAG="--force"
 fi
 
-docker tag ${FORCE_TAG} "${IMG}" "${FINAL_IMG}" || \
+"${DOCKER_BINARY}" tag ${FORCE_TAG} "${IMG}" "${FINAL_IMG}" || \
     die "Failed to tag intermediate docker image ${IMG} as ${FINAL_IMG}"
 
 echo ""

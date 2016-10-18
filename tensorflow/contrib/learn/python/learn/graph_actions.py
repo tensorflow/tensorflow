@@ -28,10 +28,10 @@ import numpy as np
 
 from six import reraise
 
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
@@ -223,8 +223,7 @@ def _monitored_train(graph,
 
   if max_steps is not None:
     try:
-      start_step = checkpoints.load_variable(output_dir,
-                                             global_step_tensor.name)
+      start_step = load_variable(output_dir, global_step_tensor.name)
       if max_steps <= start_step:
         logging.info('Skipping training since max_steps has already saved.')
         return None
@@ -446,8 +445,7 @@ def _train_internal(graph,
 
     # Get current step.
     try:
-      start_step = checkpoints.load_variable(
-          output_dir, global_step_tensor.name)
+      start_step = load_variable(output_dir, global_step_tensor.name)
     except (errors.NotFoundError, ValueError):
       start_step = 0
 
