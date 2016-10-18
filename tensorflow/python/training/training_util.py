@@ -95,7 +95,9 @@ def assert_global_step(global_step_tensor):
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor)):
-    raise TypeError('Existing "global_step" must be a Variable or Tensor.')
+    raise TypeError(
+        'Existing "global_step" must be a Variable or Tensor: %s.' %
+        global_step_tensor)
 
   if not global_step_tensor.dtype.base_dtype.is_integer:
     raise TypeError('Existing "global_step" does not have integer type: %s' %

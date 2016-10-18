@@ -68,8 +68,8 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
         # This is to test against sparse gradients.
         grads_sparse = tf.IndexedSlices(
             tf.constant([0.1+worker_id*0.2], shape=[1, 1]),
-            tf.constant([1], dtype=tf.int64),
-            tf.constant([2, 1], dtype=tf.int64))
+            tf.constant([1]),
+            tf.constant([2, 1]))
         sgd_opt = tf.train.GradientDescentOptimizer(2.0)
         sync_rep_opt = tf.train.SyncReplicasOptimizerV2(
             sgd_opt, replicas_to_aggregate=replicas_to_aggregate,

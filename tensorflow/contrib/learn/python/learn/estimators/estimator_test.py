@@ -24,6 +24,7 @@ import itertools
 import tempfile
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -330,6 +331,31 @@ class EstimatorTest(tf.test.TestCase):
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
     predictions = list(est.predict(x=iris.data))
     self.assertEqual(len(predictions), iris.target.shape[0])
+
+  def testIrisIteratorArray(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 100)
+    y_iter = (np.array(x) for x in iris.target)
+    est.fit(x_iter, y_iter, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    _ = six.next(est.predict(x=iris.data))['class']
+
+  def testIrisIteratorPlainInt(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 100)
+    y_iter = (v for v in iris.target)
+    est.fit(x_iter, y_iter, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    _ = six.next(est.predict(x=iris.data))['class']
+
+  def testIrisTruncatedIterator(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 50)
+    y_iter = ([np.int32(v)] for v in iris.target)
+    est.fit(x_iter, y_iter, steps=100)
 
   def testTrainInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)

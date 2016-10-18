@@ -3208,6 +3208,104 @@ target classes as noise classes for the same example.
 
 
 
+### Quantization ops
+
+- - -
+
+### `tf.nn.quantized_relu_x(features, max_value, min_features, max_features, out_type=None, name=None)` {#quantized_relu_x}
+
+Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`max_value`</b>: A `Tensor` of type `float32`.
+*  <b>`min_features`</b>: A `Tensor` of type `float32`.
+    The float value that the lowest quantized value represents.
+*  <b>`max_features`</b>: A `Tensor` of type `float32`.
+    The float value that the highest quantized value represents.
+*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.qint8, tf.quint8, tf.qint16, tf.quint16, tf.qint32`. Defaults to `tf.quint8`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (activations, min_activations, max_activations).
+
+*  <b>`activations`</b>: A `Tensor` of type `out_type`. Has the same output shape as "features".
+*  <b>`min_activations`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized value represents.
+*  <b>`max_activations`</b>: A `Tensor` of type `float32`. The float value that the highest quantized value represents.
+
+
+- - -
+
+### `tf.nn.quantized_max_pool(input, min_input, max_input, ksize, strides, padding, name=None)` {#quantized_max_pool}
+
+Produces the max pool of the input tensor for quantized types.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+    The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
+*  <b>`min_input`</b>: A `Tensor` of type `float32`.
+    The float value that the lowest quantized input value represents.
+*  <b>`max_input`</b>: A `Tensor` of type `float32`.
+    The float value that the highest quantized input value represents.
+*  <b>`ksize`</b>: A list of `ints`.
+    The size of the window for each dimension of the input tensor.
+    The length must be 4 to match the number of dimensions of the input.
+*  <b>`strides`</b>: A list of `ints`.
+    The stride of the sliding window for each dimension of the input
+    tensor. The length must be 4 to match the number of dimensions of the input.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, min_output, max_output).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
+*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
+
+
+- - -
+
+### `tf.nn.quantized_avg_pool(input, min_input, max_input, ksize, strides, padding, name=None)` {#quantized_avg_pool}
+
+Produces the average pool of the input tensor for quantized types.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`min_input`</b>: A `Tensor` of type `float32`.
+    The float value that the lowest quantized input value represents.
+*  <b>`max_input`</b>: A `Tensor` of type `float32`.
+    The float value that the highest quantized input value represents.
+*  <b>`ksize`</b>: A list of `ints`.
+    The size of the window for each dimension of the input tensor.
+    The length must be 4 to match the number of dimensions of the input.
+*  <b>`strides`</b>: A list of `ints`.
+    The stride of the sliding window for each dimension of the input
+    tensor.  The length must be 4 to match the number of dimensions of the input.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, min_output, max_output).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
+*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
+
+
+
 ## Other Functions and Classes
 - - -
 

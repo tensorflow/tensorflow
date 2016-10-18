@@ -196,6 +196,20 @@ bool CUnescapeInternal(StringPiece source, char* dest,
   return true;
 }
 
+template <typename T>
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::function<bool(StringPiece, T*)> converter,
+                         std::vector<T>* result) {
+  result->clear();
+  std::vector<string> num_strings = Split(text, delim);
+  for (const auto& s : num_strings) {
+    T num;
+    if (!converter(s, &num)) return false;
+    result->push_back(num);
+  }
+  return true;
+}
+
 }  // namespace
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
@@ -333,14 +347,12 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
 
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
-  result->clear();
-  std::vector<string> num_strings = Split(text, delim);
-  for (const auto& s : num_strings) {
-    int32 num;
-    if (!strings::safe_strto32(s, &num)) return false;
-    result->push_back(num);
-  }
-  return true;
+  return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
+}
+
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::vector<int64>* result) {
+  return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
 }
 
 }  // namespace str_util

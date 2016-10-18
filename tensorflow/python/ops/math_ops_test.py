@@ -115,7 +115,9 @@ class RoundTest(test_util.TensorFlowTestCase):
 
   def testRounding(self):
     x = [0.49, 0.7, -0.3, -0.8]
-    for dtype in [np.float32, np.double]:
+    # TODO(nolivia): Remove this when RoundOp is forwards compatible
+    # x = np.arange(-5.0, 5.0, .25)
+    for dtype in [np.float32, np.double, np.int32]:
       x_np = np.array(x, dtype=dtype)
       with self.test_session(use_gpu=True):
         x_tf = constant_op.constant(x_np, shape=x_np.shape)

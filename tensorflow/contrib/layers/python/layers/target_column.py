@@ -23,7 +23,6 @@ import six
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -412,10 +411,9 @@ def _log_loss_with_two_classes(logits, target):
 
 
 def _softmax_cross_entropy_loss(logits, target):
-  # Check that we got int32/int64 for classification.
-  if (not target.dtype.is_compatible_with(dtypes.int64) and
-      not target.dtype.is_compatible_with(dtypes.int32)):
-    raise ValueError("Target's dtype should be int32, int64 or compatible. "
+  # Check that we got integer for classification.
+  if not target.dtype.is_integer:
+    raise ValueError("Target's dtype should be integer "
                      "Instead got %s." % target.dtype)
   # sparse_softmax_cross_entropy_with_logits requires [batch_size] target.
   if len(target.get_shape()) == 2:

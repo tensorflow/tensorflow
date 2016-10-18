@@ -316,9 +316,10 @@ class LinearClassifierTest(tf.test.TestCase):
   def testLogisticFractionalLabels(self):
     """Tests logistic training with fractional labels."""
 
-    def input_fn():
+    def input_fn(num_epochs=None):
       return {
-          'age': tf.constant([[1], [2]]),
+          'age': tf.train.limit_epochs(
+              tf.constant([[1], [2]]), num_epochs=num_epochs),
       }, tf.constant([[.7], [0]], dtype=tf.float32)
 
     age = tf.contrib.layers.real_valued_column('age')
@@ -328,7 +329,9 @@ class LinearClassifierTest(tf.test.TestCase):
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     classifier.fit(input_fn=input_fn, steps=500)
 
-    predictions_proba = classifier.predict_proba(input_fn=input_fn)
+    predict_input_fn = functools.partial(input_fn, num_epochs=1)
+    predictions_proba = list(
+        classifier.predict_proba(input_fn=predict_input_fn))
     # Prediction probabilities mirror the target column, which proves that the
     # classifier learns from float input.
     self.assertAllClose(predictions_proba, [[.3, .7], [1., 0.]], atol=.1)

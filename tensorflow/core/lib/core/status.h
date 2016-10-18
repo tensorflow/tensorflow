@@ -108,6 +108,15 @@ typedef std::function<void(const Status&)> StatusCallback;
 #define TF_CHECK_OK(val) CHECK_EQ(::tensorflow::Status::OK(), (val))
 #define TF_QCHECK_OK(val) QCHECK_EQ(::tensorflow::Status::OK(), (val))
 
+// DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
+// mode.
+#ifdef NDEBUG
+#define TF_DCHECK_OK(val) TF_CHECK_OK(val)
+#else
+#define TF_DCHECK_OK(val) \
+  while (false && (::tensorflow::Status::OK() == (val))) LOG(FATAL)
+#endif
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_LIB_CORE_STATUS_H_
