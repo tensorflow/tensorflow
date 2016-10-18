@@ -354,7 +354,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
   """Saves summaries every N steps."""
 
   def __init__(self,
-               save_steps=100,
+               save_steps=None,
                save_secs=None,
                output_dir=None,
                summary_writer=None,

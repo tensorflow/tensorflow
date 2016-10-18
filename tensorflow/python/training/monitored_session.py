@@ -245,7 +245,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     hooks.extend([
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir),
         basic_session_run_hooks.SummarySaverHook(
-            scaffold=scaffold, output_dir=checkpoint_dir),
+            scaffold=scaffold, save_steps=100, output_dir=checkpoint_dir),
         basic_session_run_hooks.CheckpointSaverHook(
             checkpoint_dir, save_secs=600, scaffold=scaffold),
     ])

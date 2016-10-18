@@ -387,7 +387,6 @@ class SummarySaverHookTest(tf.test.TestCase):
 
   def test_save_secs_saving_once_every_step(self):
     hook = tf.train.SummarySaverHook(
-        save_steps=None,
         save_secs=0.5,
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
@@ -413,7 +412,6 @@ class SummarySaverHookTest(tf.test.TestCase):
 
   def test_save_secs_saving_once_every_three_steps(self):
     hook = tf.train.SummarySaverHook(
-        save_steps=None,
         save_secs=0.9,
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
