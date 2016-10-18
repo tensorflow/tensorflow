@@ -20,7 +20,7 @@ def auto_configure_fail(msg):
 
 def find_c(repository_ctx):
   """Find host C compiler."""
-  c_name = ""
+  c_name = "gcc"
   if _HOST_C_COMPILER in repository_ctx.os.environ:
     c_name = repository_ctx.os.environ[_HOST_C_COMPILER].strip()
   if c_name.startswith("/"):
@@ -32,7 +32,7 @@ def find_c(repository_ctx):
 
 def find_cc(repository_ctx):
   """Find host C++ compiler."""
-  cc_name = ""
+  cc_name = "g++"
   if _HOST_CXX_COMPILER in repository_ctx.os.environ:
     cc_name = repository_ctx.os.environ[_HOST_CXX_COMPILER].strip()
   if cc_name.startswith("/"):
