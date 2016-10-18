@@ -1014,12 +1014,12 @@ def adjust_gamma(image, gamma=1, gain=1):
     after scaling each pixel to the range 0 to 1.
 
   Args:
-    image : A tensor.
+    image : A Tensor.
     gamma : A scalar. Non negative real number.
     gain  : A scalar. The constant multiplier. 
 
   Returns:
-    A tensor. Gamma corrected output image
+    A Tensor. Gamma corrected output image.
 
   Notes:
     For gamma greater than 1, the histogram will shift towards left and
@@ -1032,17 +1032,19 @@ def adjust_gamma(image, gamma=1, gain=1):
   """
 
   with ops.op_scope([image, gamma, gain], None, 'adjust_gamma') as name:
+    # Convert pixel value to DT_FLOAT for computing adjusted image
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
+    # Keep image dtype for computing the scale of corresponding dtype
     image = ops.convert_to_tensor(image, name='image')
 
     if gamma < 0:
       raise ValueError("Gamma should be a non-negative real number")
-
+    # scale = max(dtype) - min(dtype)
     scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
+    # According to the definition of gamma correction
+    adjusted_img = (img / scale) ** gamma * scale * gain
 
-    adjusted = (img / scale) ** gamma * scale * gain
-
-    return adjusted
+    return adjusted_img
     
 
 ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
