@@ -96,3 +96,13 @@ fi
 "${GSUTIL_BIN}" rm "${NEW_TFREC_URL}" && \
     echo "Cleaned up new tfrecord file in GCS: ${NEW_TFREC_URL}" || \
     die "FAIL: Unable to clean up new tfrecord file in GCS: ${NEW_TFREC_URL}"
+
+# Also clean up newly created GCS dir.
+NEW_DIR_URL=$(grep "Creating dir" "${LOG_FILE}" | \
+                awk '{print $NF}')
+if [[ -z ${NEW_DIR_URL} ]]; then
+  die "FAIL: Unable to determine the URL to the new directory created in GCS."
+fi
+"${GSUTIL_BIN}" rm -r "${NEW_DIR_URL}" && \
+    echo "Cleaned up new directory created in GCS: ${NEW_DIR_URL}" || \
+    die "FAIL: Unable to clean up new directory created in GCS: ${NEW_DIR_URL}"

@@ -19,10 +19,12 @@ from __future__ import print_function
 
 import random
 import sys
+import time
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.core.example import example_pb2
+from tensorflow.python.lib.io import file_io
 
 flags = tf.app.flags
 flags.DEFINE_string("gcs_bucket_url", "",
@@ -48,6 +50,25 @@ def create_examples(num_examples, input_mean):
     examples.append(ex)
   return examples
 
+def create_dir_test():
+  """Verifies file_io directory handling methods ."""
+
+  starttime = int(round(time.time() * 1000))
+  dir_name = "%s/tf_gcs_test_%s" % (FLAGS.gcs_bucket_url, starttime)
+  print("Creating dir %s" % dir_name)
+  file_io.create_dir(dir_name)
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Created directory in: %d milliseconds" % elapsed)
+  # Check that the directory exists.
+  dir_exists = file_io.is_directory(dir_name)
+  print("%s directory exists: %s" % (dir_name, dir_exists))
+
+  # List contents of just created directory.
+  starttime = int(round(time.time() * 1000))
+  print("Listing directory %s." % dir_name)
+  print(file_io.list_directory(dir_name))
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Listed directory %s in %s milliseconds" % (dir_name, elapsed))
 
 if __name__ == "__main__":
   # Sanity check on the GCS bucket URL.
@@ -110,3 +131,5 @@ if __name__ == "__main__":
       except tf.errors.OutOfRangeError:
         print("Successfully caught the expected OutOfRangeError while "
               "reading one more record than is available")
+
+    create_dir_test()
