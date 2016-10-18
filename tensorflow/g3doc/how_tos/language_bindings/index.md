@@ -1,7 +1,5 @@
 # TensorFlow in other languages
 
-[TOC]
-
 ## Background
 
 This document is intended as a guide for those interested in the creation or
@@ -21,11 +19,11 @@ this [C API] to provide TensorFlow functionality.
 Providing TensorFlow functionality in a programming language can be broken down
 into broad categories:
 
--   *[Run a predefined graph](#run-graph)*: Given a `GraphDef` (or
+-   *Run a predefined graph*: Given a `GraphDef` (or
     `MetaGraphDef`) protocol message, be able to create a session, run queries,
     and get tensor results. This is sufficient for a mobile app or server that
     wants to run inference on a pre-trained model.
--   *[Graph construction](#create-graph)*: At least one function per defined
+-   *Graph construction*: At least one function per defined
     TensorFlow op that adds an operation to the graph. Ideally these functions
     would be automatically generated so they stay in sync as the op definitions
     are modified.
@@ -67,7 +65,7 @@ Neural Network library                         | `tf.train`, `tf.nn`, `tf.contri
 
 ## Recommended Approach
 
-### Run a predefined graph {#run-graph}
+### Run a predefined graph
 
 A language binding is expected to define the following classes:
 
@@ -100,7 +98,7 @@ A language binding is expected to define the following classes:
     TensorFlow. Corresponds to `TF_DataType` in the C API and often referred to
     as `dtype` in the Python API.
 
-### Graph construction {#create-graph}
+### Graph construction
 
 TensorFlow has many ops, and the list is not static, so we recommend generating
 the functions for adding ops to a graph instead of writing them by individually

@@ -20,6 +20,11 @@ Initializes a `SummarySaver` monitor.
       buffer, as output by TF summary methods like `scalar_summary` or
       `merge_all_summaries`.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Exactly one of scaffold or summary_op should be set.
+
 
 - - -
 

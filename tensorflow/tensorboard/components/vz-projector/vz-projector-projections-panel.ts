@@ -24,7 +24,7 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 export let ProjectionsPanelPolymer = PolymerElement({
   is: 'vz-projector-projections-panel',
   properties: {
-    is3d: {type: Boolean, value: true, observer: '_dimensionsObserver'},
+    is3d: {type: Boolean, observer: '_dimensionsObserver'},
     // PCA projection.
     pcaComponents: {type: Array, value: d3.range(1, 11)},
     pcaX: {type: Number, value: 1, observer: 'showPCA'},
@@ -50,6 +50,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   private projector: Projector;
   private currentProjection: Projection;
+  private polymerChangesTriggerReprojection: boolean;
 
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
@@ -79,7 +80,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   private dom: d3.Selection<any>;
 
+  private zDropdown: d3.Selection<HTMLElement>;
+
   initialize(projector: Projector) {
+    this.polymerChangesTriggerReprojection = true;
     this.projector = projector;
 
     this.is3d = true;
@@ -97,8 +101,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   ready() {
     this.dom = d3.select(this);
-
+    this.zDropdown = this.dom.select('#z-dropdown');
     this.searchByMetadataOptions = ['label'];
+  }
+
+  disablePolymerChangesTriggerReprojection() {
+    this.polymerChangesTriggerReprojection = false;
+  }
+
+  enablePolymerChangesTriggerReprojection() {
+    this.polymerChangesTriggerReprojection = true;
   }
 
   private setupUIControls() {
@@ -134,6 +146,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     learningRateInput.addEventListener('change', updateLearningRate);
     updateLearningRate();
     this.setupAllInputsInCustomTab();
+    // TODO: figure out why `--paper-input-container-input` css mixin didn't
+    // work.
+    this.dom.selectAll('paper-dropdown-menu paper-input input')
+      .style('font-size', '14px');
   }
 
   dataSetUpdated(dataSet: DataSet, dim: number) {
@@ -149,11 +165,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   _dimensionsObserver() {
-    if (this.currentProjection === 'pca') {
-      this.showPCA();
-    } else if (this.currentProjection === 'tsne') {
-      this.showTSNE();
+    if (this.zDropdown) {
+      this.zDropdown.attr('disabled', this.is3d ? null : true);
     }
+    this.beginProjection(this.currentProjection);
   }
 
   metadataChanged(metadata: MetadataInfo) {
@@ -178,22 +193,33 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.currentProjection = id;
 
     let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
-    let pane =
-        d3.select((tab.node() as HTMLElement).parentNode.parentNode.parentNode);
-    pane.selectAll('.ink-tab').classed('active', false);
+    this.dom.selectAll('.ink-tab').classed('active', false);
     tab.classed('active', true);
-    pane.selectAll('.ink-panel-content').classed('active', false);
-    pane.select('.ink-panel-content[data-panel="' + id + '"]')
+    this.dom.selectAll('.ink-panel-content').classed('active', false);
+    this.dom.select('.ink-panel-content[data-panel="' + id + '"]')
         .classed('active', true);
-    if (id === 'pca') {
-      this.currentDataSet.stopTSNE();
-      this.showPCA();
-    } else if (id === 'tsne') {
-      this.showTSNE();
-    } else if (id === 'custom') {
-      this.currentDataSet.stopTSNE();
-      this.computeAllCentroids();
-      this.reprojectCustom();
+
+    // In order for the projections panel to animate its height, we need to set
+    // it explicitly.
+    requestAnimationFrame(() => {
+      this.style.height = this.$['main'].clientHeight + 'px';
+    });
+
+    this.beginProjection(id);
+  }
+
+  private beginProjection(projection: string) {
+    if (this.polymerChangesTriggerReprojection) {
+      if (projection === 'pca') {
+        this.currentDataSet.stopTSNE();
+        this.showPCA();
+      } else if (projection === 'tsne') {
+        this.showTSNE();
+      } else if (projection === 'custom') {
+        this.currentDataSet.stopTSNE();
+        this.computeAllCentroids();
+        this.reprojectCustom();
+      }
     }
   }
 

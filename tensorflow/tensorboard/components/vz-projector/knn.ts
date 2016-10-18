@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateMessage} from './async';
+import {runAsyncTask} from './util';
+import * as logging from './logging';
 import {KMin} from './heap';
 import * as vector from './vector';
 
@@ -109,7 +110,7 @@ export function findKNNGPUCosine<T>(
       if (piece < numPieces) {
         step(resolve);
       } else {
-        updateMessage(null, KNN_GPU_MSG_ID);
+        logging.setModalMessage(null, KNN_GPU_MSG_ID);
         bigMatrix.delete();
         resolve(nearest);
       }

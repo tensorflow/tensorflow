@@ -272,16 +272,16 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     this.geometry.addAttribute('scaleFactor', scaleFactors);
   }
 
-  private updatePositionsArray() {
+  private updatePositionsArray(dataSet: DataSet) {
     if (this.geometry == null) {
       return;
     }
-    const n = this.dataSet.points.length;
+    const n = dataSet.points.length;
     const positions =
         this.geometry.getAttribute('position') as THREE.BufferAttribute;
     positions.array = new Float32Array(n * XYZ_NUM_ELEMENTS);
     for (let i = 0; i < n; i++) {
-      let pp = this.dataSet.points[i].projectedPoint;
+      let pp = dataSet.points[i].projectedPoint;
       positions.setXYZ(i, pp[0], pp[1], pp[2]);
     }
     positions.needsUpdate = true;
@@ -309,12 +309,12 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     scene.fog = this.fog;
     if (this.dataSet) {
       this.addSprites(scene);
-      this.updatePositionsArray();
+      this.updatePositionsArray(this.dataSet);
     }
   }
 
-  onUpdate() {
-    this.updatePositionsArray();
+  onUpdate(dataSet: DataSet) {
+    this.updatePositionsArray(dataSet);
   }
 
   onResize(newWidth: number, newHeight: number) {}
