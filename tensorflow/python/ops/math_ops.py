@@ -137,6 +137,7 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_all
 @@reduce_any
 @@reduce_logsumexp
+@@count_nonzero
 
 @@accumulate_n
 
@@ -1097,6 +1098,57 @@ def reduce_sum(input_tensor, reduction_indices=None, keep_dims=False,
   return gen_math_ops._sum(input_tensor, _ReductionDims(input_tensor,
                                                         reduction_indices),
                            keep_dims, name=name)
+
+
+def count_nonzero(input_tensor, reduction_indices=None, keep_dims=False,
+                  dtype=dtypes.int64, name=None):
+  """Computes number of nonzero elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `reduction_indices` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  **NOTE** Floating point comparison to zero is done by exact floating point
+  equality check.  Small values are **not** rounded to zero for purposes of
+  the nonzero check.
+
+  For example:
+
+  ```python
+  # 'x' is [[0, 1, 0]
+  #         [1, 1, 0]]
+  tf.count_nonzero(x) ==> 3
+  tf.count_nonzero(x, 0) ==> [1, 2, 0]
+  tf.count_nonzero(x, 1) ==> [1, 2]
+  tf.count_nonzero(x, 1, keep_dims=True) ==> [[1], [2]]
+  tf.count_nonzero(x, [0, 1]) ==> 3
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
+    reduction_indices: The dimensions to reduce. If `None` (the default),
+      reduces all dimensions.
+    keep_dims: If true, retains reduced dimensions with length 1.
+    dtype: The output dtype; defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor (number of nonzero values).
+  """
+  with ops.name_scope(name, "count_nonzero", [input_tensor]):
+    input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
+    zero = input_tensor.dtype.as_numpy_dtype()
+    return cast(
+        reduce_sum(
+            # int64 reduction happens on GPU
+            to_int64(gen_math_ops.not_equal(input_tensor, zero)),
+            reduction_indices=reduction_indices,
+            keep_dims=keep_dims),
+        dtype=dtype)
 
 
 def reduce_mean(input_tensor, reduction_indices=None, keep_dims=False,

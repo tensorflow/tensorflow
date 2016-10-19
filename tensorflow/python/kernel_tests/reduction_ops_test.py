@@ -813,5 +813,80 @@ class AnyReductionTest(tf.test.TestCase):
     self._compareAll([], [0])
 
 
+class CountNonzeroReductionTest(tf.test.TestCase):
+
+  def _compare(self,
+               x,
+               reduction_axes,
+               keep_dims,
+               use_gpu=False,
+               feed_dict=None):
+    np_ans = (x != 0).astype(np.int32)
+    if reduction_axes is None:
+      np_ans = np.sum(np_ans, keepdims=keep_dims)
+    else:
+      reduction_axes = np.array(reduction_axes).astype(np.int32)
+      for ra in reduction_axes.ravel()[::-1]:
+        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
+    with self.test_session(use_gpu=use_gpu) as sess:
+      tf_ans = tf.count_nonzero(x, reduction_axes, keep_dims)
+      out = sess.run(tf_ans, feed_dict)
+    self.assertAllClose(np_ans, out)
+    self.assertShapeEqual(np_ans, tf_ans)
+
+  def _compareAll(self, x, reduction_axes, feed_dict=None):
+    if reduction_axes is not None and np.shape(reduction_axes) == (1,):
+      # Test scalar reduction_axes argument
+      self._compareAll(x, reduction_axes[0])
+    self._compare(x, reduction_axes, False, use_gpu=True, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, False, use_gpu=False, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, True, use_gpu=True, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, True, use_gpu=False, feed_dict=feed_dict)
+
+  def testBoolReduce1D(self):
+    # Create a 1D array of floats
+    np_arr = np.asarray([False, False, True, False, False, True])
+    self._compareAll(np_arr, None)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
+
+  def testFloatReduce1D(self):
+    # Create a 1D array of floats
+    np_arr = np.asarray([0.0, 1.0, -1.0, 0.0, 0.0, 3.0]).astype(np.float32)
+    self._compareAll(np_arr, [0])
+
+  def testFloatReduce4D(self):
+    # Create a 4D array of floats and reduce across some
+    # dimensions
+    np_arr = np.floor(np.arange(0.0, 210.0) / 100.0).reshape(
+        [2, 3, 5, 7]).astype(np.float32)
+    self._compareAll(np_arr, None)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
+    self._compareAll(np_arr, [1])
+    self._compareAll(np_arr, [2])
+    self._compareAll(np_arr, [0, 1])
+    self._compareAll(np_arr, [1, 2])
+    # Need specialization for reduce(4D, [0, 2])
+    # self._compareAll(np_arr, [0, 2])
+    self._compareAll(np_arr, [0, 1, 2])
+    self._compareAll(np_arr, [1, 2, 3])
+    self._compareAll(np_arr, [0, 1, 2, 3])
+
+  def testExpand(self):
+    # Reduce an empty tensor to a nonempty tensor
+    x = np.zeros((5, 0))
+    self._compareAll(x, [1])
+
+  def testDegenerate(self):
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        for dtype in (tf.bool,):
+          # A large number is needed to get Eigen to die
+          x = tf.zeros((0, 9938), dtype=dtype)
+          y = tf.count_nonzero(x, [0])
+          self.assertAllEqual(y.eval(), np.zeros(9938))
+
+
 if __name__ == "__main__":
   tf.test.main()
