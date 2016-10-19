@@ -1385,7 +1385,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "gradient_checker_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/gradient_checker_test.py"],
     additional_deps = [
         ":array_ops",
@@ -1537,6 +1537,7 @@ py_library(
         ":random_ops",
         ":sparse_ops",
         ":state_ops",
+        ":string_ops",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
