@@ -1,4 +1,4 @@
-licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
+licenses(["notice"])  # Apache 2.0
 
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("platform", "sycl_library_path")
