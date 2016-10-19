@@ -18,13 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import sys as _sys
 
+# Import 'flags' into this module, for backwards compatibility. Users are
+# encouraged to use tf.flags, not tf.app.flags.
+# pylint: disable=unused-import
 from tensorflow.python.platform import flags
+# pylint: enable=unused-import
+from tensorflow.python.platform import flags as _flags
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 def run(main=None):
-  f = flags.FLAGS
-  flags_passthrough = f._parse_flags()
-  main = main or sys.modules['__main__'].main
-  sys.exit(main(sys.argv[:1] + flags_passthrough))
+  f = _flags.FLAGS
+  flags_passthrough = f._parse_flags()  # pylint: disable=protected-access
+  main = main or _sys.modules['__main__'].main
+  _sys.exit(main(_sys.argv[:1] + flags_passthrough))
+
+_allowed_symbols = [
+    'run',
+]
+
+# Add submodules.
+_allowed_symbols.extend([
+    'flags',
+])
+
+remove_undocumented(__name__, _allowed_symbols)
