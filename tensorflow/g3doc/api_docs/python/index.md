@@ -629,7 +629,12 @@
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
 * **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`audio`](../../api_docs/python/summary.md#audio)
   * [`get_summary_description`](../../api_docs/python/summary.md#get_summary_description)
+  * [`histogram`](../../api_docs/python/summary.md#histogram)
+  * [`image`](../../api_docs/python/summary.md#image)
+  * [`merge`](../../api_docs/python/summary.md#merge)
+  * [`merge_all`](../../api_docs/python/summary.md#merge_all)
   * [`scalar`](../../api_docs/python/summary.md#scalar)
   * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
 
