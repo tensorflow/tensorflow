@@ -663,6 +663,47 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(accumulator.Scalars('scalar1'), seq1)
     self.assertEqual(accumulator.Scalars('scalar2'), seq2)
 
+  def testTFSummaryImage(self):
+    """Verify processing of tf.summary.image."""
+    event_sink = _EventGenerator(zero_out_timestamps=True)
+    writer = SummaryToEventTransformer(event_sink)
+    with self.test_session() as sess:
+      ipt = tf.ones([10, 4, 4, 3], tf.uint8)
+      # This is an interesting example, because the old tf.image_summary op
+      # would throw an error here, because it would be tag reuse.
+      # Using the tf node name instead allows argument re-use to the image
+      # summary.
+      with tf.name_scope('1'):
+        tf.summary.image('images', ipt, max_outputs=1)
+      with tf.name_scope('2'):
+        tf.summary.image('images', ipt, max_outputs=2)
+      with tf.name_scope('3'):
+        tf.summary.image('images', ipt, max_outputs=3)
+      merged = tf.merge_all_summaries()
+      writer.add_graph(sess.graph)
+      for i in xrange(10):
+        summ = sess.run(merged)
+        writer.add_summary(summ, global_step=i)
+
+    accumulator = ea.EventAccumulator(event_sink)
+    accumulator.Reload()
+
+    tags = [
+        u'1/images/image', u'2/images/image/0', u'2/images/image/1',
+        u'3/images/image/0', u'3/images/image/1', u'3/images/image/2'
+    ]
+
+    self.assertTagsEqual(accumulator.Tags(), {
+        ea.IMAGES: tags,
+        ea.AUDIO: [],
+        ea.SCALARS: [],
+        ea.HISTOGRAMS: [],
+        ea.COMPRESSED_HISTOGRAMS: [],
+        ea.GRAPH: True,
+        ea.META_GRAPH: False,
+        ea.RUN_METADATA: []
+    })
+
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):
 

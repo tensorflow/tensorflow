@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from google.protobuf import json_format
@@ -76,6 +77,31 @@ class ScalarSummaryTest(tf.test.TestCase):
     summary_description = summary_pb2.SummaryDescription()
     json_format.Parse(description, summary_description)
     self.assertEqual(summary_description.type_hint, 'scalar')
+
+  def testImageSummary(self):
+    with self.test_session() as s:
+      i = tf.ones((5, 4, 4, 3))
+      with tf.name_scope('outer'):
+        im = tf.summary.image('inner', i, max_outputs=3)
+      summary_str = s.run(im)
+    summary = tf.Summary()
+    summary.ParseFromString(summary_str)
+    values = summary.value
+    self.assertEqual(len(values), 3)
+    tags = sorted(v.tag for v in values)
+    expected = sorted('outer/inner/image/{}'.format(i) for i in xrange(3))
+    self.assertEqual(tags, expected)
+
+  def testHistogramSummary(self):
+    with self.test_session() as s:
+      i = tf.ones((5, 4, 4, 3))
+      with tf.name_scope('outer'):
+        summ_op = tf.summary.histogram('inner', i)
+      summary_str = s.run(summ_op)
+    summary = tf.Summary()
+    summary.ParseFromString(summary_str)
+    self.assertEqual(len(summary.value), 1)
+    self.assertEqual(summary.value[0].tag, 'outer/inner')
 
 
 if __name__ == '__main__':
