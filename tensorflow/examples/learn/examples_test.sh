@@ -13,7 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# This script exercises the examples of using SkFlow.
+# This script exercises the examples of using TF.Learn.
 
 DIR="$TEST_SRCDIR"
 
@@ -28,20 +28,18 @@ then
   DIR="$DIR"/"$TEST_WORKSPACE"
 fi
 
-SKFLOW_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/learn
+TFLEARN_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/learn
 
 
 function test() {
   echo "Test "$1":"
-  $SKFLOW_EXAMPLE_BASE_DIR/$1 $2
+  $TFLEARN_EXAMPLE_BASE_DIR/$1 $2
   if [ $? -eq 0 ]
   then
     echo "Test passed."
-    echo
     return 0
   else
     echo "Test failed."
-    echo
     exit 1
   fi
 }
