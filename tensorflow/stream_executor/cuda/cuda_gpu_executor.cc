@@ -18,8 +18,12 @@ limitations under the License.
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
 #include <unistd.h>
-
+#endif
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -204,7 +208,12 @@ static string GetBinaryDir(bool strip_exe) {
     _NSGetExecutablePath(unresolved_path, &buffer_size);
     CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
 #else
-    CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#if defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
+#else
+  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -908,8 +917,10 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   // could use the file::* utilities).
   FILE *file = fopen(filename.c_str(), "r");
   if (file == nullptr) {
+#if !defined(PLATFORM_WINDOWS)
     LOG(ERROR) << "could not open file to read NUMA node: " << filename
                << "\nYour kernel may have been built without NUMA support.";
+#endif
     return kUnknownNumaNode;
   }
 
