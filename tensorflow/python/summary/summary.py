@@ -20,6 +20,9 @@
 @@tensor_summary
 @@scalar
 
+## Utilities
+@@get_summary_description
+
 """
 # pylint: enable=line-too-long
 
@@ -27,11 +30,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
+from google.protobuf import json_format
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.dtypes import as_dtype
 from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.python.util.all_util import make_all
+from tensorflow.python.util import compat
 
 
 def scalar(name, tensor, summary_description=None, collections=None):
@@ -63,9 +70,34 @@ def scalar(name, tensor, summary_description=None, collections=None):
 
   if summary_description is None:
     summary_description = summary_pb2.SummaryDescription()
-  summary_description.type_hint = "scalar"
+  summary_description.type_hint = 'scalar'
 
   return tensor_summary(name, tensor, summary_description, collections)
+
+
+def get_summary_description(node_def):
+  """Given a TensorSummary node_def, retrieve its SummaryDescription.
+
+  When a Summary op is instantiated, a SummaryDescription of associated
+  metadata is stored in its NodeDef. This method retrieves the description.
+
+  Args:
+    node_def: the node_def_pb2.NodeDef of a TensorSummary op
+
+  Returns:
+    a summary_pb2.SummaryDescription
+
+  Raises:
+    ValueError: if the node is not a summary op.
+  """
+
+
+  if node_def.op != 'TensorSummary':
+    raise ValueError('Cannot get_summary_description on %s' % node_def.op)
+  description_str = compat.as_str_any(node_def.attr['description'].s)
+  summary_description = summary_pb2.SummaryDescription()
+  json_format.Parse(description_str, summary_description)
+  return summary_description
 
 
 __all__ = make_all(__name__)
