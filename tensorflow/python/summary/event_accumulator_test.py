@@ -662,6 +662,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
     self.assertEqual(accumulator.Scalars('scalar1'), seq1)
     self.assertEqual(accumulator.Scalars('scalar2'), seq2)
+    first_value = accumulator.Scalars('scalar1')[0].value
+    self.assertTrue(isinstance(first_value, float))
 
   def testTFSummaryImage(self):
     """Verify processing of tf.summary.image."""

@@ -342,7 +342,7 @@ class EventAccumulator(object):
       return
 
     if type_hint == 'scalar':
-      scalar = tensor_util.MakeNdarray(value.tensor)
+      scalar = float(tensor_util.MakeNdarray(value.tensor))
       self._ProcessScalar(name, event.wall_time, event.step, scalar)
     else:
       LogErrorOnce(
