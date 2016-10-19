@@ -113,7 +113,7 @@ Subclass Requirements:
   like `QuantizedDistribution`) then depending on your use, you may not need
   to implement all of `_forward` and `_inverese` functions.  Examples:
     1. Sampling (e.g., `sample`) only requires `_forward`.
-    2. Probablity functions (e.g., `prob`, `cdf`, `survival`) only require
+    2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
        `_inverse` (and related).
     3. Only calling probability functions on the output of `sample` means
       `_inverse` can be implemented as a cache lookup.
@@ -247,6 +247,32 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 *  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Bijector.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Bijector.forward_log_det_jacobian}
+
+Returns both the forward_log_det_jacobian.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
 
 
 - - -

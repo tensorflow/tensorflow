@@ -1,32 +1,73 @@
-Bijector which computes Y = g(X) = X.
+Bijector which applies a sequence of bijectors.
 
 Example Use:
 
 ```python
-# Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
-# ndim and 1 event ndim (i.e., vector of vectors).
-identity = Identity(batch_ndims=1, event_ndims=1)
-x = [[1., 2],
-     [3, 4]]
-x == identity.forward(x) == identity.inverse(x)
+chain = Chain([Exp(), Softplus()], name="one_plus_exp")
 ```
+
+Results in:
+
+* Forward:
+
+ ```python
+ exp = Exp()
+ softplus = Softplus()
+ Chain([exp, softplus]).forward(x)
+ = exp.forward(softplus.forward(x))
+ = tf.exp(tf.log(1. + tf.exp(x)))
+ = 1. + tf.exp(x)
+ ```
+
+* Inverse:
+
+ ```python
+ exp = Exp()
+ softplus = Softplus()
+ Chain([exp, softplus]).inverse(y)
+ = softplus.inverse(exp.inverse(y))
+ = tf.log(tf.exp(tf.log(y)) - 1.)
+ = tf.log(y - 1.)
+ ```
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.__init__(validate_args=False, name='identity')` {#Identity.__init__}
+#### `tf.contrib.distributions.bijector.Chain.__init__(bijectors=(), validate_args=False, name=None)` {#Chain.__init__}
+
+Instantiates `Chain` bijector.
+
+##### Args:
+
+
+*  <b>`bijectors`</b>: Python list of bijector instances. An empty list makes this
+    bijector equivalent to the `Identity` bijector.
+*  <b>`validate_args`</b>: `Boolean` indicated whether arguments should be checked for
+    correctness.
+*  <b>`name`</b>: `String`, name given to ops managed by this object. Default: E.g.,
+    `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if bijectors have different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Chain.bijectors` {#Chain.bijectors}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.dtype` {#Identity.dtype}
+#### `tf.contrib.distributions.bijector.Chain.dtype` {#Chain.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.forward(x, name='forward', **condition_kwargs)` {#Identity.forward}
+#### `tf.contrib.distributions.bijector.Chain.forward(x, name='forward', **condition_kwargs)` {#Chain.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -51,7 +92,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Identity.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Chain.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Chain.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -77,7 +118,7 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse(y, name='inverse', **condition_kwargs)` {#Identity.inverse}
+#### `tf.contrib.distributions.bijector.Chain.inverse(y, name='inverse', **condition_kwargs)` {#Chain.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -103,7 +144,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Identity.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Chain.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Chain.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -134,7 +175,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Identity.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Chain.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Chain.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -164,7 +205,7 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.is_constant_jacobian` {#Identity.is_constant_jacobian}
+#### `tf.contrib.distributions.bijector.Chain.is_constant_jacobian` {#Chain.is_constant_jacobian}
 
 Returns true iff the Jacobian is not a function of x.
 
@@ -177,28 +218,28 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.name` {#Identity.name}
+#### `tf.contrib.distributions.bijector.Chain.name` {#Chain.name}
 
 Returns the string name of this `Bijector`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.parameters` {#Identity.parameters}
+#### `tf.contrib.distributions.bijector.Chain.parameters` {#Chain.parameters}
 
 Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.shaper` {#Identity.shaper}
+#### `tf.contrib.distributions.bijector.Chain.shaper` {#Chain.shaper}
 
 Returns shape object used to manage shape constraints.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.validate_args` {#Identity.validate_args}
+#### `tf.contrib.distributions.bijector.Chain.validate_args` {#Chain.validate_args}
 
 Returns True if Tensor arguments will be validated.
 

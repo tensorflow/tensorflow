@@ -1,32 +1,25 @@
-Bijector which computes Y = g(X) = X.
+Bijector which computes Y = g(X) = exp([X 0]) / (1 + exp(-X)).
 
-Example Use:
+Equivalent to: `bijector.SoftmaxCentered(event_ndims=0)`.
 
-```python
-# Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
-# ndim and 1 event ndim (i.e., vector of vectors).
-identity = Identity(batch_ndims=1, event_ndims=1)
-x = [[1., 2],
-     [3, 4]]
-x == identity.forward(x) == identity.inverse(x)
-```
+See `bijector.SoftmaxCentered` for more details.
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.__init__(validate_args=False, name='identity')` {#Identity.__init__}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.__init__(validate_args=False, name='sigmoid_centered')` {#SigmoidCentered.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.dtype` {#Identity.dtype}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.dtype` {#SigmoidCentered.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.forward(x, name='forward', **condition_kwargs)` {#Identity.forward}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.forward(x, name='forward', **condition_kwargs)` {#SigmoidCentered.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -51,7 +44,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Identity.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#SigmoidCentered.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -77,7 +70,7 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse(y, name='inverse', **condition_kwargs)` {#Identity.inverse}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.inverse(y, name='inverse', **condition_kwargs)` {#SigmoidCentered.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -103,7 +96,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Identity.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#SigmoidCentered.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -134,7 +127,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Identity.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#SigmoidCentered.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -164,7 +157,7 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.is_constant_jacobian` {#Identity.is_constant_jacobian}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.is_constant_jacobian` {#SigmoidCentered.is_constant_jacobian}
 
 Returns true iff the Jacobian is not a function of x.
 
@@ -177,28 +170,28 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.name` {#Identity.name}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.name` {#SigmoidCentered.name}
 
 Returns the string name of this `Bijector`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.parameters` {#Identity.parameters}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.parameters` {#SigmoidCentered.parameters}
 
 Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.shaper` {#Identity.shaper}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.shaper` {#SigmoidCentered.shaper}
 
 Returns shape object used to manage shape constraints.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.validate_args` {#Identity.validate_args}
+#### `tf.contrib.distributions.bijector.SigmoidCentered.validate_args` {#SigmoidCentered.validate_args}
 
 Returns True if Tensor arguments will be validated.
 

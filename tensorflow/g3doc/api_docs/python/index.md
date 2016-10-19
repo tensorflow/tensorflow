@@ -759,12 +759,14 @@
 
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
+  * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
   * [`Exp`](../../api_docs/python/contrib.distributions.bijector.md#Exp)
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
+  * [`Invert`](../../api_docs/python/contrib.distributions.bijector.md#Invert)
   * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
-  * [`Sigmoid`](../../api_docs/python/contrib.distributions.bijector.md#Sigmoid)
-  * [`Softmax`](../../api_docs/python/contrib.distributions.bijector.md#Softmax)
+  * [`SigmoidCentered`](../../api_docs/python/contrib.distributions.bijector.md#SigmoidCentered)
+  * [`SoftmaxCentered`](../../api_docs/python/contrib.distributions.bijector.md#SoftmaxCentered)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
