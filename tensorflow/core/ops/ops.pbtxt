@@ -10423,7 +10423,7 @@ op {
   name: "MutableDenseHashTable"
   input_arg {
     name: "empty_key"
-    description: "The key to use to represent empty buckets internally. Must not\nbe used in insert or lookup operations."
+    description: "The key used to represent empty key buckets internally. Must not\nbe used in insert or lookup operations."
     type_attr: "key_dtype"
   }
   output_arg {
@@ -10481,6 +10481,14 @@ op {
       i: 131072
     }
     description: "The initial number of hash table buckets. Must be a power\nto 2."
+  }
+  attr {
+    name: "max_load_factor"
+    type: "float"
+    default_value {
+      f: 0.8
+    }
+    description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
   }
   summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
   description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
