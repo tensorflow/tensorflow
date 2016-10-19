@@ -373,6 +373,40 @@ class SavedModelTest(tf.test.TestCase):
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
+  def testLegacyInitOp(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_legacy_init_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = tf.Variable(1, name="v1")
+      tf.add_to_collection("v", v1)
+      v2 = tf.Variable(2, name="v2")
+      tf.add_to_collection("v", v2)
+
+      # Initialize another variable `v3` to 42.
+      v3 = tf.Variable(42, name="v3", trainable=False, collections=[])
+      tf.add_to_collection("v", v3)
+
+      # Set up an assignment op to be run as part of the legacy_init_op.
+      assign_v3 = tf.assign(v3, tf.add(v1, v2))
+      legacy_init_op = tf.group(assign_v3, name="legacy_init_op")
+
+      sess.run(tf.initialize_all_variables())
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], legacy_init_op=legacy_init_op)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, tf.get_collection("v")[0].eval())
+      self.assertEqual(2, tf.get_collection("v")[1].eval())
+      # Evaluates to the sum of the first two variables and assigned as part of
+      # the legacy_init_op, following a restore.
+      self.assertEqual(3, tf.get_collection("v")[2].eval())
+
   def testOp(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
