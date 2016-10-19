@@ -152,6 +152,7 @@ class Allocator {
   // allocated by this allocator.
   virtual size_t RequestedSize(void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
+    return size_t(0);
   }
 
   // Returns the allocated size of the buffer at 'ptr' if known,

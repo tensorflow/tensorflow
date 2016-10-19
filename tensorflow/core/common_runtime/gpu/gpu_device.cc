@@ -882,7 +882,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   if (visible_device_list.empty()) {
     visible_gpu_order.resize(gpu_manager->VisibleDeviceCount());
     // By default, visible to virtual mapping is unchanged.
-    std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
+    int deviceNo = 0;
+    std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
+	              [&deviceNo]{ return deviceNo++; });
   } else {
     std::vector<string> order_str = str_util::Split(visible_device_list, ',');
     for (int i = 0; i < order_str.size(); ++i) {

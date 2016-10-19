@@ -1,3 +1,6 @@
+#ifdef _WIN32
+#define sleep(seconds) Sleep(1000*seconds)
+#endif  // _WIN32
 #include "unsupported/Eigen/CXX11/Tensor"
 
 #ifdef _WIN32
