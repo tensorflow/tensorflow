@@ -619,7 +619,7 @@ def _get_local_init_op():
 
 
 def _eval_results_to_str(eval_results):
-  return ', '.join('%s = %s' % (k, v) for k, v in eval_results.items())
+  return ', '.join('%s = %s' % (k, v) for k, v in sorted(eval_results.items()))
 
 
 def _write_summary_results(output_dir, eval_results, current_global_step):
