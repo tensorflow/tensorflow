@@ -268,6 +268,12 @@ def abs(x, name=None):
       return gen_math_ops._abs(x, name=name)
 
 
+def divide(x, y, name=None):
+  """Computes Python style division of `x` by `y`."""
+  with ops.name_scope(name, "Divide", [x]) as name:
+    return x / y
+
+
 def neg(x, name=None):
   """Computes numerical negative value element-wise.
 
@@ -908,6 +914,8 @@ def floordiv(x, y, name=None):
     else:
       if not dtype.is_integer:
         raise TypeError("Expected floating point or integer, got %r" % dtype)
+      # TODO(aselle): Switch to math_ops.floor_div() when ready
+      # return gen_math_ops.floor_div(x, y, name=name)
       return gen_math_ops.div(x, y, name=name)
 
 
@@ -937,6 +945,8 @@ _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
+# TODO(aselle): Switch mod to floor_mod when ready
+# _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(gen_math_ops.mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
@@ -1865,6 +1875,8 @@ ops.RegisterShape("LogicalOr")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Maximum")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Minimum")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Mod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FloorMod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FloorDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Mul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("NotEqual")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Pow")(common_shapes.call_cpp_shape_fn)

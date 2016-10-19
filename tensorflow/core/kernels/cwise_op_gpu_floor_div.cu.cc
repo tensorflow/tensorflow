@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-// TODO(b/32239807) No GPU ops for mod yet.
+DEFINE_BINARY5(floor_div, uint8, uint16, int16, int32, int64);
 }  // namespace functor
 }  // namespace tensorflow
 
