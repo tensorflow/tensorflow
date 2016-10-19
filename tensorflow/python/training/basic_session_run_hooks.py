@@ -292,8 +292,6 @@ class StepCounterHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     _ = run_context
-    if not self._summary_writer:
-      return
 
     global_step = run_values.results
     current_time = time.time()
@@ -305,9 +303,11 @@ class StepCounterHook(session_run_hook.SessionRunHook):
         added_steps = global_step - self._last_reported_step
         elapsed_time = current_time - self._last_reported_time
         steps_per_sec = added_steps / elapsed_time
-        summary = Summary(value=[Summary.Value(
-            tag=self._summary_tag, simple_value=steps_per_sec)])
-        self._summary_writer.add_summary(summary, global_step)
+        if self._summary_writer is not None:
+          summary = Summary(value=[Summary.Value(
+              tag=self._summary_tag, simple_value=steps_per_sec)])
+          self._summary_writer.add_summary(summary, global_step)
+        logging.info("%s: %g", self._summary_tag, steps_per_sec)
         self._last_reported_step = global_step
         self._last_reported_time = current_time
 
