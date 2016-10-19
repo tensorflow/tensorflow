@@ -114,7 +114,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
       as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Returns prediction probabilities for given features (classification).
 
     Args:
@@ -148,7 +148,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
       as_iterable=False)
   def predict(
       self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Returns predictions for given features.
 
     Args:

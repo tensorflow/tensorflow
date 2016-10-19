@@ -33,7 +33,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
-    `predictions_idx`. Values should be in range [0, num_classes], where
+    `predictions`. Values should be in range [0, num_classes], where
     num_classes is the last dimension of `predictions`.
 *  <b>`k`</b>: Integer, k for @k metric. This will calculate an average precision for
     range `[1,k]`, as documented above.

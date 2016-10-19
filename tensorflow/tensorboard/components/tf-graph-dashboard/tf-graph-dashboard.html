@@ -107,19 +107,20 @@ Polymer({
   reload: function() {
     Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
     .then(function(result) {
-      var runsWithGraph = result[0];
+      var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
       var runToMetadata = result[1];
       var datasets = _.map(runsWithGraph, function(runName) {
         return {
           name: runName,
           path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
-          runMetadata: runToMetadata[runName] ? _.map(runToMetadata[runName].sort(), function(tag) {
-            return {
-              tag: tag,
-              path: this.backend.router.runMetadata(tag, runName)
-            };
-          }, this) : []
+          runMetadata: runToMetadata[runName] ? _.map(
+            runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
+              return {
+                tag: tag,
+                path: this.backend.router.runMetadata(tag, runName)
+              };
+            }, this) : []
         };
       }, this);
       this.set('_datasets', datasets);

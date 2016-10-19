@@ -143,6 +143,7 @@ Try the following commands at the `tfdbg>` prompt:
 | Command example    | Explanation           |
 | ------------- |:--------------------- |
 | `pt hidden/Relu:0` | Print the value of the tensor `hidden/Relu:0`. |
+| `pt hidden/Relu:0[:, 1]` | Print a subarray of the tensor `hidden/Relu:0`, using numpy-style array slicing. |
 | `ni -a hidden/Relu` | Displays information about the node `hidden/Relu`, including node attributes. |
 | `li -r hidden/Relu:0` | List the inputs to the node `hidden/Relu`, recursively, i.e., the input tree. |
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively, i.e., the output recipient tree. |

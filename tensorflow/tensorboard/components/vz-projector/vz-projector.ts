@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataSet, MetadataInfo, Projection, State} from './data';
-import {DataProvider, getDataProvider, TensorInfo} from './data-loader';
+import {ColorOption, DataProto, DataSet, MetadataInfo, Projection, State} from './data';
+import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
+import {LabelRenderParams} from './renderContext';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
 import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLabels';
@@ -34,14 +35,17 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
 const LABEL_SCALE_LARGE = 1.7;
-const LABEL_FILL_COLOR = 0xFFFFFF;
-const LABEL_STROKE_COLOR = 0x000000;
+const LABEL_FILL_COLOR = 0x000000;
+const LABEL_STROKE_COLOR = 0xFFFFFF;
 
 const POINT_COLOR_UNSELECTED = 0x888888;
 const POINT_COLOR_NO_SELECTION = 0x7575D9;
 const POINT_COLOR_SELECTED = 0xFA6666;
 const POINT_COLOR_HOVER = 0x760B4F;
 const POINT_COLOR_MISSING = 'black';
+
+const LABELS_3D_COLOR_UNSELECTED = 0xFFFFFF;
+const LABELS_3D_COLOR_NO_SELECTION = 0xFFFFFF;
 
 const POINT_SCALE_DEFAULT = 1.0;
 const POINT_SCALE_SELECTED = 1.2;
@@ -57,8 +61,9 @@ const THRESHOLD_DIM_NORMALIZE = 50;
 export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
   properties: {
-    // Private.
-    routePrefix: String
+    routePrefix: String,
+    dataProto: {type: String, observer: '_dataProtoChanged'},
+    servingMode: String
   }
 });
 
@@ -66,6 +71,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
                                                            HoverContext {
   // The working subset of the data source's original data set.
   currentDataSet: DataSet;
+  servingMode: ServingMode;
 
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
@@ -101,7 +107,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.hoverListeners = [];
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
-
     this.dom = d3.select(this);
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
@@ -111,14 +116,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
     this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
-
-    getDataProvider(this.routePrefix, dataProvider => {
-      this.dataProvider = dataProvider;
-      this.dataPanel.initialize(this, dataProvider);
-      this.bookmarkPanel.initialize(this, dataProvider);
-    });
     this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
     this.setupUIControls();
+    this.initializeDataProvider();
   }
 
   setSelectedLabelOption(labelOption: string) {
@@ -223,6 +223,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.hoverListeners.forEach(l => l(pointIndex));
   }
 
+  _dataProtoChanged(dataProtoString: string) {
+    let dataProto = dataProtoString ?
+        JSON.parse(dataProtoString) as DataProto : null;
+    this.initializeDataProvider(dataProto);
+  }
+
+  private initializeDataProvider(dataProto?: DataProto) {
+    getDataProvider(this.servingMode, dataProto, this.routePrefix,
+        dataProvider => {
+      this.dataProvider = dataProvider;
+      this.dataPanel.initialize(this, dataProvider);
+      this.bookmarkPanel.initialize(this, dataProvider);
+    });
+  }
+
   private getLegendPointColorer(colorOption: ColorOption):
       (index: number) => string {
     if ((colorOption == null) || (colorOption.map == null)) {
@@ -239,33 +254,40 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return colorer;
   }
 
-  private getVisibleLabelCount(
+  private generateVisibleLabelRenderParams(
       selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
-      hoverPointIndex: number) {
-    return selectedPointIndices.length + neighborsOfFirstPoint.length +
-        ((hoverPointIndex != null) ? 1 : 0);
-  }
-
-  private generateVisibleLabelIndicesArray(
-      selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
-      hoverPointIndex: number): Uint32Array {
+      hoverPointIndex: number): LabelRenderParams {
     if (this.currentDataSet == null) {
-      return new Uint32Array(0);
+      return null;
     }
 
-    const visibleLabels = new Uint32Array(this.getVisibleLabelCount(
-        selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex));
+    const n = selectedPointIndices.length + neighborsOfFirstPoint.length +
+        ((hoverPointIndex != null) ? 1 : 0);
+
+    const visibleLabels = new Uint32Array(n);
+    const scale = new Float32Array(n);
+    const opacityFlags = new Int8Array(n);
+
+    scale.fill(LABEL_SCALE_DEFAULT);
+    opacityFlags.fill(1);
+
     let dst = 0;
 
     if (hoverPointIndex != null) {
-      visibleLabels[dst++] = hoverPointIndex;
+      visibleLabels[dst] = hoverPointIndex;
+      scale[dst] = LABEL_SCALE_LARGE;
+      opacityFlags[dst] = 0;
+      ++dst;
     }
 
     // Selected points
     {
       const n = selectedPointIndices.length;
       for (let i = 0; i < n; ++i) {
-        visibleLabels[dst++] = selectedPointIndices[i];
+        visibleLabels[dst] = selectedPointIndices[i];
+        scale[dst] = LABEL_SCALE_LARGE;
+        opacityFlags[dst] = (n === 1) ? 0 : 1;
+        ++dst;
       }
     }
 
@@ -277,35 +299,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       }
     }
 
-    return visibleLabels;
-  }
-
-  private generateVisibleLabelScaleFactorsArray(
-      selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
-      hoverPointIndex: number): Float32Array {
-    if (this.currentDataSet == null) {
-      return new Float32Array(0);
-    }
-
-    const scale = new Float32Array(this.getVisibleLabelCount(
-        selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex));
-    scale.fill(LABEL_SCALE_DEFAULT);
-
-    let dst = 0;
-
-    if (hoverPointIndex != null) {
-      scale[dst++] = LABEL_SCALE_LARGE;
-    }
-
-    // Selected points
-    {
-      const n = selectedPointIndices.length;
-      for (let i = 0; i < n; ++i) {
-        scale[dst++] = LABEL_SCALE_LARGE;
-      }
-    }
-
-    return scale;
+    return new LabelRenderParams(
+        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, LABEL_FILL_COLOR,
+        LABEL_STROKE_COLOR);
   }
 
   private generateScatterPlotScaleFactorArray(
@@ -344,6 +340,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return scale;
   }
 
+  private get3DLabelModeButton(): any {
+    return this.querySelector('#labels3DMode');
+  }
+
+  private get3DLabelMode(): boolean {
+    const label3DModeButton = this.get3DLabelModeButton();
+    return (label3DModeButton as any).active;
+  }
+
   private generateScatterPlotColorArray(
       legendPointColorer: (index: number) => string,
       selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
@@ -354,12 +359,20 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     const colors = new Float32Array(this.currentDataSet.points.length * 3);
 
+    let unselectedColor = POINT_COLOR_UNSELECTED;
+    let noSelectionColor = POINT_COLOR_NO_SELECTION;
+
+    if (this.get3DLabelMode()) {
+      unselectedColor = LABELS_3D_COLOR_UNSELECTED;
+      noSelectionColor = LABELS_3D_COLOR_NO_SELECTION;
+    }
+
     // Give all points the unselected color.
     {
       const n = this.currentDataSet.points.length;
       let dst = 0;
       if (selectedPointIndices.length > 0) {
-        const c = new THREE.Color(POINT_COLOR_UNSELECTED);
+        const c = new THREE.Color(unselectedColor);
         for (let i = 0; i < n; ++i) {
           colors[dst++] = c.r;
           colors[dst++] = c.g;
@@ -374,7 +387,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
             colors[dst++] = c.b;
           }
         } else {
-          const c = new THREE.Color(POINT_COLOR_NO_SELECTION);
+          const c = new THREE.Color(noSelectionColor);
           for (let i = 0; i < n; ++i) {
             colors[dst++] = c.r;
             colors[dst++] = c.g;
@@ -439,25 +452,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (this.normalizeData) {
       this.currentDataSet.normalize();
     }
-    this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
-    this.updateScatterPlot();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
 
     this.projectionsPanel.dataSetUpdated(this.currentDataSet, this.dim);
+
+    this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
+    this.updateScatterPlot();
   }
 
   private setupUIControls() {
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
       this.scatterPlot.resetZoom();
-    });
-    this.querySelector('#zoom-in').addEventListener('click', () => {
-      this.scatterPlot.zoomStep(2);
-    });
-    this.querySelector('#zoom-out').addEventListener('click', () => {
-      this.scatterPlot.zoomStep(0.5);
+      this.scatterPlot.startOrbitAnimation();
     });
 
     let selectModeButton = this.querySelector('#selectMode');
@@ -470,14 +479,19 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       this.scatterPlot.setDayNightMode((nightModeButton as any).active);
     });
 
-    let labels3DModeButton = this.querySelector('#labels3DMode');
+    const labels3DModeButton = this.get3DLabelModeButton();
     labels3DModeButton.addEventListener('click', () => {
       this.createVisualizers((labels3DModeButton as any).active);
       this.scatterPlot.recreateScene();
+      this.updateScatterPlot();
       this.scatterPlot.update();
     });
 
     window.addEventListener('resize', () => {
+      let container = this.dom.select('#container');
+      let parentHeight =
+          (container.node().parentNode as HTMLElement).clientHeight;
+      container.style('height', parentHeight + 'px');
       this.scatterPlot.resize();
     });
 
@@ -525,17 +539,13 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     const pointScaleFactors = this.generateScatterPlotScaleFactorArray(
         this.selectedPointIndices, this.neighborsOfFirstPoint,
         this.hoverPointIndex);
-    const visibleLabelIndices = this.generateVisibleLabelIndicesArray(
+    const labels = this.generateVisibleLabelRenderParams(
         this.selectedPointIndices, this.neighborsOfFirstPoint,
         this.hoverPointIndex);
-    const visibleLabelScaleFactors = this.generateVisibleLabelScaleFactorsArray(
-        this.selectedPointIndices, this.neighborsOfFirstPoint,
-        this.hoverPointIndex);
+
     this.scatterPlot.setPointColors(pointColors);
     this.scatterPlot.setPointScaleFactors(pointScaleFactors);
-    this.scatterPlot.setVisibleLabels(
-        visibleLabelIndices, visibleLabelScaleFactors, LABEL_STROKE_COLOR,
-        LABEL_FILL_COLOR, LABEL_FONT_SIZE);
+    this.scatterPlot.setLabels(labels);
     this.scatterPlot.render();
   }
 
@@ -576,21 +586,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   setProjection(
-      projection: Projection, xAccessor: (index: number) => number,
+      projection: Projection, dimensionality: number,
+      xAccessor: (index: number) => number,
       yAccessor: (index: number) => number,
       zAccessor: (index: number) => number, xAxisLabel: string,
       yAxisLabel: string, deferUpdate = false) {
     this.selectedProjection = projection;
+    this.scatterPlot.setDimensions(dimensionality);
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setPointAccessors(xAccessor, yAccessor, zAccessor);
     this.scatterPlot.setAxisLabels(xAxisLabel, yAxisLabel);
     if (!deferUpdate) {
       this.scatterPlot.update();
     }
-    // Don't animate if we've defered updating as expensive computation is
-    // happening to compute the projections, and there's no reason to animate
-    // around non-existence projections.
-    this.scatterPlot.recreateScene(!deferUpdate /** animate */);
+
+    this.scatterPlot.recreateScene();
   }
 
   notifyProjectionsUpdated() {

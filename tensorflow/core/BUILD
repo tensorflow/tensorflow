@@ -712,6 +712,7 @@ cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts() + ["-Os"],
+    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -769,7 +770,6 @@ cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
     copts = tf_copts(),
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -1093,12 +1093,12 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
-        "//conditions:default": glob([
+        "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
-        ]),
+        ],
     }),
     hdrs = [
         "framework/op_segment.h",
@@ -1107,6 +1107,7 @@ tf_cuda_library(
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
         "util/command_line_flags.h",
+        "util/env_var.h",
         "util/presized_cuckoo_map.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
