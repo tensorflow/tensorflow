@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -293,3 +294,39 @@ class BetaWithSoftplusAB(Beta):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+
+
+def _kl_beta_beta(d1, d2, name=None):
+  """Calculate the batched KL divergence KL(d1 || d2) with d1 and d2 Beta.
+
+  Args:
+    d1: instance of a Beta distribution object.
+    d2: instance of a Beta distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_beta_beta".
+
+  Returns:
+    Batchwise KL(d1 || d2)
+  """
+  inputs = [d1.a, d1.b, d1.a_b_sum, d2.a_b_sum]
+  with ops.name_scope(name, "kl_beta_beta", inputs):
+    # ln(B(a', b') / B(a, b))
+    log_betas = (math_ops.lgamma(d2.a) + math_ops.lgamma(d2.b)
+                - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
+                - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
+    # (a - a')*psi(a) + (b - b')*psi(b) + (a' - a + b' - b)*psi(a + b)
+    digammas = ((d1.a - d2.a)*math_ops.digamma(d1.a)
+              + (d1.b - d2.b)*math_ops.digamma(d1.b)
+              + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
+    return log_betas + digammas
+
+
+# Register KL divergences.
+kl_classes = [
+    Beta,
+    BetaWithSoftplusAB,
+]
+
+for beta_aa in kl_classes:
+  for beta_bb in kl_classes:
+    kullback_leibler.RegisterKL(beta_aa, beta_bb)(_kl_beta_beta)

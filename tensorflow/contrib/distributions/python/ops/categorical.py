@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -220,3 +221,24 @@ class Categorical(distribution.Distribution):
     ret = math_ops.cast(ret, self.dtype)
     ret.set_shape(self.get_batch_shape())
     return ret
+
+
+@kullback_leibler.RegisterKL(Categorical, Categorical)
+def _kl_categorical_categorical(a, b, name=None):
+  """Calculate the batched KL divergence KL(a || b) with a and b Categorical.
+
+  Args:
+    a: instance of a Categorical distribution object.
+    b: instance of a Categorical distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_categorical_categorical".
+
+  Returns:
+    Batchwise KL(a || b)
+  """
+  with ops.name_scope(
+    name, "kl_categorical_categorical", [a.logits, b.logits]):
+    # sum(p*ln(p/q))
+    return math_ops.reduce_sum(
+        nn_ops.softmax(a.logits)*(nn_ops.log_softmax(a.logits)
+            - nn_ops.log_softmax(b.logits)), reduction_indices=[-1])

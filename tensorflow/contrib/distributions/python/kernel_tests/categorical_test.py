@@ -222,5 +222,34 @@ class CategoricalTest(tf.test.TestCase):
       dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       self.assertAllEqual(dist.mode().eval(), [[1, 0]])
 
+  def testCategoricalCategoricalKL(self):
+    def np_softmax(logits):
+      exp_logits = np.exp(logits)
+      return exp_logits / exp_logits.sum(axis=-1, keepdims=True)
+
+    with self.test_session() as sess:
+      for categories in [2, 4]:
+        for batch_size in [1, 10]:
+          a_logits = np.random.randn(batch_size, categories)
+          b_logits = np.random.randn(batch_size, categories)
+
+          a = tf.contrib.distributions.Categorical(logits=a_logits)
+          b = tf.contrib.distributions.Categorical(logits=b_logits)
+
+          kl = tf.contrib.distributions.kl(a, b)
+          kl_val = sess.run(kl)
+          # Make sure KL(a||a) is 0
+          kl_same = sess.run(tf.contrib.distributions.kl(a, a))
+
+          prob_a = np_softmax(a_logits)
+          prob_b = np_softmax(b_logits)
+          kl_expected = np.sum(
+              prob_a * (np.log(prob_a) - np.log(prob_b)), axis=-1)
+
+          self.assertEqual(kl.get_shape(), (batch_size,))
+          self.assertAllClose(kl_val, kl_expected)
+          self.assertAllClose(kl_same, np.zeros_like(kl_expected))
+
+
 if __name__ == "__main__":
   tf.test.main()
