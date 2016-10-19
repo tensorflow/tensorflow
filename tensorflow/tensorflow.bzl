@@ -23,7 +23,12 @@ def src_to_test_name(src):
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
-  if "bazel_version" in dir(native) and native.bazel_version:
+  if "bazel_version" not in dir(native):
+    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
+  elif not native.bazel_version:
+    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
+    print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
+  else:
     current_bazel_version = _parse_bazel_version(native.bazel_version)
     minimum_bazel_version = _parse_bazel_version(bazel_version)
     if minimum_bazel_version > current_bazel_version:
@@ -63,6 +68,7 @@ def tf_android_core_proto_sources_relative():
         "framework/log_memory.proto",
         "framework/node_def.proto",
         "framework/op_def.proto",
+        "framework/resource_handle.proto",
         "framework/step_stats.proto",
         "framework/summary.proto",
         "framework/tensor.proto",
@@ -135,19 +141,32 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+def if_not_windows(a):
+  return select({
+      "//tensorflow:windows": [],
+      "//conditions:default": a,
+  })  
+
 def tf_copts():
-  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY"] +
+  return (["-fno-exceptions",
+           "-DEIGEN_AVOID_STL_ARRAY",
+           "-Iexternal/gemmlowp",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          select({"//tensorflow:android": [
-                    "-std=c++11",
-                    "-DMIN_LOG_LEVEL=0",
-                    "-DTF_LEAN_BINARY",
-                    "-O2",
-                  ],
-                  "//tensorflow:darwin": [],
-                  "//tensorflow:ios": ["-std=c++11",],
-                  "//conditions:default": ["-pthread"]}))
+          select({
+              "//tensorflow:android": [
+                  "-std=c++11",
+                  "-DMIN_LOG_LEVEL=0",
+                  "-DTF_LEAN_BINARY",
+                  "-O2",
+              ],
+              "//tensorflow:darwin": [],
+              "//tensorflow:windows": [
+                "/DLANG_CXX11",
+                "/D__VERSION__=\\\"MSVC\\\"",
+              ],
+              "//tensorflow:ios": ["-std=c++11",],
+              "//conditions:default": ["-pthread"]}))
 
 def tf_opts_nortti_if_android():
   return if_android([
@@ -185,7 +204,7 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
   )
 
   # Run the op generator.
-  if name == "sendrecv_ops":
+  if name == "sendrecv_ops" or name == "function_ops":
     include_internal = "1"
   else:
     include_internal = "0"
@@ -224,7 +243,8 @@ def tf_gen_op_wrappers_cc(name,
                               "//tensorflow/cc:scope",
                               "//tensorflow/cc:const_op",
                           ],
-                          op_gen="//tensorflow/cc:cc_op_gen_main"):
+                          op_gen="//tensorflow/cc:cc_op_gen_main",
+                          visibility=None):
   subsrcs = other_srcs
   subhdrs = other_hdrs
   for n in op_lib_names:
@@ -242,7 +262,8 @@ def tf_gen_op_wrappers_cc(name,
                         "//tensorflow/core:protos_all_cc",
                     ],
                     copts=tf_copts(),
-                    alwayslink=1,)
+                    alwayslink=1,
+                    visibility=visibility)
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
@@ -504,6 +525,9 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
 
   cuda_deps = ["//tensorflow/core:gpu_lib"]
   if gpu_srcs:
+    for gpu_src in gpu_srcs:
+      if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
+        fail("{} not allowed in gpu_srcs. .cc sources must end with .cu.cc".format(gpu_src))
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,

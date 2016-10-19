@@ -53,7 +53,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None, feature_engineering_fn=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -66,9 +66,9 @@ Initializes a `DNNRegressor` instance.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
-    be used to load checkpoints from the directory into a estimator to continue
-    training a previously saved model.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
+    also be used to load checkpoints from the directory into a estimator to
+    continue training a previously saved model.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -85,6 +85,10 @@ Initializes a `DNNRegressor` instance.
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -102,7 +106,11 @@ Initializes a `DNNRegressor` instance.
 
 #### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -116,14 +124,22 @@ Initializes a `DNNRegressor` instance.
 
 #### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
 
-Returns bias of deep neural network part.
+Returns bias of deep neural network part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
 #### `tf.contrib.learn.DNNRegressor.dnn_weights_` {#DNNRegressor.dnn_weights_}
 
-Returns weights of deep neural network part.
+Returns weights of deep neural network part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -160,7 +176,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds to a
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -246,14 +262,22 @@ Returns value of the variable given by name.
 
 #### `tf.contrib.learn.DNNRegressor.linear_bias_` {#DNNRegressor.linear_bias_}
 
-Returns bias of the linear part.
+Returns bias of the linear part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
 #### `tf.contrib.learn.DNNRegressor.linear_weights_` {#DNNRegressor.linear_weights_}
 
-Returns weights per feature of the linear part.
+Returns weights per feature of the linear part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -372,6 +396,10 @@ component of a nested object.
 
 #### `tf.contrib.learn.DNNRegressor.weights_` {#DNNRegressor.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 

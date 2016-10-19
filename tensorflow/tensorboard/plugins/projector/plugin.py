@@ -35,6 +35,7 @@ INFO_ROUTE = '/info'
 TENSOR_ROUTE = '/tensor'
 METADATA_ROUTE = '/metadata'
 RUNS_ROUTE = '/runs'
+BOOKMARKS_ROUTE = '/bookmarks'
 
 # Limit for the number of points we send to the browser.
 LIMIT_NUM_POINTS = 50000
@@ -43,8 +44,9 @@ LIMIT_NUM_POINTS = 50000
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
 
-  def get_plugin_handlers(self, run_paths):
-    self.configs, self.config_fpaths = self._read_config_files(run_paths)
+  def get_plugin_handlers(self, run_paths, logdir):
+    self.configs, self.config_fpaths = self._read_config_files(run_paths,
+                                                               logdir)
     self.readers = {}
 
     return {
@@ -52,12 +54,18 @@ class ProjectorPlugin(TBPlugin):
         INFO_ROUTE: self._serve_info,
         TENSOR_ROUTE: self._serve_tensor,
         METADATA_ROUTE: self._serve_metadata,
+        BOOKMARKS_ROUTE: self._serve_bookmarks,
     }
 
-  def _read_config_files(self, run_paths):
+  def _read_config_files(self, run_paths, logdir):
+    # If there are no summary event files, the projector can still work,
+    # thus treating the `logdir` as the model checkpoint directory.
+    if not run_paths:
+      run_paths['.'] = logdir
+
     configs = {}
     config_fpaths = {}
-    for run_name, logdir in six.iteritems(run_paths):
+    for run_name, logdir in run_paths.items():
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if not file_io.file_exists(config_fpath):
         # Skip runs that have no config file.
@@ -97,64 +105,89 @@ class ProjectorPlugin(TBPlugin):
     return reader
 
   def _get_metadata_file_for_tensor(self, tensor_name, config):
+    embedding_info = self._get_embedding_info_for_tensor(tensor_name, config)
+    if embedding_info:
+      return embedding_info.metadata_path
+    return None
+
+  def _get_bookmarks_file_for_tensor(self, tensor_name, config):
+    embedding_info = self._get_embedding_info_for_tensor(tensor_name, config)
+    if embedding_info:
+      return embedding_info.bookmarks_path
+    return None
+
+  def _canonical_tensor_name(self, tensor_name):
+    if ':' not in tensor_name:
+      return tensor_name + ':0'
+    else:
+      return tensor_name
+
+  def _get_embedding_info_for_tensor(self, tensor_name, config):
     if not config.embedding:
       return None
     for info in config.embedding:
-      if info.tensor_name == tensor_name:
-        return info.metadata_path
+      if (self._canonical_tensor_name(info.tensor_name) ==
+          self._canonical_tensor_name(tensor_name)):
+        return info
     return None
 
   def _serve_runs(self, query_params):
     """Returns a list of runs that have embeddings."""
-    self.handler.send_json_response(list(self.configs.keys()))
+    self.handler.respond(list(self.configs.keys()), 'application/json')
 
   def _serve_info(self, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.send_error(400, 'query parameter "run" is required')
+      self.handler.respond('query parameter "run" is required',
+                           'text/plain', 400)
       return
     if run not in self.configs:
-      self.handler.send_error(400, 'Unknown run: %s' % run)
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
-
     config = self.configs[run]
     reader = self._get_reader_for_run(run)
     var_map = reader.get_variable_to_shape_map()
-    embedding_map = {name: {
-        'name': name,
-        'shape': shape,
-        'metadataFile': self._get_metadata_file_for_tensor(name, config)
-    }
-                     for name, shape in six.iteritems(var_map)
-                     if len(shape) == 2}
-    self.handler.send_json_response({
-        'tensors': embedding_map,
-        'checkpointFile': config.model_checkpoint_path,
-    })
+    metadata_file = lambda t: self._get_metadata_file_for_tensor(t, config)
+    bookmarks_file = lambda t: self._get_bookmarks_file_for_tensor(t, config)
+    self.handler.respond({
+        'checkpointFile':
+            config.model_checkpoint_path,
+        'tensors': {
+            name: {
+                'name': name,
+                'shape': shape,
+                'metadataFile': metadata_file(name),
+                'bookmarksFile': bookmarks_file(name)
+            }
+            for name, shape in six.iteritems(var_map) if len(shape) == 2
+        }
+    }, 'application/json')
 
   def _serve_metadata(self, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.send_error(400, 'query parameter "run" is required')
+      self.handler.respond('query parameter "run" is required',
+                           'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.send_error(400, 'query parameter "name" is required')
+      self.handler.respond('query parameter "name" is required',
+                           'text/plain', 400)
       return
     if run not in self.configs:
-      self.handler.send_error(400, 'Unknown run: %s' % run)
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     config = self.configs[run]
     fpath = self._get_metadata_file_for_tensor(name, config)
     if not fpath:
-      self.handler.send_error(
-          400, 'Not metadata file found for tensor %s in the config file %s' %
-          (name, self.config_fpaths[run]))
+      self.handler.respond(
+          'Not metadata file found for tensor %s in the config file %s' %
+          (name, self.config_fpaths[run]), 'text/plain', 400)
       return
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      self.handler.send_error(400, '%s is not a file' % fpath)
+      self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
       return
 
     with file_io.FileIO(fpath, 'r') as f:
@@ -163,32 +196,68 @@ class ProjectorPlugin(TBPlugin):
         lines.append(line)
         if len(lines) >= LIMIT_NUM_POINTS:
           break
-    self.handler.send_gzip_response(''.join(lines), 'text/plain')
+    self.handler.respond(''.join(lines), 'text/plain')
 
   def _serve_tensor(self, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.send_error(400, 'query parameter "run" is required')
+      self.handler.respond('query parameter "run" is required',
+                           'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.send_error(400, 'query parameter "name" is required')
+      self.handler.respond('query parameter "name" is required',
+                           'text/plain', 400)
       return
 
     if run not in self.configs:
-      self.handler.send_error(400, 'Unknown run: %s' % run)
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     reader = self._get_reader_for_run(run)
     config = self.configs[run]
     if not reader.has_tensor(name):
-      self.handler.send_error(400, 'Tensor %s not found in checkpoint dir %s' %
-                              (name, config.model_checkpoint_path))
+      self.handler.respond('Tensor %s not found in checkpoint dir %s' %
+                           (name, config.model_checkpoint_path),
+                           'text/plain', 400)
       return
     tensor = reader.get_tensor(name)
     # Sample the tensor
     tensor = tensor[:LIMIT_NUM_POINTS]
     # Stream it as TSV.
     tsv = '\n'.join(['\t'.join([str(val) for val in row]) for row in tensor])
-    self.handler.send_gzip_response(tsv, 'text/plain')
+    self.handler.respond(tsv, 'text/tab-separated-values')
+
+  def _serve_bookmarks(self, query_params):
+    run = query_params.get('run')
+    if not run:
+      self.handler.respond('query parameter "run" is required', 'text/plain',
+                           400)
+      return
+
+    name = query_params.get('name')
+    if name is None:
+      self.handler.respond('query parameter "name" is required', 'text/plain',
+                           400)
+      return
+
+    if run not in self.configs:
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      return
+
+    config = self.configs[run]
+    fpath = self._get_bookmarks_file_for_tensor(name, config)
+    if not fpath:
+      self.handler.respond(
+          'No bookmarks file found for tensor %s in the config file %s' %
+          (name, self.config_fpaths[run]), 'text/plain', 400)
+      return
+    if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
+      self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
+      return
+
+    bookmarks_json = None
+    with file_io.FileIO(fpath, 'r') as f:
+      bookmarks_json = f.read()
+    self.handler.respond(bookmarks_json, 'application/json')

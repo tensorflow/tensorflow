@@ -64,7 +64,7 @@ class StridedSliceOp : public OpKernel {
     ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     OP_REQUIRES_OK(
         context, ValidateStridedSliceOp(
-                     context->input(1), context->input(2), context->input(3),
+                     &context->input(1), &context->input(2), context->input(3),
                      ShapeReadWriteFromTensorShape(&context->input(0).shape()),
                      begin_mask, end_mask, ellipsis_mask, new_axis_mask,
                      shrink_axis_mask, &wrapped_processing_shape,
@@ -194,7 +194,7 @@ class StridedSliceGradOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         ValidateStridedSliceOp(
-            context->input(1), context->input(2), context->input(3),
+            &context->input(1), &context->input(2), context->input(3),
             ShapeReadWriteFromTensorShape(&input_shape), begin_mask, end_mask,
             ellipsis_mask, new_axis_mask, shrink_axis_mask,
             &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
@@ -273,7 +273,7 @@ class StridedSliceAssignOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         ValidateStridedSliceOp(
-            context->input(1), context->input(2), context->input(3),
+            &context->input(1), &context->input(2), context->input(3),
             ShapeReadWriteFromTensorShape(&old_lhs.shape()), begin_mask,
             end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
             &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
@@ -394,6 +394,17 @@ REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .HostMemory("strides")
                             .HostMemory("output"),
                         StridedSliceOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("shape")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("dy")
+                            .HostMemory("output"),
+                        StridedSliceGradOp<CPUDevice, int32>);
 
 #undef REGISTER_GPU
 

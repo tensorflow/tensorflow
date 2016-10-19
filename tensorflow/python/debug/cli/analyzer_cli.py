@@ -29,6 +29,8 @@ import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 
@@ -43,7 +45,7 @@ HANG_SUFFIX = "|- "
 DEPTH_TEMPLATE = "(%d) "
 OP_TYPE_TEMPLATE = "[%s] "
 
-# String consntats for control inputs/outputs, etc.
+# String constants for control inputs/outputs, etc.
 CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
 
@@ -60,19 +62,27 @@ class DebugAnalyzer(object):
 
     self._debug_dump = debug_dump
 
+    # Initialize tensor filters state.
+    self._tensor_filters = {}
+
     # Argument parsers for command handlers.
     self._arg_parsers = {}
+
+    # Default threshold number of elements above which ellipses will be used
+    # when printing the value of the tensor.
+    self.default_ndarray_display_threshold = 2000
 
     # Parser for list_tensors.
     ap = argparse.ArgumentParser(
         description="List dumped intermediate tensors.",
         usage=argparse.SUPPRESS)
     ap.add_argument(
-        "-o",
-        "--offending",
-        dest="offending",
-        action="store_true",
-        help="List only offending tensors.")  # TODO(cais): Implement.
+        "-f",
+        "--tensor_filter",
+        dest="tensor_filter",
+        type=str,
+        default="",
+        help="List only Tensors passing the filter of the specified name")
     ap.add_argument(
         "-n",
         "--node_name_filter",
@@ -180,14 +190,90 @@ class DebugAnalyzer(object):
     ap.add_argument(
         "tensor_name",
         type=str,
-        help="Name of the tensor, e.g., hidden1/Wx_plus_b/MatMul:0")
+        help="Name of the tensor, followed by any slicing indices, "
+        "e.g., hidden1/Wx_plus_b/MatMul:0, "
+        "hidden1/Wx_plus_b/MatMul:0[1, :]")
+    ap.add_argument(
+        "-n",
+        "--number",
+        dest="number",
+        type=int,
+        default=-1,
+        help="0-based dump number for the specified tensor. "
+        "Required for tensor with multiple dumps.")
+
+    ap.add_argument(
+        "-a",
+        "--all",
+        dest="print_all",
+        action="store_true",
+        help="Print the tensor in its entirety, i.e., do not use ellipses.")
     self._arg_parsers["print_tensor"] = ap
 
     # TODO(cais): Implement list_nodes.
 
   def _error(self, msg):
+    full_msg = "ERROR: " + msg
     return debugger_cli_common.RichTextLines(
-        ["ERROR: " + msg], font_attr_segs={0: [(0, len(msg), "red")]})
+        [full_msg], font_attr_segs={0: [(0, len(full_msg), "red")]})
+
+  def add_tensor_filter(self, filter_name, filter_callable):
+    """Add a tensor filter.
+
+    A tensor filter is a named callable of the siganture:
+      filter_callable(dump_datum, tensor),
+
+    wherein dump_datum is an instance of debug_data.DebugTensorDatum carrying
+    metadata about the dumped tensor, including tensor name, timestamps, etc.
+    tensor is the value of the dumped tensor as an numpy.ndarray object.
+    The return value of the function is a bool.
+    This is the same signature as the input argument to
+    debug_data.DebugDumpDir.find().
+
+    Args:
+      filter_name: (str) name of the filter. Cannot be empty.
+      filter_callable: (callable) a filter function of the signature described
+        as above.
+
+    Raises:
+      ValueError: If filter_name is an empty str.
+      TypeError: If filter_name is not a str.
+                 Or if filter_callable is not callable.
+    """
+
+    if not isinstance(filter_name, str):
+      raise TypeError("Input argument filter_name is expected to be str, "
+                      "but is not.")
+
+    # Check that filter_name is not an empty str.
+    if not filter_name:
+      raise ValueError("Input argument filter_name cannot be empty.")
+
+    # Check that filter_callable is callable.
+    if not callable(filter_callable):
+      raise TypeError(
+          "Input argument filter_callable is expected to be callable, "
+          "but is not.")
+
+    self._tensor_filters[filter_name] = filter_callable
+
+  def get_tensor_filter(self, filter_name):
+    """Retrieve filter function by name.
+
+    Args:
+      filter_name: Name of the filter set during add_tensor_filter() call.
+
+    Returns:
+      The callable associated with the filter name.
+
+    Raises:
+      ValueError: If there is no tensor filter of the specified filter name.
+    """
+
+    if filter_name not in self._tensor_filters:
+      raise ValueError("There is no tensor filter named \"%s\"" % filter_name)
+
+    return self._tensor_filters[filter_name]
 
   def get_help(self, handler_name):
     return self._arg_parsers[handler_name].format_help()
@@ -229,10 +315,21 @@ class DebugAnalyzer(object):
     else:
       node_name_regex = None
 
+    if parsed.tensor_filter:
+      try:
+        filter_callable = self.get_tensor_filter(parsed.tensor_filter)
+      except ValueError:
+        return self._error(
+            "There is no tensor filter named \"%s\"." % parsed.tensor_filter)
+
+      data_to_show = self._debug_dump.find(filter_callable)
+    else:
+      data_to_show = self._debug_dump.dumped_tensor_data
+
     # TODO(cais): Implement filter by lambda on tensor value.
 
     dump_count = 0
-    for dump in self._debug_dump.dumped_tensor_data:
+    for dump in data_to_show:
       if node_name_regex and not node_name_regex.match(dump.node_name):
         continue
 
@@ -249,7 +346,12 @@ class DebugAnalyzer(object):
     output.insert(0, "")
 
     output = filter_strs + output
-    output.insert(0, "%d dumped tensor(s):" % dump_count)
+
+    if parsed.tensor_filter:
+      output.insert(0, "%d dumped tensor(s) passing filter \"%s\":" %
+                    (dump_count, parsed.tensor_filter))
+    else:
+      output.insert(0, "%d dumped tensor(s):" % dump_count)
 
     return debugger_cli_common.RichTextLines(output)
 
@@ -276,7 +378,8 @@ class DebugAnalyzer(object):
 
     # Get a node name, regardless of whether the input is a node name (without
     # output slot attached) or a tensor name (with output slot attached).
-    node_name, unused_slot = self._parse_node_or_tensor_name(parsed.node_name)
+    node_name, unused_slot = debug_data.parse_node_or_tensor_name(
+        parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
       return self._error(
@@ -366,15 +469,22 @@ class DebugAnalyzer(object):
       Output text lines as a RichTextLines object.
     """
 
+    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+
     if screen_info and "cols" in screen_info:
       np_printoptions = {"linewidth": screen_info["cols"]}
     else:
       np_printoptions = {}
 
-    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+    # Determine if there parsed.tensor_name contains any indexing (slicing).
+    if parsed.tensor_name.count("[") == 1 and parsed.tensor_name.endswith("]"):
+      tensor_name = parsed.tensor_name[:parsed.tensor_name.index("[")]
+      tensor_slicing = parsed.tensor_name[parsed.tensor_name.index("["):]
+    else:
+      tensor_name = parsed.tensor_name
+      tensor_slicing = ""
 
-    node_name, output_slot = self._parse_node_or_tensor_name(
-        parsed.tensor_name)
+    node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
     if output_slot is None:
       return self._error("\"%s\" is not a valid tensor name" %
                          parsed.tensor_name)
@@ -395,19 +505,102 @@ class DebugAnalyzer(object):
           matching_data.append(datum)
 
     if not matching_data:
+      # No dump for this tensor.
       return self._error(
           "Tensor \"%s\" did not generate any dumps." % parsed.tensor_name)
+    elif len(matching_data) == 1:
+      # There is only one dump for this tensor.
+      if parsed.number <= 0:
+        return self._format_tensor(
+            matching_data[0].get_tensor(),
+            matching_data[0].watch_key,
+            np_printoptions,
+            print_all=parsed.print_all,
+            tensor_slicing=tensor_slicing)
+      else:
+        return self._error(
+            "Invalid number (%d) for tensor %s, which generated one dump." %
+            (parsed.number, parsed.tensor_name))
+    else:
+      # There are more than one dumps for this tensor.
+      if parsed.number < 0:
+        lines = [
+            "Tensor \"%s\" generated %d dumps:" % (parsed.tensor_name,
+                                                   len(matching_data))
+        ]
 
-    # TODO(cais): In the case of multiple dumps from the same tensor, require
-    #   explicit specification of the DebugOp and the temporal order.
-    if len(matching_data) > 1:
-      return self._error(
-          "print_tensor logic for multiple dumped records has not been "
-          "implemented.")
+        for i, datum in enumerate(matching_data):
+          rel_time = (datum.timestamp - self._debug_dump.t0) / 1000.0
+          lines.append("#%d [%.3f ms] %s" % (i, rel_time, datum.watch_key))
+
+        lines.append("")
+        lines.append(
+            "Use the -n (--number) flag to specify which dump to print.")
+        lines.append("For example:")
+        lines.append("  print_tensor %s -n 0" % parsed.tensor_name)
+
+        return debugger_cli_common.RichTextLines(lines)
+      elif parsed.number >= len(matching_data):
+        return self._error(
+            "Specified number (%d) exceeds the number of available dumps "
+            "(%d) for tensor %s" %
+            (parsed.number, len(matching_data), parsed.tensor_name))
+      else:
+        return self._format_tensor(
+            matching_data[parsed.number].get_tensor(),
+            matching_data[parsed.number].watch_key + " (dump #%d)" %
+            parsed.number,
+            np_printoptions,
+            print_all=parsed.print_all,
+            tensor_slicing=tensor_slicing)
+
+  def _format_tensor(self,
+                     tensor,
+                     watch_key,
+                     np_printoptions,
+                     print_all=False,
+                     tensor_slicing=None):
+    """Generate formatted str to represent a tensor or its slices.
+
+    Args:
+      tensor: (numpy ndarray) The tensor value.
+      watch_key: (str) Tensor debug watch key.
+      np_printoptions: (dict) Numpy tensor formatting options.
+      print_all: (bool) Whether the tensor is to be displayed in its entirety,
+        instead of printing ellipses, even if its number of elements exceeds
+        the default numpy display threshold.
+        (Note: Even if this is set to true, the screen output can still be cut
+         off by the UI frontend if it consist of more lines than the frontend
+         can handle.)
+      tensor_slicing: (str or None) Slicing of the tensor, e.g., "[:, 1]". If
+        None, no slicing will be performed on the tensor.
+
+    Returns:
+      (str) Formatted str representing the (potentially sliced) tensor.
+
+    Raises:
+      ValueError: If tehsor_slicing is not a valid numpy ndarray slicing str.
+    """
+
+    if tensor_slicing:
+      # Validate the indexing.
+      if not command_parser.validate_slicing_string(tensor_slicing):
+        raise ValueError("Invalid tensor-slicing string.")
+
+      value = eval("tensor" + tensor_slicing)  # pylint: disable=eval-used
+      sliced_name = watch_key + tensor_slicing
+    else:
+      value = tensor
+      sliced_name = watch_key
+
+    if print_all:
+      np_printoptions["threshold"] = value.size
+    else:
+      np_printoptions["threshold"] = self.default_ndarray_display_threshold
 
     return tensor_format.format_tensor(
-        matching_data[0].get_tensor(),
-        matching_data[0].watch_key,
+        value,
+        sliced_name,
         include_metadata=True,
         np_printoptions=np_printoptions)
 
@@ -482,7 +675,7 @@ class DebugAnalyzer(object):
     lines = []
 
     # Check if this is a tensor name, instead of a node name.
-    node_name, _ = self._parse_node_or_tensor_name(node_name)
+    node_name, _ = debug_data.parse_node_or_tensor_name(node_name)
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
@@ -514,6 +707,8 @@ class DebugAnalyzer(object):
       lines.append("  (Ctrl): Control input.")
     if op_type:
       lines.append("  [Op]: Input node has op type Op.")
+
+    # TODO(cais): Consider appending ":0" at the end of 1st outputs of nodes.
 
     return debugger_cli_common.RichTextLines(lines)
 
@@ -599,9 +794,12 @@ class DebugAnalyzer(object):
       lines.append(hang + ctrl_str + op_type_str + inp)
 
       # Recursive call.
+      # The input's/output's name can be a tensor name, in the case of node
+      # with >1 output slots.
+      inp_node_name, _ = debug_data.parse_node_or_tensor_name(inp)
       self._dfs_from_node(
           lines,
-          inp,
+          inp_node_name,
           tracker,
           max_depth,
           depth + 1,
@@ -691,26 +889,3 @@ class DebugAnalyzer(object):
     lines.insert(1, "%d dumped tensor(s):" % dump_count)
 
     return lines
-
-  def _parse_node_or_tensor_name(self, name):
-    """Get the node name from a string that can be node or tensor name.
-
-    Args:
-      name: An input node name (e.g., "node_a") or tensor name (e.g.,
-        "node_a:0"), as a str.
-
-    Returns:
-      1) The node name, as a str. If the input name is a tensor name, i.e.,
-        consists of a colon, the final colon and the following output slot
-        will be stripped.
-      2) If the input name is a tensor name, the output slot, as an int. If
-        the input name is not a tensor name, None.
-    """
-
-    if ":" in name and not name.endswith(":"):
-      node_name = name[:name.rfind(":")]
-      output_slot = int(name[name.rfind(":") + 1:])
-
-      return node_name, output_slot
-    else:
-      return name, None

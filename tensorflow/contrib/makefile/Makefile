@@ -73,6 +73,7 @@ HOST_INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+  -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -136,7 +137,7 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
-OPTFLAGS := -O0
+OPTFLAGS := -O2
 CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
@@ -146,6 +147,7 @@ INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -229,6 +231,8 @@ ifeq ($(TARGET),ANDROID)
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
 -march=armv7-a \
+-mfloat-abi=softfp \
+-mfpu=neon \
 -fPIE
 
 	INCLUDES = \
@@ -238,6 +242,7 @@ ifeq ($(TARGET),ANDROID)
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
@@ -454,6 +459,7 @@ $(wildcard tensorflow/core/platform/google/*/*) \
 $(wildcard tensorflow/core/platform/jpeg.*) \
 $(wildcard tensorflow/core/platform/png.*) \
 $(wildcard tensorflow/core/platform/stream_executor.*) \
+$(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/user_ops/*.cu.cc) \
 $(wildcard tensorflow/core/common_runtime/gpu/*) \
 $(wildcard tensorflow/core/common_runtime/gpu_device_factory.*)

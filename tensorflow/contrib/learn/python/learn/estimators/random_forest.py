@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _assert_float32(tensors):
@@ -90,7 +91,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
                master='', accuracy_metric=None,
-               tf_random_seed=None, config=None):
+               tf_random_seed=None, config=None,
+               feature_engineering_fn=None):
     self.params = params.fill()
     self.accuracy_metric = (accuracy_metric or
                             ('r2' if self.params.regression else 'accuracy'))
@@ -100,6 +102,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     self.graph_builder_class = graph_builder_class
     self.training_args = {}
     self.construction_args = {}
+    self._feature_engineering_fn = (
+        feature_engineering_fn or
+        (lambda features, targets: (features, targets)))
 
     super(TensorForestEstimator, self).__init__(model_dir=model_dir,
                                                 config=config)
@@ -109,7 +114,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
       as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Returns prediction probabilities for given features (classification).
 
     Args:
@@ -143,7 +148,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
       as_iterable=False)
   def predict(
       self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Returns predictions for given features.
 
     Args:
@@ -174,9 +179,12 @@ class TensorForestEstimator(estimator.BaseEstimator):
       else:
         return np.argmax(probabilities, axis=1)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_with_keys(
       self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Same as predict but also returns the example keys."""
     results = super(TensorForestEstimator, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
@@ -205,10 +213,16 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    features, _, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _, weights, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    features, labels = self._feature_engineering_fn(features, labels)
     _assert_float32(features)
     _assert_float32(labels)
+
+    if weights is not None:
+      if 'input_weights' in self.training_args:
+        logging.warning('Replacing input_weights in training_args.')
+      self.training_args['input_weights'] = weights
 
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner,
@@ -232,7 +246,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
-    features, keys, spec = data_ops.ParseDataTensorOrDict(features)
+    features, keys, _, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _ = self._feature_engineering_fn(features, None)
     _assert_float32(features)
     output_dict = {
         'probabilities': graph_builder.inference_graph(features,
@@ -242,8 +257,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return output_dict
 
   def _get_eval_ops(self, features, targets, metrics):
-    features, _, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _, _, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    features, labels = self._feature_engineering_fn(features, labels)
     _assert_float32(features)
     _assert_float32(labels)
 

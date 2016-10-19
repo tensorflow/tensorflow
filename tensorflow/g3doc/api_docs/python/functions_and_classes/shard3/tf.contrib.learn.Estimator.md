@@ -9,8 +9,15 @@ Constructs an Estimator instance.
 
 
 *  <b>`model_fn`</b>: Model function, takes features and targets tensors or dicts of
-            tensors and returns predictions and loss tensors.
-            Supports next three signatures for the function:
+            tensors and returns tuple of:
+
+      * predictions: `Tensor`, `SparseTensor` or dictionary of same.
+          Can also be any type that is convertible to a `Tensor` or
+          `SparseTensor`, or dictionary of same.
+      * loss: Scalar loss `Tensor`.
+      * train_op: Training update `Tensor` or `Operation`.
+
+     Supports next three signatures for the function:
 
       * `(features, targets) -> (predictions, loss, train_op)`
       * `(features, targets, mode) -> (predictions, loss, train_op)`
@@ -98,7 +105,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds to a
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).

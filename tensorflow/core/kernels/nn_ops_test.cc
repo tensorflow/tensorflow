@@ -192,6 +192,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
   string device = use_gpu ? "gpu" : "cpu";
+  testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -557,6 +558,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
   string device = use_gpu ? "gpu" : "cpu";
+  testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -1072,10 +1074,11 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
                    {1, stride, stride, 1} /* stride */,
                    padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
-  Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(g));
   string device = use_gpu ? "gpu" : "cpu";
-  test::Benchmark(device, &g).Run(iters);
+  testing::UseRealTime();
+  test::Benchmark(device, g).Run(iters);
 
   testing::ItemsProcessed(batch_size * rows * cols * depth * iters);
   testing::SetLabel(label);

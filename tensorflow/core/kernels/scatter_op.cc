@@ -15,12 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/state_ops.cc.
 
-#include "tensorflow/core/kernels/scatter_op.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -29,48 +27,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-namespace {
-
-template <scatter_op::UpdateOp Op>
-struct Assign {};
-template <>
-struct Assign<scatter_op::UpdateOp::ASSIGN> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p = u;
-  }
-};
-template <>
-struct Assign<scatter_op::UpdateOp::ADD> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p += u;
-  }
-};
-template <>
-struct Assign<scatter_op::UpdateOp::SUB> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p -= u;
-  }
-};
-template <>
-struct Assign<scatter_op::UpdateOp::MUL> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p *= u;
-  }
-};
-template <>
-struct Assign<scatter_op::UpdateOp::DIV> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p /= u;
-  }
-};
-
-}  // namespace
 
 // Check whether updates.shape = indices.shape + params.shape[1:]
 static bool ValidShapes(const Tensor& params, const Tensor& updates,
@@ -172,32 +128,6 @@ class ScatterUpdateOp : public OpKernel {
   }
 };
 
-namespace functor {
-// Implementation of update functor for CPU.
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctor<CPUDevice, T, Index, op> {
-  Index operator()(OpKernelContext* c, const CPUDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
-      const Index index = internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      Assign<op>::Run(params.template chip<0>(index),
-                      updates.template chip<0>(i));
-    }
-    return -1;
-  }
-};
-}  // namespace functor
-
 #define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op) \
   REGISTER_KERNEL_BUILDER(Name(name)                                   \
                               .Device(DEVICE_##dev)                    \
@@ -249,38 +179,5 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_GPU);
 #undef REGISTER_SCATTER_UPDATE_GPU
 #undef REGISTER_SCATTER_KERNEL
 #undef REGISTER_SCATTER_KERNEL_INDEX
-
-#if GOOGLE_CUDA
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-
-#define DECLARE_GPU_SPECS_OP(T, Index, op)                   \
-  template <>                                                \
-  Index ScatterFunctor<GPUDevice, T, Index, op>::operator()( \
-      OpKernelContext* c, const GPUDevice& d,                \
-      typename TTypes<T>::Matrix params,                     \
-      typename TTypes<T>::ConstMatrix updates,               \
-      typename TTypes<Index>::ConstFlat indices);            \
-  extern template struct ScatterFunctor<GPUDevice, T, Index, op>;
-
-#define DECLARE_GPU_SPECS_INDEX(T, Index)                       \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);    \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MUL);    \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);
-
-#define DECLARE_GPU_SPECS(T)         \
-  DECLARE_GPU_SPECS_INDEX(T, int32); \
-  DECLARE_GPU_SPECS_INDEX(T, int64);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
-
-#undef DECLARE_GPU_SPECS
-#undef DECLARE_GPU_SPECS_INDEX
-#undef DECLARE_GPU_SPECS_OP
-
-}  // namespace functor
-#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

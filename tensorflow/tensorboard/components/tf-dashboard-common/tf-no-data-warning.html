@@ -24,7 +24,7 @@ Display a warning when there is no data found.
   <template>
     <template is="dom-if" if="[[showWarning]]">
       <div class="warning">
-        <template is="dom-if" if="[[graphMode]]">
+        <template is="dom-if" if="[[_isGraph(dataType)]]">
           <h3>
             No graph definition files were found.
           </h3>
@@ -40,7 +40,41 @@ Display a warning when there is no data found.
             .
           </p>
         </template>
-        <template is="dom-if" if="[[!graphMode]]">
+        <template is="dom-if" if="[[_isProjector(dataType)]]">
+          <h3>
+            No projector data was found.
+          </h3>
+          <p>
+            Probable causes:
+            <ul>
+              <li>
+                There is no <code>projector_config.pbtxt</code> in the <code>logdir</code>.
+                To store a config file, create a
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto">
+                  <code>projector.ProjectorConfig</code>
+                </a>
+                proto and a
+                <a href="https://www.tensorflow.org/versions/master/api_docs/python/train.html#SummaryWriter">
+                  <code>tf.train.SummaryWriter</code>
+                </a> and pass them to
+                <code>projector.visualize_embeddings()</code>.
+                The <code>projector</code> module lives in
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/__init__.py">
+                  <code>tensorflow.contrib.tensorboard.plugins</code>.
+                </a>
+              </li>
+              <li>
+                There is no checkpoint file. To save your model, create a
+                <a href="https://www.tensorflow.org/versions/master/api_docs/python/state_ops.html#Saver">
+                  <code>tf.train.Saver</code>
+                </a>
+                and save your model periodically
+                by calling <code>saver.save(session, LOG_DIR/model.ckpt, step)</code>.
+              </li>
+            </ul>
+          </p>
+        </template>
+        <template is="dom-if" if="[[_isOther(dataType)]]">
           <h3>
             No <span>[[dataType]]</span> data was found.
           </h3>
@@ -92,12 +126,17 @@ Display a warning when there is no data found.
       is: "tf-no-data-warning",
       properties: {
         dataType: String,
-        showWarning: Boolean,
-        graphMode: {type: Boolean, computed: "_isGraph(dataType)"},
+        showWarning: Boolean
       },
       _isGraph: function(dataType) {
         return dataType === "graph";
       },
+      _isProjector: function(dataType) {
+        return dataType === "projector";
+      },
+      _isOther: function(dataType) {
+        return !this._isGraph(dataType) && !this._isProjector(dataType);
+      }
     });
   </script>
 </dom-module>

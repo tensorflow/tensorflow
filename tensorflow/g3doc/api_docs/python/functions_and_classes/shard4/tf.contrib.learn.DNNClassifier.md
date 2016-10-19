@@ -53,7 +53,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None, feature_engineering_fn=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -66,9 +66,9 @@ Initializes a DNNClassifier instance.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
-    be used to load checkpoints from the directory into a estimator to continue
-    training a previously saved model.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
+    also be used to load checkpoints from the directory into a estimator to
+    continue training a previously saved model.
 *  <b>`n_classes`</b>: number of target classes. Default is binary classification.
     It must be greater than 1.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
@@ -87,6 +87,10 @@ Initializes a DNNClassifier instance.
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -104,9 +108,9 @@ Initializes a DNNClassifier instance.
 
 DEPRECATED FUNCTION
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
 Instructions for updating:
-This method inspects the private state of the object, and should not be used
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -229,8 +233,8 @@ altogether. The behavior of this flag is described below.
 
 DEPRECATED FUNCTION
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
 Instructions for updating:
-This method inspects the private state of the object, and should not be used
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 

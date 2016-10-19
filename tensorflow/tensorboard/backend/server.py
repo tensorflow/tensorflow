@@ -68,8 +68,8 @@ def ParseEventFilesSpec(logdir):
   if logdir is None:
     return files
   for specification in logdir.split(','):
-    # If it's a gcs path, don't split on colon
-    if gcs.IsGCSPath(specification):
+    # If it's a gcs or hdfs path, don't split on colon
+    if gcs.IsGCSPath(specification) or specification.startswith('hdfs://'):
       run_name = None
       path = specification
     # If the spec looks like /foo:bar/baz, then we assume it's a path with a
@@ -145,7 +145,7 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn,
   daemon_threads = True
 
 
-def BuildServer(multiplexer, host, port):
+def BuildServer(multiplexer, host, port, logdir):
   """Sets up an HTTP server for running TensorBoard.
 
   Args:
@@ -153,9 +153,10 @@ def BuildServer(multiplexer, host, port):
       information about events.
     host: The host name.
     port: The port number to bind to, or 0 to pick one automatically.
+    logdir: The logdir argument string that tensorboard started up with.
 
   Returns:
     A `BaseHTTPServer.HTTPServer`.
   """
-  factory = functools.partial(handler.TensorboardHandler, multiplexer)
+  factory = functools.partial(handler.TensorboardHandler, multiplexer, logdir)
   return ThreadedHTTPServer((host, port), factory)

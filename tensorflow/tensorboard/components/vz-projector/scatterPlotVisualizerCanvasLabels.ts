@@ -18,15 +18,8 @@ import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
-import {Point2D} from './vector';
 
-const LABEL_COLOR = 0x000000;
-const LABEL_STROKE = 0xffffff;
-
-// The maximum number of labels to draw to keep the frame rate up.
-const SAMPLE_SIZE = 10000;
-
-const FONT_SIZE = 10;
+const MAX_LABELS_ON_SCREEN = 10000;
 
 /**
  * Creates and maintains a 2d canvas on top of the GL canvas. All labels, when
@@ -37,9 +30,6 @@ export class ScatterPlotVisualizerCanvasLabels implements
   private dataSet: DataSet;
   private gc: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
-  private labelCanvasIsCleared = true;
-  private labelColor: number = LABEL_COLOR;
-  private labelStroke: number = LABEL_STROKE;
   private labelsActive: boolean = true;
   private sceneIs3D: boolean = true;
 
@@ -51,140 +41,97 @@ export class ScatterPlotVisualizerCanvasLabels implements
   }
 
   private removeAllLabels() {
-    // If labels are already removed, do not spend compute power to clear the
-    // canvas.
-    let pixelWidth = this.canvas.width * window.devicePixelRatio;
-    let pixelHeight = this.canvas.height * window.devicePixelRatio;
-    if (!this.labelCanvasIsCleared) {
-      this.gc.clearRect(0, 0, pixelWidth, pixelHeight);
-      this.labelCanvasIsCleared = true;
-    }
+    const pixelWidth = this.canvas.width * window.devicePixelRatio;
+    const pixelHeight = this.canvas.height * window.devicePixelRatio;
+    this.gc.clearRect(0, 0, pixelWidth, pixelHeight);
   }
 
-  /**
-   * Reset the positions of all labels, and check for overlapps using the
-   * collision grid.
-   */
-  private makeLabels(
-      labeledPoints: number[], labelAccessor: (index: number) => string,
-      highlightedPoints: number[], camera: THREE.Camera,
-      cameraTarget: THREE.Vector3, screenWidth: number, screenHeight: number,
-      nearestPointZ: number, farthestPointZ: number) {
-    this.removeAllLabels();
-
-    if (!labeledPoints.length) {
+  /** Render all of the non-overlapping visible labels to the canvas. */
+  private makeLabels(rc: RenderContext) {
+    if ((rc.labels == null) || (rc.labels.pointIndices.length === 0)) {
       return;
     }
-
-    this.labelCanvasIsCleared = false;
-
-    // We never render more than ~500 labels, so when we get much past that
-    // point, just break.
-    let numRenderedLabels: number = 0;
-    let labelHeight = parseInt(this.gc.font, 10);
-    let dpr = window.devicePixelRatio;
-    let pixelWidth = this.canvas.width * dpr;
-    let pixelHeight = this.canvas.height * dpr;
-
-    // Bounding box for collision grid.
-    let boundingBox:
-        BoundingBox = {loX: 0, hiX: pixelWidth, loY: 0, hiY: pixelHeight};
-
-    // Make collision grid with cells proportional to window dimensions.
-    let grid =
-        new CollisionGrid(boundingBox, pixelWidth / 25, pixelHeight / 50);
-
-    let opacityRange = farthestPointZ - nearestPointZ;
-    let camToTarget =
-        new THREE.Vector3().copy(camera.position).sub(cameraTarget);
-
-    // Setting styles for the labeled font.
-    this.gc.lineWidth = 6;
-    this.gc.textBaseline = 'middle';
-    this.gc.font = (FONT_SIZE * dpr).toString() + 'px roboto';
-
-    // Have extra space between neighboring labels. Don't pack too tightly.
-    let labelMargin = 2;
-    // Shift the label to the right of the point circle.
-    let xShift = 3;
 
     let strokeStylePrefix: string;
     let fillStylePrefix: string;
     {
-      let ls = new THREE.Color(this.labelStroke).multiplyScalar(255);
-      let lc = new THREE.Color(this.labelColor).multiplyScalar(255);
+      const ls = new THREE.Color(rc.labels.strokeColor).multiplyScalar(255);
+      const lc = new THREE.Color(rc.labels.fillColor).multiplyScalar(255);
       strokeStylePrefix = 'rgba(' + ls.r + ',' + ls.g + ',' + ls.b + ',';
       fillStylePrefix = 'rgba(' + lc.r + ',' + lc.g + ',' + lc.b + ',';
     }
 
-    for (let i = 0;
-         (i < labeledPoints.length) && !(numRenderedLabels > SAMPLE_SIZE);
-         i++) {
-      let index = labeledPoints[i];
-      let point = getProjectedPointFromIndex(this.dataSet, index);
+    const labelHeight = parseInt(this.gc.font, 10);
+    const dpr = window.devicePixelRatio;
+
+    let grid: CollisionGrid;
+    {
+      const pixw = this.canvas.width * dpr;
+      const pixh = this.canvas.height * dpr;
+      const bb: BoundingBox = {loX: 0, hiX: pixw, loY: 0, hiY: pixh};
+      grid = new CollisionGrid(bb, pixw / 25, pixh / 50);
+    }
+
+    let opacityMap = d3.scale.pow().exponent(Math.E)
+      .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
+      .range([0.1, 1]);
+
+    const camPos = rc.camera.position;
+    const camToTarget = camPos.clone().sub(rc.cameraTarget);
+
+    this.gc.lineWidth = 6;
+    this.gc.textBaseline = 'middle';
+
+    // Have extra space between neighboring labels. Don't pack too tightly.
+    const labelMargin = 2;
+    // Shift the label to the right of the point circle.
+    const xShift = 4;
+
+    const n = Math.min(MAX_LABELS_ON_SCREEN, rc.labels.pointIndices.length);
+    for (let i = 0; i < n; ++i) {
+      const index = rc.labels.pointIndices[i];
+      const point = getProjectedPointFromIndex(this.dataSet, index);
+
       // discard points that are behind the camera
-      let camToPoint = new THREE.Vector3().copy(camera.position).sub(point);
+      const camToPoint = camPos.clone().sub(point);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
-      let screenCoords =
-          vector3DToScreenCoords(camera, screenWidth, screenHeight, point);
-      let textBoundingBox = {
-        loX: screenCoords[0] + xShift - labelMargin,
-        // Computing the width of the font is expensive,
-        // so we assume width of 1 at first. Then, if the label doesn't
-        // conflict with other labels, we measure the actual width.
-        hiX: screenCoords[0] + xShift + 1 + labelMargin,
-        loY: screenCoords[1] - labelHeight / 2 - labelMargin,
-        hiY: screenCoords[1] + labelHeight / 2 + labelMargin
+
+      let [x, y] = vector3DToScreenCoords(
+          rc.camera, rc.screenWidth, rc.screenHeight, point);
+      x += xShift;
+
+      // Computing the width of the font is expensive,
+      // so we assume width of 1 at first. Then, if the label doesn't
+      // conflict with other labels, we measure the actual width.
+      const textBoundingBox = {
+        loX: x - labelMargin,
+        hiX: x + 1 + labelMargin,
+        loY: y - labelHeight / 2 - labelMargin,
+        hiY: y + labelHeight / 2 + labelMargin
       };
 
       if (grid.insert(textBoundingBox, true)) {
-        let text = labelAccessor(index);
-        let labelWidth = this.gc.measureText(text).width;
+        const text = rc.labelAccessor(index);
+        const fontSize =
+            rc.labels.defaultFontSize * rc.labels.scaleFactors[i] * dpr;
+        this.gc.font = fontSize + 'px roboto';
 
         // Now, check with properly computed width.
-        textBoundingBox.hiX += labelWidth - 1;
+        textBoundingBox.hiX += this.gc.measureText(text).width - 1;
         if (grid.insert(textBoundingBox)) {
-          let p = new THREE.Vector3(point[0], point[1], point[2]);
-          let lenToCamera = camera.position.distanceTo(p);
-          // Opacity is scaled between 0.2 and 1, based on how far a label is
-          // from the camera (Unless we are in 2d mode, in which case opacity is
-          // just 1!)
-          let opacity = this.sceneIs3D ?
-              1.2 - (lenToCamera - nearestPointZ) / opacityRange :
-              1;
-          this.formatLabel(
-              text, screenCoords, strokeStylePrefix, fillStylePrefix, opacity);
-          numRenderedLabels++;
+          let opacity = 1;
+          if (this.sceneIs3D && (rc.labels.useSceneOpacityFlags[i] === 1)) {
+            opacity = opacityMap(camToPoint.length());
+          }
+          this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
+          this.gc.fillStyle = fillStylePrefix + opacity + ')';
+          this.gc.strokeText(text, x, y);
+          this.gc.fillText(text, x, y);
         }
       }
     }
-
-    if (highlightedPoints.length > 0) {
-      // Force-draw the first favored point with increased font size.
-      let index = highlightedPoints[0];
-      let point = this.dataSet.points[index];
-      this.gc.font = (FONT_SIZE * dpr * 1.7).toString() + 'px roboto';
-      let coords = new THREE.Vector3(
-          point.projectedPoint[0], point.projectedPoint[1],
-          point.projectedPoint[2]);
-      let screenCoords =
-          vector3DToScreenCoords(camera, screenWidth, screenHeight, coords);
-      let text = labelAccessor(index);
-      this.formatLabel(
-          text, screenCoords, strokeStylePrefix, fillStylePrefix, 1);
-    }
-  }
-
-  /** Add a specific label to the canvas. */
-  private formatLabel(
-      text: string, point: Point2D, strokeStylePrefix: string,
-      fillStylePrefix: string, opacity: number) {
-    this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
-    this.gc.fillStyle = fillStylePrefix + opacity + ')';
-    this.gc.strokeText(text, point[0] + 4, point[1]);
-    this.gc.fillText(text, point[0] + 4, point[1]);
   }
 
   onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
@@ -214,14 +161,14 @@ export class ScatterPlotVisualizerCanvasLabels implements
   }
 
   onRender(rc: RenderContext) {
-    if (this.labelsActive) {
-      this.makeLabels(
-          rc.labeledPoints, rc.labelAccessor, rc.highlightedPoints, rc.camera,
-          rc.cameraTarget, rc.screenWidth, rc.screenHeight,
-          rc.nearestCameraSpacePointZ, rc.farthestCameraSpacePointZ);
+    if (!this.labelsActive) {
+      return;
     }
+
+    this.removeAllLabels();
+    this.makeLabels(rc);
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onPickingRender(renderContext: RenderContext) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

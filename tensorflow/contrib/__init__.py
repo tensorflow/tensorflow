@@ -37,9 +37,11 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import opt
 from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
+from tensorflow.contrib import seq2seq
 from tensorflow.contrib import slim
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
+from tensorflow.contrib import tfprof
 from tensorflow.contrib import training
 from tensorflow.contrib import util

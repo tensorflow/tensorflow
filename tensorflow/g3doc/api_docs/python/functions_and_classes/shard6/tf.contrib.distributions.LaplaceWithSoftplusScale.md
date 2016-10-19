@@ -49,7 +49,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.cdf(value, name='cdf')` {#LaplaceWithSoftplusScale.cdf}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.cdf(value, name='cdf', **condition_kwargs)` {#LaplaceWithSoftplusScale.cdf}
 
 Cumulative distribution function.
 
@@ -64,6 +64,7 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -83,7 +84,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.entropy(name='entropy')` {#LaplaceWithSoftplusScale.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
@@ -154,7 +155,7 @@ Distribution parameter for the location.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_cdf(value, name='log_cdf')` {#LaplaceWithSoftplusScale.log_cdf}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_cdf(value, name='log_cdf', **condition_kwargs)` {#LaplaceWithSoftplusScale.log_cdf}
 
 Log cumulative distribution function.
 
@@ -173,6 +174,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -183,7 +185,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_pdf(value, name='log_pdf')` {#LaplaceWithSoftplusScale.log_pdf}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_pdf(value, name='log_pdf', **condition_kwargs)` {#LaplaceWithSoftplusScale.log_pdf}
 
 Log probability density function.
 
@@ -192,6 +194,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -207,7 +210,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_pmf(value, name='log_pmf')` {#LaplaceWithSoftplusScale.log_pmf}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_pmf(value, name='log_pmf', **condition_kwargs)` {#LaplaceWithSoftplusScale.log_pmf}
 
 Log probability mass function.
 
@@ -216,6 +219,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -231,7 +235,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_prob(value, name='log_prob')` {#LaplaceWithSoftplusScale.log_prob}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_prob(value, name='log_prob', **condition_kwargs)` {#LaplaceWithSoftplusScale.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -240,6 +244,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -250,7 +255,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_survival_function(value, name='log_survival_function')` {#LaplaceWithSoftplusScale.log_survival_function}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#LaplaceWithSoftplusScale.log_survival_function}
 
 Log survival function.
 
@@ -270,6 +275,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -349,7 +355,7 @@ Dictionary of parameters used by this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.pdf(value, name='pdf')` {#LaplaceWithSoftplusScale.pdf}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.pdf(value, name='pdf', **condition_kwargs)` {#LaplaceWithSoftplusScale.pdf}
 
 Probability density function.
 
@@ -358,6 +364,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -373,7 +380,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.pmf(value, name='pmf')` {#LaplaceWithSoftplusScale.pmf}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.pmf(value, name='pmf', **condition_kwargs)` {#LaplaceWithSoftplusScale.pmf}
 
 Probability mass function.
 
@@ -382,6 +389,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -397,7 +405,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.prob(value, name='prob')` {#LaplaceWithSoftplusScale.prob}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.prob(value, name='prob', **condition_kwargs)` {#LaplaceWithSoftplusScale.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -406,6 +414,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -416,7 +425,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample(sample_shape=(), seed=None, name='sample')` {#LaplaceWithSoftplusScale.sample}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#LaplaceWithSoftplusScale.sample}
 
 Generate samples of the specified shape.
 
@@ -429,6 +438,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -438,7 +448,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample_n(n, seed=None, name='sample_n')` {#LaplaceWithSoftplusScale.sample_n}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#LaplaceWithSoftplusScale.sample_n}
 
 Generate `n` samples.
 
@@ -449,6 +459,7 @@ Generate `n` samples.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -477,7 +488,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.survival_function(value, name='survival_function')` {#LaplaceWithSoftplusScale.survival_function}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.survival_function(value, name='survival_function', **condition_kwargs)` {#LaplaceWithSoftplusScale.survival_function}
 
 Survival function.
 
@@ -494,6 +505,7 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

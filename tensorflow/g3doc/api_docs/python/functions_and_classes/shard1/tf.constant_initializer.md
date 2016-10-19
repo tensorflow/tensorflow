@@ -72,5 +72,5 @@ tensor shape, the initializer will raise a `ValueError`.
 
 
 *  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
-  ```
+```
 

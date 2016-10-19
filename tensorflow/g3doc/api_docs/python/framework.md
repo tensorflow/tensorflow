@@ -1410,6 +1410,9 @@ if tf.constant(5) < tf.constant(7):  # Will raise.
   # ...
 ```
 
+This disallows ambiguities between testing the Python value vs testing the
+dynamic condition of the `Tensor`.
+
 ##### Raises:
 
   `TypeError`.
@@ -2145,6 +2148,7 @@ The following `DType` objects are defined:
 * `tf.qint16`: Quantized 16-bit signed integer.
 * `tf.quint16`: Quantized 16-bit unsigned integer.
 * `tf.qint32`: Quantized 32-bit signed integer.
+* `tf.resource`: Handle to a mutable resource.
 
 In addition, variants of these types with the `_ref` suffix are
 defined for reference-typed tensors.
@@ -2217,7 +2221,7 @@ Returns a reference `DType` based on this `DType`.
 
 #### `tf.DType.is_floating` {#DType.is_floating}
 
-Returns whether this is a (real) floating point type.
+Returns whether this is a (non-quantized, real) floating point type.
 
 
 - - -
@@ -2324,6 +2328,13 @@ Returns True iff self != other.
 - - -
 
 #### `tf.DType.__str__()` {#DType.__str__}
+
+
+
+
+- - -
+
+#### `tf.DType.is_numpy_compatible` {#DType.is_numpy_compatible}
 
 
 

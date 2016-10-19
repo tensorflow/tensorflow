@@ -42,12 +42,14 @@ Instructions for updating:
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions_idx`. Values should be in range [0, num_classes], where
-      num_classes is the last dimension of `predictions`.
+      `predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range are ignored.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes], where num_classes is the last dimension of
-      `predictions`.
+      `predictions`. If `class_id` is outside this range, the method returns
+      NAN.
     ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
       the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first

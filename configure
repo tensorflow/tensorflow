@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 
+set -e
+set -o pipefail
+
 # Find out the absolute path to where ./configure resides
 pushd `dirname $0` #> /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
+PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
+function is_windows() {
+  # On windows, the shell script is actually running in msys
+  if [[ "${PLATFORM}" =~ msys_nt* ]]; then
+    true
+  else
+    false
+  fi
+}
+
 function bazel_clean_and_fetch() {
-  bazel clean --expunge
+  # bazel clean --expunge currently doesn't work on Windows
+  # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
+  if ! is_windows; then
+    bazel clean --expunge
+  fi
   bazel fetch //tensorflow/...
 }
 
@@ -14,7 +31,7 @@ function bazel_clean_and_fetch() {
 while true; do
   fromuser=""
   if [ -z "$PYTHON_BIN_PATH" ]; then
-    default_python_bin_path=$(which python)
+    default_python_bin_path=$(which python || which python3  || true)
     read -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
     fromuser="1"
     if [ -z "$PYTHON_BIN_PATH" ]; then
@@ -32,6 +49,12 @@ while true; do
   # Retry
 done
 
+if is_windows; then
+  TF_NEED_GCP=0
+  TF_NEED_HDFS=0
+  TF_NEED_CUDA=0
+fi
+
 while [ "$TF_NEED_GCP" == "" ]; do
   read -p "Do you wish to build TensorFlow with "\
 "Google Cloud Platform support? [y/N] " INPUT
@@ -47,7 +70,6 @@ while [ "$TF_NEED_GCP" == "" ]; do
 done
 
 if [ "$TF_NEED_GCP" == "1" ]; then
-
   ## Verify that libcurl header files are available.
   # Only check Linux, since on MacOS the header files are installed with XCode.
   if [[ $(uname -a) =~ Linux ]] && [[ ! -f "/usr/include/curl/curl.h" ]]; then
@@ -87,7 +109,7 @@ fi
 
 ## Find swig path
 if [ -z "$SWIG_PATH" ]; then
-  SWIG_PATH=`type -p swig 2> /dev/null`
+  SWIG_PATH=`type -p swig 2> /dev/null || true`
 fi
 if [[ ! -e "$SWIG_PATH" ]]; then
   echo "Can't find swig.  Ensure swig is in \$PATH or set \$SWIG_PATH."
@@ -96,13 +118,13 @@ fi
 echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
 
 # Invoke python_config and set up symlinks to python includes
-(./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
+./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
 
 # Run the gen_git_source to create links where bazel can track dependencies for
 # git hash propagation
 GEN_GIT_SOURCE=tensorflow/tools/git/gen_git_source.py
 chmod a+x ${GEN_GIT_SOURCE}
-${PYTHON_BIN_PATH} ${GEN_GIT_SOURCE} --configure ${SOURCE_BASE_DIR}
+"${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure "${SOURCE_BASE_DIR}"
 
 ## Set up Cuda-related environment settings
 
@@ -127,7 +149,7 @@ fi
 while true; do
   fromuser=""
   if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
-    default_gcc_host_compiler_path=$(which gcc)
+    default_gcc_host_compiler_path=$(which gcc || true)
     read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
     fromuser="1"
     if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
@@ -214,18 +236,36 @@ while true; do
 
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
     TF_CUDNN_EXT=""
+    cudnn_lib_path=""
+    cudnn_alt_lib_path=""
+    if [ "$OSNAME" == "Linux" ]; then
+      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib64/libcudnn.so"
+      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.so"
+    elif [ "$OSNAME" == "Darwin" ]; then
+      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/libcudnn.dylib"
+      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.dylib"
+    fi
     # Resolve to the SONAME of the symlink.  Use readlink without -f
     # to resolve exactly once to the SONAME.  E.g, libcudnn.so ->
-    # libcudnn.so.4
-    REALVAL=`readlink ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so`
+    # libcudnn.so.4.
+    # If the path is not a symlink, readlink will exit with an error code, so
+    # in that case, we return the path itself.
+    if [ -f "$cudnn_lib_path" ]; then
+      REALVAL=`readlink ${cudnn_lib_path} || echo "${cudnn_lib_path}"`
+    else
+      REALVAL=`readlink ${cudnn_alt_lib_path} || echo "${cudnn_alt_lib_path}"`
+    fi
 
     # Extract the version of the SONAME, if it was indeed symlinked to
     # the SONAME version of the file.
-    if [[ "$REALVAL" =~ .so[.]+([0-9]*) ]];
-    then
+    if [[ "$REALVAL" =~ .so[.]+([0-9]*) ]]; then
       TF_CUDNN_EXT="."${BASH_REMATCH[1]}
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.so resolves to libcudnn${TF_CUDNN_EXT}"
+    elif [[ "$REALVAL" =~ ([0-9]*).dylib ]]; then
+      TF_CUDNN_EXT=${BASH_REMATCH[1]}".dylib"
+      TF_CUDNN_VERSION=${BASH_REMATCH[1]}
+      echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
   else
     TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
@@ -235,8 +275,8 @@ while true; do
     CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}"
   fi
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then

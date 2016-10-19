@@ -188,7 +188,7 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
     }
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onPickingRender(renderContext: RenderContext) {}
   onRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}

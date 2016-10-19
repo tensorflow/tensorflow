@@ -29,12 +29,36 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tensorflow as tf
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.util import compat
+
+
+def _write_assets(assets_directory, assets_filename):
+  """Writes asset files to be used with SavedModel for half plus two.
+
+  Args:
+    assets_directory: The directory to which the assets should be written.
+    assets_filename: Name of the file to which the asset contents should be
+        written.
+
+  Returns:
+    The path to which the assets file was written.
+  """
+  if not file_io.file_exists(assets_directory):
+    file_io.recursive_create_dir(assets_directory)
+
+  path = os.path.join(
+      compat.as_bytes(assets_directory), compat.as_bytes(assets_filename))
+  file_io.write_string_to_file(path, "asset-file-contents")
+  return path
 
 
 def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
@@ -52,36 +76,61 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     a = tf.Variable(0.5, name="a")
     b = tf.Variable(2.0, name="b")
 
-    # Set up placeholders.
-    x = tf.placeholder(tf.float32, name="x")
+    # Create a placeholder for serialized tensorflow.Example messages to be fed.
+    serialized_tf_example = tf.placeholder(tf.string, name="tf_example")
+
+    # Parse the tensorflow.Example looking for a feature named "x" with a single
+    # floating point value.
+    feature_configs = {"x": tf.FixedLenFeature([1], dtype=tf.float32),}
+    tf_example = tf.parse_example(serialized_tf_example, feature_configs)
+    # Use tf.identity() to assign name
+    x = tf.identity(tf_example["x"], name="x")
     y = tf.add(tf.mul(a, x), b, name="y")
+
+    # Create an assets file that can be saved and restored as part of the
+    # SavedModel.
+    original_assets_directory = "/tmp/original/export/assets"
+    original_assets_filename = "foo.txt"
+    original_assets_filepath = _write_assets(original_assets_directory,
+                                             original_assets_filename)
+
+    # Set up the assets collection.
+    assets_filepath = tf.constant(original_assets_filepath)
+    tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, assets_filepath)
 
     # Set up the signature for regression with input and output tensor
     # specification.
     input_tensor = meta_graph_pb2.TensorInfo()
-    input_tensor.name = x.name
-    signature_inputs = {"input": input_tensor}
+    input_tensor.name = serialized_tf_example.name
+    signature_inputs = {signature_constants.REGRESS_INPUTS: input_tensor}
 
     output_tensor = meta_graph_pb2.TensorInfo()
-    output_tensor.name = y.name
-    signature_outputs = {"output": output_tensor}
-    signature_def = utils.build_signature_def(signature_inputs,
-                                              signature_outputs, "regression")
+    output_tensor.name = tf.identity(y).name
+    signature_outputs = {signature_constants.REGRESS_OUTPUTS: output_tensor}
+    signature_def = utils.build_signature_def(
+        signature_inputs, signature_outputs,
+        signature_constants.REGRESS_METHOD_NAME)
 
     # Initialize all variables and then save the SavedModel.
     sess.run(tf.initialize_all_variables())
     builder.add_meta_graph_and_variables(
         sess, [constants.TAG_SERVING],
-        signature_def_map={"regression": signature_def})
+        signature_def_map={
+            signature_constants.REGRESS_METHOD_NAME:
+                signature_def
+        },
+        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS))
     builder.save(as_text)
 
 
 def main(_):
   export_dir_pb = "/tmp/saved_model/half_plus_two"
   _generate_saved_model_for_half_plus_two(export_dir_pb)
+  print("SavedModel generated at: %s" % export_dir_pb)
 
   export_dir_pbtxt = "/tmp/saved_model/half_plus_two_pbtxt"
   _generate_saved_model_for_half_plus_two(export_dir_pbtxt, as_text=True)
+  print("SavedModel generated at: %s" % export_dir_pbtxt)
 
 
 if __name__ == "__main__":

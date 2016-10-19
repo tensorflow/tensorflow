@@ -78,7 +78,7 @@ class FileIO(object):
                                            "File isn't open for writing")
       with errors.raise_exception_on_not_ok_status() as status:
         self._writable_file = pywrap_tensorflow.CreateWritableFile(
-            compat.as_bytes(self.__name), status)
+            compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
 
   def size(self):
     """Returns the size of the file."""
@@ -97,7 +97,10 @@ class FileIO(object):
     Starts reading from current position in file.
 
     Args:
-      n: Read 'n' bytes if n != -1.  If n = -1, reads to end of file.
+      n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
+
+    Returns:
+      'n' bytes of the file (or whole file) requested as a string.
     """
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
@@ -111,7 +114,8 @@ class FileIO(object):
     """Seeks to the position in the file."""
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      return pywrap_tensorflow.SeekInStream(self._read_buf, position, status)
+      ret_status = self._read_buf.Seek(position)
+      pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
@@ -165,12 +169,16 @@ class FileIO(object):
     """
     if self._writable_file:
       with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.FlushWritableFile(self._writable_file, status)
+        ret_status = self._writable_file.Flush()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def close(self):
     """Closes FileIO. Should be called for the WritableFile to be flushed."""
     self._read_buf = None
-    self.flush()
+    if self._writable_file:
+      with errors.raise_exception_on_not_ok_status() as status:
+        ret_status = self._writable_file.Close()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
 
@@ -336,12 +344,12 @@ def is_directory(dirname):
 
   Returns:
     True, if the path is a directory; False otherwise
-
-  Raises:
-    errors.OpError: If the path doesn't exist or other errors
   """
-  status = pywrap_tensorflow.TF_NewStatus()
-  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
+    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 def list_directory(dirname):

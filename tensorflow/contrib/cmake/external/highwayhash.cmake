@@ -17,41 +17,23 @@ add_custom_target(highwayhash_copy_headers_to_destination
 if(WIN32)
   set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
   set(highwayhash_STATIC_LIBRARIES ${highwayhash_INSTALL}/lib/highwayhash.lib)
-
-  ExternalProject_Add(highwayhash
-      PREFIX highwayhash
-      GIT_REPOSITORY ${highwayhash_URL}
-      GIT_TAG ${highwayhash_TAG}
-      DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-      BUILD_IN_SOURCE 1
-      PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/patches/highwayhash/CMakeLists.txt ${highwayhash_BUILD}
-      INSTALL_DIR ${highwayhash_INSTALL}
-      CMAKE_CACHE_ARGS
-          -DCMAKE_BUILD_TYPE:STRING=Release
-          -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-          -DCMAKE_INSTALL_PREFIX:STRING=${highwayhash_INSTALL})
-
-  add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${highwayhash_INSTALL}/include/ ${highwayhash_INCLUDE_DIR}/highwayhash)
-
 else()
-
   set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
   set(highwayhash_STATIC_LIBRARIES ${highwayhash_INSTALL}/lib/libhighwayhash.a)
-
-  ExternalProject_Add(highwayhash
-      PREFIX highwayhash
-      GIT_REPOSITORY ${highwayhash_URL}
-      GIT_TAG ${highwayhash_TAG}
-      DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-      BUILD_IN_SOURCE 1
-      BUILD_COMMAND $(MAKE)
-      CONFIGURE_COMMAND ""
-      INSTALL_COMMAND "")
-
-  foreach(header_file ${highwayhash_HEADERS})
-    add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${highwayhash_INCLUDE_DIR}/highwayhash)
-  endforeach()
-
 endif()
+
+ExternalProject_Add(highwayhash
+    PREFIX highwayhash
+    GIT_REPOSITORY ${highwayhash_URL}
+    GIT_TAG ${highwayhash_TAG}
+    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
+    BUILD_IN_SOURCE 1
+    PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/patches/highwayhash/CMakeLists.txt ${highwayhash_BUILD}
+    INSTALL_DIR ${highwayhash_INSTALL}
+    CMAKE_CACHE_ARGS
+        -DCMAKE_BUILD_TYPE:STRING=Release
+        -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+        -DCMAKE_INSTALL_PREFIX:STRING=${highwayhash_INSTALL})
+
+add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${highwayhash_INSTALL}/include/ ${highwayhash_INCLUDE_DIR}/highwayhash)

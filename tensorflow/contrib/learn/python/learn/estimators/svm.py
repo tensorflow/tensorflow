@@ -23,13 +23,15 @@ import tempfile
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import linear
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 
 
@@ -55,7 +57,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   method), should be set to (#concurrent train ops per worker) x (#workers). If
   num_loss_partitions is larger or equal to this value, convergence is
   guaranteed but becomes slower as num_loss_partitions increases. If it is set
-  to a smaller value, the optimizer is more agressive in reducing the global
+  to a smaller value, the optimizer is more aggressive in reducing the global
   loss but convergence is not guaranteed. The recommended value in tf.learn
   (where there is one process per worker) is the number of workers running the
   train steps. It defaults to 1 (single machine).
@@ -103,7 +105,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                l2_regularization=0.0,
                num_loss_partitions=1,
                kernels=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Constructs a `SVM~ estimator object.
 
     Args:
@@ -126,7 +129,11 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         optimized by the underlying optimizer (SDCAOptimizer).
       kernels: A list of kernels for the SVM. Currently, no kernels are
         supported. Reserved for future use for non-linear SVMs.
-     config: RunConfig object to configure the runtime settings.
+      config: RunConfig object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Raises:
       ValueError: if kernels passed is not None.
@@ -141,6 +148,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
 
     self._feature_columns = feature_columns
     self._model_dir = model_dir or tempfile.mkdtemp()
+    self._chief_hook = linear._SdcaUpdateWeightsHook()  # pylint: disable=protected-access
     self._estimator = estimator.Estimator(
         model_fn=linear.sdca_classifier_model_fn,
         model_dir=self._model_dir,
@@ -150,11 +158,19 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
             "optimizer": self._optimizer,
             "weight_column_name": weight_column_name,
             "loss_type": "hinge_loss",
-        })
+            "update_weights_hook": self._chief_hook,
+        },
+        feature_engineering_fn=feature_engineering_fn)
+    if not self._estimator.config.is_chief:
+      self._chief_hook = None
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
+    if monitors is None:
+      monitors = []
+    if self._chief_hook:
+      monitors.append(self._chief_hook)
     return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
                                batch_size=batch_size, monitors=monitors,
                                max_steps=max_steps)
@@ -196,7 +212,10 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
@@ -206,8 +225,11 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
       return _as_iterable(preds, output=linear._CLASSES)
     return preds[linear._CLASSES]
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
-                    as_iterable=False):
+                    as_iterable=True):
     """Runs inference to determine the class probability predictions."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
@@ -219,7 +241,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   # pylint: enable=protected-access
 
   def get_variable_names(self):
-    return [name for name, _ in checkpoints.list_variables(self._model_dir)]
+    return [name for name, _ in list_variables(self._model_dir)]
 
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
@@ -238,16 +260,15 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
-    for name, _ in checkpoints.list_variables(self._model_dir):
+    for name, _ in list_variables(self._model_dir):
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = checkpoints.load_variable(self._model_dir, name)
+        values[name] = load_variable(self._model_dir, name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
 
   @property
   def bias_(self):
-    return checkpoints.load_variable(self._model_dir,
-                                     name="linear/bias_weight")
+    return load_variable(self._model_dir, name="linear/bias_weight")

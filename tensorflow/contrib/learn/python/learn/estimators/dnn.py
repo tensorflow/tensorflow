@@ -35,7 +35,6 @@ from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import ops
@@ -59,11 +58,6 @@ _PROBABILITIES = "probabilities"
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
 _LEARNING_RATE = 0.05
-
-
-def _as_iterable(preds, output):
-  for pred in preds:
-    yield pred[output]
 
 
 def _get_feature_dict(features):
@@ -114,6 +108,18 @@ def _get_weight_tensor(features, weight_column_name):
     return array_ops.reshape(
         math_ops.to_float(features[weight_column_name]),
         shape=(-1,))
+
+
+def _reshape_targets(targets):
+  """"Reshapes targets into [batch_size, 1] to be compatible with logits."""
+  check_shape_op = control_flow_ops.Assert(
+      math_ops.less_equal(array_ops.rank(targets), 2),
+      ["targets shape should be either [batch_size, 1] or [batch_size]"])
+  with ops.control_dependencies([check_shape_op]):
+    targets = array_ops.reshape(targets,
+                                shape=[array_ops.shape(targets)[0], 1])
+
+  return targets
 
 
 def _rescale_eval_loss(loss, weights):
@@ -254,21 +260,31 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
 
   if mode == estimator.ModeKeys.TRAIN:
-    loss = loss_fn(logits, targets,
-                   weight=_get_weight_tensor(features, weight_column_name))
+    targets = _reshape_targets(targets)
+    weight = _get_weight_tensor(features, weight_column_name)
+    training_loss = loss_fn(logits, targets, weight=weight)
+    loss = _rescale_eval_loss(training_loss, weight)
 
     train_ops = [optimizers.optimize_loss(
-        loss=loss, global_step=contrib_variables.get_global_step(),
-        learning_rate=_LEARNING_RATE, optimizer=_get_optimizer(optimizer),
-        clip_gradients=gradient_clip_norm, name=parent_scope)]
+        loss=training_loss,
+        global_step=contrib_variables.get_global_step(),
+        learning_rate=_LEARNING_RATE,
+        optimizer=_get_optimizer(optimizer),
+        clip_gradients=gradient_clip_norm,
+        name=parent_scope,
+        # Empty summaries to prevent optimizers from logging the training_loss.
+        summaries=[])]
     if enable_centered_bias:
       train_ops.append(_centered_bias_step(targets, loss_fn, num_label_columns))
+
+    logging_ops.scalar_summary("loss", loss)
 
     return None, loss, control_flow_ops.group(*train_ops)
 
   elif mode == estimator.ModeKeys.EVAL:
     predictions = _predictions(logits=logits, n_classes=n_classes)
 
+    targets = _reshape_targets(targets)
     weight = _get_weight_tensor(features, weight_column_name)
     training_loss = loss_fn(logits, targets, weight=weight)
     loss = _rescale_eval_loss(training_loss, weight)
@@ -348,7 +364,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Initializes a DNNClassifier instance.
 
     Args:
@@ -358,9 +375,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
       n_classes: number of target classes. Default is binary classification.
         It must be greater than 1.
       weight_column_name: A string defining feature column name representing
@@ -379,6 +396,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `DNNClassifier` estimator.
@@ -415,7 +436,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
             "gradient_clip_norm": gradient_clip_norm,
             "enable_centered_bias": enable_centered_bias,
             "num_ps_replicas": num_ps_replicas,
-        })
+        },
+        feature_engineering_fn=feature_engineering_fn)
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
@@ -463,7 +485,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
 
     Args:
@@ -483,14 +505,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     batch_size=batch_size, outputs=[_CLASSES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_CLASSES)
+      return (pred[_CLASSES][0] for pred in preds)
     return preds[_CLASSES].reshape(-1)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns prediction probabilities for given features.
 
     Args:
@@ -511,7 +533,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     outputs=[_PROBABILITIES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_PROBABILITIES)
+      return (pred[_PROBABILITIES] for pred in preds)
     return preds[_PROBABILITIES]
 
   def get_variable_names(self):
@@ -561,27 +583,28 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     return self._model_dir
 
   @property
-  @deprecated("2016-10-13", "This method inspects the private state of the "
-              "object, and should not be used")
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
-    hiddenlayer_weights = [checkpoints.load_variable(
+    hiddenlayer_weights = [load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/weights" % i))
                            for i, _ in enumerate(self._hidden_units)]
-    logits_weights = [checkpoints.load_variable(
-        self._model_dir, name="dnn/logits/weights")]
+    logits_weights = [load_variable(self._model_dir, name="dnn/logits/weights")]
     return hiddenlayer_weights + logits_weights
 
   @property
-  @deprecated("2016-10-13", "This method inspects the private state of the "
-              "object, and should not be used")
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
-    hiddenlayer_bias = [checkpoints.load_variable(
+    hiddenlayer_bias = [load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/biases" % i))
                         for i, _ in enumerate(self._hidden_units)]
-    logits_bias = [checkpoints.load_variable(
-        self._model_dir, name="dnn/logits/biases")]
-    centered_bias = [checkpoints.load_variable(
-        self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
+    logits_bias = [load_variable(self._model_dir, name="dnn/logits/biases")]
+    centered_bias = [load_variable(self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
     return hiddenlayer_bias + logits_bias + centered_bias
 
   @property
@@ -655,7 +678,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Initializes a `DNNRegressor` instance.
 
     Args:
@@ -665,9 +689,9 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -684,6 +708,10 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `DNNRegressor` estimator.
@@ -701,7 +729,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         dnn_dropout=dropout,
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
-        config=config)
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)
     self.feature_columns = feature_columns
     self.optimizer = optimizer
     self.activation_fn = activation_fn
@@ -710,9 +739,17 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     self._feature_columns_inferred = False
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     return self.dnn_weights_
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return self.dnn_bias_

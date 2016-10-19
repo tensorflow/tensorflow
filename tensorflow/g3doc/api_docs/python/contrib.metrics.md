@@ -355,7 +355,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 ### `tf.contrib.metrics.streaming_recall_at_k(*args, **kwargs)` {#streaming_recall_at_k}
 
-Computes the recall@k of the predictions with respect to dense labels. (deprecated arguments)
+Computes the recall@k of the predictions with respect to dense labels. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-11-08.
+Instructions for updating:
+Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] to [batch_size, 1].
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
 Instructions for updating:
@@ -937,11 +941,10 @@ See `sparse_average_precision_at_k` for details on formula. `weights` are
 applied to the result of `sparse_average_precision_at_k`
 
 `streaming_sparse_average_precision_at_k` creates two local variables,
-`average_precision_at_<k>/count` and `average_precision_at_<k>/total`, that
+`average_precision_at_<k>/total` and `average_precision_at_<k>/max`, that
 are used to compute the frequency. This frequency is ultimately returned as
-`precision_at_<k>`: an idempotent operation that simply divides
-`true_positive_at_<k>` by total (`true_positive_at_<k>` +
-`false_positive_at_<k>`).
+`average_precision_at_<k>`: an idempotent operation that simply divides
+`average_precision_at_<k>/total` by `average_precision_at_<k>/max`.
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the
@@ -964,8 +967,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
-    `predictions_idx`. Values should be in range [0, num_classes], where
-    num_classes is the last dimension of `predictions`.
+    `predictions_`. Values should be in range [0, num_classes), where
+    num_classes is the last dimension of `predictions`. Values outside this
+    range are ignored.
 *  <b>`k`</b>: Integer, k for @k metric. This will calculate an average precision for
     range `[1,k]`, as documented above.
 *  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
@@ -1031,12 +1035,14 @@ Instructions for updating:
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
       has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions_idx`. Values should be in range [0, num_classes], where
-      num_classes is the last dimension of `predictions`.
+      `predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range are ignored.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes], where num_classes is the last dimension of
-      `predictions`.
+      `predictions`. If `class_id` is outside this range, the method returns
+      NAN.
     ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
       the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
@@ -1063,6 +1069,82 @@ Instructions for updating:
 
 - - -
 
+### `tf.contrib.metrics.streaming_sparse_precision_at_top_k(*args, **kwargs)` {#streaming_sparse_precision_at_top_k}
+
+Computes precision@k of top-k predictions with respect to sparse labels. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
+Instructions for updating:
+`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+
+  If `class_id` is specified, we calculate precision by considering only the
+      entries in the batch for which `class_id` is in the top-k highest
+      `predictions`, and computing the fraction of them for which `class_id` is
+      indeed a correct label.
+  If `class_id` is not specified, we'll calculate precision as how often on
+      average a class among the top-k classes with the highest predicted values
+      of a batch entry is correct and can be found in the label for that entry.
+
+  `streaming_sparse_precision_at_top_k` creates two local variables,
+  `true_positive_at_k` and `false_positive_at_k`, that are used to compute
+  the precision@k frequency. This frequency is ultimately returned as
+  `precision_at_k`: an idempotent operation that simply divides
+  `true_positive_at_k` by total (`true_positive_at_k` + `false_positive_at_k`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `precision_at_k`. Internally, set operations applied to `top_k_predictions`
+  and `labels` calculate the true positives and false positives weighted by
+  `weights`. Then `update_op` increments `true_positive_at_k` and
+  `false_positive_at_k` using these values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+  Alternatively, if `ignore_mask` is not `None`, then mask values where
+  `ignore_mask` is `True`.
+
+  Args:
+    top_k_predictions: Integer `Tensor` with shape [D1, ... DN, k] where
+      N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
+      The final dimension contains the indices of top-k labels. [D1, ... DN]
+      must match `labels`.
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `top_k_predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range are ignored.
+    class_id: Integer class ID for which we want binary metrics. This should be
+      in range [0, num_classes), where num_classes is the last dimension of
+      `predictions`. If `class_id` is outside this range, the method returns
+      NAN.
+    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
+      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
+    weights: An optional `Tensor` whose shape is broadcastable to the the first
+      [D1, ... DN] dimensions of `predictions` and `labels`.
+    metrics_collections: An optional list of collections that values should
+      be added to.
+    updates_collections: An optional list of collections that updates should
+      be added to.
+    name: Name of new update operation, and namespace for other dependent ops.
+
+  Returns:
+    precision: Scalar `float64` `Tensor` with the value of `true_positives`
+      divided by the sum of `true_positives` and `false_positives`.
+    update_op: `Operation` that increments `true_positives` and
+      `false_positives` variables appropriately, and whose value matches
+      `precision`.
+
+  Raises:
+    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
+      `predictions`, or if `weights` is not `None` and its shape doesn't match
+      `predictions`, or if either `metrics_collections` or `updates_collections`
+      are not a list or tuple.
+    ValueError: If `top_k_predictions` has rank < 2.
+
+
+- - -
+
 ### `tf.contrib.metrics.streaming_sparse_recall_at_k(*args, **kwargs)` {#streaming_sparse_recall_at_k}
 
 Computes recall@k of the predictions with respect to sparse labels. (deprecated arguments)
@@ -1082,7 +1164,8 @@ Instructions for updating:
   `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
   the recall_at_k frequency. This frequency is ultimately returned as
   `recall_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` + `recall_at_<k>`).
+  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
+  `false_negative_at_<k>`).
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
@@ -1104,13 +1187,14 @@ Instructions for updating:
     labels: `int64` `Tensor` or `SparseTensor` with shape
       [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
       target classes for the associated prediction. Commonly, N=1 and `labels`
-      has shape [batch_size, num_labels]. [D1, ... DN] must match `labels`.
-      Values should be in range [0, num_classes], where num_classes is the last
-      dimension of `predictions`.
+      has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
+      Values should be in range [0, num_classes), where num_classes is the last
+      dimension of `predictions`. Values outside this range always count
+      towards `false_negative_at_<k>`.
     k: Integer, k for @k metric.
     class_id: Integer class ID for which we want binary metrics. This should be
-      in range [0, num_classes], where num_classes is the last dimension of
-      `predictions`.
+      in range [0, num_classes), where num_classes is the last dimension of
+      `predictions`. If class_id is outside this range, the method returns NAN.
     ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
       the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first

@@ -16,6 +16,7 @@ module TF.Backend {
   export type RunTagUrlFn = (tag: string, run: string) => string;
 
   export interface Router {
+    logdir: () => string;
     runs: () => string;
     scalars: RunTagUrlFn;
     histograms: RunTagUrlFn;
@@ -86,6 +87,7 @@ module TF.Backend {
       return url;
     }
     return {
+      logdir: () => dataDir + '/logdir',
       runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
       individualImage: individualImageUrl,
       individualAudio: individualAudioUrl,

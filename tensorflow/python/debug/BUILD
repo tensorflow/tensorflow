@@ -16,10 +16,20 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
+    name = "debug_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":debug_utils",
+        ":local_cli_wrapper",
+    ],
+)
+
+py_library(
     name = "debug_data",
     srcs = ["debug_data.py"],
     srcs_version = "PY2AND3",
-    deps = [],
 )
 
 py_library(
@@ -33,7 +43,7 @@ py_library(
 
 py_library(
     name = "framework",
-    srcs = ["framework.py"],
+    srcs = ["wrappers/framework.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
@@ -44,6 +54,12 @@ py_library(
 py_library(
     name = "debugger_cli_common",
     srcs = ["cli/debugger_cli_common.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "command_parser",
+    srcs = ["cli/command_parser.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -59,8 +75,51 @@ py_library(
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":command_parser",
+        ":debug_data",
         ":debugger_cli_common",
         ":tensor_format",
+    ],
+)
+
+py_library(
+    name = "curses_ui",
+    srcs = ["cli/curses_ui.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":command_parser",
+        ":debugger_cli_common",
+    ],
+)
+
+py_library(
+    name = "local_cli_wrapper",
+    srcs = ["wrappers/local_cli_wrapper.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":analyzer_cli",
+        ":curses_ui",
+        ":debug_data",
+        ":debugger_cli_common",
+        ":framework",
+        "//tensorflow/python:session",
+    ],
+)
+
+py_binary(
+    name = "debug_fibonacci",
+    srcs = ["examples/debug_fibonacci.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
+    name = "debug_mnist",
+    srcs = ["examples/debug_mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:input_data",
     ],
 )
 
@@ -98,9 +157,7 @@ py_test(
 py_test(
     name = "framework_test",
     size = "small",
-    srcs = [
-        "framework_test.py",
-    ],
+    srcs = ["wrappers/framework_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
@@ -110,6 +167,21 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "curses_ui_test",
+    size = "small",
+    srcs = [
+        "cli/curses_ui_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":curses_ui",
+        ":debugger_cli_common",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -143,6 +215,19 @@ py_test(
 )
 
 py_test(
+    name = "command_parser_test",
+    size = "small",
+    srcs = [
+        "cli/command_parser_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":command_parser",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "tensor_format_test",
     size = "small",
     srcs = [
@@ -170,6 +255,20 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
+    ],
+)
+
+py_test(
+    name = "local_cli_wrapper_test",
+    size = "small",
+    srcs = [
+        "wrappers/local_cli_wrapper_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":local_cli_wrapper",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

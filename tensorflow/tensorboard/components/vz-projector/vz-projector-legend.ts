@@ -62,7 +62,7 @@ export class Legend extends LegendPolymer {
   }
 
   _getLastThreshold(): number {
-    if (this.renderInfo.thresholds == null) {
+    if (this.renderInfo == null || this.renderInfo.thresholds == null) {
       return;
     }
     return this.renderInfo.thresholds[this.renderInfo.thresholds.length - 1]

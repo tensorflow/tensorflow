@@ -29,6 +29,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -458,20 +459,19 @@ class StreamingDataFeeder(DataFeeder):
       y_first_el = None
       self._y = None
     self.n_classes = n_classes
+    x_first_el = ops.convert_to_tensor(x_first_el)
+    y_first_el = ops.convert_to_tensor(y_first_el) if y is not None else None
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-        [1] + list(x_first_el.shape),
-        [1] + list(y_first_el.shape) if y is not None else None,
+        [1] + list(x_first_el.get_shape()),
+        [1] + list(y_first_el.get_shape()) if y is not None else None,
         n_classes,
         batch_size)
-    self._input_dtype = _check_dtype(x_first_el.dtype)
+    self._input_dtype = _check_dtype(x_first_el.dtype).as_numpy_dtype
     # Output types are floats, due to both softmaxes and regression req.
     if n_classes is not None and n_classes > 0:
       self._output_dtype = np.float32
     elif y is not None:
-      if isinstance(y_first_el, list) or isinstance(y_first_el, np.ndarray):
-        self._output_dtype = _check_dtype(np.dtype(type(y_first_el[0])))
-      else:
-        self._output_dtype = _check_dtype(np.dtype(type(y_first_el)))
+      self._output_dtype = _check_dtype(y_first_el.dtype).as_numpy_dtype
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
@@ -498,7 +498,11 @@ class StreamingDataFeeder(DataFeeder):
       """
       if self.stopped:
         raise StopIteration
-      inp = np.zeros(self.input_shape, dtype=self._input_dtype)
+      try:
+        inp = np.zeros(self.input_shape, dtype=self._input_dtype)
+      except TypeError as exc:
+        raise TypeError('Unrecognized dtype: {}. {}'.format(
+            self._input_dtype, exc))
       if self._y is not None:
         out = np.zeros(self.output_shape, dtype=self._output_dtype)
       for i in xrange(self._batch_size):
@@ -507,6 +511,8 @@ class StreamingDataFeeder(DataFeeder):
           inp[i, :] = six.next(self._x)
         except StopIteration:
           self.stopped = True
+          if i == 0:
+            raise
           inp = inp[:i, :]
           if self._y is not None:
             out = out[:i]
@@ -521,7 +527,13 @@ class StreamingDataFeeder(DataFeeder):
               for idx, value in enumerate(y):
                 out.itemset(tuple([i, idx, value]), 1.0)
           else:
-            out[i] = y
+            # The y itertor can sometimes return scalars or singleton lists.
+            try:
+              out[i] = y
+            except ValueError as _:
+              assert len(y) == 1, ('Expected singleton target, got {}'
+                                   .format(repr(y)))
+              out[i] = y[0]
       if self._y is None:
         return {self._input_placeholder.name: inp}
       return {self._input_placeholder.name: inp,

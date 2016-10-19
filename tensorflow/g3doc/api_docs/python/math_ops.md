@@ -383,11 +383,13 @@ I.e., \(y = x * x = x^2\).
 
 Rounds the values of a tensor to the nearest integer, element-wise.
 
+Rounds half to even.  Also known as bankers rounding. If you want to round
+according to the current system rounding mode use tf::cint.
 For example:
 
 ```python
-# 'a' is [0.9, 2.5, 2.3, -4.4]
-tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
+# 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
+tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
 ```
 
 ##### Args:
@@ -1133,6 +1135,45 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 
 - - -
 
+### `tf.eye(num_rows, num_columns=None, batch_shape=None, dtype=tf.float32, name=None)` {#eye}
+
+Construct an identity matrix, or a batch of matrices.
+
+```python
+# Construct one identity matrix.
+tf.eye(2)
+==> [[1., 0.],
+     [0., 1.]]
+
+# Construct a batch of 3 identity matricies, each 2 x 2.
+# batch_identity[i, :, :] is a 2 x 2 identity matrix, i = 0, 1, 2.
+batch_identity = tf.eye(2, batch_shape=[3])
+
+# Construct one 2 x 3 "identity" matrix
+tf.eye(2, num_columns=3)
+==> [[ 1.,  0.,  0.],
+     [ 0.,  1.,  0.]]
+```
+
+##### Args:
+
+
+*  <b>`num_rows`</b>: Non-negative `int32` scalar `Tensor` giving the number of rows
+    in each batch matrix.
+*  <b>`num_columns`</b>: Optional non-negative `int32` scalar `Tensor` giving the number
+    of columns in each batch matrix.  Defaults to `num_rows`.
+*  <b>`batch_shape`</b>: `int32` `Tensor`.  If provided, returned `Tensor` will have
+    leading batch dimensions of this shape.
+*  <b>`dtype`</b>: The type of an element in the resulting `Tensor`
+*  <b>`name`</b>: A name for this `Op`.  Defaults to "eye".
+
+##### Returns:
+
+  A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
+
+
+- - -
+
 ### `tf.matrix_diag(diagonal, name=None)` {#matrix_diag}
 
 Returns a batched diagonal tensor with a given batched diagonal values.
@@ -1583,7 +1624,7 @@ If `adjoint` is `True` then each output matrix satisfies
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
     Shape is `[..., M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.

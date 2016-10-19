@@ -29,26 +29,6 @@ constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
     const NodeDef* node_def, const OpDef& op_def,
-    const std::vector<string>& input_shapes,
-    const std::vector<const Tensor*>& input_tensors)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
-  PreInputInit(op_def, input_tensors);
-
-  for (const string& spec : input_shapes) {
-    ShapeHandle shape;
-    construction_status_.Update(MakeShapeFromString(spec, &shape));
-    if (!construction_status_.ok()) {
-      return;
-    }
-    inputs_.push_back(shape);
-  }
-
-  PostInputInit();
-}
-
-InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
-    const std::vector<string>& input_shapes_string,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors)
     : node_def_(*CHECK_NOTNULL(node_def)) {
@@ -67,7 +47,6 @@ InferenceContext::InferenceContext(
 
 InferenceContext::InferenceContext(
     const NodeDef* node_def, const OpDef& op_def,
-    const std::vector<string>& input_shapes_string,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors)
     : node_def_(*CHECK_NOTNULL(node_def)) {
@@ -78,8 +57,6 @@ InferenceContext::InferenceContext(
 }
 
 InferenceContext::~InferenceContext() {
-  for (auto* s : all_shapes_) delete s;
-  for (auto* d : all_dims_) delete d;
 }
 
 Status InferenceContext::set_output(StringPiece output_name,
@@ -209,14 +186,13 @@ Status InferenceContext::WithRank(ShapeHandle shape, int32 rank,
     std::vector<DimensionHandle> dims;
     dims.reserve(rank);
     for (int i = 0; i < rank; ++i) {
-      all_dims_.push_back(new Dimension());
-      dims.push_back(all_dims_.back());
+      dims.push_back(UnknownDim());
     }
-    all_shapes_.push_back(new Shape(dims));
-    *out = all_shapes_.back();
+    *out = shape_manager_.MakeShape(dims);
     return Status::OK();
   }
   *out = nullptr;
+
   return errors::InvalidArgument("Shape must be rank ", rank, " but is rank ",
                                  existing);
 }
@@ -259,8 +235,7 @@ Status InferenceContext::WithValue(DimensionHandle dim, int64 value,
     return Status::OK();
   }
   if (existing == kUnknownDim) {
-    all_dims_.push_back(new Dimension(value));
-    *out = all_dims_.back();
+    *out = MakeDim(value);
     return Status::OK();
   }
   *out = nullptr;
@@ -453,8 +428,7 @@ Status InferenceContext::ReplaceDim(ShapeHandle s, int dim_index_in,
 
 ShapeHandle InferenceContext::MakeShape(
     const std::vector<DimensionHandle>& dims) {
-  all_shapes_.push_back(new Shape(dims));
-  return all_shapes_.back();
+  return shape_manager_.MakeShape(dims);
 }
 
 ShapeHandle InferenceContext::MakeShape(
@@ -464,12 +438,12 @@ ShapeHandle InferenceContext::MakeShape(
   for (const DimensionOrConstant& d : dims) {
     dims_actual.push_back(MakeDim(d));
   }
-  return MakeShape(dims_actual);
+
+  return shape_manager_.MakeShape(dims_actual);
 }
 
 ShapeHandle InferenceContext::UnknownShape() {
-  all_shapes_.push_back(new Shape());
-  return all_shapes_.back();
+  return shape_manager_.UnknownShape();
 }
 
 ShapeHandle InferenceContext::UnknownShapeOfRank(int32 rank) {
@@ -717,41 +691,37 @@ Status InferenceContext::Max(DimensionHandle first, DimensionOrConstant second,
   return Status::OK();
 }
 
-Status InferenceContext::MakeShapeFromString(const string& spec,
-                                             ShapeHandle* output) {
-  if (spec == "?") {
-    *output = UnknownShape();
-    return Status::OK();
+Status InferenceContext::AttachContext(const Status& status) {
+  std::vector<string> input_shapes;
+  for (const ShapeHandle& input_shape : inputs_) {
+    input_shapes.emplace_back(DebugString(input_shape));
   }
 
-  std::vector<DimensionHandle> dims;
-  strings::Scanner scanner(spec);
-  scanner.OneLiteral("[");
-  while (scanner.Peek() != ']') {
-    if (scanner.Peek() == '?') {
-      scanner.OneLiteral("?");
-      dims.push_back(UnknownDim());
-    } else {
-      scanner.RestartCapture().Many(strings::Scanner::DIGIT);
-      StringPiece match;
-      int64 dim_size = 0;
-      CHECK(scanner.GetResult(nullptr, &match) &&
-            strings::safe_strto64(match, &dim_size))
-          << spec;
-      dims.push_back(MakeDim(dim_size));
-    }
+  string error_context = strings::StrCat(
+      " for '", node_def_.name(), "' (op: '", node_def_.op(),
+      "') with input shapes: ", str_util::Join(input_shapes, ", "), ".");
+  return Status(status.code(),
+                strings::StrCat(status.error_message(), error_context));
+}
 
-    if (scanner.Peek() == ',') {
-      scanner.OneLiteral(",");
-    } else if (scanner.Peek() != ']') {
-      return errors::InvalidArgument(
-          "Invalid input spec (] not found in dim shape): ", spec);
-    }
-  }
-  CHECK(scanner.OneLiteral("]").Eos().GetResult());
-  *output = MakeShape(dims);
+// -----------------------------------------------------------------------------
+// ShapeManager
+// -----------------------------------------------------------------------------
+InferenceContext::ShapeManager::ShapeManager() {}
+InferenceContext::ShapeManager::~ShapeManager() {
+  for (auto* s : all_shapes_) delete s;
+  for (auto* d : all_dims_) delete d;
+}
 
-  return Status::OK();
+ShapeHandle InferenceContext::ShapeManager::MakeShape(
+    const std::vector<DimensionHandle>& dims) {
+  all_shapes_.push_back(new Shape(dims));
+  return all_shapes_.back();
+}
+
+ShapeHandle InferenceContext::ShapeManager::UnknownShape() {
+  all_shapes_.push_back(new Shape());
+  return all_shapes_.back();
 }
 
 }  // namespace shape_inference

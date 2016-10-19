@@ -31,6 +31,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 #define TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 
+#include <cstddef>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,7 +61,7 @@ class InlinedVector {
   typedef T& reference;
   typedef const T& const_reference;
   typedef size_t size_type;
-  typedef ssize_t difference_type;
+  typedef std::ptrdiff_t difference_type;
   typedef pointer iterator;
   typedef const_pointer const_iterator;
 

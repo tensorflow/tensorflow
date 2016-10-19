@@ -28,6 +28,7 @@ from google.protobuf.any_pb2 import Any
 
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
@@ -67,7 +68,7 @@ class SavedModelBuilder(object):
     builder.add_meta_graph_and_variables(sess,
                                     ["foo-tag"],
                                     signature_def_map=foo_signatures,
-                                    asset_collection=foo_assets)
+                                    assets_collection=foo_assets)
   ...
 
   with tf.Session(graph=tf.Graph()) as sess:
@@ -252,7 +253,10 @@ class SavedModelBuilder(object):
     # Save asset files, if any.
     self._save_assets(assets_collection)
 
-    saver = tf_saver.Saver(variables.all_variables(), sharded=True)
+    saver = tf_saver.Saver(
+        variables.all_variables(),
+        sharded=True,
+        write_version=saver_pb2.SaverDef.V2)
     meta_graph_def = saver.export_meta_graph()
 
     # Tag the meta graph def and add it to the SavedModel.
@@ -298,7 +302,10 @@ class SavedModelBuilder(object):
         compat.as_text(constants.VARIABLES_FILENAME))
 
     # Save the variables and export meta graph def.
-    saver = tf_saver.Saver(variables.all_variables(), sharded=True)
+    saver = tf_saver.Saver(
+        variables.all_variables(),
+        sharded=True,
+        write_version=saver_pb2.SaverDef.V2)
     saver.save(sess, variables_path, write_meta_graph=False)
     meta_graph_def = saver.export_meta_graph()
 

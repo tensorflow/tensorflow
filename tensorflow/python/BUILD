@@ -40,6 +40,7 @@ py_library(
         ":summary",
         ":training",
         "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/debug:debug_py",
     ],
 )
 
@@ -272,6 +273,7 @@ py_library(
         "framework/graph_util.py",
         "framework/importer.py",
         "framework/load_library.py",
+        "framework/meta_graph.py",
         "framework/random_seed.py",
         "framework/tensor_util.py",
     ],
@@ -322,6 +324,7 @@ py_library(
     deps = [
         ":device_lib",
         ":framework_test_lib",
+        ":gradient_checker",
         ":platform_test",
     ],
 )
@@ -1415,7 +1418,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "gradient_checker_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/gradient_checker_test.py"],
     additional_deps = [
         ":array_ops",
@@ -1579,6 +1582,7 @@ py_library(
         ":sparse_ops",
         ":state_ops",
         ":string_ops",
+        ":summary",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
@@ -1873,6 +1877,15 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
+tf_py_test(
+    name = "sync_replicas_optimizer_test",
+    size = "medium",
+    srcs = [
+        "training/sync_replicas_optimizer_test.py",
+    ],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
 py_library(
     name = "timeline",
     srcs = ["client/timeline.py"],
@@ -1968,7 +1981,6 @@ cuda_py_tests(
         "training/rmsprop_test.py",
         "training/saver_test.py",
         "training/slot_creator_test.py",
-        "training/summary_writer_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
     ],
@@ -2029,6 +2041,29 @@ py_test(
     ],
 )
 
+py_test(
+    name = "basic_session_run_hooks_test",
+    size = "small",
+    srcs = ["training/basic_session_run_hooks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "monitored_session_test",
+    size = "small",
+    srcs = ["training/monitored_session_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "notsan",  # http://b/32109634
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 tf_py_test(
     name = "input_test",
     size = "small",
@@ -2068,6 +2103,7 @@ py_tests(
         "summary/impl/gcs_file_loader_test.py",
         "summary/impl/reservoir_test.py",
         "summary/summary_test.py",
+        "summary/writer/writer_test.py",
     ],
     additional_deps = [
         ":summary",
@@ -2113,6 +2149,33 @@ py_binary(
     ],
 )
 
+# -----------------------------------------------------------------------------
+# Quantization
+
+py_test(
+    name = "dequantize_op_test",
+    size = "small",
+    srcs = ["ops/dequantize_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ops",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "quantized_conv_ops_test",
+    size = "small",
+    srcs = ["ops/quantized_conv_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ops",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -2145,4 +2208,16 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     main = "ops/batch_norm_benchmark.py",
+)
+
+cuda_py_test(
+    name = "concat_benchmark",
+    srcs = [
+        "ops/concat_benchmark.py",
+    ],
+    additional_deps = [
+        ":nn_ops",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "ops/concat_benchmark.py",
 )

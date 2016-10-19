@@ -24,9 +24,11 @@ module TF.Backend {
     run_metadata: string[];
   }
 
+  export interface LogdirResponse { logdir: string; }
+
   export interface RunsResponse { [runName: string]: RunEnumeration; }
 
-  export type RunToTag = {[run: string]: string[]};
+  export type RunToTag = {[run: string]: string[];};
 
   export interface Datum {
     wall_time: Date;
@@ -90,9 +92,16 @@ module TF.Backend {
      * @param requestManager The RequestManager, overwritable so you may
      * manually clear request queue, etc. Defaults to a new RequestManager.
      */
-    constructor(r: Router, requestManager?: RequestManager) {
-      this.router = r;
+    constructor(router: Router, requestManager?: RequestManager) {
+      this.router = router;
       this.requestManager = requestManager || new RequestManager();
+    }
+
+    /**
+     * Returns a promise for requesting the logdir string.
+     */
+    public logdir(): Promise<LogdirResponse> {
+      return this.requestManager.request(this.router.logdir());
     }
 
     /**

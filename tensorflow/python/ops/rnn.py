@@ -609,9 +609,6 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
     dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
-    sequence_length: An int32/int64 vector, size `[batch_size]`,
-      containing the actual lengths for each of the sequences.
       either of the initial states are not provided.
     scope: VariableScope for the created subgraph; defaults to "BiRNN"
 
@@ -921,8 +918,8 @@ def _dynamic_rnn_loop(cell,
       raise ValueError(
           "Input size (depth of inputs) must be accessible via shape inference,"
           " but saw value None.")
-    got_time_steps = shape[0]
-    got_batch_size = shape[1]
+    got_time_steps = shape[0].value
+    got_batch_size = shape[1].value
     if const_time_steps != got_time_steps:
       raise ValueError(
           "Time steps is not the same for all the elements in the input in a "

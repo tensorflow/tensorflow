@@ -34,7 +34,7 @@ limitations under the License.
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
 <link rel="import" href="../tf-storage/tf-storage.html">
-<link rel="import" href="../vz-projector/vz-projector.html">
+<link rel="import" href="../vz-projector/vz-projector-dashboard.html">
 
 <!--
 tf-tensorboard is the frontend entry point for TensorBoard.
@@ -126,10 +126,10 @@ allows the user to toggle between various dashboards.
         </template>
 
         <template is="dom-if" if="[[_modeIsProjections(mode)]]">
-          <vz-projector
+          <vz-projector-dashboard
             id="projector"
-            route-prefix="/data/plugin/projector"
-          ></vz-projector>
+            route-prefix="/data/plugin/projector">
+          </vz-projector-dashboard>
         </template>
       </div>
     </paper-header-panel>

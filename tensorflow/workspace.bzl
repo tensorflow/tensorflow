@@ -14,8 +14,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "c78d757b69d3"
-  eigen_sha256 = "dfb650e20a0dee6172dcc99796210a07e40af61348497503b42dc12935b4e6f5"
+  eigen_version = "97c1ebe6ccc2"
+  eigen_sha256 = "58ab9fa44391c850d783fe0867f42a00b5300293b7d73bbbbc8756c2e649fea2"
 
   native.new_http_archive(
     name = "eigen_archive",
@@ -27,16 +27,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.http_archive(
     name = "com_googlesource_code_re2",
-    url = "http://github.com/google/re2/archive/7bab3dc83df6a838cc004cc7a7f51d5fe1a427d5.tar.gz",
-    sha256 = "ef91af8850f734c8be65f2774747f4c2d8d81e556ba009faa79b4dd8b2759555",
-    strip_prefix = "re2-7bab3dc83df6a838cc004cc7a7f51d5fe1a427d5",
+    url = "http://github.com/google/re2/archive/b94b7cd42e9f02673cd748c1ac1d16db4052514c.tar.gz",
+    sha256 = "bd63550101e056427c9e7ff12a408c1c8b74e9803f393ca916b2926fc2c4906f",
+    strip_prefix = "re2-b94b7cd42e9f02673cd748c1ac1d16db4052514c",
   )
 
   native.http_archive(
     name = "gemmlowp",
-    url = "http://github.com/google/gemmlowp/archive/8b20dd2ce142115857220bd6a35e8a081b3e0829.tar.gz",
-    sha256 = "9cf5f1e3d64b3632dbae5c65efb79f4374ca9ac362d788fc61e086af937ff6d7",
-    strip_prefix = "gemmlowp-8b20dd2ce142115857220bd6a35e8a081b3e0829",
+    url = "http://github.com/google/gemmlowp/archive/c0bacf11fb509a2cbe15a97362a2df067ffd57a2.tar.gz",
+    sha256 = "dc64a38f9927db18748d9024987c9b102115e25bc2be4b76aa8e422b8f83d882",
+    strip_prefix = "gemmlowp-c0bacf11fb509a2cbe15a97362a2df067ffd57a2",
   )
 
   native.new_http_archive(
@@ -98,9 +98,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.http_archive(
     name = "protobuf",
-    url = "http://github.com/google/protobuf/archive/v3.1.0.tar.gz",
-    sha256 = "0a0ae63cbffc274efb573bdde9a253e3f32e458c41261df51c5dbc5ad541e8f7",
-    strip_prefix = "protobuf-3.1.0",
+    url = "http://github.com/google/protobuf/archive/c2b3e70efd2038a54ef8973771ac58192885125e.tar.gz",
+    sha256 = "eafc1bc4c27970d62effe64ba6610823fdd66711f440d8ca4a168167786a2fcb",
+    strip_prefix = "protobuf-c2b3e70efd2038a54ef8973771ac58192885125e",
   )
 
   native.new_http_archive(

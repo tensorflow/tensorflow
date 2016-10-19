@@ -14,6 +14,8 @@ load(
     "tf_custom_op_library",
     "tf_cc_test",
     "tf_py_test",
+    "tf_gen_op_libs",
+    "tf_kernel_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
@@ -59,6 +61,18 @@ cuda_py_tests(
     name = "lstm_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/lstm_ops_test.py"],
+    additional_deps = [
+        ":rnn_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "rnn_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/rnn_test.py"],
     additional_deps = [
         ":rnn_py",
         "//tensorflow:tensorflow_py",
@@ -161,4 +175,26 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["lstm_ops"],
+)
+
+tf_kernel_library(
+    name = "lstm_ops_kernels",
+    srcs = [
+        "kernels/blas_gemm.cc",
+        "kernels/blas_gemm.h",
+    ],
+    gpu_srcs = [
+        "kernels/blas_gemm.h",
+    ],
+    prefix = "kernels/lstm_ops",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+    ],
 )

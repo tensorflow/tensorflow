@@ -44,11 +44,10 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
       sess.run(init)
       output = sess.run(output_node)
       self.assertNear(2.0, output, 0.00001)
-      saver = tf.train.Saver()
+      saver = tf.train.Saver(write_version=tf.train.SaverDef.V1)
       saver.save(sess, checkpoint_prefix, global_step=0,
                  latest_filename=checkpoint_state_name)
-      tf.train.write_graph(sess.graph.as_graph_def(), self.get_temp_dir(),
-                           input_graph_name)
+      tf.train.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
     # We save out the graph to disk, and then call the const conversion
     # routine.

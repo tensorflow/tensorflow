@@ -15,6 +15,15 @@ limitations under the License.
 
 import {DataSet} from './scatterPlot';
 import {Point2D} from './vector';
+import {DataPoint} from './data';
+import * as logging from './logging';
+
+/**
+ * Delay for running expensive tasks, in milliseconds.
+ * The duration was empirically found so that it leaves enough time for the
+ * browser to update its UI state before starting an expensive UI-blocking task.
+ */
+const TASK_DELAY_MS = 25;
 
 /** Shuffles the array in-place in O(n) time using Fisher-Yates algorithm. */
 export function shuffle<T>(array: T[]): T[] {
@@ -102,4 +111,56 @@ export function assert(condition: boolean, message?: string) {
     message = message || 'Assertion failed';
     throw new Error(message);
   }
+}
+
+export type SearchPredicate = (p: DataPoint) => boolean;
+
+export function getSearchPredicate(query: string, inRegexMode: boolean,
+    fieldName: string): SearchPredicate {
+  let predicate: SearchPredicate;
+  if (inRegexMode) {
+    let regExp = new RegExp(query, 'i');
+    predicate = p => regExp.test(p.metadata[fieldName].toString());
+  } else {
+    // Doing a case insensitive substring match.
+    query = query.toLowerCase();
+    predicate = p => {
+      let label = p.metadata[fieldName].toString().toLowerCase();
+      return label.indexOf(query) >= 0;
+    };
+  }
+  return predicate;
+}
+
+/**
+ * Runs an expensive task asynchronously with some delay
+ * so that it doesn't block the UI thread immediately.
+ *
+ * @param message The message to display to the user.
+ * @param task The expensive task to run.
+ * @param msgId Optional. ID of an existing message. If provided, will overwrite
+ *     an existing message and won't automatically clear the message when the
+ *     task is done.
+ * @return The value returned by the task.
+ */
+export function runAsyncTask<T>(message: string, task: () => T,
+    msgId: string = null): Promise<T> {
+  let autoClear = (msgId == null);
+  msgId = logging.setModalMessage(message, msgId);
+  return new Promise<T>((resolve, reject) => {
+    d3.timer(() => {
+      try {
+        let result = task();
+        // Clearing the old message.
+        if (autoClear) {
+          logging.setModalMessage(null, msgId);
+        }
+        resolve(result);
+      } catch (ex) {
+        logging.setModalMessage('Error: ' + ex.message);
+        reject(ex);
+      }
+      return true;
+    }, TASK_DELAY_MS);
+  });
 }

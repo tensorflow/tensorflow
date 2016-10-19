@@ -198,7 +198,8 @@ class Beta(distribution.Distribution):
     gamma1_sample = random_ops.random_gamma(
         [n,], a, dtype=self.dtype, seed=seed)
     gamma2_sample = random_ops.random_gamma(
-        [n,], b, dtype=self.dtype, seed=seed)
+        [n,], b, dtype=self.dtype,
+        seed=distribution_util.gen_new_seed(seed, "beta"))
     beta_sample = gamma1_sample / (gamma1_sample + gamma2_sample)
     return beta_sample
 

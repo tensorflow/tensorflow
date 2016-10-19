@@ -39,6 +39,7 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
     <tf-dashboard-layout>
       <div class="sidebar">
         <tf-sidebar-helper
+          backend="[[backend]]"
           categories="{{_categories}}"
           color-scale="[[_colorScale]]"
           run2tag="[[run2tag]]"
@@ -77,6 +78,7 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
     Polymer({
       is: "tf-image-dashboard",
       properties: {
+        backend: Object,
         dataType: {
           type: String,
           value: "image"

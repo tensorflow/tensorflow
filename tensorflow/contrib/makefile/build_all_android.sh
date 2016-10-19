@@ -66,6 +66,7 @@ if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_INCLUDE="${HEXAGON_PARENT_DIR}/include"
 fi
 
+# Recommend make -j<#jobs> e.g. -j8 to speed up build on multi-core machine
 if [[ -z "${BUILD_TARGET}" ]]; then
     make -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \

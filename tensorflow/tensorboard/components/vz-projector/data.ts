@@ -13,12 +13,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
 import * as scatterPlot from './scatterPlot';
-import {shuffle} from './util';
+import {shuffle, getSearchPredicate, runAsyncTask} from './util';
+import * as logging from './logging';
 import * as vector from './vector';
+
+export type DistanceFunction = (a: number[], b: number[]) => number;
+export type PointAccessor = (index: number) => number;
+
+export interface PointMetadata {
+  [key: string]: number | string;
+}
+
+export interface DataProto {
+  shape: [number, number];
+  tensor: number[];
+  metadata: {
+    columns: Array<{
+      name: string;
+      stringValues: string[];
+      numericValues: number[];
+    }>;
+  };
+}
+
+/** Statistics for a metadata column. */
+export interface ColumnStats {
+  name: string;
+  isNumeric: boolean;
+  tooManyUniqueValues: boolean;
+  uniqueEntries?: Array<{label: string, count: number}>;
+  min: number;
+  max: number;
+}
+
+export interface MetadataInfo {
+  stats: ColumnStats[];
+  pointsInfo: PointMetadata[];
+  spriteImage?: HTMLImageElement;
+  datasetInfo?: DatasetMetadata;
+}
 
 export interface DataPoint extends scatterPlot.DataPoint {
   /** The point in the original space. */
@@ -28,7 +64,7 @@ export interface DataPoint extends scatterPlot.DataPoint {
    * Metadata for each point. Each metadata is a set of key/value pairs
    * where the value can be a string or a number.
    */
-  metadata: {[key: string]: number | string};
+  metadata: PointMetadata;
 
   /** This is where the calculated projections space are cached */
   projections: {[key: string]: number};
@@ -83,7 +119,7 @@ export class DataSet implements scatterPlot.DataSet {
   dim = [0, 0];
   hasTSNERun: boolean = false;
   spriteImage: HTMLImageElement;
-  metadata: DatasetMetadata;
+  datasetInfo: DatasetMetadata;
 
   private tsne: TSNE;
 
@@ -147,6 +183,22 @@ export class DataSet implements scatterPlot.DataSet {
     return traces;
   }
 
+  getPointAccessors(projection: Projection, components: (number|string)[]):
+      [PointAccessor, PointAccessor, PointAccessor] {
+    if (components.length > 3) {
+      throw new RangeError('components length must be <= 3');
+    }
+    const accessors: [PointAccessor, PointAccessor, PointAccessor] =
+        [null, null, null];
+    const prefix = (projection === 'custom') ? 'linear' : projection;
+    for (let i = 0; i < components.length; ++i) {
+      accessors[i] =
+          (index =>
+               this.points[index].projections[prefix + '-' + components[i]]);
+    }
+    return accessors;
+  }
+
   /**
    * Returns a new subset dataset by copying out data. We make a copy because
    * we have to modify the vectors by normalizing them.
@@ -156,14 +208,15 @@ export class DataSet implements scatterPlot.DataSet {
    * @return A subset of the original dataset.
    */
   getSubset(subset?: number[]): DataSet {
-    let pointsSubset = subset ? subset.map(i => this.points[i]) : this.points;
+    let pointsSubset = subset && subset.length ?
+        subset.map(i => this.points[i]) : this.points;
     let points = pointsSubset.map(dp => {
       return {
         metadata: dp.metadata,
         index: dp.index,
         vector: dp.vector.slice(),
         projectedPoint: [0, 0, 0] as [number, number, number],
-        projections: {}
+        projections: {} as {[key: string]: number}
       };
     });
 
@@ -176,8 +229,7 @@ export class DataSet implements scatterPlot.DataSet {
    */
   normalize() {
     // Compute the centroid of all data points.
-    let centroid =
-        vector.centroid(this.points, () => true, a => a.vector).centroid;
+    let centroid = vector.centroid(this.points, a => a.vector);
     if (centroid == null) {
       throw Error('centroid should not be null');
     }
@@ -290,7 +342,47 @@ export class DataSet implements scatterPlot.DataSet {
     });
   }
 
+  mergeMetadata(metadata: MetadataInfo) {
+    if (metadata.pointsInfo.length !== this.points.length) {
+      logging.setWarningMessage(
+          `Number of tensors (${this.points.length}) do not match` +
+          ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
+    }
+    this.spriteImage = metadata.spriteImage;
+    this.datasetInfo = metadata.datasetInfo;
+    metadata.pointsInfo.slice(0, this.points.length)
+        .forEach((m, i) => this.points[i].metadata = m);
+  }
+
   stopTSNE() { this.tSNEShouldStop = true; }
+
+  /**
+   * Finds the nearest neighbors of the query point using a
+   * user-specified distance metric.
+   */
+  findNeighbors(pointIndex: number, distFunc: DistanceFunction, numNN: number):
+      knn.NearestEntry[] {
+    // Find the nearest neighbors of a particular point.
+    let neighbors = knn.findKNNofPoint(this.points, pointIndex, numNN,
+        (d => d.vector), distFunc);
+    // TODO(smilkov): Figure out why we slice.
+    let result = neighbors.slice(0, numNN);
+    return result;
+  }
+
+  /**
+   * Search the dataset based on a metadata field.
+   */
+  query(query: string, inRegexMode: boolean, fieldName: string): number[] {
+    let predicate = getSearchPredicate(query, inRegexMode, fieldName);
+    let matches: number[] = [];
+    this.points.forEach((point, id) => {
+      if (predicate(point)) {
+        matches.push(id);
+      }
+    });
+    return matches;
+  }
 }
 
 export interface DatasetMetadata {
@@ -337,21 +429,24 @@ export interface State {
   /** The selected projection tab. */
   selectedProjection?: Projection;
 
+  /** The projection component dimensions (for PCA) */
+  componentDimensions?: number[];
+
   /** The computed projections of the tensors. */
-  projections?: {[key: string]: number}[];
+  projections?: Array<{[key: string]: number}>;
 
   /** The indices of selected points. */
   selectedPoints?: number[];
 
-  /** Camera positioning (x, y, z). */
-  cameraPosition?: vector.Point3D;
-
-  /** Camera target (x, y, z). */
-  cameraTarget?: vector.Point3D;
+  /** Camera state (2d/3d, position, target, zoom, etc). */
+  cameraDef?: scatterPlot.CameraDef;
 
   /** Color by option. */
-  colorOption?: ColorOption;
+  selectedColorOptionName?: string;
 
   /** Label by option. */
-  labelOption?: string;
+  selectedLabelOption?: string;
+
+  /** Whether the state is a 3d view. If false, the state is a 2d view. */
+  is3d?: boolean;
 }

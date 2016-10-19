@@ -28,6 +28,7 @@ import numbers
 import six
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -1415,9 +1416,10 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
         math_ops.cast(barrier.ready_size(), dtypes.float32))
 
     q_runner = queue_runner.QueueRunner(
-        stateful_reader, [stateful_reader.prefetch_op]*num_threads)
+        stateful_reader, [stateful_reader.prefetch_op]*num_threads,
+        queue_closed_exception_types=(errors.OutOfRangeError,
+                                      errors.CancelledError))
     queue_runner.add_queue_runner(q_runner)
-
     return stateful_reader.next_batch
 
 

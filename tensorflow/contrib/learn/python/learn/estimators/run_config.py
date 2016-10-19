@@ -46,6 +46,7 @@ class RunConfig(object):
                tf_random_seed=None,
                save_summary_steps=100,
                save_checkpoints_secs=600,
+               save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                job_name=None,
@@ -105,7 +106,10 @@ class RunConfig(object):
       tf_random_seed: Random seed for TensorFlow initializers.
         Setting this value allows consistency between reruns.
       save_summary_steps: Save summaries every this many steps.
-      save_checkpoints_secs: Save checkpoints every this many seconds.
+      save_checkpoints_secs: Save checkpoints every this many seconds. Can not
+          be specified with `save_checkpoints_steps`.
+      save_checkpoints_steps: Save checkpoints every this many steps. Can not be
+          specified with `save_checkpoints_secs`.
       keep_checkpoint_max: The maximum number of recent checkpoint files to
         keep. As new files are created, older files are deleted. If None or 0,
         all checkpoint files are kept. Defaults to 5 (that is, the 5 most recent
@@ -126,6 +130,8 @@ class RunConfig(object):
     # If not explicitly specified in the constructor and the TF_CONFIG
     # environment variable is present, load cluster_spec from TF_CONFIG.
     config = json.loads(os.environ.get('TF_CONFIG') or '{}')
+    environment = config.get('environment', 'local')
+
     if not cluster_spec and 'cluster' in config:
       cluster_spec = ClusterSpec(config['cluster'])
     self.cluster_spec = cluster_spec
@@ -134,6 +140,7 @@ class RunConfig(object):
     # otherwise, if the TF_CONFIG environment variable is present, use that.
     # Otherwise, use the respective default (None / 0).
     task_env = config.get('task', {})
+
     self._job_name = job_name or task_env.get('type') or None
     self.task = task if task is not None else task_env.get('index') or 0
 
@@ -147,11 +154,13 @@ class RunConfig(object):
     self.num_ps_replicas = num_ps_replicas or _count_ps(self.cluster_spec) or 0
 
     # Set is_chief.
+    # TODO(b/32117298): cleanup environment-specific logic for setting is_chief
+    # once the environments have been further unified.
     self._is_chief = is_chief
     if self._is_chief is None:
       if not self._job_name:
         self._is_chief = (self.task == 0)
-      elif config:
+      elif config and environment == 'cloud':
         # When the TF_CONFIG environment variable is set, we can set the
         # default of is_chief to 0 when job_name is "master" and task is 0.
         self._is_chief = (self._job_name == 'master' and self.task == 0)
@@ -172,11 +181,19 @@ class RunConfig(object):
             'job_name is \'%s\', but only masters or workers may be chiefs. '
             'Please check is_chief and job_name, which may have been set in '
             'TF_CONFIG environment variable.' % (self._job_name,))
-    elif (self._is_chief is False and self._job_name == 'master' and
-          self.task == 0):
-      raise ValueError(
-          'Master task 0 must be chief. Please check is_chief, job_name, and '
-          'task, which may have been set in TF_CONFIG environment variable.')
+    elif self._is_chief is False:
+      if environment == 'cloud':
+        if self._job_name == 'master' and self.task == 0:
+          raise ValueError(
+              'Master task 0 must be chief for cloud. Please check is_chief, '
+              'job_name, and task, which may have been set in TF_CONFIG '
+              'environment variable.')
+      else:
+        if self._job_name == 'worker' and self.task == 0:
+          raise ValueError(
+              'Worker task 0 must be chief. Please check is_chief, job_name, '
+              'and task, which may have been set in TF_CONFIG environment '
+              'variable.')
 
     self.evaluation_master = evaluation_master or ''
 
@@ -191,6 +208,7 @@ class RunConfig(object):
     self.tf_random_seed = tf_random_seed
     self.save_summary_steps = save_summary_steps
     self.save_checkpoints_secs = save_checkpoints_secs
+    self.save_checkpoints_steps = save_checkpoints_steps
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
 

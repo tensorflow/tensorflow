@@ -175,12 +175,13 @@ class NormalTest(tf.test.TestCase):
       self.assertAllEqual(normal.get_batch_shape(), cdf.eval().shape)
 
   def testFiniteGradientAtDifficultPoints(self):
-    with self.test_session():
-      for dtype in [np.float32, np.float64]:
+    for dtype in [np.float32, np.float64]:
+      g = tf.Graph()
+      with g.as_default():
         mu = tf.Variable(dtype(0.0))
         sigma = tf.Variable(dtype(1.0))
         dist = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-        tf.initialize_all_variables().run()
+        x = np.array([-100., -20., -5., 0., 5., 20., 100.]).astype(dtype)
         for func in [
             dist.cdf,
             dist.log_cdf,
@@ -188,13 +189,13 @@ class NormalTest(tf.test.TestCase):
             dist.log_survival_function,
             dist.log_prob,
             dist.prob]:
-          x = np.array([-100., -20., -5., 0., 5., 20., 100.]).astype(dtype)
           value = func(x)
           grads = tf.gradients(value, [mu, sigma])
-
-          self.assertAllFinite(value)
-          self.assertAllFinite(grads[0])
-          self.assertAllFinite(grads[1])
+          with self.test_session(graph=g):
+            tf.initialize_all_variables().run()
+            self.assertAllFinite(value)
+            self.assertAllFinite(grads[0])
+            self.assertAllFinite(grads[1])
 
   def testNormalLogSurvivalFunction(self):
     with self.test_session():

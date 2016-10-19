@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,11 +36,49 @@ class Categorical(distribution.Distribution):
 
   The categorical distribution is parameterized by the log-probabilities
   of a set of classes.
+
+  #### Examples
+
+  Creates a 3-class distiribution, with the 2nd class, the most likely to be
+  drawn from.
+
+  ```python
+  p = [0.1, 0.5, 0.4]
+  dist = Categorical(p=p)
+  ```
+
+  Creates a 3-class distiribution, with the 2nd class the most likely to be
+  drawn from, using logits.
+
+  ```python
+  logits = [-50, 400, 40]
+  dist = Categorical(logits=logits)
+  ```
+
+  Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+  The distribution functions can be evaluated on counts.
+
+  ```python
+  # counts is a scalar.
+  p = [0.1, 0.4, 0.5]
+  dist = Categorical(p=p)
+  dist.pmf(0)  # Shape []
+
+  # p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
+  counts = [1, 0]
+  dist.pmf(counts)  # Shape [2]
+
+  # p will be broadcast to shape [3, 5, 7, 3] to match counts.
+  counts = [[...]] # Shape [5, 7, 3]
+  dist.pmf(counts)  # Shape [5, 7, 3]
+  ```
+
   """
 
   def __init__(
       self,
-      logits,
+      logits=None,
+      p=None,
       dtype=dtypes.int32,
       validate_args=False,
       allow_nan_stats=True,
@@ -50,7 +89,13 @@ class Categorical(distribution.Distribution):
       logits: An N-D `Tensor`, `N >= 1`, representing the log probabilities
           of a set of Categorical distributions. The first `N - 1` dimensions
           index into a batch of independent distributions and the last dimension
-          indexes into the classes.
+          represents a vector of logits for each class. Only one of `logits` or
+          `p` should be passed in.
+      p: An N-D `Tensor`, `N >= 1`, representing the probabilities
+          of a set of Categorical distributions. The first `N - 1` dimensions
+          index into a batch of independent distributions and the last dimension
+          represents a vector of probabilities for each class. Only one of
+          `logits` or `p` should be passed in.
       dtype: The type of the event samples (default: int32).
       validate_args: Unused in this distribution.
       allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
@@ -60,7 +105,9 @@ class Categorical(distribution.Distribution):
       name: A name for this distribution (optional).
     """
     with ops.name_scope(name, values=[logits]) as ns:
-      self._logits = ops.convert_to_tensor(logits, name="logits")
+      self._logits, self._p = distribution_util.get_logits_and_prob(
+          name=name, logits=logits, p=p, validate_args=validate_args,
+          multidimensional=True)
 
       logits_shape_static = self._logits.get_shape().with_rank_at_least(1)
       if logits_shape_static.ndims is not None:
@@ -107,7 +154,15 @@ class Categorical(distribution.Distribution):
 
   @property
   def logits(self):
+    """Vector of coordinatewise logits."""
     return self._logits
+
+  @property
+  def p(self):
+    """Vector of probabilities summing to one.
+
+    Each element is the probability of drawing that coordinate."""
+    return self._p
 
   def _batch_shape(self):
     # Use identity to inherit callers "name".

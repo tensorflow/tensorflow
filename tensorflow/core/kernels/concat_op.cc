@@ -123,14 +123,7 @@ class ConcatOp : public OpKernel {
       auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
 #if GOOGLE_CUDA
       if (std::is_same<Device, GPUDevice>::value) {
-        // Switching indexing to int64 might cause performance issues.
-        // Hence, we keep int32 indexing in the GPU kernel unless we need to
-        // switch to int64.
-        if (output->NumElements() < std::numeric_limits<int32>::max()) {
-          ConcatGPU32<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
-        } else {
-          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
-        }
+        ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }
 #endif  // GOOGLE_CUDA

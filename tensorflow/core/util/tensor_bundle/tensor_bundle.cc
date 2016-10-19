@@ -221,21 +221,26 @@ Status ReadInputByChunk(const RandomAccessFile* file, size_t offset,
   return Status::OK();
 }
 
+// Returns whether "slice_spec" is a full slice, with respect to the full shape.
+//
+// This can happen say, when "slice_spec" is
+// "TensorSlice(full_tensor_shape.dims())", or when it is "TensorSlice({{0,
+// dim(0)}, ..., {0, dim(N)}})" -- a degenerate case we need to guard against.
+bool IsFullSlice(const TensorSlice& slice_spec,
+                 const TensorShape& full_tensor_shape) {
+  if (slice_spec.IsFull()) {
+    return true;
+  } else {
+    TensorShape sliced_shape;
+    slice_spec.SliceTensorShape(full_tensor_shape, &sliced_shape);
+    return sliced_shape == full_tensor_shape;
+  }
+}
+
 }  // namespace
 
-string DataFilename(const string& prefix, int32 shard_id, int32 num_shards) {
-  DCHECK_GT(num_shards, 0);
-  DCHECK_LT(shard_id, num_shards);
-  return strings::Printf("%s.data-%05d-of-%05d", prefix.c_str(), shard_id,
-                         num_shards);
-}
-
-string MetaFilename(const string& prefix) {
-  return strings::Printf("%s.index", prefix.c_str());
-}
-
-BundleWriter::BundleWriter(Env* env, const string& prefix)
-    : env_(env), prefix_(prefix), out_(nullptr), size_(0) {
+BundleWriter::BundleWriter(Env* env, StringPiece prefix)
+    : env_(env), prefix_(prefix.ToString()), out_(nullptr), size_(0) {
   status_ =
       env_->CreateDir(io::Dirname(prefix_).ToString());  // Ignores errors.
   const string filename = DataFilename(prefix_, 0, 1);
@@ -250,15 +255,16 @@ BundleWriter::BundleWriter(Env* env, const string& prefix)
 
 BundleWriter::~BundleWriter() { CHECK(out_ == nullptr); }
 
-Status BundleWriter::Add(const string& key, const Tensor& val) {
+Status BundleWriter::Add(StringPiece key, const Tensor& val) {
   CHECK_NE(key, kHeaderEntryKey);
+  const string key_string = key.ToString();
   if (!status_.ok()) return status_;
-  if (entries_.find(key) != entries_.end()) {
+  if (entries_.find(key_string) != entries_.end()) {
     status_ = errors::InvalidArgument("Adding duplicate key: ", key);
     return status_;
   }
 
-  BundleEntryProto* entry = &entries_[key];
+  BundleEntryProto* entry = &entries_[key_string];
   entry->set_dtype(val.dtype());
   val.shape().AsProto(entry->mutable_shape());
   entry->set_shard_id(0);
@@ -283,10 +289,15 @@ Status BundleWriter::Add(const string& key, const Tensor& val) {
   return status_;
 }
 
-Status BundleWriter::AddSlice(const string& full_tensor_key,
+Status BundleWriter::AddSlice(StringPiece full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
+  // If just a singleton full slice, use the regular Add() to be more efficient.
+  if (IsFullSlice(slice_spec, full_tensor_shape)) {
+    return Add(full_tensor_key, slice_tensor);
+  }
+
   CHECK_NE(full_tensor_key, kHeaderEntryKey);
   if (!status_.ok()) return status_;
 
@@ -295,7 +306,8 @@ Status BundleWriter::AddSlice(const string& full_tensor_key,
   // In the case of a sharded save, MergeBundles() is responsible for merging
   // the "slices" field of multiple metadata entries corresponding to the same
   // full tensor.
-  BundleEntryProto* full_entry = &entries_[full_tensor_key];
+  const string full_tensor_key_string = full_tensor_key.ToString();
+  BundleEntryProto* full_entry = &entries_[full_tensor_key_string];
   if (full_entry->dtype() != DT_INVALID) {
     CHECK_EQ(full_entry->dtype(), slice_tensor.dtype());
   }
@@ -313,7 +325,7 @@ Status BundleWriter::AddSlice(const string& full_tensor_key,
   // The slice itself is handled by a regular Add(), which includes adding its
   // own metadata entry, and writing out the slice's values.
   const string slice_name =
-      checkpoint::EncodeTensorNameSlice(full_tensor_key, slice_spec);
+      checkpoint::EncodeTensorNameSlice(full_tensor_key_string, slice_spec);
   status_ = Add(slice_name, slice_tensor);
   return status_;
 }
@@ -377,10 +389,10 @@ struct MergeState {
 
 // Merges entries of "prefix" into the accumulator state "merge".
 // Returns OK iff the merge succeeds.
-static Status MergeOneBundle(Env* env, const string& prefix,
+static Status MergeOneBundle(Env* env, StringPiece prefix,
                              MergeState* merge_state) {
   VLOG(1) << "Merging bundle:" << prefix;
-  const string& filename = MetaFilename(prefix);
+  const string filename = MetaFilename(prefix);
   uint64 file_size;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
   std::unique_ptr<RandomAccessFile> file;
@@ -474,7 +486,7 @@ static Status MergeOneBundle(Env* env, const string& prefix,
 }
 
 Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
-                    const string& merged_prefix) {
+                    StringPiece merged_prefix) {
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
@@ -524,13 +536,13 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
 
 // Interface for reading a tensor bundle.
 
-BundleReader::BundleReader(Env* env, const string& prefix)
+BundleReader::BundleReader(Env* env, StringPiece prefix)
     : env_(env),
-      prefix_(prefix),
+      prefix_(prefix.ToString()),
       metadata_(nullptr),
       table_(nullptr),
       iter_(nullptr) {
-  const string& filename = MetaFilename(prefix_);
+  const string filename = MetaFilename(prefix_);
   uint64 file_size;
   status_ = env_->GetFileSize(filename, &file_size);
   if (!status_.ok()) return;
@@ -569,7 +581,7 @@ BundleReader::~BundleReader() {
   gtl::STLDeleteValues(&tensor_slices_);
 }
 
-Status BundleReader::GetBundleEntryProto(const string& key,
+Status BundleReader::GetBundleEntryProto(StringPiece key,
                                          BundleEntryProto* entry) {
   entry->Clear();
   TF_CHECK_OK(status_);
@@ -660,7 +672,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   return Status::OK();
 }
 
-Status BundleReader::Lookup(const string& key, Tensor* val) {
+Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
 
@@ -673,14 +685,14 @@ Status BundleReader::Lookup(const string& key, Tensor* val) {
   }
 }
 
-Status BundleReader::LookupSlice(const string& full_tensor_key,
+Status BundleReader::LookupSlice(StringPiece full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(full_tensor_key, &entry));
   return GetSliceValue(full_tensor_key, entry, slice_spec, val);
 }
 
-Status BundleReader::GetSliceValue(const string& full_tensor_key,
+Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
                                    const BundleEntryProto& full_tensor_entry,
                                    const TensorSlice& slice_spec, Tensor* val) {
   using checkpoint::TensorSliceSet;
@@ -689,8 +701,9 @@ Status BundleReader::GetSliceValue(const string& full_tensor_key,
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));
   std::vector<std::pair<TensorSlice, string>> details;
+  const string full_tensor_key_string = full_tensor_key.ToString();
   const TensorSliceSet* tss =
-      gtl::FindPtrOrNull(tensor_slices_, full_tensor_key);
+      gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
 
   // Populates the "full tensor key -> TensorSliceSet" cache.
   if (tss == nullptr) {
@@ -698,16 +711,17 @@ Status BundleReader::GetSliceValue(const string& full_tensor_key,
       // Special case: a writer has saved a tensor fully, but the reader wants
       // to read in slices.  We therefore register the full slice on-demand here
       // without further complicating the on-disk bundle format.
-      RegisterTensorSlice(
-          full_tensor_key, full_shape, full_tensor_entry.dtype(), /* tag */ "",
-          /* full slice */ TensorSlice(full_shape.dims()), &tensor_slices_);
+      RegisterTensorSlice(full_tensor_key_string, full_shape,
+                          full_tensor_entry.dtype(), /* tag */ "",
+                          /* full slice */ TensorSlice(full_shape.dims()),
+                          &tensor_slices_);
     }
     for (const TensorSliceProto& slice : full_tensor_entry.slices()) {
-      RegisterTensorSlice(full_tensor_key, full_shape,
+      RegisterTensorSlice(full_tensor_key_string, full_shape,
                           full_tensor_entry.dtype(),
                           /* tag */ "", TensorSlice(slice), &tensor_slices_);
     }
-    tss = gtl::FindPtrOrNull(tensor_slices_, full_tensor_key);
+    tss = gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
     CHECK_NE(tss, nullptr);
   }
   if (!tss->QueryMeta(slice_spec, &details)) {
@@ -727,8 +741,9 @@ Status BundleReader::GetSliceValue(const string& full_tensor_key,
     // We already have the entry for the full tensor, so don't query again if
     // the slice is full.
     if (!stored_slice.IsFull()) {
-      const string& encoded_stored_slice_name =
-          checkpoint::EncodeTensorNameSlice(full_tensor_key, stored_slice);
+      const string encoded_stored_slice_name =
+          checkpoint::EncodeTensorNameSlice(full_tensor_key_string,
+                                            stored_slice);
       status_ =
           GetBundleEntryProto(encoded_stored_slice_name, &stored_slice_entry);
       if (!status_.ok()) return status_;
@@ -738,11 +753,10 @@ Status BundleReader::GetSliceValue(const string& full_tensor_key,
     // allocate_temp()?  Note that without major refactorings to Saver, it's
     // hard for the caller of the tensor bundle module to allocate these
     // precisely-shaped scratch storage.
-    // TODO(zongheng): implement an important optimization: if the stored slice
-    // is a subset of the to-restore slice, directly read the stored slice into
-    // the latter's already-allocated backing buffer.
 
     // Optimization for the common case: stored slice == to-restore slice.
+    // TODO(zongheng): also include the case where "slice_spec" is full ("-"),
+    // and "stored_slice" is logically full but contains actual extents.
     if (stored_slice == slice_spec) {
       VLOG(1) << "Optimized for common case: directly copying into "
                  "pre-allocated buffer; spec: "
@@ -789,16 +803,22 @@ Status BundleReader::GetSliceValue(const string& full_tensor_key,
 }
 
 bool BundleReader::Contains(StringPiece key) {
-  Seek(key.ToString());
+  Seek(key);
   return Valid() && (this->key() == key);
 }
 
-Status BundleReader::LookupTensorShape(const string& key, TensorShape* shape) {
+Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
+                                         TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
-
+  *dtype = entry.dtype();
   *shape = TensorShape(entry.shape());
   return Status::OK();
+}
+
+Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+  DataType ignored;
+  return LookupDtypeAndShape(key, &ignored, shape);
 }
 
 string BundleReader::DebugString() {

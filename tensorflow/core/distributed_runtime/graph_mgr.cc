@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -264,28 +263,64 @@ Status GraphMgr::DeregisterAll() {
   return Status::OK();
 }
 
-Status GraphMgr::Execute(const string& handle, const int64 step_id,
-                         const ExecutorOpts& opts,
-                         StepStatsCollector* collector,
-                         CancellationManager* cancellation_manager,
-                         const NamedTensors& in, NamedTensors* out) {
-  Notification n;
-  Status status;
-  ExecuteAsync(handle, step_id, opts, collector, cancellation_manager, in, out,
-               [&n, &status](const Status& s) {
-                 status = s;
-                 n.Notify();
-               });
-  n.WaitForNotification();
-  return status;
+Status GraphMgr::SendInputsToRendezvous(Rendezvous* rendezvous,
+                                        const NamedTensors& in) {
+  Rendezvous::ParsedKey parsed;
+  for (const auto& p : in) {
+    const string& key = p.first;
+    const Tensor& val = p.second;
+
+    Status s = Rendezvous::ParseKey(key, &parsed);
+    if (s.ok()) {
+      s = rendezvous->Send(parsed, Rendezvous::Args(), val, false);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
+Status GraphMgr::RecvOutputsFromRendezvous(Rendezvous* rendezvous,
+                                           NamedTensors* out) {
+  // Receives values requested by the caller.
+  Rendezvous::ParsedKey parsed;
+  for (auto& p : *out) {
+    const string& key = p.first;
+    Tensor* val = &p.second;
+    bool is_dead = false;
+    Status s = Rendezvous::ParseKey(key, &parsed);
+    if (s.ok()) {
+      s = rendezvous->Recv(parsed, Rendezvous::Args(), val, &is_dead);
+    }
+    if (is_dead) {
+      s = errors::InvalidArgument("The tensor returned for ", key,
+                                  " was not valid.");
+    }
+    if (!s.ok()) return s;
+  }
+  return Status::OK();
+}
+
+Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Status s = SendInputsToRendezvous(rendezvous, in);
+  rendezvous->Unref();
+  return s;
+}
+
+Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Status s = RecvOutputsFromRendezvous(rendezvous, out);
+  rendezvous->Unref();
+  return s;
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             const ExecutorOpts& opts,
                             StepStatsCollector* collector,
                             CancellationManager* cancellation_manager,
-                            const NamedTensors& in, NamedTensors* out,
-                            StatusCallback done) {
+                            const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -302,38 +337,38 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  const int num_units = item->units.size();
-  CHECK_GE(num_units, 1);
-
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
 
   // Sends values specified by the caller.
-  Rendezvous::ParsedKey parsed;
-  for (const auto& p : in) {
-    const string& key = p.first;
-    const Tensor& val = p.second;
-
-    Status s = Rendezvous::ParseKey(key, &parsed);
-    if (s.ok()) {
-      s = rendezvous->Send(parsed, Rendezvous::Args(), val, false);
-    }
-    if (!s.ok()) {
-      done(s);
-      item->Unref();
-      rendezvous->Unref();
-      return;
-    }
+  Status s = SendInputsToRendezvous(rendezvous, in);
+  if (!s.ok()) {
+    done(s);
+    item->Unref();
+    rendezvous->Unref();
+    return;
   }
 
-  // Starts parallel Executors.
-  //
-  // NOTE: Transfer one ref of rendezvous and one ref of item to
-  // RunAllDone.
+  StartParallelExecutors(handle, item, rendezvous, collector,
+                         cancellation_manager,
+                         [this, item, rendezvous, done](const Status& s) {
+                           done(s);
+                           rendezvous->Unref();
+                           item->Unref();
+                         });
+}
+
+void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
+                                      Rendezvous* rendezvous,
+                                      StepStatsCollector* collector,
+                                      CancellationManager* cancellation_manager,
+                                      StatusCallback done) {
+  const int num_units = item->units.size();
+  CHECK_GE(num_units, 1);
   ResourceMgr* step_resource_manager = new ResourceMgr;
+  // NOTE: Transfer one ref of rendezvous and item.
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, [this, item, rendezvous, out, done,
-                              step_resource_manager](const Status& status) {
-        RunAllDone(item, rendezvous, out, done, status);
+      num_units, rendezvous, [step_resource_manager, done](const Status& s) {
+        done(s);
         delete step_resource_manager;
       });
   Executor::Args args;
@@ -356,31 +391,6 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   for (const auto& unit : item->units) {
     unit.root->RunAsync(args, barrier->Get());
   }
-}
-
-void GraphMgr::RunAllDone(Item* item, Rendezvous* rendezvous, NamedTensors* out,
-                          StatusCallback done, Status s) {
-  if (s.ok()) {
-    // Receives values requested by the caller.
-    Rendezvous::ParsedKey parsed;
-    for (auto& p : *out) {
-      const string& key = p.first;
-      Tensor* val = &p.second;
-      bool is_dead = false;
-      s = Rendezvous::ParseKey(key, &parsed);
-      if (s.ok()) {
-        s = rendezvous->Recv(parsed, Rendezvous::Args(), val, &is_dead);
-      }
-      if (is_dead) {
-        s = errors::InvalidArgument("The tensor returned for ", key,
-                                    " was not valid.");
-      }
-      if (!s.ok()) break;
-    }
-  }
-  done(s);
-  rendezvous->Unref();
-  item->Unref();
 }
 
 }  // end namespace tensorflow

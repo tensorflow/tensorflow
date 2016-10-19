@@ -74,6 +74,9 @@ or join multiple tensors together.
 @@boolean_mask
 @@one_hot
 @@sequence_mask
+@@dequantize
+@@quantize_v2
+@@quantized_concat
 
 """
 from __future__ import absolute_import
@@ -92,7 +95,6 @@ from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -1497,9 +1499,10 @@ def meshgrid(*args, **kwargs):
   Returns:
     outputs: A list of N `Tensor`s with rank N
   """
+
   indexing = kwargs.pop("indexing", "xy")
   name = kwargs.pop("name", "meshgrid")
-  if len(kwargs) > 0:
+  if kwargs:
     key = list(kwargs.keys())[0]
     raise TypeError("'{}' is an invalid keyword argument "
                     "for this function".format(key))
@@ -1508,35 +1511,26 @@ def meshgrid(*args, **kwargs):
     raise ValueError("indexing parameter must be either 'xy' or 'ij'")
 
   with ops.name_scope(name, "meshgrid", args) as name:
-    num_inputs = len(args)
-    ones = (1,) * num_inputs
-
-    # Cannot import Assert from control_flow_ops, so we incur the
-    # penalty of possibly copying from GPU to CPU regardless of the
-    # equality of the predicate.
-    asserts = [gen_logging_ops._assert(
-                 gen_math_ops.equal(rank(x), 1),
-                 ["Input %d needs to have rank 1: " % i, rank(x)],
-               ) for i, x in enumerate(args)]
+    ndim = len(args)
+    s0 = (1,) * ndim
 
     # Prepare reshape by inserting dimensions with size 1 where needed
-    shapes = [ones[:i] + (-1,) + ones[i + 1:] for i in range(num_inputs)]
+    output = []
+    for i, x in enumerate(args):
+      output.append(reshape(pack(x), (s0[:i] + (-1,) + s0[i + 1::])) )
     # Create parameters for broadcasting each tensor to the full size
-    sizes = [size(x) for x in args]
-    bcast = [sizes[:i] + [1] + sizes[i + 1:] for i in range(num_inputs)]
+    shapes = [size(x) for x in args]
 
-    # By default, the numpy version swaps the instructions
-    # for the first and second dimension
-    if indexing == "xy" and num_inputs > 1:
+    output_dtype = ops.convert_to_tensor(args[0]).dtype.base_dtype
+
+    if indexing == "xy" and ndim > 1:
+      output[0] = reshape(output[0], (1, -1) + (1,)*(ndim - 2))
+      output[1] = reshape(output[1], (-1, 1) + (1,)*(ndim - 2))
       shapes[0], shapes[1] = shapes[1], shapes[0]
-      bcast[0], bcast[1] = bcast[1], bcast[0]
 
-    results = []
-    with ops.control_dependencies(asserts):
-      for a, r, e in zip(args, shapes, bcast):
-        results.append(tile(reshape(a, r), e))
-
-    return results
+    # TODO: improve performance with a broadcast
+    mult_fact = ones(shapes, output_dtype)
+    return [x * mult_fact for x in output]
 
 
 ops.RegisterShape("Placeholder")(common_shapes.call_cpp_shape_fn)
@@ -2287,3 +2281,49 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return result
     else:
       return gen_math_ops.cast(result, dtype)
+
+
+def squeeze(input, squeeze_dims=None, name=None):
+  # pylint: disable=redefined-builtin
+  """Removes dimensions of size 1 from the shape of a tensor.
+
+  Given a tensor `input`, this operation returns a tensor of the same type with
+  all dimensions of size 1 removed. If you don't want to remove all size 1
+  dimensions, you can remove specific size 1 dimensions by specifying
+  `squeeze_dims`.
+
+  For example:
+
+  ```prettyprint
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  shape(squeeze(t)) ==> [2, 3]
+            ```
+
+  Or, to remove specific size 1 dimensions:
+
+  ```prettyprint
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+  ```
+
+  Args:
+    input: A `Tensor`. The `input` to squeeze.
+    squeeze_dims: An optional list of `ints`. Defaults to `[]`.
+      If specified, only squeezes the dimensions listed. The dimension
+      index starts at 0. It is an error to squeeze a dimension that is not 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+    Contains the same data as `input`, but has one or more dimensions of
+    size 1 removed.
+  """
+  if np.isscalar(squeeze_dims):
+    squeeze_dims = [squeeze_dims]
+  return gen_array_ops._squeeze(input, squeeze_dims, name)
+
+
+# TODO(cwhipkey): Verify and enable shape functions for these.
+ops.RegisterShape("QuantizeV2")(None)
+ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
+ops.RegisterShape("QuantizedConcat")(None)

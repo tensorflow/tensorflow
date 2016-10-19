@@ -6,10 +6,10 @@ Typical usage:
 
 ```
 with sg.value_type(sg.MeanValue(stop_gradients=True)):
-  dt = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
+  st = sg.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
 ```
 
-In the example above, `dt.value()` (or equivalently, `tf.identity(dt)`) will
+In the example above, `st.value()` (or equivalently, `tf.identity(st)`) will
 be the mean value of the Normal distribution, i.e., `mu` (possibly
 broadcasted to the shape of `sigma`).  Furthermore, because the `MeanValue`
 was marked with `stop_gradients=True`, this value will have been wrapped

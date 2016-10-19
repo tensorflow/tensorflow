@@ -19,10 +19,24 @@ from __future__ import print_function
 
 import copy
 import re
+import traceback
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 HELP_INDENT = "  "
+
+EXPLICIT_USER_EXIT = "explicit_user_exit"
+
+
+class CommandLineExit(Exception):
+
+  def __init__(self, exit_token=None):
+    Exception.__init__(self)
+    self._exit_token = exit_token
+
+  @property
+  def exit_token(self):
+    return self._exit_token
 
 
 class RichTextLines(object):
@@ -94,6 +108,49 @@ class RichTextLines(object):
   @property
   def annotations(self):
     return self._annotations
+
+  def num_lines(self):
+    return len(self._lines)
+
+  def slice(self, begin, end):
+    """Slice a RichTextLines object.
+
+    The object itself is not changed. A sliced instance is returned.
+
+    Args:
+      begin: (int) Beginning line index (inclusive). Must be >= 0.
+      end: (int) Ending line index (exclusive). Must be >= 0.
+
+    Returns:
+      (RichTextLines) Sliced output instance of RichTextLines.
+
+    Raises:
+      ValueError: If begin or end is negative.
+    """
+
+    if begin < 0 or end < 0:
+      raise ValueError("Encountered negative index.")
+
+    # Copy lines.
+    lines = self.lines[begin:end]
+
+    # Slice font attribute segments.
+    font_attr_segs = {}
+    for key in self.font_attr_segs:
+      if key >= begin and key < end:
+        font_attr_segs[key - begin] = self.font_attr_segs[key]
+
+    # Slice annotations.
+    annotations = {}
+    for key in self.annotations:
+      if not isinstance(key, int):
+        # Annotations can contain keys that are not line numbers.
+        annotations[key] = self.annotations[key]
+      elif key >= begin and key < end:
+        annotations[key - begin] = self.annotations[key]
+
+    return RichTextLines(
+        lines, font_attr_segs=font_attr_segs, annotations=annotations)
 
 
 def regex_find(orig_screen_output, regex, font_attr):
@@ -254,6 +311,9 @@ class CommandHandlerRegistry(object):
   The call will return a RichTextLines object which can be rendered by a CLI.
   """
 
+  HELP_COMMAND = "help"
+  HELP_COMMAND_ALIASES = ["h"]
+
   def __init__(self):
     # A dictionary from command prefix to handler.
     self._handlers = {}
@@ -266,6 +326,16 @@ class CommandHandlerRegistry(object):
 
     # A dictionary from command prefix to help string.
     self._prefix_to_help = {}
+
+    # Introductory text to help information.
+    self._help_intro = None
+
+    # Register a default handler for the command "help".
+    self.register_command_handler(
+        self.HELP_COMMAND,
+        self._help_handler,
+        "Print this help message.",
+        prefix_aliases=self.HELP_COMMAND_ALIASES)
 
   def register_command_handler(self,
                                prefix,
@@ -282,7 +352,12 @@ class CommandHandlerRegistry(object):
         where argv is the argument vector (excluding the command prefix) and
           screen_info is a dictionary containing information about the screen,
           such as number of columns, e.g., {"cols": 100}.
-        The callable should return a RichTextLines object.
+        The callable should return:
+          1) a RichTextLines object representing the screen output.
+
+        The callable can also raise an exception of the type CommandLineExit,
+        which if caught by the command-line interface, will lead to its exit.
+        The exception can optionally carry an exit token of arbitrary type.
       help_info: A help string.
       prefix_aliases: Aliases for the command prefix, as a list of str. E.g.,
         shorthands for the command prefix: ["p", "pr"]
@@ -295,6 +370,7 @@ class CommandHandlerRegistry(object):
         4) elements in prefix_aliases clash with existing aliases.
         5) help_info is not a str.
     """
+
     if not prefix:
       raise ValueError("Empty command prefix")
 
@@ -348,6 +424,9 @@ class CommandHandlerRegistry(object):
         2) no command handler is registered for the command prefix, or
         3) the handler is found for the prefix, but it fails to return a
           RichTextLines or raise any exception.
+      CommandLineExit:
+        If the command handler raises this type of exception, tihs method will
+        simply pass it along.
     """
     if not prefix:
       raise ValueError("Prefix is empty")
@@ -360,10 +439,23 @@ class CommandHandlerRegistry(object):
     handler = self._handlers[resolved_prefix]
     try:
       output = handler(argv, screen_info=screen_info)
+    except CommandLineExit as e:
+      raise e
+    except SystemExit as e:
+      # Special case for syntax errors caught by argparse.
+      lines = ["Syntax error for command: %s" % prefix,
+               "For help, do \"help %s\"" % prefix]
+      output = RichTextLines(lines)
+
     except BaseException as e:  # pylint: disable=broad-except
-      output = RichTextLines(
-          ["Error occurred during handling of command: %s %s:" %
-           (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))])
+      lines = ["Error occurred during handling of command: %s %s:" %
+               (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))]
+
+      # Include traceback of the exception.
+      lines.append("")
+      lines.extend(traceback.format_exc().split("\n"))
+
+      output = RichTextLines(lines)
 
     if not isinstance(output, RichTextLines):
       raise ValueError(
@@ -398,6 +490,10 @@ class CommandHandlerRegistry(object):
     if not cmd_prefix:
       # Print full help information, in sorted order of the command prefixes.
       lines = []
+      if self._help_intro:
+        # If help intro is available, show it at the beginning.
+        lines.extend(self._help_intro)
+
       sorted_prefixes = sorted(self._handlers)
       for cmd_prefix in sorted_prefixes:
         lines.extend(self._get_help_for_command_prefix(cmd_prefix))
@@ -407,6 +503,39 @@ class CommandHandlerRegistry(object):
       return RichTextLines(lines)
     else:
       return RichTextLines(self._get_help_for_command_prefix(cmd_prefix))
+
+  def set_help_intro(self, help_intro):
+    """Set an introductory message to help output.
+
+    Args:
+      help_intro: (list of str) Text lines appended to the beginning of the
+        beginning of the output of the command "help", as introductory
+        information.
+    """
+    self._help_intro = help_intro
+
+  def _help_handler(self, args, screen_info=None):
+    """Command handler for "help".
+
+    "help" is a common command that merits built-in support from this class.
+
+    Args:
+      args: Command line arguments to "help" (not including "help" itself).
+      screen_info: (dict) Information regarding the screen, e.g., the screen
+        width in characters: {"cols": 80}
+
+    Returns:
+      (RichTextLines) Screen text output.
+    """
+
+    _ = screen_info  # Unused currently.
+
+    if not args:
+      return self.get_help()
+    elif len(args) == 1:
+      return self.get_help(args[0])
+    else:
+      return RichTextLines(["ERROR: help takes only 0 or 1 input argument."])
 
   def _resolve_prefix(self, token):
     """Resolve command prefix from the prefix itself or its alias.
@@ -462,6 +591,9 @@ class TabCompletionRegistry(object):
 
   def __init__(self):
     self._comp_dict = {}
+
+  # TODO(cais): Rename method names with "comp" to "*completion*" to avoid
+  # confusion.
 
   def register_tab_comp_context(self, context_words, comp_items):
     """Register a tab-completion context.
@@ -531,7 +663,7 @@ class TabCompletionRegistry(object):
     Args:
       context_word: A single completion word as a string. The extension will
         also apply to all other context words of the same context.
-      new_comp_items: New completion items to add.
+      new_comp_items: (list of str) New completion items to add.
 
     Raises:
       KeyError: if the context word has not been registered.
@@ -571,18 +703,45 @@ class TabCompletionRegistry(object):
       prefix: The prefix of the incomplete word.
 
     Returns:
-      None if no registered context matches the context_word.
-      A list of str for the matching completion items. Can be an empty list
-        of a matching context exists, but no completion item matches the
-        prefix.
+      (1) None if no registered context matches the context_word.
+          A list of str for the matching completion items. Can be an empty list
+          of a matching context exists, but no completion item matches the
+          prefix.
+      (2) Common prefix of all the words in the first return value. If the
+          first return value is None, this return value will be None, too. If
+          the first return value is not None, i.e., a list, this return value
+          will be a str, which can be an empty str if there is no common
+          prefix among the items of the list.
     """
 
     if context_word not in self._comp_dict:
-      return None
+      return None, None
 
     comp_items = self._comp_dict[context_word]
+    comp_items = sorted(
+        [item for item in comp_items if item.startswith(prefix)])
 
-    return sorted([item for item in comp_items if item.startswith(prefix)])
+    return comp_items, self._common_prefix(comp_items)
+
+  def _common_prefix(self, m):
+    """Given a list of str, returns the longest common prefix.
+
+    Args:
+      m: (list of str) A list of strings.
+
+    Returns:
+      (str) The longest common prefix.
+    """
+    if not m:
+      return ""
+
+    s1 = min(m)
+    s2 = max(m)
+    for i, c in enumerate(s1):
+      if c != s2[i]:
+        return s1[:i]
+
+    return s1
 
 
 class CommandHistory(object):

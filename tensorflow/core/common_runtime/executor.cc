@@ -462,8 +462,6 @@ class ExecutorState {
   void RunAsync(Executor::DoneCallback done);
 
  private:
-  typedef ExecutorState ME;
-
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
   // TODO(yuanbyu): A better way to do "has_value"?
   struct Entry {
@@ -530,6 +528,10 @@ class ExecutorState {
   // device at the beginning of a step.
   DeviceContextMap device_context_map_;
 
+  struct TaggedNode;
+  typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
+  typedef gtl::InlinedVector<Entry, 4> EntryVector;
+
   struct IterationState {
     explicit IterationState(const ExecutorImpl* impl)
         : input_tensors(new Entry[impl->total_input_tensors_]),
@@ -581,6 +583,11 @@ class ExecutorState {
   };
 
   struct FrameState {
+    explicit FrameState(const ExecutorImpl* impl, int parallel_iters)
+        : executor(impl),
+          max_parallel_iterations(parallel_iters),
+          num_outstanding_iterations(1) {}
+
     // A new frame is created for each loop. Execution starts at iteration 0.
     // When a value at iteration 0 passes through a NextIteration node,
     // iteration 1 is created and starts running. Note that iteration 0 may
@@ -609,6 +616,9 @@ class ExecutorState {
     // This frame state is mostly initialized lazily on demand so we
     // don't introduce unnecessary overhead.
 
+    // The executor the frame is in.
+    const ExecutorImpl* executor = nullptr;
+
     // The name of this frame, which is the concatenation of its parent
     // frame name, the iteration of the parent frame when this frame was
     // created, and the value of the attr 'frame_name'.
@@ -626,47 +636,93 @@ class ExecutorState {
     // The FrameState of its parent frame.
     FrameState* parent_frame = nullptr;
 
-    // The highest iteration number we have reached so far in this frame.
-    int64 iteration_count = 0;
+    // The maximum allowed number of parallel iterations.
+    const int max_parallel_iterations;
 
     // The number of inputs this frame is still waiting.
     int num_pending_inputs = 0;
 
+    // The highest iteration number we have reached so far in this frame.
+    int64 iteration_count GUARDED_BY(mu) = 0;
+
     // The number of outstanding iterations.
-    int num_outstanding_iterations = 0;
+    int num_outstanding_iterations GUARDED_BY(mu) = 1;
 
-    // The maximum allowed number of parallel iterations.
-    int max_parallel_iterations = 1;
-
-    // The iteration states of this frame.
+    // The active iteration states of this frame.
     gtl::InlinedVector<IterationState*, 12> iterations;
 
     // The NextIteration nodes to enter a new iteration. If the number of
     // outstanding iterations reaches the limit, we will defer the start of
     // the next iteration until the number of outstanding iterations falls
     // below the limit.
-    std::vector<std::pair<const Node*, Entry>> next_iter_roots;
+    std::vector<std::pair<const Node*, Entry>> next_iter_roots GUARDED_BY(mu);
 
     // The values of the loop invariants for this loop. They are added into
     // this list as they "enter" the frame. When a loop invariant enters,
     // we make it available to all active iterations. When the frame starts
     // a new iteration, we make all the current loop invariants available
     // to the new iteration.
-    std::vector<std::pair<const Node*, Entry>> inv_values;
+    std::vector<std::pair<const Node*, Entry>> inv_values GUARDED_BY(mu);
 
     // The list of dead exit nodes for the current highest iteration. We
     // will only "execute" the dead exits of the final iteration.
-    std::vector<const Node*> dead_exits;
+    std::vector<const Node*> dead_exits GUARDED_BY(mu);
 
-    IterationState* GetIteration(int64 iter) {
+    // Lock ordering: ExecutorState.mu_ < mu.
+    mutex mu;
+
+    inline IterationState* GetIteration(int64 iter)
+        EXCLUSIVE_LOCKS_REQUIRED(mu) {
       int index = iter % iterations.size();
       return iterations[index];
     }
 
-    void SetIteration(int64 iter, IterationState* state) {
+    inline void SetIteration(int64 iter, IterationState* state)
+        EXCLUSIVE_LOCKS_REQUIRED(mu) {
       int index = iter % iterations.size();
+      DCHECK(state == nullptr || iterations[index] == nullptr);
       iterations[index] = state;
     }
+
+    // Decrement the outstanding op count and clean up the iterations in the
+    // frame. Return true iff the execution of the frame is done.
+    inline bool DecrementOutstandingOps(int64 iter, TaggedNodeSeq* ready) {
+      mutex_lock l(mu);
+      GetIteration(iter)->outstanding_ops--;
+      return CleanupIterations(iter, ready);
+    }
+
+    // Returns true if the computation in the frame is completed.
+    inline bool IsFrameDone() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+      return (num_pending_inputs == 0 && num_outstanding_iterations == 0);
+    }
+
+    // Returns true if the iteration of the frame is completed.
+    bool IsIterationDone(int64 iter) EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Increments the iteration id. If this is a new iteration, initialize it.
+    void IncrementIteration(TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Activate all the deferred NextIteration nodes in a new iteration.
+    void ActivateNexts(int64 iter, TaggedNodeSeq* ready)
+        EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Activate all the current loop invariants in a new iteration.
+    void ActivateLoopInvs(int64 iter, TaggedNodeSeq* ready)
+        EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Add a new loop invariant and make it available to all active iterations.
+    void AddLoopInv(const Node* node, const Entry& value, TaggedNodeSeq* ready)
+        EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Activate the successors of a node.
+    void ActivateNodes(const Node* node, const bool is_dead, int64 iter,
+                       const EntryVector& outputs, TaggedNodeSeq* ready)
+        EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    // Cleanup iterations of this frame starting from iteration iter.
+    bool CleanupIterations(int64 iter, TaggedNodeSeq* ready)
+        EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     ~FrameState() {
       for (size_t i = 0; i < iterations.size(); ++i) {
@@ -729,9 +785,6 @@ class ExecutorState {
 
   struct AsyncState;
 
-  typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
-  typedef gtl::InlinedVector<Entry, 4> EntryVector;
-
   const bool vlog_;  // true if VLOG_IS_ON(1). Used to check vlog cheaply.
 
   // true if LogMemory::IsEnabled(). Used to check memory enabled cheaply.
@@ -785,49 +838,24 @@ class ExecutorState {
   // Find an existing or create a new child frame in the frame 'frame' at
   // iteration 'iter'.
   void FindOrCreateChildFrame(FrameState* frame, int64 iter, const Node* node,
-                              FrameState** child) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Increments the iteration id. If this is a new iteration, initialize it.
-  void IncrementIteration(FrameState* frame, TaggedNodeSeq* ready)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Returns true if the computation in the frame is completed.
-  bool IsFrameDone(FrameState* frame) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Returns true if the iteration of the frame is completed.
-  bool IsIterationDone(FrameState* frame, int64 iter)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                              FrameState** child);
 
   // Get the output frame/iter of a node. Create new frame/iteration if
   // needed. If there are dead roots for the new iteration, we need to
-  // "execute" them so ad them to the ready queue. Returns true if
+  // "execute" them so add them to the ready queue. Returns true if
   // we need to check for the completion of output frame/iter.
-  bool SetOutputFrameIter(const TaggedNode& tagged_node,
-                          const EntryVector& outputs, FrameState** frame,
-                          int64* iter, TaggedNodeSeq* ready)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void FindOrCreateOutputFrameIter(const TaggedNode& tagged_node,
+                                   const EntryVector& outputs,
+                                   FrameState** frame, int64* iter,
+                                   TaggedNodeSeq* ready);
 
-  // Cleanup frames and iterations
+  // Delete a frame. Called when the frame is done.
+  void DeleteFrame(FrameState* frame, TaggedNodeSeq* ready);
+
+  // Cleanup frames and iterations starting from frame/iter. Called when
+  // a child frame is done.
   void CleanupFramesIterations(FrameState* frame, int64 iter,
-                               TaggedNodeSeq* ready)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Activate all the deferred NextIteration nodes in a new iteration.
-  void ActivateNexts(FrameState* frame, int64 iter, TaggedNodeSeq* ready)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Activate all the current loop invariants in a new iteration.
-  void ActivateLoopInvs(FrameState* frame, int64 iter, TaggedNodeSeq* ready)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Add a new loop invariant and make it available to all active iterations.
-  void AddLoopInv(FrameState* frame, const Node* node, const Entry& value,
-                  TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Activate the successors of a node.
-  void ActivateNode(const Node* node, const bool is_dead, FrameState* frame,
-                    int64 iter, const EntryVector& outputs,
-                    TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                               TaggedNodeSeq* ready);
 
   // Process a ready node in current thread.
   void Process(TaggedNode node, int64 scheduled_usec);
@@ -856,6 +884,9 @@ class ExecutorState {
   // nodes in 'ready' into 'inline_ready'.
   void ScheduleReady(const TaggedNodeSeq& ready,
                      TaggedNodeReadyQueue* inline_ready);
+
+  // For debugging/logging only.
+  inline void MaybeMarkCompleted(FrameState* frame, int64 iter, int64 id);
 
   // Provide debugging output about an outstanding node in the executor.
   void DumpCompletedNodeState(const int node_id, const Entry* input_vector);
@@ -902,21 +933,15 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // Initialize the frame.
-  root_frame_ = new FrameState;
+  root_frame_ = new FrameState(impl_, 1);
   root_frame_->frame_name = "_root";  // assume to be unique
   root_frame_->frame_id = 0;          // must be 0
-  root_frame_->num_pending_inputs = 0;
-  root_frame_->num_outstanding_iterations = 1;
-  root_frame_->max_parallel_iterations = 1;  // enough for root frame
+  // Initialize the first iteration.
   root_frame_->iterations.resize(root_frame_->max_parallel_iterations);
-
-  if (vlog_) VLOG(2) << "Create frame: " << root_frame_->frame_name;
-
-  // Initialize the iteration.
   IterationState* iter_state = new IterationState(impl);
   root_frame_->iterations[0] = iter_state;
 
-  // Initialize the executor state.
+  if (vlog_) VLOG(2) << "Create frame: " << root_frame_->frame_name;
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
 }
 
@@ -1079,14 +1104,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     // TODO(misard) Replace with a finer-grain enabling flag once we
     // add better optional debugging support.
     if (vlog_ && VLOG_IS_ON(1)) {
-      mutex_lock l(mu_);
-      IterationState* iter_state = input_frame->GetIteration(input_iter);
-      iter_state->mark_started(id);
+      mutex_lock l(input_frame->mu);
+      input_frame->GetIteration(input_iter)->mark_started(id);
     }
 
     // Set the device_context for this node id, if it exists.
-    if (node->id() < device_context_map_.size()) {
-      params.op_device_context = device_context_map_[node->id()];
+    if (id < device_context_map_.size()) {
+      params.op_device_context = device_context_map_[id];
     }
 
     params.track_allocations = false;
@@ -1128,13 +1152,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         for (int i = 0; i < num_inputs; ++i) {
           (first_input + i)->ClearVal();
         }
-        // TODO(misard) Replace with a finer-grain enabling flag once we
-        // add better optional debugging support.
-        if (vlog_ && VLOG_IS_ON(1)) {
-          mutex_lock l(mu_);
-          IterationState* iter_state = input_frame->GetIteration(input_iter);
-          iter_state->mark_completed(id);
-        }
+        MaybeMarkCompleted(input_frame, input_iter, id);
         // Continue to process the nodes in 'inline_ready'.
         completed = NodeDone(s, item.node, ready, stats, &inline_ready);
         continue;
@@ -1174,14 +1192,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           for (int i = 0; i < num_inputs; ++i) {
             (first_input + i)->ClearVal();
           }
-          // TODO(misard) Replace with a finer-grain enabling flag once we
-          // add better optional debugging support.
-          if (vlog_ && VLOG_IS_ON(1)) {
-            mutex_lock l(mu_);
-            state->tagged_node.input_frame
-                ->GetIteration(state->tagged_node.input_iter)
-                ->mark_completed(state->tagged_node.node->id());
-          }
+          FrameState* input_frame = state->tagged_node.input_frame;
+          const int64 input_iter = state->tagged_node.input_iter;
+          const int id = state->tagged_node.node->id();
+          MaybeMarkCompleted(input_frame, input_iter, id);
           TaggedNodeSeq ready;
           if (s.ok()) {
             PropagateOutputs(state->tagged_node, outputs, &ready);
@@ -1234,13 +1248,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       for (int i = 0; i < num_inputs; ++i) {
         (first_input + i)->ClearVal();
       }
-      // TODO(misard) Replace with a finer-grain enabling flag once we
-      // add better optional debugging support.
-      if (vlog_ && VLOG_IS_ON(1)) {
-        mutex_lock l(mu_);
-        IterationState* iter_state = input_frame->GetIteration(input_iter);
-        iter_state->mark_completed(id);
-      }
+      MaybeMarkCompleted(input_frame, input_iter, id);
       // Propagates outputs.
       if (s.ok()) {
         PropagateOutputs(tagged_node, outputs, &ready);
@@ -1454,153 +1462,95 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const EntryVector& outputs,
                                      TaggedNodeSeq* ready) {
+  const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   int64 input_iter = tagged_node.input_iter;
+  const bool is_dead = tagged_node.is_dead;
 
   // Propagates outputs along out edges, and puts newly ready nodes
   // into the ready queue.
   ready->clear();
-  {
-    FrameState* output_frame = input_frame;
-    int64 output_iter = input_iter;
+  bool is_frame_done = false;
+  FrameState* output_frame = input_frame;
+  int64 output_iter = input_iter;
 
-    mutex_lock l(mu_);
-    // Sets the output_frame and output_iter of node.
-    bool maybe_completed = SetOutputFrameIter(
-        tagged_node, outputs, &output_frame, &output_iter, ready);
-    if (output_frame != nullptr) {
-      // Continue to process the out nodes:
-      ActivateNode(tagged_node.node, tagged_node.is_dead, output_frame,
-                   output_iter, outputs, ready);
-    }
-
-    // At this point, this node is completely done.
-    input_frame->GetIteration(input_iter)->outstanding_ops--;
-    CleanupFramesIterations(input_frame, input_iter, ready);
-
-    // The execution of a node such as Enter may cause the completion of
-    // output_frame:output_iter, so perform cleanup if
-    // output_frame:output_iter
-    // is indeed completed.
-    if (maybe_completed) {
-      CleanupFramesIterations(output_frame, output_iter, ready);
-    }
-  }
-}
-
-void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
-                                 FrameState* output_frame, int64 output_iter,
-                                 const EntryVector& outputs,
-                                 TaggedNodeSeq* ready) {
-  const NodeItem* nodes = impl_->nodes_;
-  IterationState* output_iter_state = output_frame->GetIteration(output_iter);
-  for (const Edge* e : node->out_edges()) {
-    const Node* dst_node = e->dst();
-    const int dst_id = dst_node->id();
-    const int src_slot = e->src_output();
-
-    bool dst_dead = false;
-    bool dst_ready = false;
-    // True iff this input for dst is needed. We only set this input for
-    // dst if this flag is true. This is needed to make the thread safety
-    // analysis happy.
-    bool dst_need_input = !e->IsControlEdge();
-    if (IsMerge(dst_node)) {
-      // A merge node is ready if all control inputs have arrived and either
-      // a) a live data input becomes available or b) all data inputs are dead.
-      // For Merge, pending's LSB is set iff a live data input has arrived.
-      if (e->IsControlEdge()) {
-        output_iter_state->decrement_pending(dst_id, 2);
-        int count = output_iter_state->pending(dst_id);
-        dst_dead =
-            (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
-        dst_ready = (count == 0) || ((count == 1) && dst_dead);
+  if (IsEnter(node)) {
+    bool is_constant;
+    Status s = GetNodeAttr(node->def(), "is_constant", &is_constant);
+    DCHECK(s.ok()) << s;
+    FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
+    output_iter = 0;
+    {
+      mutex_lock l(output_frame->mu);
+      if (is_constant) {
+        // Propagate to all active iterations if this is a loop invariant.
+        output_frame->AddLoopInv(node, outputs[0], ready);
       } else {
-        if (outputs[src_slot].has_value) {
-          // This is a live data input.
-          int count = output_iter_state->pending(dst_id);
-          output_iter_state->mark_live(dst_id);
-          // Only the first live edge sets the input and (potentially)
-          // triggers execution. The low bit of count is set if and
-          // only if no live input has been used yet (mark_live clears
-          // it). The node should be started if and only if this is
-          // the first live input and there are no pending control
-          // edges, i.e. count == 1.
-          dst_ready = (count == 1);
-          dst_need_input = ((count & 0x1) == 1);
+        output_frame->ActivateNodes(node, is_dead, output_iter, outputs, ready);
+      }
+      output_frame->num_pending_inputs--;
+    }
+    is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
+  } else if (IsExit(node)) {
+    if (is_dead) {
+      mutex_lock l(input_frame->mu);
+      // Stop and remember this node if it is a dead exit.
+      if (input_iter == input_frame->iteration_count) {
+        input_frame->dead_exits.push_back(node);
+      }
+      input_frame->GetIteration(input_iter)->outstanding_ops--;
+      is_frame_done = input_frame->CleanupIterations(input_iter, ready);
+    } else {
+      output_frame = input_frame->parent_frame;
+      output_iter = input_frame->parent_iter;
+      {
+        mutex_lock l(output_frame->mu);
+        output_frame->ActivateNodes(node, is_dead, output_iter, outputs, ready);
+      }
+      is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
+    }
+  } else {
+    mutex_lock l(input_frame->mu);
+    if (IsNextIteration(node)) {
+      if (is_dead) {
+        // Stop the deadness propagation.
+        output_frame = nullptr;
+      } else {
+        if (input_iter == input_frame->iteration_count &&
+            input_frame->num_outstanding_iterations ==
+                input_frame->max_parallel_iterations) {
+          // Reached the maximum for parallel iterations.
+          input_frame->next_iter_roots.push_back({node, outputs[0]});
+          output_frame = nullptr;
         } else {
-          // This is a dead data input. Note that dst_node is dead if node is
-          // a dead enter. We need this to handle properly a while loop on
-          // the untaken branch of a conditional.
-          // TODO(yuanbyu): This is a bit hacky, but a good solution for now.
-          output_iter_state->increment_dead_count(dst_id);
-          const int dead_cnt = output_iter_state->dead_count(dst_id);
-          dst_dead = (dead_cnt == dst_node->num_inputs()) || IsEnter(node);
-          dst_ready = (output_iter_state->pending(dst_id) == 1) && dst_dead;
-          dst_need_input = false;
+          // If this is a new iteration, start it.
+          if (input_iter == input_frame->iteration_count) {
+            input_frame->IncrementIteration(ready);
+          }
+          output_iter = input_iter + 1;
         }
       }
-    } else {
-      // A non-merge node is ready if all its inputs are ready. We wait
-      // for all inputs to come in even if we know the node is dead. This
-      // ensures that all input tensors get cleaned up.
-      if (is_dead || (!e->IsControlEdge() && !outputs[src_slot].has_value)) {
-        output_iter_state->increment_dead_count(dst_id);
-      }
-      dst_dead = output_iter_state->dead_count(dst_id) > 0;
-      dst_ready = (output_iter_state->decrement_pending(dst_id, 1) == 0);
     }
-
-    if (dst_need_input) {
-      const NodeItem& dst_item = nodes[dst_id];
-      const int dst_slot = e->dst_input();
-      Entry* input_tensors = output_iter_state->input_tensors;
-      int dst_loc = dst_item.input_start + dst_slot;
-      input_tensors[dst_loc] = outputs[src_slot];
+    if (output_frame != nullptr) {
+      // This is the case when node is not Enter, Exit, or NextIteration.
+      DCHECK(input_frame == output_frame);
+      output_frame->ActivateNodes(node, is_dead, output_iter, outputs, ready);
     }
+    input_frame->GetIteration(input_iter)->outstanding_ops--;
+    is_frame_done = input_frame->CleanupIterations(input_iter, ready);
+  }
 
-    // Add dst to the ready queue if it's ready
-    if (dst_ready) {
-      dst_dead = dst_dead && !IsControlTrigger(dst_node);
-      ready->push_back(
-          TaggedNode(dst_node, output_frame, output_iter, dst_dead));
-      output_iter_state->outstanding_ops++;
+  // At this point, this node is completely done. We also know if the
+  // completion of this node makes its frame completed.
+  if (is_frame_done) {
+    FrameState* parent_frame = input_frame->parent_frame;
+    int64 parent_iter = input_frame->parent_iter;
+    DeleteFrame(input_frame, ready);
+    if (parent_frame != nullptr) {
+      // The completion of frame may cause completions in its parent frame.
+      // So clean things up recursively.
+      CleanupFramesIterations(parent_frame, parent_iter, ready);
     }
-  }
-}
-
-void ExecutorState::ActivateNexts(FrameState* frame, int64 iter,
-                                  TaggedNodeSeq* ready) {
-  // Propagate the deferred NextIteration nodes to the new iteration.
-  for (auto& node_entry : frame->next_iter_roots) {
-    const Node* node = node_entry.first;
-    const Entry& entry = node_entry.second;
-    const bool is_dead = !entry.has_value;
-    ActivateNode(node, is_dead, frame, iter, {entry}, ready);
-  }
-  frame->next_iter_roots.clear();
-}
-
-void ExecutorState::ActivateLoopInvs(FrameState* frame, int64 iter,
-                                     TaggedNodeSeq* ready) {
-  // Propagate loop invariants to the new iteration.
-  for (auto& node_entry : frame->inv_values) {
-    const Node* node = node_entry.first;
-    const Entry& entry = node_entry.second;
-    const bool is_dead = !entry.has_value;
-    ActivateNode(node, is_dead, frame, iter, {entry}, ready);
-  }
-}
-
-void ExecutorState::AddLoopInv(FrameState* frame, const Node* node,
-                               const Entry& entry, TaggedNodeSeq* ready) {
-  // Store this value.
-  frame->inv_values.push_back({node, entry});
-
-  // Make this value available to all iterations.
-  bool is_dead = !entry.has_value;
-  for (int i = 1; i <= frame->iteration_count; ++i) {
-    ActivateNode(node, is_dead, frame, i, {entry}, ready);
   }
 }
 
@@ -1661,7 +1611,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   if (inline_ready == nullptr) {
     // Schedule to run all the ready ops in thread pool.
     for (auto& tagged_node : ready) {
-      runner_(std::bind(&ME::Process, this, tagged_node, scheduled_usec));
+      runner_([=]() { Process(tagged_node, scheduled_usec); });
     }
     return;
   }
@@ -1676,7 +1626,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
       if (curr_expensive_node) {
         // Dispatch to another thread since there is plenty of work to
         // do for this thread.
-        runner_(std::bind(&ME::Process, this, *curr_expensive_node,
+        runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
                           scheduled_usec));
       }
       curr_expensive_node = &tagged_node;
@@ -1689,9 +1639,19 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
     } else {
       // There are inline nodes to run already. We dispatch this expensive
       // node to other thread.
-      runner_(
-          std::bind(&ME::Process, this, *curr_expensive_node, scheduled_usec));
+      runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
+                        scheduled_usec));
     }
+  }
+}
+
+inline void ExecutorState::MaybeMarkCompleted(FrameState* frame, int64 iter,
+                                              int64 id) {
+  // TODO(misard) Replace with a finer-grain enabling flag once we
+  // add better optional debugging support.
+  if (vlog_ && VLOG_IS_ON(1)) {
+    mutex_lock l(frame->mu);
+    frame->GetIteration(iter)->mark_completed(id);
   }
 }
 
@@ -1810,6 +1770,7 @@ void ExecutorState::DumpState() {
     for (auto& frame : outstanding_frames_) {
       LOG(WARNING) << frame.first;
       FrameState* frame_state = frame.second;
+      mutex_lock frame_lock(frame_state->mu);
       for (IterationState* iteration : frame_state->iterations) {
         LOG(WARNING) << "  Iteration:";
         DumpIterationState(iteration);
@@ -1827,27 +1788,7 @@ void ExecutorState::Finish() {
   mu_.unlock();
   delete this;
   CHECK(done_cb != nullptr);
-  runner([done_cb, status]() { done_cb(status); });
-}
-
-bool ExecutorState::IsFrameDone(FrameState* frame) {
-  return (frame->num_pending_inputs == 0 &&
-          frame->num_outstanding_iterations == 0);
-}
-
-bool ExecutorState::IsIterationDone(FrameState* frame, int64 iter) {
-  IterationState* iter_state = frame->GetIteration(iter);
-  if (iter_state->outstanding_ops == 0 &&
-      iter_state->outstanding_frame_count == 0) {
-    if (iter == 0) {
-      // The enclosing frame has no pending input.
-      return frame->num_pending_inputs == 0;
-    } else {
-      // The preceding iteration is deleted (and therefore done).
-      return (frame->GetIteration(iter - 1) == nullptr);
-    }
-  }
-  return false;
+  runner([=]() { done_cb(status); });
 }
 
 void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
@@ -1856,158 +1797,74 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
   // Get the child frame name.
   string enter_name;
   Status s = GetNodeAttr(node->def(), "frame_name", &enter_name);
-  CHECK(s.ok()) << s;
+  DCHECK(s.ok()) << s;
   const string child_name = MakeFrameName(frame, iter, enter_name);
 
-  auto it = outstanding_frames_.find(child_name);
-  if (it != outstanding_frames_.end()) {
-    *child = it->second;
-  } else {
-    // Need to create a new frame instance.
-    if (vlog_) {
-      VLOG(2) << "Create frame: " << child_name;
+  {
+    mutex_lock executor_lock(mu_);
+    auto it = outstanding_frames_.find(child_name);
+    if (it != outstanding_frames_.end()) {
+      *child = it->second;
+      return;
     }
-
-    FrameState* temp = new FrameState;
-    temp->frame_name = child_name;
-    temp->frame_id = Hash64(child_name);
-    temp->parent_frame = frame;
-    temp->parent_iter = iter;
-    s = GetNodeAttr(node->def(), "parallel_iterations",
-                    &temp->max_parallel_iterations);
-    CHECK(s.ok()) << s;
-    // 'iterations' is a fixed-length circular buffer.
-    temp->iterations.resize(temp->max_parallel_iterations + 1);
-    IterationState* iter_state = new IterationState(impl_);
-    temp->iterations[0] = iter_state;
-
-    auto frame_pending = impl_->frame_input_count_.find(enter_name);
-    DCHECK(frame_pending != impl_->frame_input_count_.end());
-    temp->num_pending_inputs = frame_pending->second;
-    temp->num_outstanding_iterations = 1;
-    *child = temp;
-
-    frame->GetIteration(iter)->outstanding_frame_count++;
-    outstanding_frames_[child_name] = temp;
-  }
-}
-
-void ExecutorState::IncrementIteration(FrameState* frame,
-                                       TaggedNodeSeq* ready) {
-  frame->iteration_count++;
-  int64 next_iter = frame->iteration_count;
-
-  if (vlog_) {
-    VLOG(2) << "Create iteration: [" << frame->frame_name << ", " << next_iter
-            << "]";
   }
 
+  // Need to create a new frame instance.
+  // Note that this new frame instance is created without any locks.
+  if (vlog_) VLOG(2) << "Create frame: " << child_name;
+
+  int parallel_iters;
+  s = GetNodeAttr(node->def(), "parallel_iterations", &parallel_iters);
+  DCHECK(s.ok()) << s;
+  FrameState* temp = new FrameState(impl_, parallel_iters);
+  temp->frame_name = child_name;
+  temp->frame_id = Hash64(child_name);
+  temp->parent_frame = frame;
+  temp->parent_iter = iter;
+
+  // 'iterations' is a fixed-length circular buffer.
+  temp->iterations.resize(temp->max_parallel_iterations + 1);
+  // Initialize the first iteration.
   IterationState* iter_state = new IterationState(impl_);
-  frame->SetIteration(next_iter, iter_state);
-  frame->num_outstanding_iterations++;
-  frame->dead_exits.clear();
+  temp->iterations[0] = iter_state;
 
-  // Activate the successors of the deferred roots in the new iteration.
-  ActivateNexts(frame, next_iter, ready);
+  auto frame_pending = impl_->frame_input_count_.find(enter_name);
+  DCHECK(frame_pending != impl_->frame_input_count_.end());
+  temp->num_pending_inputs = frame_pending->second;
 
-  // Activate the loop invariants in the new iteration.
-  ActivateLoopInvs(frame, next_iter, ready);
-}
-
-bool ExecutorState::SetOutputFrameIter(const TaggedNode& tagged_node,
-                                       const EntryVector& outputs,
-                                       FrameState** output_frame,
-                                       int64* output_iter,
-                                       TaggedNodeSeq* ready) {
-  const Node* node = tagged_node.node;
-  FrameState* input_frame = tagged_node.input_frame;
-  int64 input_iter = tagged_node.input_iter;
-  bool is_dead = tagged_node.is_dead;
-  bool is_enter = IsEnter(node);
-
-  if (is_enter) {
-    FindOrCreateChildFrame(input_frame, input_iter, node, output_frame);
-    // Propagate if this is a loop invariant.
-    bool is_constant;
-    Status s = GetNodeAttr(node->def(), "is_constant", &is_constant);
-    CHECK(s.ok()) << s;
-    if (is_constant) {
-      AddLoopInv(*output_frame, node, outputs[0], ready);
-    }
-    --(*output_frame)->num_pending_inputs;
-    *output_iter = 0;
-  } else if (IsExit(node)) {
-    if (is_dead) {
-      // Stop and remember this node if it is a dead exit.
-      if (input_iter == input_frame->iteration_count) {
-        input_frame->dead_exits.push_back(node);
-      }
-      *output_frame = nullptr;
+  {
+    mutex_lock executor_lock(mu_);
+    auto it = outstanding_frames_.find(child_name);
+    if (it != outstanding_frames_.end()) {
+      *child = it->second;
     } else {
-      *output_frame = input_frame->parent_frame;
-      *output_iter = input_frame->parent_iter;
-    }
-  } else if (IsNextIteration(node)) {
-    if (is_dead) {
-      // Stop the deadness propagation
-      *output_frame = nullptr;
-    } else {
-      if (input_iter == input_frame->iteration_count &&
-          input_frame->num_outstanding_iterations ==
-              input_frame->max_parallel_iterations) {
-        // Reached the maximum for parallel iterations.
-        input_frame->next_iter_roots.push_back({node, outputs[0]});
-        *output_frame = nullptr;
-      } else {
-        // If this is a new iteration, start it.
-        if (input_iter == input_frame->iteration_count) {
-          IncrementIteration(input_frame, ready);
-        }
-        *output_iter = input_iter + 1;
-      }
+      mutex_lock frame_lock(frame->mu);
+      frame->GetIteration(iter)->outstanding_frame_count++;
+      outstanding_frames_[child_name] = temp;
+      *child = temp;
+      temp = nullptr;
     }
   }
-  return is_enter;
+  delete temp;  // Not used so delete it.
 }
 
-void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
-                                            TaggedNodeSeq* ready) {
-  int64 curr_iter = iter;
-  while (curr_iter <= frame->iteration_count &&
-         IsIterationDone(frame, curr_iter)) {
-    // Delete the iteration curr_iter
-    if (vlog_) {
-      VLOG(2) << "Delete iteration [" << frame->frame_name << ", " << curr_iter
-              << "].";
-    }
-
-    delete frame->GetIteration(curr_iter);
-    frame->SetIteration(curr_iter, nullptr);
-    --frame->num_outstanding_iterations;
-    ++curr_iter;
-
-    // If there is a deferred iteration, start it.
-    if (frame->next_iter_roots.size() > 0) {
-      IncrementIteration(frame, ready);
-    }
-  }
-
-  if (IsFrameDone(frame)) {
-    FrameState* parent_frame = frame->parent_frame;
-    int64 parent_iter = frame->parent_iter;
-
+void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
+  // First, propagate dead_exits (if any) to the parent frame.
+  FrameState* parent_frame = frame->parent_frame;
+  int64 parent_iter = frame->parent_iter;
+  if (parent_frame != nullptr) {
+    mutex_lock paranet_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
     for (const Node* node : frame->dead_exits) {
       auto parent_iter_state = parent_frame->GetIteration(parent_iter);
       for (const Edge* e : node->out_edges()) {
         const Node* dst_node = e->dst();
         const int dst_id = dst_node->id();
-        const NodeItem* dst_item = &(impl_->nodes_[dst_id]);
 
         bool dst_dead = true;
         bool dst_ready = false;
-        // We know this is a dead input to dst
-        if (dst_item->is_merge) {
+        // We know this is a dead input to dst.
+        if (IsMerge(dst_node)) {
           if (e->IsControlEdge()) {
             parent_iter_state->decrement_pending(dst_id, 2);
             int count = parent_iter_state->pending(dst_id);
@@ -2016,8 +1873,8 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
             dst_ready = (count == 0) || ((count == 1) && dst_dead);
           } else {
             parent_iter_state->increment_dead_count(dst_id);
-            dst_dead = (parent_iter_state->dead_count(dst_id) ==
-                        dst_node->num_inputs());
+            const int dead_cnt = parent_iter_state->dead_count(dst_id);
+            dst_dead = (dead_cnt == dst_node->num_inputs());
             dst_ready = (parent_iter_state->pending(dst_id) == 1) && dst_dead;
           }
         } else {
@@ -2031,21 +1888,201 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
         }
       }
     }
+  }
 
-    // Delete the frame
-    const string& frame_name = frame->frame_name;
-    if (vlog_) {
-      VLOG(2) << "Delete frame " << frame_name;
-    }
+  // Delete the frame.
+  const string& frame_name = frame->frame_name;
+  if (vlog_) VLOG(2) << "Delete frame " << frame_name;
+  {
+    mutex_lock executor_lock(mu_);
     outstanding_frames_.erase(frame_name);
-    delete frame;
+  }
+  delete frame;
+}
 
-    // Cleanup recursively
+void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
+                                            TaggedNodeSeq* ready) {
+  bool is_frame_done = false;
+  {
+    mutex_lock frame_lock(frame->mu);
+    frame->GetIteration(iter)->outstanding_frame_count--;
+    is_frame_done = frame->CleanupIterations(iter, ready);
+  }
+  if (is_frame_done) {
+    FrameState* parent_frame = frame->parent_frame;
+    int64 parent_iter = frame->parent_iter;
+    DeleteFrame(frame, ready);
     if (parent_frame != nullptr) {
-      parent_frame->GetIteration(parent_iter)->outstanding_frame_count--;
+      // The completion of frame may cause completions in its parent frame.
+      // So clean things up recursively.
       CleanupFramesIterations(parent_frame, parent_iter, ready);
     }
   }
+}
+
+void ExecutorState::FrameState::ActivateNodes(const Node* node,
+                                              const bool is_dead, int64 iter,
+                                              const EntryVector& outputs,
+                                              TaggedNodeSeq* ready) {
+  const NodeItem* nodes = executor->nodes_;
+  IterationState* iter_state = GetIteration(iter);
+  for (const Edge* e : node->out_edges()) {
+    const Node* dst_node = e->dst();
+    const int dst_id = dst_node->id();
+    const int src_slot = e->src_output();
+
+    bool dst_dead = false;
+    bool dst_ready = false;
+    // True iff this input for dst is needed. We only set this input for
+    // dst if this flag is true. This is needed to make the thread safety
+    // analysis happy.
+    bool dst_need_input = !e->IsControlEdge();
+    if (IsMerge(dst_node)) {
+      // A merge node is ready if all control inputs have arrived and either
+      // a) a live data input becomes available or b) all data inputs are dead.
+      // For Merge, pending's LSB is set iff a live data input has arrived.
+      if (e->IsControlEdge()) {
+        iter_state->decrement_pending(dst_id, 2);
+        int count = iter_state->pending(dst_id);
+        dst_dead = (iter_state->dead_count(dst_id) == dst_node->num_inputs());
+        dst_ready = (count == 0) || ((count == 1) && dst_dead);
+      } else {
+        if (outputs[src_slot].has_value) {
+          // This is a live data input.
+          int count = iter_state->pending(dst_id);
+          iter_state->mark_live(dst_id);
+          // Only the first live edge sets the input and (potentially)
+          // triggers execution. The low bit of count is set if and
+          // only if no live input has been used yet (mark_live clears
+          // it). The node should be started if and only if this is
+          // the first live input and there are no pending control
+          // edges, i.e. count == 1.
+          dst_ready = (count == 1);
+          dst_need_input = ((count & 0x1) == 1);
+        } else {
+          // This is a dead data input. Note that dst_node is dead if node is
+          // a dead enter. We need this to handle properly a while loop on
+          // the untaken branch of a conditional.
+          // TODO(yuanbyu): This is a bit hacky, but a good solution for now.
+          iter_state->increment_dead_count(dst_id);
+          const int dead_cnt = iter_state->dead_count(dst_id);
+          dst_dead = (dead_cnt == dst_node->num_inputs()) || IsEnter(node);
+          dst_ready = (iter_state->pending(dst_id) == 1) && dst_dead;
+          dst_need_input = false;
+        }
+      }
+    } else {
+      // A non-merge node is ready if all its inputs are ready. We wait
+      // for all inputs to come in even if we know the node is dead. This
+      // ensures that all input tensors get cleaned up.
+      if (is_dead || (!e->IsControlEdge() && !outputs[src_slot].has_value)) {
+        iter_state->increment_dead_count(dst_id);
+      }
+      dst_dead = iter_state->dead_count(dst_id) > 0;
+      dst_ready = (iter_state->decrement_pending(dst_id, 1) == 0);
+    }
+
+    if (dst_need_input) {
+      const NodeItem& dst_item = nodes[dst_id];
+      const int dst_slot = e->dst_input();
+      Entry* input_tensors = iter_state->input_tensors;
+      int dst_loc = dst_item.input_start + dst_slot;
+      input_tensors[dst_loc] = outputs[src_slot];
+    }
+
+    // Add dst to the ready queue if it's ready
+    if (dst_ready) {
+      dst_dead = dst_dead && !IsControlTrigger(dst_node);
+      ready->push_back(TaggedNode(dst_node, this, iter, dst_dead));
+      iter_state->outstanding_ops++;
+    }
+  }
+}
+
+void ExecutorState::FrameState::ActivateNexts(int64 iter,
+                                              TaggedNodeSeq* ready) {
+  // Propagate the deferred NextIteration nodes to the new iteration.
+  for (auto& node_entry : next_iter_roots) {
+    const Node* node = node_entry.first;
+    const Entry& entry = node_entry.second;
+    const bool is_dead = !entry.has_value;
+    ActivateNodes(node, is_dead, iter, {entry}, ready);
+  }
+  next_iter_roots.clear();
+}
+
+void ExecutorState::FrameState::ActivateLoopInvs(int64 iter,
+                                                 TaggedNodeSeq* ready) {
+  // Propagate loop invariants to the new iteration.
+  for (auto& node_entry : inv_values) {
+    const Node* node = node_entry.first;
+    const Entry& entry = node_entry.second;
+    const bool is_dead = !entry.has_value;
+    ActivateNodes(node, is_dead, iter, {entry}, ready);
+  }
+}
+
+void ExecutorState::FrameState::AddLoopInv(const Node* node, const Entry& entry,
+                                           TaggedNodeSeq* ready) {
+  // Store this value.
+  inv_values.push_back({node, entry});
+
+  // Make this value available to all iterations.
+  bool is_dead = !entry.has_value;
+  for (int i = 0; i <= iteration_count; ++i) {
+    ActivateNodes(node, is_dead, i, {entry}, ready);
+  }
+}
+
+bool ExecutorState::FrameState::IsIterationDone(int64 iter) {
+  IterationState* iter_state = GetIteration(iter);
+  if (iter_state->outstanding_ops == 0 &&
+      iter_state->outstanding_frame_count == 0) {
+    if (iter == 0) {
+      // The enclosing frame has no pending input.
+      return num_pending_inputs == 0;
+    } else {
+      // The preceding iteration is deleted (and therefore done).
+      return (GetIteration(iter - 1) == nullptr);
+    }
+  }
+  return false;
+}
+
+void ExecutorState::FrameState::IncrementIteration(TaggedNodeSeq* ready) {
+  iteration_count++;
+  int64 next_iter = iteration_count;
+
+  // Initialize the next iteration.
+  IterationState* iter_state = new IterationState(executor);
+  SetIteration(next_iter, iter_state);
+  num_outstanding_iterations++;
+  dead_exits.clear();
+
+  // Activate the successors of the deferred roots in the new iteration.
+  ActivateNexts(next_iter, ready);
+
+  // Activate the loop invariants in the new iteration.
+  ActivateLoopInvs(next_iter, ready);
+}
+
+bool ExecutorState::FrameState::CleanupIterations(int64 iter,
+                                                  TaggedNodeSeq* ready) {
+  int64 curr_iter = iter;
+  while (curr_iter <= iteration_count && IsIterationDone(curr_iter)) {
+    // Delete the iteration curr_iter.
+    delete GetIteration(curr_iter);
+    SetIteration(curr_iter, nullptr);
+    --num_outstanding_iterations;
+    ++curr_iter;
+
+    // When one iteration is completed, we check for deferred iteration,
+    // and start it if there is one.
+    if (!next_iter_roots.empty()) {
+      IncrementIteration(ready);
+    }
+  }
+  return IsFrameDone();
 }
 
 void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {

@@ -62,4 +62,15 @@ EIGEN_STRONG_INLINE bool operator==(const tensorflow::bfloat16 a,
 
 }  // namespace Eigen
 
+#ifdef COMPILER_MSVC
+namespace std {
+template <>
+struct hash<Eigen::half> {
+  std::size_t operator()(const Eigen::half& a) const {
+    return static_cast<std::size_t>(a.x);
+  }
+};
+}  // namespace std
+#endif  // COMPILER_MSVC
+
 #endif  // TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_

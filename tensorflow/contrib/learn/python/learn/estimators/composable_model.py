@@ -25,8 +25,9 @@ import re
 import six
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.layers.python.layers import feature_column_ops
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -181,14 +182,14 @@ class LinearComposableModel(_ComposableModel):
     Returns:
       The weights created by this model (without the optimizer weights).
     """
-    all_variables = [name for name, _ in checkpoints.list_variables(model_dir)]
+    all_variables = [name for name, _ in list_variables(model_dir)]
     values = {}
     optimizer_regex = r".*/" + self._get_optimizer().get_name() + r"(_\d)?$"
     for name in all_variables:
       if (name.startswith(self._scope + "/") and
           name != self._scope + "/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = checkpoints.load_variable(model_dir, name)
+        values[name] = load_variable(model_dir, name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
@@ -202,8 +203,7 @@ class LinearComposableModel(_ComposableModel):
     Returns:
       The bias weights created by this model.
     """
-    return checkpoints.load_variable(model_dir,
-                                     name=(self._scope+"/bias_weight"))
+    return load_variable(model_dir, name=(self._scope+"/bias_weight"))
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""
@@ -295,11 +295,11 @@ class DNNComposableModel(_ComposableModel):
     Returns:
       The weights created by this model.
     """
-    return [checkpoints.load_variable(
-        model_dir, name=(self._scope+"/hiddenlayer_%d/weights" % i))
-            for i, _ in enumerate(self._hidden_units)] + [
-                checkpoints.load_variable(
-                    model_dir, name=(self._scope+"/logits/weights"))]
+    return [
+        load_variable(
+            model_dir, name=(self._scope+"/hiddenlayer_%d/weights" % i))
+        for i, _ in enumerate(self._hidden_units)
+    ] + [load_variable(model_dir, name=(self._scope+"/logits/weights"))]
 
   def get_bias(self, model_dir):
     """Returns the bias of the model.
@@ -310,11 +310,11 @@ class DNNComposableModel(_ComposableModel):
     Returns:
       The bias weights created by this model.
     """
-    return [checkpoints.load_variable(
-        model_dir, name=(self._scope+"/hiddenlayer_%d/biases" % i))
-            for i, _ in enumerate(self._hidden_units)] + [
-                checkpoints.load_variable(
-                    model_dir, name=(self._scope+"/logits/biases"))]
+    return [
+        load_variable(
+            model_dir, name=(self._scope+"/hiddenlayer_%d/biases" % i))
+        for i, _ in enumerate(self._hidden_units)
+    ] + [load_variable(model_dir, name=(self._scope+"/logits/biases"))]
 
   def _add_hidden_layer_summary(self, value, tag):
     # TODO(zakaria): Move this code to tf.learn and add test.

@@ -1,12 +1,11 @@
 # tfprof: A Profiling Tool for TensorFlow Models
 
-go/tfprof
+Internal User Please Use: go/tfprof
 
 Author: Xin Pan (xpan@google.com, github: panyx0718)
 
-Consultants: Jon Shlens (shlens@google.com), Pete Warden (petewarden@google.com)
+Consultants: Jon Shlens, Pete Warden
 
-[TOC]
 
 ## Introduction
 
@@ -259,6 +258,7 @@ First, in Python code, create an `OpLog` proto and add op type
 information to it:
 
 ```python
+
 op_log = tfprof_log_pb2.OpLog()
 entry = op_log.log_entries.add()
 entry.name = 'pool_logit/DW'
@@ -274,7 +274,7 @@ entry.types.append('pool_logit')
 Second, call write_op_log to write the OpLog proto.
 
 ```python
-tfprof_logger.write_op_log(sess.graph, /tmp/my_op_log_dir, op_log)
+tf.tfprof.tfprof_logger.write_op_log(sess.graph, /tmp/my_op_log_dir, op_log)
 ```
 
 Third, when starting the tfprof tool, specify
@@ -288,8 +288,8 @@ _TFProfRoot (--/650 params)
 ```
 
 Note that when you call
-`tfprof_logger.write_op_log(...)`, the tool adds all `Variables` inside
-`tf.trainable_variables()` to `_trainable_variables`.
+`tf.tfprof.tfprof_logger.write_op_log(...)`, the tool adds all `Variables`
+inside `tf.trainable_variables()` to `_trainable_variables`.
 
 12) Run tfprof in one-shot mode and dump result to file.
 
@@ -362,7 +362,7 @@ statistics for those ops without accidently missing or including extra ops.
 tfprof exposes the following Python API to add op information and logging.
 
 ```python
-  def write_op_log(graph, log_dir, op_log=None)
+tf.contrib.tfprof.tfprof_logger.write_op_log(graph, log_dir, op_log=None)
 ```
 
 <b>--checkpoint_path:</b>

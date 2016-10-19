@@ -112,9 +112,14 @@ def configure(src_base_path, debug=False):
     if src is None:
       open(os.path.join(gen_path, target), "w").write("")
     else:
-      if hasattr(os, 'symlink'):
-        os.symlink(src, os.path.join(gen_path, target))
-      else:
+      try:
+        # In python 3.5, symlink function exists even on Windows. But requires
+        # Windows Admin privileges, otherwise an OSError will be thrown.
+        if hasattr(os, 'symlink'):
+          os.symlink(src, os.path.join(gen_path, target))
+        else:
+          shutil.copy2(src, os.path.join(gen_path, target))
+      except OSError:
         shutil.copy2(src, os.path.join(gen_path, target))
 
   json.dump(spec, open(os.path.join(gen_path, "spec.json"), "w"), indent=2)
@@ -138,10 +143,9 @@ def get_git_version(git_base_path):
   Args:
     git_base_path: where the .git directory is located
   Returns:
-    A string representing the git version
+    A bytestring representing the git version
   """
-
-  unknown_label = "unknown"
+  unknown_label = b"unknown"
   try:
     val = subprocess.check_output(["git", "-C", git_base_path, "describe",
                                    "--long", "--dirty", "--tags"]).strip()

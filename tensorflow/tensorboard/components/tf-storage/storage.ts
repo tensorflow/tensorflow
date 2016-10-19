@@ -178,8 +178,7 @@ module TF.URIStorage {
    */
   export function getObjectInitializer(
       propertyName: string, defaultVal: Object): Function {
-    let clone = _.cloneDeep(defaultVal);
-    return _getInitializer(getObject, propertyName, clone);
+    return _getInitializer(getObject, propertyName, defaultVal);
   }
 
   /**
@@ -297,8 +296,11 @@ module TF.URIStorage {
     return function() {
       let URIStorageName = getURIStorageName(this, propertyName);
       let setComponentValue = () => {
+        // Clone, in case the caller will mutuate this object, we
+        // don't want to mutate our default instance
+        let v = _.clone(defaultVal);
         let uriValue = get(URIStorageName);
-        this[propertyName] = uriValue !== undefined ? uriValue : defaultVal;
+        this[propertyName] = uriValue !== undefined ? uriValue : v;
       };
       // Set the value on the property.
       setComponentValue();

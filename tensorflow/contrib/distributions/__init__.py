@@ -19,36 +19,47 @@
 Classes that represent batches of statistical distributions.  Each class is
 initialized with parameters that define the distributions.
 
-### Base classes
+## Base classes
 
 @@Distribution
 
-### Univariate (scalar) distributions
+## Univariate (scalar) distributions
 
 @@Binomial
 @@Bernoulli
+@@BernoulliWithSigmoidP
 @@Beta
+@@BetaWithSoftplusAB
 @@Categorical
 @@Chi2
+@@Chi2WithAbsDf
 @@Exponential
+@@ExponentialWithSoftplusLam
 @@Gamma
+@@GammaWithSoftplusAlphaBeta
 @@InverseGamma
+@@InverseGammaWithSoftplusAlphaBeta
 @@Laplace
+@@LaplaceWithSoftplusScale
 @@Normal
+@@NormalWithSoftplusSigma
 @@Poisson
 @@StudentT
+@@StudentTWithAbsDfSoftplusSigma
 @@Uniform
 
-### Multivariate distributions
+## Multivariate distributions
 
-#### Multivariate normal
+### Multivariate normal
 
 @@MultivariateNormalDiag
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
+@@MultivariateNormalDiagPlusVDVT
+@@MultivariateNormalDiagWithSoftplusStDev
 @@matrix_diag_transform
 
-#### Other multivariate distributions
+### Other multivariate distributions
 
 @@Dirichlet
 @@DirichletMultinomial
@@ -56,12 +67,12 @@ initialized with parameters that define the distributions.
 @@WishartCholesky
 @@WishartFull
 
-### Transformed distributions
+## Transformed distributions
 
 @@TransformedDistribution
 @@QuantizedDistribution
 
-### Mixture Models
+## Mixture Models
 
 @@Mixture
 
@@ -70,7 +81,7 @@ initialized with parameters that define the distributions.
 Functions that transform conjugate prior/likelihood pairs to distributions
 representing the posterior or posterior predictive.
 
-### Normal likelihood with conjugate prior.
+## Normal likelihood with conjugate prior.
 
 @@normal_conjugates_known_sigma_posterior
 @@normal_conjugates_known_sigma_predictive
@@ -86,6 +97,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *

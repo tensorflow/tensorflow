@@ -235,8 +235,8 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
     if var is not None:
       # If 1 to 1 mapping was provided, find variable in the checkpoint.
       if tensor_name_in_ckpt not in variable_map:
-        raise ValueError("Tensor %s is not found in %s checkpoint" % (
-            tensor_name_in_ckpt, checkpoint_dir
+        raise ValueError("Tensor %s is not found in %s checkpoint %s" % (
+            tensor_name_in_ckpt, checkpoint_dir, variable_map
         ))
       if is_var(var):
         # Additional at-call-time checks.

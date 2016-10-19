@@ -517,6 +517,188 @@ size: The number of elements in the given queue.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("AccumulatorNumAccumulated")
+    .Input("handle: Ref(string)")
+    .Output("num_accumulated: int32")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns the number of gradients aggregated in the given accumulators.
+
+handle: The handle to an accumulator.
+num_accumulated: The number of gradients aggregated in the given accumulator.
+)doc");
+
+REGISTER_OP("AccumulatorSetGlobalStep")
+    .Input("handle: Ref(string)")
+    .Input("new_global_step: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Updates the accumulator with a new value for global_step. Logs warning if the
+accumulator's value is already higher than new_global_step.
+
+handle: The handle to an accumulator.
+new_global_step: The new global_step value to set.
+)doc");
+
+REGISTER_OP("ConditionalAccumulator")
+    .Output("handle: Ref(string)")
+    .Attr("dtype: numbertype")
+    .Attr("shape: shape")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A conditional accumulator for aggregating gradients. The accumulator accepts
+gradients marked with local_step greater or equal to the most recent global_step
+known to the accumulator. The average can be extracted from the accumulator,
+provided sufficient gradients have been accumulated. Extracting the average
+automatically resets the aggregate to 0, and increments the global_step recorded
+by the accumulator.
+
+handle: The handle to the accumulator.
+dtype: The type of the value being accumulated.
+shape: The shape of the values, can be [], in which case shape is unknown.
+container: If non-empty, this accumulator is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this accumulator will be shared under the given name
+  across multiple sessions.
+)doc");
+
+REGISTER_OP("AccumulatorApplyGradient")
+    .Input("handle: Ref(string)")
+    .Input("local_step: int64")
+    .Input("gradient: dtype")
+    .Attr("dtype: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Applies a gradient to a given accumulator. Does not add if local_step is lesser
+than the accumulator's global_step.
+
+handle: The handle to a accumulator.
+local_step: The local_step value at which the gradient was computed.
+gradient: A tensor of the gradient to be accumulated.
+dtype: The data type of accumulated gradients. Needs to correspond to the type
+  of the accumulator.
+)doc");
+
+REGISTER_OP("AccumulatorTakeGradient")
+    .Input("handle: Ref(string)")
+    .Input("num_required: int32")
+    .Output("average: dtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // Shape of output is the shape of the accumulator referenced
+      // by 'handle', but which is not available here, so we lose
+      // shape information.
+      return shape_inference::UnknownShape(c);
+    })
+    .Attr("dtype: numbertype")
+    .Doc(R"doc(
+Extracts the average gradient in the given ConditionalAccumulator, provided
+that sufficient (i.e., more than num_required) gradients have been accumulated.
+The op blocks until sufficient gradients have been accumulated.
+If the accumulator has already aggregated more than num_required gradients, it
+returns the average of the accumulated gradients.
+Also automatically increments the recorded global_step in the accumulator by 1,
+and resets the aggregate to 0.
+
+handle: The handle to an accumulator.
+num_required: Number of gradients required before we return an aggregate.
+average: The average of the accumulated gradients.
+dtype: The data type of accumulated gradients. Needs to correspond to the type
+  of the accumulator.
+)doc");
+
+REGISTER_OP("SparseConditionalAccumulator")
+    .Output("handle: Ref(string)")
+    .Attr("dtype: numbertype")
+    .Attr("shape: shape")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A conditional accumulator for aggregating sparse gradients. The accumulator
+accepts gradients marked with local_step greater or equal to the most recent
+global_step known to the accumulator. The average can be extracted from the
+accumulator, provided sufficient gradients have been accumulated. Extracting the
+average automatically resets the aggregate to 0, and increments the global_step
+recorded by the accumulator.
+
+handle: The handle to the accumulator.
+dtype: The type of the value being accumulated.
+shape: The shape of the values.
+container: If non-empty, this accumulator is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this accumulator will be shared under the given name
+  across multiple sessions.
+)doc");
+
+REGISTER_OP("SparseAccumulatorApplyGradient")
+    .Input("handle: Ref(string)")
+    .Input("local_step: int64")
+    .Input("gradient_indices: int64")
+    .Input("gradient_values: dtype")
+    .Input("gradient_shape: int64")
+    .Attr("dtype: numbertype")
+    .Attr("has_known_shape: bool")
+    .Doc(R"doc(
+Applies a sparse gradient to a given accumulator. Does not add if local_step is
+lesser than the accumulator's global_step.
+
+handle: The handle to a accumulator.
+local_step: The local_step value at which the sparse gradient was computed.
+gradient_indices: Indices of the sparse gradient to be accumulated. Must be a
+  vector.
+gradient_values: Values are the non-zero slices of the gradient, and must have
+  the same first dimension as indices, i.e., the nnz represented by indices and
+  values must be consistent.
+gradient_shape: Shape of the sparse gradient to be accumulated.
+dtype: The data type of accumulated gradients. Needs to correspond to the type
+  of the accumulator.
+has_known_shape: Boolean indicating whether gradient_shape is unknown, in which
+  case the input is ignored during validation.
+)doc");
+
+REGISTER_OP("SparseAccumulatorTakeGradient")
+    .Input("handle: Ref(string)")
+    .Input("num_required: int32")
+    .Output("indices: int64")
+    .Output("values: dtype")
+    .Output("shape: int64")
+    .Attr("dtype: numbertype")
+    .Doc(R"doc(
+Extracts the average sparse gradient in the given SparseConditionalAccumulator,
+provided that sufficient (i.e., more than num_required) gradients have been
+accumulated. The op will blocks until sufficient gradients have been
+accumulated. If the accumulator has already aggregated more than num_required
+gradients, it will return its average of the accumulated gradients.
+Also automatically increments the recorded global_step in the accumulator by 1,
+and resets the aggregate to 0.
+
+handle: The handle to a SparseConditionalAccumulator.
+num_required: Number of gradients required before we return an aggregate.
+indices: Indices of the average of the accumulated sparse gradients.
+values: Values of the average of the accumulated sparse gradients.
+shape: Shape of the average of the accumulated sparse gradients.
+dtype: The data type of accumulated gradients. Needs to correspond to the type
+  of the accumulator.
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("Stack")
     .Output("handle: Ref(string)")
     .Attr("elem_type: type")
@@ -1324,6 +1506,40 @@ shared_name: If non-empty, this table is shared under the given name across
   multiple sessions.
 key_dtype: Type of the table keys.
 value_dtype: Type of the table values.
+)doc");
+
+REGISTER_OP("MutableDenseHashTable")
+    .Input("empty_key: key_dtype")
+    .Output("table_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("use_node_name_sharing: bool = false")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("value_shape: shape = {}")
+    .Attr("initial_num_buckets: int = 131072")  // 2^17
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Creates an empty hash table that uses tensors as the backing store. It uses
+"open addressing" with quadratic reprobing to resolve collisions.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+
+empty_key: The key to use to represent empty buckets internally. Must not
+  be used in insert or lookup operations.
+table_handle: Handle to a table.
+container: If non-empty, this table is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this table is shared under the given name across
+  multiple sessions.
+key_dtype: Type of the table keys.
+value_dtype: Type of the table values.
+value_shape: The shape of each value.
+initial_num_buckets: The initial number of hash table buckets. Must be a power
+  to 2.
 )doc");
 
 REGISTER_OP("InitializeTable")

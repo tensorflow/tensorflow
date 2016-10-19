@@ -185,10 +185,6 @@ class TreePredictions : public OpKernel {
       };
     } else {
       num_data = static_cast<int32>(input_data.shape().dim_size(0));
-      int32 num_features = 0;
-      if (num_data > 0) {
-        num_features = input_data.NumElements() / num_data;
-      }
       decide_function = [&input_data](
           int32 i, int32 feature, float bias, DataColumnTypes type) {
         const auto input_matrix = input_data.matrix<float>();

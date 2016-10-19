@@ -73,57 +73,54 @@ class ResampleTest(tf.test.TestCase):
     #  - sum(1/rate) approximates the size of the original collection
     #  - sum(1/rate * value) approximates the sum of the original inputs,
     #  - sum(1/rate * value)/sum(1/rate) approximates the mean.
+    vals = self.get_values(count)
+    weights = self.get_weights(count)
 
-    with tf.Graph().as_default():
-      vals = self.get_values(count)
-      weights = self.get_weights(count)
+    resampled, rates = tf.contrib.training.weighted_resample(
+        [vals], tf.constant(weights), rate)
 
-      resampled, rates = tf.contrib.training.weighted_resample(
-          [vals], tf.constant(weights), rate)
+    invrates = 1.0/rates
 
-      invrates = 1.0/rates
+    init = tf.initialize_local_variables()
+    expected_sum_op = tf.reduce_sum(vals)
+    with self.test_session() as s:
+      s.run(init)
+      expected_sum = n * s.run(expected_sum_op)
 
-      init = tf.initialize_local_variables()
-      expected_sum_op = tf.reduce_sum(vals)
-      with self.test_session() as s:
-        s.run(init)
-        expected_sum = n * s.run(expected_sum_op)
+      weight_sum = 0.0
+      weighted_value_sum = 0.0
+      for _ in range(n):
+        val, inv_rate = s.run([resampled[0], invrates])
+        weight_sum += sum(inv_rate)
+        weighted_value_sum += sum(val * inv_rate)
 
-        weight_sum = 0.0
-        weighted_value_sum = 0.0
-        for _ in range(n):
-          val, inv_rate = s.run([resampled[0], invrates])
-          weight_sum += sum(inv_rate)
-          weighted_value_sum += sum(val * inv_rate)
+    # sum(inv_rate) ~= N*count:
+    expected_count = count * n
+    self.assertAlmostEqual(expected_count, weight_sum,
+                           delta=(rtol * expected_count))
 
-      # sum(inv_rate) ~= N*count:
-      expected_count = count * n
-      self.assertAlmostEqual(expected_count, weight_sum,
-                             delta=(rtol * expected_count))
+    # sum(vals) * n ~= weighted_sum(resampled, 1.0/weights)
+    self.assertAlmostEqual(expected_sum, weighted_value_sum,
+                           delta=(rtol*expected_sum))
 
-      # sum(vals) * n ~= weighted_sum(resampled, 1.0/weights)
-      self.assertAlmostEqual(expected_sum, weighted_value_sum,
-                             delta=(rtol*expected_sum))
-
-      # Mean ~= weighted mean:
-      expected_mean = expected_sum / float(n * count)
-      self.assertAlmostEqual(expected_mean, weighted_value_sum/weight_sum,
-                             delta=(rtol*expected_mean))
+    # Mean ~= weighted mean:
+    expected_mean = expected_sum / float(n * count)
+    self.assertAlmostEqual(expected_mean, weighted_value_sum/weight_sum,
+                           delta=(rtol*expected_mean))
 
   def testZeroRateUnknownShapes(self, count=10):
     """Tests that resampling runs with completely runtime shapes."""
-    with tf.Graph().as_default():
-      # Use placeholcers without shape set:
-      vals = tf.placeholder(dtype=tf.int32)
-      rates = tf.placeholder(dtype=tf.float32)
+    # Use placeholcers without shape set:
+    vals = tf.placeholder(dtype=tf.int32)
+    rates = tf.placeholder(dtype=tf.float32)
 
-      resampled = tf.contrib.training.resample_at_rate([vals], rates)
+    resampled = tf.contrib.training.resample_at_rate([vals], rates)
 
-      with self.test_session() as s:
-        rs = s.run(resampled,
-                   {vals: list(range(count)),
-                    rates: numpy.zeros(shape=[count], dtype=numpy.float32)})
-        self.assertEqual(0, len(rs))
+    with self.test_session() as s:
+      rs = s.run(resampled,
+                 {vals: list(range(count)),
+                  rates: numpy.zeros(shape=[count], dtype=numpy.float32)})
+      self.assertEqual(0, len(rs))
 
   def get_weights(self, n, mean=10.0, stddev=5):
     """Returns random positive weight values."""

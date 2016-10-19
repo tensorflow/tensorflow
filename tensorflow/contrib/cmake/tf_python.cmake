@@ -18,7 +18,7 @@ include(FindPythonInterp)
 if(NOT PYTHON_INCLUDE_DIR)
   set(PYTHON_NOT_FOUND false)
   exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c 'import distutils.sysconfig; print distutils.sysconfig.get_python_inc()'"
+    ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
     OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
     RETURN_VALUE PYTHON_NOT_FOUND)
   if(${PYTHON_NOT_FOUND})
@@ -32,7 +32,7 @@ FIND_PACKAGE(PythonLibs)
 if(NOT NUMPY_INCLUDE_DIR)
   set(NUMPY_NOT_FOUND false)
   exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c 'import numpy; print numpy.get_include()'"
+    ARGS "-c \"import numpy; print(numpy.get_include())\""
     OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
     RETURN_VALUE NUMPY_NOT_FOUND)
   if(${NUMPY_NOT_FOUND})
@@ -41,16 +41,12 @@ if(NOT NUMPY_INCLUDE_DIR)
   endif(${NUMPY_NOT_FOUND})
 endif(NOT NUMPY_INCLUDE_DIR)
 
-# 3. Resolve the installed version of zlib (for libz.so).
-find_package(ZLIB REQUIRED)
-
 
 ########################################################
 # Build the Python directory structure.
 ########################################################
 
 # TODO(mrry): Configure this to build in a directory other than tf_python/
-# TODO(mrry): Assemble the Python files into a PIP package.
 
 # tf_python_srcs contains all static .py files
 file(GLOB_RECURSE tf_python_srcs RELATIVE ${tensorflow_source_dir}
@@ -172,21 +168,6 @@ add_library(tf_python_op_gen_main OBJECT ${tf_python_op_gen_main_srcs})
 
 add_dependencies(tf_python_op_gen_main tf_core_framework)
 
-target_include_directories(tf_python_op_gen_main PRIVATE
-    ${tensorflow_source_dir}
-    ${eigen_INCLUDE_DIRS}
-)
-
-target_compile_options(tf_python_op_gen_main PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-
-# C++11
-target_compile_features(tf_python_op_gen_main PRIVATE
-    cxx_rvalue_references
-)
-
 # create directory for ops generated files
 set(python_ops_target_dir ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/ops)
 
@@ -216,37 +197,13 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
         $<TARGET_OBJECTS:tf_${tf_python_op_lib_name}>
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_framework>
-	${GENERATE_PYTHON_OP_LIB_ADDITIONAL_LIBRARIES}
-    )
-    target_include_directories(${tf_python_op_lib_name}_gen_python PRIVATE
-        ${tensorflow_source_dir}
-        ${eigen_INCLUDE_DIRS}
+        ${GENERATE_PYTHON_OP_LIB_ADDITIONAL_LIBRARIES}
     )
     target_link_libraries(${tf_python_op_lib_name}_gen_python PRIVATE
-        ${CMAKE_THREAD_LIBS_INIT}
-        ${PROTOBUF_LIBRARIES}
         tf_protos_cc
-        ${gif_STATIC_LIBRARIES}
-	${jpeg_STATIC_LIBRARIES}
-        ${png_STATIC_LIBRARIES}
-        ${ZLIB_LIBRARIES}
-        ${jsoncpp_STATIC_LIBRARIES}
-        ${CMAKE_DL_LIBS}
+        ${tensorflow_EXTERNAL_LIBRARIES}
     )
-    target_compile_options(${tf_python_op_lib_name}_gen_python PRIVATE
-        -fno-exceptions
-        -DEIGEN_AVOID_STL_ARRAY
-        -lm
-    )
-    # C++11
-    target_compile_features(${tf_python_op_lib_name}_gen_python PRIVATE
-        cxx_rvalue_references
-    )
-    if(tensorflow_ENABLE_SSL_SUPPORT)
-      target_link_libraries(${tf_python_op_lib_name}_gen_python PRIVATE
-          ${boringssl_STATIC_LIBRARIES})
-    endif()
-  
+
     # Use the generated C++ executable to create a Python file
     # containing the wrappers.
     add_custom_command(
@@ -275,6 +232,7 @@ GENERATE_PYTHON_OP_LIB("nn_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("script_ops")
+GENERATE_PYTHON_OP_LIB("sdca_ops")
 GENERATE_PYTHON_OP_LIB("state_ops")
 GENERATE_PYTHON_OP_LIB("sparse_ops")
 GENERATE_PYTHON_OP_LIB("string_ops")
@@ -328,6 +286,8 @@ add_library(pywrap_tensorflow SHARED
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
+    "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
+    "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
     "${tensorflow_source_dir}/tensorflow/c/c_api.cc"
     "${tensorflow_source_dir}/tensorflow/c/c_api.h"
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"
@@ -340,38 +300,18 @@ add_library(pywrap_tensorflow SHARED
     $<TARGET_OBJECTS:tf_core_framework>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
-    $<TARGET_OBJECTS:tf_core_distributed_runtime>
+    $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
 )
-target_link_libraries(pywrap_tensorflow
-    ${CMAKE_THREAD_LIBS_INIT}
-    tf_protos_cc
-    ${GRPC_LIBRARIES}
-    ${PROTOBUF_LIBRARY}
-    ${farmhash_STATIC_LIBRARIES}
-    ${gif_STATIC_LIBRARIES}
-    ${jpeg_STATIC_LIBRARIES}
-    ${jsoncpp_STATIC_LIBRARIES}
-    ${png_STATIC_LIBRARIES}
-    ${ZLIB_LIBRARIES}
-    ${CMAKE_DL_LIBS}
-)
 target_include_directories(pywrap_tensorflow PUBLIC
-    ${tensorflow_source_dir}
-    ${CMAKE_CURRENT_BINARY_DIR}
-    ${eigen_INCLUDE_DIRS}
     ${PYTHON_INCLUDE_DIR}
     ${NUMPY_INCLUDE_DIR}
 )
-# C++11
-target_compile_features(pywrap_tensorflow PRIVATE
-    cxx_rvalue_references
+target_link_libraries(pywrap_tensorflow
+    ${tensorflow_EXTERNAL_LIBRARIES}
+    tf_protos_cc
+    ${PYTHON_LIBRARIES}
 )
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  target_link_libraries(pywrap_tensorflow ${boringssl_STATIC_LIBRARIES})
-endif()
-
-
 
 ############################################################
 # Build a PIP package containing the TensorFlow runtime.
@@ -385,9 +325,15 @@ add_dependencies(tf_python_build_pip_package
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/cmake/setup.py
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow.so
-                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow.so)
+if(WIN32)
+  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.dll
+                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow.pyd)
+else()
+  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow.so
+                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow.so)
+endif()
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/README
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)

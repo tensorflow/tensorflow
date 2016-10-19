@@ -32,11 +32,22 @@ def make_categorical(batch_shape, num_classes, dtype=tf.int32):
 
 class CategoricalTest(tf.test.TestCase):
 
-  def testLogits(self):
-    logits = np.log([0.2, 0.8]) - 50.
-    dist = tf.contrib.distributions.Categorical(logits)
+  def testP(self):
+    p = [0.2, 0.8]
+    dist = tf.contrib.distributions.Categorical(p=p)
     with self.test_session():
-      self.assertAllClose(logits, dist.logits.eval())
+      self.assertAllClose(p, dist.p.eval())
+      self.assertAllEqual([2], dist.logits.get_shape())
+
+  def testLogits(self):
+    p = np.array([0.2, 0.8], dtype=np.float32)
+    logits = np.log(p) - 50.
+    dist = tf.contrib.distributions.Categorical(logits=logits)
+    with self.test_session():
+      self.assertAllEqual([2], dist.p.get_shape())
+      self.assertAllEqual([2], dist.logits.get_shape())
+      self.assertAllClose(dist.p.eval(), p)
+      self.assertAllClose(dist.logits.eval(), logits)
 
   def testShapes(self):
     with self.test_session():
@@ -68,6 +79,7 @@ class CategoricalTest(tf.test.TestCase):
     self.assertEqual(dist.dtype, tf.int64)
     self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
+    self.assertEqual(dist.p.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
     self.assertEqual(dist.logits.dtype, dist.pmf(

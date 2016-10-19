@@ -513,13 +513,17 @@ class Tensor(object):
       # ...
     ```
 
+    This disallows ambiguities between testing the Python value vs testing the
+    dynamic condition of the `Tensor`.
+
     Raises:
       `TypeError`.
     """
     raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use the logical TensorFlow ops "
-                    "to test the value of a tensor.")
+                    "tensor is defined, and use TensorFlow ops such as "
+                    "tf.cond to execute subgraphs conditioned on the value of "
+                    "a tensor.")
 
   def __nonzero__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
@@ -531,8 +535,9 @@ class Tensor(object):
     """
     raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use the logical TensorFlow ops "
-                    "to test the value of a tensor.")
+                    "tensor is defined, and use TensorFlow ops such as "
+                    "tf.cond to execute subgraphs conditioned on the value of "
+                    "a tensor.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
@@ -2125,8 +2130,8 @@ class Graph(object):
   def graph_def_versions(self):
     """The GraphDef version information of this graph.
 
-    For details on the meaning of each version, see [`GraphDef`]
-    (https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+    For details on the meaning of each version, see
+    [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
     Returns:
       A `VersionDef`.
@@ -2156,6 +2161,16 @@ class Graph(object):
     when using a [`QueueRunner`](../../api_docs/python/train.md#QueueRunner).
     """
     self._finalized = True
+
+  def _unsafe_unfinalize(self):
+    """Opposite of `finalize`. Internal interface.
+
+    NOTE: Unfinalizing a graph could have negative impact on performance,
+    especially in a multi-threaded environment.  Unfinalizing a graph
+    when it is in use by a Session may lead to undefined behavior. Ensure
+    that all sessions using a graph are closed before calling this method.
+    """
+    self._finalized = False
 
   def _get_control_flow_context(self):
     """Returns the current control flow context.

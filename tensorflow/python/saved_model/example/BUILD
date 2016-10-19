@@ -35,6 +35,7 @@ py_binary(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:utils",
     ],
 )

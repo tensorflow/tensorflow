@@ -72,14 +72,13 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // Create the inference context for this node with the existing input shapes.
   std::unique_ptr<shape_inference::InferenceContext> c(
       new shape_inference::InferenceContext(&node->def(), node->op_def(),
-                                            {} /* input_shapes_string */,
                                             input_shapes, input_tensors));
   if (!c->construction_status().ok()) {
     return c->construction_status();
   }
 
   // Run the shape inference function, and return if there was an error.
-  TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(c.get()));
+  TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
 
   // We must run the shape function repeatedly, in case users write
   // shape functions where they only conditionally call input_tensor()

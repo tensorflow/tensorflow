@@ -17,9 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
 import tensorflow as tf
 
+from google.protobuf import json_format
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.framework import types_pb2
 
 
@@ -40,7 +41,9 @@ class ScalarSummaryTest(tf.test.TestCase):
       return tf.summary.scalar('name', c)
 
     for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
+      if (datatype_enum == types_pb2.DT_INVALID or
+          datatype_enum == types_pb2.DT_RESOURCE or
+          datatype_enum == types_pb2.DT_RESOURCE_REF):
         continue
       dtype = tf.as_dtype(datatype_enum)
       if dtype.is_quantized:
@@ -64,24 +67,15 @@ class ScalarSummaryTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       tf.summary.scalar('3', c3)
 
-  def testLabelsAdded(self):
-    c = tf.constant(0)
-
-    no_labels = tf.summary.scalar('2', c)
-    labels = tf.summary.scalar('1', c, labels=['foo'])
-
-    def _GetLabels(n):
-      return n.op.get_attr('labels')
-
-    expected_label = six.b(tf.summary.SCALAR_SUMMARY_LABEL)
-    self.assertEquals(_GetLabels(no_labels), [expected_label])
-    self.assertEquals(_GetLabels(labels), [six.b('foo'), expected_label])
-
   def testTensorSummaryOpCreated(self):
     c = tf.constant(0)
-    s = tf.summary.scalar('', c)
-    self.assertEquals(s.op.type, 'TensorSummary')
-    self.assertEquals(s.op.inputs[0], c)
+    s = tf.summary.scalar('x', c)
+    self.assertEqual(s.op.type, 'TensorSummary')
+    self.assertEqual(s.op.inputs[0], c)
+    description = s.op.get_attr('description')
+    summary_description = summary_pb2.SummaryDescription()
+    json_format.Parse(description, summary_description)
+    self.assertEqual(summary_description.type_hint, 'scalar')
 
 
 if __name__ == '__main__':

@@ -61,13 +61,14 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   INFER_OK(op, "[?,2];[1,?]", "[d1_0,d0_1]");
 
   set_n(3);
-  INFER_ERROR(("Dimension 1 in both shapes must be equal, but are 2 and "
-               "4\n\tFrom merging shape 0 with other shapes."),
-              op, "[1,2];?;[1,4]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 2 and 4", op,
+              "[1,2];?;[1,4]");
+  INFER_ERROR("From merging shape 0 with other shapes.", op, "[1,2];?;[1,4]");
   set_n(4);
-  INFER_ERROR(("Shapes must be equal rank, but are 2 and 3\n\tFrom merging "
-               "shape 1 with other shapes."),
-              op, "?;[1,2];?;[1,2,3]");
+  INFER_ERROR("Shapes must be equal rank, but are 2 and 3", op,
+              "?;[1,2];?;[1,2,3]");
+  INFER_ERROR("From merging shape 1 with other shapes.", op,
+              "?;[1,2];?;[1,2,3]");
 }
 
 TEST(MathOpsTest, UnchangedShape_ShapeFn) {
@@ -216,14 +217,24 @@ TEST(MathOpsTest, Select_ShapeFn) {
 
 TEST(MathOpsTest, Range_ShapeFn) {
   ShapeInferenceTestOp op("Range");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "Range")
+                   .Input({"start", {}, DT_INT32})
+                   .Input({"limit", {}, DT_INT32})
+                   .Input({"delta", {}, DT_INT32})
+                   .Attr("Tidx", DT_INT32)
+                   .Finalize(&op.node_def));
+
   op.input_tensors.resize(3);
   INFER_OK(op, "?;?;?", "[?]");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'start'", op,
-              "[1,2];?;?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'limit'", op,
-              "?;[1,2];?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'delta'", op,
-              "?;?;[1,2]");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "[1,2];?;?");
+  INFER_ERROR("for 'start'", op, "[1,2];?;?");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;[1,2];?");
+  INFER_ERROR("for 'limit'", op, "?;[1,2];?");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;?;[1,2]");
+  INFER_ERROR("for 'delta'", op, "?;?;[1,2]");
 
   Tensor start_t = test::AsScalar(1);
   op.input_tensors[0] = &start_t;
@@ -237,11 +248,17 @@ TEST(MathOpsTest, Range_ShapeFn) {
   INFER_OK(op, "?;?;?", "[0]");
 
   delta_t = test::AsScalar(0);
-  INFER_ERROR("Requires delta > 0: 0", op, "?;?;?");
+  INFER_ERROR("Requires delta != 0", op, "?;?;?");
   delta_t = test::AsScalar(3);
 
   limit_t = test::AsScalar(-1);
-  INFER_ERROR("Requires start <= limit: 1/-1", op, "?;?;?");
+  INFER_ERROR("Requires start <= limit when delta > 0: 1/-1", op, "?;?;?");
+
+  delta_t = test::AsScalar(-1);
+  INFER_OK(op, "?;?;?", "[2]");
+
+  limit_t = test::AsScalar(4);
+  INFER_ERROR("Requires start >= limit when delta < 0: 1/4", op, "?;?;?");
 
   limit_t = test::AsScalar(100);
   start_t = test::AsScalar(2);
@@ -253,12 +270,12 @@ TEST(MathOpsTest, LinSpace_ShapeFn) {
   ShapeInferenceTestOp op("LinSpace");
   op.input_tensors.resize(3);
   INFER_OK(op, "?;?;?", "[?]");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'start'", op,
-              "[1,2];?;?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'stop'", op,
-              "?;[1,2];?");
-  INFER_ERROR("Shape must be rank 0 but is rank 2\n\t for 'num'", op,
-              "?;?;[1,2]");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "[1,2];?;?");
+  INFER_ERROR("for 'start'", op, "[1,2];?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;[1,2];?");
+  INFER_ERROR("for 'stop'", op, "?;[1,2];?");
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op, "?;?;[1,2]");
+  INFER_ERROR("for 'num'", op, "?;?;[1,2]");
 
   Tensor num_t = test::AsScalar(1);
   op.input_tensors[2] = &num_t;

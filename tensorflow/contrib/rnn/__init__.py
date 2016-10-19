@@ -23,6 +23,7 @@
 ### Fused RNNCells
 @@FusedRNNCell
 @@FusedRNNCellAdaptor
+@@TimeReversedFusedRNN
 @@LSTMBlockFusedCell
 
 ### LSTM-like cells
@@ -42,4 +43,5 @@ from __future__ import print_function
 from tensorflow.contrib.rnn.python.ops.fused_rnn_cell import *
 from tensorflow.contrib.rnn.python.ops.gru_ops import *
 from tensorflow.contrib.rnn.python.ops.lstm_ops import *
+from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *

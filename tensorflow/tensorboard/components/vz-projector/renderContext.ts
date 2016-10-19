@@ -14,40 +14,65 @@ limitations under the License.
 ==============================================================================*/
 
 /**
+ * LabelRenderParams describes the set of points that should have labels
+ * rendered next to them.
+ */
+export class LabelRenderParams {
+  pointIndices: Float32Array;
+  scaleFactors: Float32Array;
+  useSceneOpacityFlags: Int8Array;  // booleans
+  defaultFontSize: number;
+  fillColor: number;
+  strokeColor: number;
+
+  constructor(
+      pointIndices: Float32Array, scaleFactors: Float32Array,
+      useSceneOpacityFlags: Int8Array, defaultFontSize: number,
+      fillColor: number, strokeColor: number) {
+    this.pointIndices = pointIndices;
+    this.scaleFactors = scaleFactors;
+    this.useSceneOpacityFlags = useSceneOpacityFlags;
+    this.defaultFontSize = defaultFontSize;
+    this.fillColor = fillColor;
+    this.strokeColor = strokeColor;
+  }
+}
+
+/**
  * RenderContext contains all of the state required to color and render the data
  * set. ScatterPlot passes this to every attached visualizer as part of the
  * render callback.
+ * TODO(nicholsonc): This should only contain the data that's changed between
+ * each frame. Data like colors / scale factors / labels should be recomputed
+ * only when they change.
  */
 export class RenderContext {
-  camera: THREE.PerspectiveCamera;
+  camera: THREE.Camera;
   cameraTarget: THREE.Vector3;
   screenWidth: number;
   screenHeight: number;
   nearestCameraSpacePointZ: number;
   farthestCameraSpacePointZ: number;
-  colorAccessor: (index: number) => string;
-  labeledPoints: number[];
+  pointColors: Float32Array;
+  pointScaleFactors: Float32Array;
   labelAccessor: (index: number) => string;
-  highlightedPoints: number[];
-  highlightStroke: (index: number) => string;
+  labels: LabelRenderParams;
 
   constructor(
-      camera: THREE.PerspectiveCamera, cameraTarget: THREE.Vector3,
-      screenWidth: number, screenHeight: number,
-      nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
-      colorAccessor: (index: number) => string, labeledPoints: number[],
-      labelAccessor: (index: number) => string, highlightedPoints: number[],
-      highlightStroke: (index: number) => string) {
+      camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
+      screenHeight: number, nearestCameraSpacePointZ: number,
+      farthestCameraSpacePointZ: number, pointColors: Float32Array,
+      pointScaleFactors: Float32Array, labelAccessor: (index: number) => string,
+      labels: LabelRenderParams) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
     this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
     this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
-    this.colorAccessor = colorAccessor;
-    this.labeledPoints = labeledPoints;
+    this.pointColors = pointColors;
+    this.pointScaleFactors = pointScaleFactors;
     this.labelAccessor = labelAccessor;
-    this.highlightedPoints = highlightedPoints;
-    this.highlightStroke = highlightStroke;
+    this.labels = labels;
   }
 }

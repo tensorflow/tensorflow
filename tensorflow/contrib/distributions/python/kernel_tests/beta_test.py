@@ -43,7 +43,7 @@ class BetaTest(tf.test.TestCase):
       self.assertEqual(tf.TensorShape([]), dist.get_event_shape())
       self.assertEqual(tf.TensorShape([3, 2, 2]), dist.get_batch_shape())
 
-  def testComplexShapes_broadcast(self):
+  def testComplexShapesBroadcast(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(2, 2)
@@ -179,7 +179,7 @@ class BetaTest(tf.test.TestCase):
       self.assertEqual(dist.mode().get_shape(), (3,))
       self.assertAllClose(expected_mode, dist.mode().eval())
 
-  def testBetaMode_invalid(self):
+  def testBetaModeInvalid(self):
     with tf.Session():
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
@@ -193,7 +193,7 @@ class BetaTest(tf.test.TestCase):
       with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
-  def testBetaMode_enable_allow_nan_stats(self):
+  def testBetaModeEnableAllowNanStats(self):
     with tf.Session():
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
@@ -245,12 +245,27 @@ class BetaTest(tf.test.TestCase):
                           stats.beta.var(a, b),
                           atol=1e-1)
 
+  # Test that sampling with the same seed twice gives the same results.
+  def testBetaSampleMultipleTimes(self):
+    with self.test_session():
+      a_val = 1.
+      b_val = 2.
+      n_val = 100
+
+      tf.set_random_seed(654321)
+      beta1 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta1")
+      samples1 = beta1.sample_n(n_val, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      beta2 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta2")
+      samples2 = beta2.sample_n(n_val, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
+
   def testBetaSampleMultidimensional(self):
     with self.test_session():
-      # TODO(srvasude): Remove the 1.1 when Gamma sampler doesn't
-      # return 0 when a < 1.
-      a = np.random.rand(3, 2, 2).astype(np.float32) + 1.1
-      b = np.random.rand(3, 2, 2).astype(np.float32) + 1.1
+      a = np.random.rand(3, 2, 2).astype(np.float32)
+      b = np.random.rand(3, 2, 2).astype(np.float32)
       beta = tf.contrib.distributions.Beta(a, b)
       n = tf.constant(100000)
       samples = beta.sample_n(n)

@@ -34,13 +34,13 @@ class OperatorPDFullTest(tf.test.TestCase):
     matrix = self._rng.rand(*shape)
     return tf.batch_matmul(matrix, matrix, adj_y=True).eval()
 
-  def test_positive_definite_matrix_doesnt_raise(self):
+  def testPositiveDefiniteMatrixDoesntRaise(self):
     with self.test_session():
       matrix = self._random_positive_def_array(2, 3, 3)
       operator = operator_pd_full.OperatorPDFull(matrix, verify_pd=True)
       operator.to_dense().eval()  # Should not raise
 
-  def test_negative_definite_matrix_raises(self):
+  def testNegativeDefiniteMatrixRaises(self):
     with self.test_session():
       matrix = -1 * self._random_positive_def_array(3, 2, 2)
       operator = operator_pd_full.OperatorPDFull(matrix, verify_pd=True)
@@ -49,7 +49,7 @@ class OperatorPDFullTest(tf.test.TestCase):
       with self.assertRaisesOpError("x > 0|LLT"):
         operator.to_dense().eval()
 
-  def test_non_symmetric_matrix_raises(self):
+  def testNonSymmetricMatrixRaises(self):
     with self.test_session():
       matrix = self._random_positive_def_array(3, 2, 2)
       matrix[0, 0, 1] += 0.001

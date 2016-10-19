@@ -29,16 +29,28 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow {
 namespace serving {
 namespace {
+
+auto* load_attempt_count = monitoring::Counter<2>::New(
+    "/tensorflow/contrib/session_bundle/load_attempt_count", "model_path",
+    "status",
+    "The number of times a SessionBundle was requested to be loaded.");
+auto* load_latency = monitoring::Counter<1>::New(
+    "/tensorflow/contrib/session_bundle/load_latency", "model_path",
+    "Latency in microseconds for SessionBundles that were succesfully loaded.");
+constexpr char kLoadAttemptFail[] = "fail";
+constexpr char kLoadAttemptSuccess[] = "success";
 
 // Create a session using the given options and load the graph.
 Status CreateSessionFromGraphDef(const SessionOptions& options,
@@ -74,7 +86,7 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
         io::JoinPath(export_dir, kAssetsDirectory, asset.filename()));
     inputs->push_back(
         {asset.tensor_binding().tensor_name(), assets_file_tensor});
-    }
+  }
 }
 
 // Historically, model exporter(exporter.py) takes only saver with
@@ -87,11 +99,18 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
 // This method is to support models exported by both types of saver object.
 // The change is backward-compatible, therefore no changes are needed for
 // existing model exports.
+// Checkpoint v2 support: Models exported in the checkpoint v2 format will have
+// an export.index file. When the exported model uses checkpoint v2 the returned
+// variables filename should not have a file type suffix. The variable is
+// distributed among the export.index and export.data-?????-of-????? files.
 string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
+  const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
   if (Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesFilename))) {
+          io::JoinPath(export_dir, kVariablesFilename)) ||
+      Env::Default()->FileExists(
+          io::JoinPath(export_dir, kVariablesIndexFilename))) {
     return io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return io::JoinPath(export_dir, kVariablesFilenamePattern);
@@ -125,23 +144,11 @@ Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
                       nullptr /* outputs */, &run_metadata);
 }
 
-}  // namespace
-
-Status LoadSessionBundleFromPath(const SessionOptions& options,
-                                 const StringPiece export_dir,
-                                 SessionBundle* const bundle) {
-  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
-      options, RunOptions(), export_dir, bundle));
-  return Status::OK();
-}
-
-Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
-                                                const RunOptions& run_options,
-                                                const StringPiece export_dir,
-                                                SessionBundle* const bundle) {
+Status LoadSessionBundleFromPathUsingRunOptionsInternal(
+    const SessionOptions& options, const RunOptions& run_options,
+    const StringPiece export_dir, SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
-  const int64 start_seconds = Env::Default()->NowSeconds();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
 
@@ -152,8 +159,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
     // Use serving graph_def in MetaGraphDef collection_def.
     if (graph_collection_def.any_list().value_size() != 1) {
       return errors::FailedPrecondition(
-          "Expected exactly one serving GraphDef in : ",
-          DebugStringIfAvailable(bundle->meta_graph_def));
+          "Expected exactly one serving GraphDef in : ", export_dir);
     }
     const auto& any = graph_collection_def.any_list().value(0);
     GraphDef graph_def;
@@ -188,18 +194,55 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
   const auto init_op_it = collection_def_map.find(kInitOpKey);
   if (init_op_it != collection_def_map.end()) {
     if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(
-          strings::StrCat("Expected exactly one serving init op in : ",
-                          DebugStringIfAvailable(bundle->meta_graph_def)));
+      return errors::FailedPrecondition(strings::StrCat(
+          "Expected exactly one serving init op in : ", export_dir));
     }
     TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, asset_files,
                                  init_op_it->second.node_list().value(0),
                                  bundle->session.get()));
   }
 
-  LOG(INFO) << "Done loading SessionBundle. Took "
-            << Env::Default()->NowSeconds() - start_seconds << " seconds.";
   return Status::OK();
+}
+
+}  // namespace
+
+Status LoadSessionBundleFromPath(const SessionOptions& options,
+                                 const StringPiece export_dir,
+                                 SessionBundle* const bundle) {
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      options, RunOptions(), export_dir, bundle));
+  return Status::OK();
+}
+
+Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
+                                                const RunOptions& run_options,
+                                                const StringPiece export_dir,
+                                                SessionBundle* const bundle) {
+  const uint64 start_microseconds = Env::Default()->NowMicros();
+  const Status status = LoadSessionBundleFromPathUsingRunOptionsInternal(
+      options, run_options, export_dir, bundle);
+
+  const uint64 load_latency_microsecs = [&]() -> uint64 {
+    const uint64 end_microseconds = Env::Default()->NowMicros();
+    // Avoid clock skew.
+    if (end_microseconds < start_microseconds) return 0;
+    return end_microseconds - start_microseconds;
+  }();
+  auto log_and_count = [&](const string& status_str) {
+    LOG(INFO) << "Loading SessionBundle: " << status_str << ". Took "
+              << load_latency_microsecs << " microseconds.";
+    load_attempt_count->GetCell(export_dir.ToString(), status_str)
+        ->IncrementBy(1);
+  };
+  if (status.ok()) {
+    log_and_count(kLoadAttemptSuccess);
+  } else {
+    log_and_count(kLoadAttemptFail);
+  }
+  load_latency->GetCell(export_dir.ToString())
+      ->IncrementBy(load_latency_microsecs);
+  return status;
 }
 
 bool IsPossibleExportDirectory(const StringPiece directory) {

@@ -1063,8 +1063,7 @@ Then, row_pooling_sequence should satisfy:
 4.  length(row_pooling_sequence) = output_row_length+1
 
 For more details on fractional max pooling, see this paper:
-[Benjamin Graham, Fractional Max-Pooling]
-(http://arxiv.org/abs/1412.6071)
+[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
 
 ##### Args:
 
@@ -1181,9 +1180,8 @@ The reduction never includes out-of-bounds positions.
 
 Morphological operators are non-linear filters used in image processing.
 
-[Greyscale morphological dilation]
-(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological dilation](https://en.wikipedia.org/wiki/Dilation_(morphology))
+is the max-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         max_{dy, dx} input[b,
@@ -1196,9 +1194,8 @@ The `filter` is usually called structuring function. Max-pooling is a special
 case of greyscale morphological dilation when the filter assumes all-zero
 values (a.k.a. flat structuring function).
 
-[Greyscale morphological erosion]
-(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological erosion](https://en.wikipedia.org/wiki/Erosion_(morphology))
+is the min-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         min_{dy, dx} input[b,
@@ -1372,8 +1369,7 @@ each component is divided by the weighted, squared sum of inputs within
     output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
-convolutional neural networks (NIPS 2012)]
-(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
 
 ##### Args:
 
@@ -2789,8 +2785,8 @@ Candidate Sampling training algorithms can speed up your step times by
 only considering a small randomly-chosen subset of contrastive classes
 (called candidates) for each batch of training examples.
 
-See our [Candidate Sampling Algorithms Reference]
-(../../extras/candidate_sampling.pdf)
+See our
+[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
 ### Sampled Loss Functions
 
@@ -3212,6 +3208,104 @@ target classes as noise classes for the same example.
 
 
 
+### Quantization ops
+
+- - -
+
+### `tf.nn.quantized_relu_x(features, max_value, min_features, max_features, out_type=None, name=None)` {#quantized_relu_x}
+
+Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`max_value`</b>: A `Tensor` of type `float32`.
+*  <b>`min_features`</b>: A `Tensor` of type `float32`.
+    The float value that the lowest quantized value represents.
+*  <b>`max_features`</b>: A `Tensor` of type `float32`.
+    The float value that the highest quantized value represents.
+*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.qint8, tf.quint8, tf.qint16, tf.quint16, tf.qint32`. Defaults to `tf.quint8`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (activations, min_activations, max_activations).
+
+*  <b>`activations`</b>: A `Tensor` of type `out_type`. Has the same output shape as "features".
+*  <b>`min_activations`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized value represents.
+*  <b>`max_activations`</b>: A `Tensor` of type `float32`. The float value that the highest quantized value represents.
+
+
+- - -
+
+### `tf.nn.quantized_max_pool(input, min_input, max_input, ksize, strides, padding, name=None)` {#quantized_max_pool}
+
+Produces the max pool of the input tensor for quantized types.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+    The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
+*  <b>`min_input`</b>: A `Tensor` of type `float32`.
+    The float value that the lowest quantized input value represents.
+*  <b>`max_input`</b>: A `Tensor` of type `float32`.
+    The float value that the highest quantized input value represents.
+*  <b>`ksize`</b>: A list of `ints`.
+    The size of the window for each dimension of the input tensor.
+    The length must be 4 to match the number of dimensions of the input.
+*  <b>`strides`</b>: A list of `ints`.
+    The stride of the sliding window for each dimension of the input
+    tensor. The length must be 4 to match the number of dimensions of the input.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, min_output, max_output).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
+*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
+
+
+- - -
+
+### `tf.nn.quantized_avg_pool(input, min_input, max_input, ksize, strides, padding, name=None)` {#quantized_avg_pool}
+
+Produces the average pool of the input tensor for quantized types.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`min_input`</b>: A `Tensor` of type `float32`.
+    The float value that the lowest quantized input value represents.
+*  <b>`max_input`</b>: A `Tensor` of type `float32`.
+    The float value that the highest quantized input value represents.
+*  <b>`ksize`</b>: A list of `ints`.
+    The size of the window for each dimension of the input tensor.
+    The length must be 4 to match the number of dimensions of the input.
+*  <b>`strides`</b>: A list of `ints`.
+    The stride of the sliding window for each dimension of the input
+    tensor.  The length must be 4 to match the number of dimensions of the input.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, min_output, max_output).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
+*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
+
+
+
 ## Other Functions and Classes
 - - -
 
@@ -3221,9 +3315,9 @@ Batch normalization.
 
 As described in http://arxiv.org/abs/1502.03167.
 Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
-`scale` \\\\(\gamma\\\\) to it, as well as an `offset` \\\\(\\beta\\\\):
+`scale` \\(\gamma\\) to it, as well as an `offset` \\(\beta\\):
 
-\\\\(\\frac{\gamma(x-\mu)}{\sigma}+\\beta\\\\)
+\\(\frac{\gamma(x-\mu)}{\sigma}+\beta\\)
 
 `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
 shapes:
@@ -3251,9 +3345,9 @@ shapes:
 *  <b>`x`</b>: Input `Tensor` of arbitrary dimensionality.
 *  <b>`mean`</b>: A mean `Tensor`.
 *  <b>`variance`</b>: A variance `Tensor`.
-*  <b>`offset`</b>: An offset `Tensor`, often denoted \\\\(\\beta\\\\) in equations, or
+*  <b>`offset`</b>: An offset `Tensor`, often denoted \\(\beta\\) in equations, or
     None. If present, will be added to the normalized tensor.
-*  <b>`scale`</b>: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
+*  <b>`scale`</b>: A scale `Tensor`, often denoted \\(\gamma\\) in equations, or
     `None`. If present, the scale is applied to the normalized tensor.
 *  <b>`variance_epsilon`</b>: A small float number to avoid dividing by 0.
 *  <b>`name`</b>: A name for this operation (optional).

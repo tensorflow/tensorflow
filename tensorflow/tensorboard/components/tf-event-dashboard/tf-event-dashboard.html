@@ -59,6 +59,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
     <tf-dashboard-layout>
       <div class="sidebar">
         <tf-sidebar-helper
+          backend="[[backend]]"
           categories="{{_categories}}"
           color-scale="[[_colorScale]]"
           run2tag="[[run2tag]]"
@@ -181,6 +182,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         TF.Backend.Behavior,
       ],
       properties: {
+        backend: Object,
         dataType: {
           type: String,
           value: "scalar"

@@ -141,6 +141,88 @@ meta_graphs {
         name: "NoOp"
       }
       op {
+        name: "ParseExample"
+        input_arg {
+          name: "serialized"
+          type: DT_STRING
+        }
+        input_arg {
+          name: "names"
+          type: DT_STRING
+        }
+        input_arg {
+          name: "sparse_keys"
+          type: DT_STRING
+          number_attr: "Nsparse"
+        }
+        input_arg {
+          name: "dense_keys"
+          type: DT_STRING
+          number_attr: "Ndense"
+        }
+        input_arg {
+          name: "dense_defaults"
+          type_list_attr: "Tdense"
+        }
+        output_arg {
+          name: "sparse_indices"
+          type: DT_INT64
+          number_attr: "Nsparse"
+        }
+        output_arg {
+          name: "sparse_values"
+          type_list_attr: "sparse_types"
+        }
+        output_arg {
+          name: "sparse_shapes"
+          type: DT_INT64
+          number_attr: "Nsparse"
+        }
+        output_arg {
+          name: "dense_values"
+          type_list_attr: "Tdense"
+        }
+        attr {
+          name: "Nsparse"
+          type: "int"
+          has_minimum: true
+        }
+        attr {
+          name: "Ndense"
+          type: "int"
+          has_minimum: true
+        }
+        attr {
+          name: "sparse_types"
+          type: "list(type)"
+          has_minimum: true
+          allowed_values {
+            list {
+              type: DT_FLOAT
+              type: DT_INT64
+              type: DT_STRING
+            }
+          }
+        }
+        attr {
+          name: "Tdense"
+          type: "list(type)"
+          has_minimum: true
+          allowed_values {
+            list {
+              type: DT_FLOAT
+              type: DT_INT64
+              type: DT_STRING
+            }
+          }
+        }
+        attr {
+          name: "dense_shapes"
+          type: "list(shape)"
+          has_minimum: true
+        }
+      }
+      op {
         name: "Placeholder"
         output_arg {
           name: "output"
@@ -160,33 +242,28 @@ meta_graphs {
         }
       }
       op {
-        name: "RestoreSlice"
+        name: "RestoreV2"
         input_arg {
-          name: "file_pattern"
+          name: "prefix"
           type: DT_STRING
         }
         input_arg {
-          name: "tensor_name"
+          name: "tensor_names"
           type: DT_STRING
         }
         input_arg {
-          name: "shape_and_slice"
+          name: "shape_and_slices"
           type: DT_STRING
         }
         output_arg {
-          name: "tensor"
-          type_attr: "dt"
+          name: "tensors"
+          type_list_attr: "dtypes"
         }
         attr {
-          name: "dt"
-          type: "type"
-        }
-        attr {
-          name: "preferred_shard"
-          type: "int"
-          default_value {
-            i: -1
-          }
+          name: "dtypes"
+          type: "list(type)"
+          has_minimum: true
+          minimum: 1
         }
       }
       op {
@@ -212,6 +289,40 @@ meta_graphs {
           type: "list(type)"
           has_minimum: true
           minimum: 1
+        }
+      }
+      op {
+        name: "ShardedFilename"
+        input_arg {
+          name: "basename"
+          type: DT_STRING
+        }
+        input_arg {
+          name: "shard"
+          type: DT_INT32
+        }
+        input_arg {
+          name: "num_shards"
+          type: DT_INT32
+        }
+        output_arg {
+          name: "filename"
+          type: DT_STRING
+        }
+      }
+      op {
+        name: "ShardedFilespec"
+        input_arg {
+          name: "basename"
+          type: DT_STRING
+        }
+        input_arg {
+          name: "num_shards"
+          type: DT_INT32
+        }
+        output_arg {
+          name: "filename"
+          type: DT_STRING
         }
       }
       op {
@@ -524,7 +635,7 @@ meta_graphs {
       }
     }
     node {
-      name: "x"
+      name: "tf_example"
       op: "Placeholder"
       attr {
         key: "_output_shapes"
@@ -539,13 +650,197 @@ meta_graphs {
       attr {
         key: "dtype"
         value {
-          type: DT_FLOAT
+          type: DT_STRING
         }
       }
       attr {
         key: "shape"
         value {
           shape {
+          }
+        }
+      }
+    }
+    node {
+      name: "ParseExample/Const"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+              dim {
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "ParseExample/ParseExample/names"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "ParseExample/ParseExample/dense_keys_0"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "x"
+          }
+        }
+      }
+    }
+    node {
+      name: "ParseExample/ParseExample"
+      op: "ParseExample"
+      input: "tf_example"
+      input: "ParseExample/ParseExample/names"
+      input: "ParseExample/ParseExample/dense_keys_0"
+      input: "ParseExample/Const"
+      attr {
+        key: "Ndense"
+        value {
+          i: 1
+        }
+      }
+      attr {
+        key: "Nsparse"
+        value {
+          i: 0
+        }
+      }
+      attr {
+        key: "Tdense"
+        value {
+          list {
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dense_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "sparse_types"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    node {
+      name: "x"
+      op: "Identity"
+      input: "ParseExample/ParseExample"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
           }
         }
       }
@@ -566,7 +861,12 @@ meta_graphs {
         value {
           list {
             shape {
-              unknown_rank: true
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -588,7 +888,38 @@ meta_graphs {
         value {
           list {
             shape {
-              unknown_rank: true
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "Identity"
+      op: "Identity"
+      input: "y"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -626,6 +957,82 @@ meta_graphs {
             tensor_shape {
             }
             string_val: "model"
+          }
+        }
+      }
+    }
+    node {
+      name: "save/num_shards"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+    }
+    node {
+      name: "save/ShardedFilename/shard"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+    }
+    node {
+      name: "save/ShardedFilename"
+      op: "ShardedFilename"
+      input: "save/Const"
+      input: "save/ShardedFilename/shard"
+      input: "save/num_shards"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
           }
         }
       }
@@ -707,7 +1114,7 @@ meta_graphs {
     node {
       name: "save/save"
       op: "SaveSlices"
-      input: "save/Const"
+      input: "save/ShardedFilename"
       input: "save/save/tensor_names"
       input: "save/save/shapes_and_slices"
       input: "a"
@@ -725,7 +1132,7 @@ meta_graphs {
     node {
       name: "save/control_dependency"
       op: "Identity"
-      input: "save/Const"
+      input: "save/ShardedFilename"
       input: "^save/save"
       attr {
         key: "T"
@@ -737,7 +1144,7 @@ meta_graphs {
         key: "_class"
         value {
           list {
-            s: "loc:@save/Const"
+            s: "loc:@save/ShardedFilename"
           }
         }
       }
@@ -752,13 +1159,32 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_slice/tensor_name"
+      name: "save/ShardedFilespec"
+      op: "ShardedFilespec"
+      input: "save/Const"
+      input: "save/num_shards"
+      input: "^save/control_dependency"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "save/RestoreV2/tensor_names"
       op: "Const"
       attr {
         key: "_output_shapes"
         value {
           list {
             shape {
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -775,6 +1201,9 @@ meta_graphs {
           tensor {
             dtype: DT_STRING
             tensor_shape {
+              dim {
+                size: 1
+              }
             }
             string_val: "a"
           }
@@ -782,13 +1211,16 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_slice/shape_and_slice"
+      name: "save/RestoreV2/shape_and_slices"
       op: "Const"
       attr {
         key: "_output_shapes"
         value {
           list {
             shape {
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -805,6 +1237,9 @@ meta_graphs {
           tensor {
             dtype: DT_STRING
             tensor_shape {
+              dim {
+                size: 1
+              }
             }
             string_val: ""
           }
@@ -812,11 +1247,11 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_slice"
-      op: "RestoreSlice"
+      name: "save/RestoreV2"
+      op: "RestoreV2"
       input: "save/Const"
-      input: "save/restore_slice/tensor_name"
-      input: "save/restore_slice/shape_and_slice"
+      input: "save/RestoreV2/tensor_names"
+      input: "save/RestoreV2/shape_and_slices"
       attr {
         key: "_output_shapes"
         value {
@@ -828,15 +1263,11 @@ meta_graphs {
         }
       }
       attr {
-        key: "dt"
+        key: "dtypes"
         value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "preferred_shard"
-        value {
-          i: -1
+          list {
+            type: DT_FLOAT
+          }
         }
       }
     }
@@ -844,7 +1275,7 @@ meta_graphs {
       name: "save/Assign"
       op: "Assign"
       input: "a"
-      input: "save/restore_slice"
+      input: "save/RestoreV2"
       attr {
         key: "T"
         value {
@@ -882,13 +1313,16 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_slice_1/tensor_name"
+      name: "save/RestoreV2_1/tensor_names"
       op: "Const"
       attr {
         key: "_output_shapes"
         value {
           list {
             shape {
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -905,6 +1339,9 @@ meta_graphs {
           tensor {
             dtype: DT_STRING
             tensor_shape {
+              dim {
+                size: 1
+              }
             }
             string_val: "b"
           }
@@ -912,13 +1349,16 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_slice_1/shape_and_slice"
+      name: "save/RestoreV2_1/shape_and_slices"
       op: "Const"
       attr {
         key: "_output_shapes"
         value {
           list {
             shape {
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -935,6 +1375,9 @@ meta_graphs {
           tensor {
             dtype: DT_STRING
             tensor_shape {
+              dim {
+                size: 1
+              }
             }
             string_val: ""
           }
@@ -942,11 +1385,11 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_slice_1"
-      op: "RestoreSlice"
+      name: "save/RestoreV2_1"
+      op: "RestoreV2"
       input: "save/Const"
-      input: "save/restore_slice_1/tensor_name"
-      input: "save/restore_slice_1/shape_and_slice"
+      input: "save/RestoreV2_1/tensor_names"
+      input: "save/RestoreV2_1/shape_and_slices"
       attr {
         key: "_output_shapes"
         value {
@@ -958,15 +1401,11 @@ meta_graphs {
         }
       }
       attr {
-        key: "dt"
+        key: "dtypes"
         value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "preferred_shard"
-        value {
-          i: -1
+          list {
+            type: DT_FLOAT
+          }
         }
       }
     }
@@ -974,7 +1413,7 @@ meta_graphs {
       name: "save/Assign_1"
       op: "Assign"
       input: "b"
-      input: "save/restore_slice_1"
+      input: "save/RestoreV2_1"
       attr {
         key: "T"
         value {
@@ -1012,10 +1451,15 @@ meta_graphs {
       }
     }
     node {
-      name: "save/restore_all"
+      name: "save/restore_shard"
       op: "NoOp"
       input: "^save/Assign"
       input: "^save/Assign_1"
+    }
+    node {
+      name: "save/restore_all"
+      op: "NoOp"
+      input: "^save/restore_shard"
     }
     versions {
       producer: 15
@@ -1023,9 +1467,10 @@ meta_graphs {
   }
   saver_def {
     filename_tensor_name: "save/Const:0"
-    save_tensor_name: "save/control_dependency:0"
+    save_tensor_name: "save/ShardedFilespec:0"
     restore_op_name: "save/restore_all"
     max_to_keep: 5
+    sharded: true
     keep_checkpoint_every_n_hours: 10000.0
     version: V1
   }
@@ -1048,21 +1493,21 @@ meta_graphs {
     }
   }
   signature_def {
-    key: "regression"
+    key: "tensorflow/serving/regress"
     value {
       inputs {
-        key: "input"
+        key: "inputs"
         value {
-          name: "x:0"
+          name: "tf_example:0"
         }
       }
       outputs {
-        key: "output"
+        key: "outputs"
         value {
-          name: "y:0"
+          name: "Identity:0"
         }
       }
-      method_name: "regression"
+      method_name: "tensorflow/serving/regress"
     }
   }
 }
