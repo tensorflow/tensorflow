@@ -80,7 +80,9 @@ public:
     {
         double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
         double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
-        double cost = rows * rows * num_rhss;
+        double cost = rows * rows * num_rhss * 
+          (Eigen::TensorOpCost::AddCost<Scalar>() + 
+           Eigen::TensorOpCost::MulCost<Scalar>());
         return cost >= static_cast<double>(kint64max) ? kint64max
                                                       : static_cast<int64>(cost);
     }
@@ -158,7 +160,9 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
   int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
-    double cost = rows * rows * num_rhss;
+    double cost = rows * rows * num_rhss * 
+          (Eigen::TensorOpCost::AddCost<Scalar>() + 
+           Eigen::TensorOpCost::MulCost<Scalar>());
     return cost >= static_cast<double>(kint64max) ? kint64max
                                                   : static_cast<int64>(cost);
   }
@@ -180,37 +184,48 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     auto out_ptr = AsDeviceMemory(output.data());
 
     auto* stream = context->op_device_context()->stream();
-    uint64 belems = rhs.rows() * rhs.cols();
+    uint64 rhs_elems = rhs.rows() * rhs.cols();
     bool copy_status =
-        stream->ThenMemcpyD2D(&out_ptr, rhs_ptr, sizeof(Scalar) * belems).ok();
+        stream->ThenMemcpyD2D(&out_ptr, rhs_ptr, sizeof(Scalar) * rhs_elems).ok();
     if (!copy_status) {
       context->SetStatus(
-          errors::Internal("Failed to copy B into output before TRSM"));
+          errors::Internal("Failed to copy rhs into output before solve"));
     }
-    perftools::gputools::blas::UpperLower uplo;
-    perftools::gputools::blas::Transpose trans;
+
+    // Cublas does
+    // output = matrix \ rhs
+    // where matrix, rhs and output are assumed to be in column major.
+    // We want the output to be in row-major, so we can compute
+    // output' = rhs' / matrix' (' stands for transpose)
+    // Upper/lower needs to be swapped for this.
+
+    perftools::gputools::blas::UpperLower upper_lower_matrix;
+    perftools::gputools::blas::Transpose transpose_matrix;
     if (lower_) {
-      uplo = perftools::gputools::blas::UpperLower::kUpper;
+      upper_lower_matrix = perftools::gputools::blas::UpperLower::kUpper;
     } else {
-      uplo = perftools::gputools::blas::UpperLower::kLower;
+      upper_lower_matrix = perftools::gputools::blas::UpperLower::kLower;
     }
     if (adjoint_) {
-      trans = perftools::gputools::blas::Transpose::kTranspose;
+      transpose_matrix = perftools::gputools::blas::Transpose::kTranspose;
     } else {
-      trans = perftools::gputools::blas::Transpose::kNoTranspose;
+      transpose_matrix = perftools::gputools::blas::Transpose::kNoTranspose;
     }
-    uint64 lda = matrix.cols();   
-    uint64 ldb = rhs.cols();      
-    uint64 cublas_m = rhs.cols(); 
-    uint64 cublas_n = rhs.rows(); 
+    uint64 leading_dim_matrix = matrix.cols();   
+    uint64 leading_dim_output = output.cols();      
+    uint64 colmajor_rows = output.cols(); 
+    uint64 colmajor_cols = output.rows(); 
     bool blas_launch_status =
-        stream
-            ->ThenBlasTrsm(perftools::gputools::blas::Side::kRight, uplo, trans,
-                           perftools::gputools::blas::Diagonal::kNonUnit,
-                           cublas_m, cublas_n, 1.0, matrix_ptr, lda, &out_ptr,
-                           ldb)
-            .ok();
-    // LOG(INFO) << blas_launch_status;
+      stream
+        ->ThenBlasTrsm(perftools::gputools::blas::Side::kRight /*side*/, 
+                       upper_lower_matrix /*uplo*/, 
+                       transpose_matrix /*trans*/,
+                       perftools::gputools::blas::Diagonal::kNonUnit /*diag*/,
+                       colmajor_rows /*m*/, colmajor_cols /*n*/, 
+                       Scalar(1.0) /*alpha*/, 
+                       matrix_ptr, leading_dim_matrix /*lda*/, 
+                       &out_ptr, leading_dim_output /*ldb*/)
+        .ok();
     if (!blas_launch_status) {
       context->SetStatus(errors::Internal("Blas TRSM launch failed"));
     }
