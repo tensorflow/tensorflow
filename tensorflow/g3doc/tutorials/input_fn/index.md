@@ -15,9 +15,9 @@ tutorial](../tflearn/index.md):
 
 ```py
 training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TRAINING, target_dtype=np.int)
+    filename=IRIS_TRAINING, target_dtype=np.int, features_dtype=np.float32)
 test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TEST, target_dtype=np.int)
+    filename=IRIS_TEST, target_dtype=np.int, features_dtype=np.float32)
 ...
 
 classifier.fit(x=training_set.data,
