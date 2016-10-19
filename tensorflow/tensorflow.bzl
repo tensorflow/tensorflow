@@ -142,9 +142,10 @@ def if_not_mobile(a):
   })
 
 def tf_copts():
-  return (["-fno-exceptions",
-           "-DEIGEN_AVOID_STL_ARRAY",
-           "-Iexternal/gemmlowp",] +
+  return (["-DEIGEN_AVOID_STL_ARRAY",
+           "-Iexternal/gemmlowp",
+           "-Wno-sign-compare",
+           "-fno-exceptions"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           select({
@@ -155,7 +156,7 @@ def tf_copts():
                   "-O2",
               ],
               "//tensorflow:darwin": [],
-              "//tensorflow:ios": ["-std=c++11",],
+              "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
 
 def tf_opts_nortti_if_android():
@@ -770,7 +771,9 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   native.cc_binary(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
-      copts=(copts + ["-Wno-self-assign", "-Wno-write-strings"]
+      copts=(copts + ["-Wno-self-assign",
+                      "-Wno-sign-compare",
+                      "-Wno-write-strings"]
              + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,

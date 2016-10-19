@@ -175,6 +175,7 @@ cc_library(
 cc_binary(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
+    copts = ["-Wno-sign-compare"],
     linkopts = select({
         "//conditions:default": [
             "-lm",
@@ -217,6 +218,7 @@ cc_library(
     name = "cpp_shape_inference",
     srcs = ["framework/cpp_shape_inference.cc"],
     hdrs = ["framework/cpp_shape_inference.h"],
+    copts = ["-Wno-sign-compare"],
     visibility = ["//visibility:public"],
     deps = [
         ":numpy_lib",

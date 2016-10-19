@@ -205,6 +205,7 @@ cc_library(
     name = "ops_util",
     srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
+    copts = ["-Wno-sign-compare"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -288,6 +289,7 @@ cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
+    copts = ["-Wno-sign-compare"],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
