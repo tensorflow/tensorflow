@@ -460,6 +460,7 @@ py_test(
         ":gradients",
         ":math_ops",
         ":platform_test",
+        ":resources",
         ":session",
         ":sparse_ops",
         ":test_ops",
@@ -961,6 +962,18 @@ py_library(
 )
 
 py_library(
+    name = "resources",
+    srcs = ["ops/resources.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+    ],
+)
+
+py_library(
     name = "nn",
     srcs = ["ops/nn.py"],
     srcs_version = "PY2AND3",
@@ -1380,6 +1393,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":random_ops_gen",
+        ":resources",
         ":rnn",
         ":rnn_cell",
         ":script_ops",

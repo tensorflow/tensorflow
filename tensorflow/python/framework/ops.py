@@ -4039,6 +4039,12 @@ class GraphKeys(object):
   LOSSES = "losses"
   # Key to collect BaseSaverBuilder.SaveableObject instances for checkpointing.
   SAVEABLE_OBJECTS = "saveable_objects"
+  # Key to collect all shared resources used by the graph which need to be
+  # initialized once per cluster.
+  RESOURCES = "resources"
+  # Key to collect all shared resources used in this graph which need to be
+  # initialized once per session.
+  LOCAL_RESOURCES = "local_resources"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"

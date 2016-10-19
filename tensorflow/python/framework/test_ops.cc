@@ -30,11 +30,16 @@ REGISTER_OP("GraphDefVersion").Output("version: int32").SetIsStateful();
 
 REGISTER_OP("Old").Deprecated(8, "For reasons");
 
-REGISTER_OP("ResourceOp")
-    .Output("resource: resource")
-    .Attr("container: string = ''")
-    .Attr("shared_name: string")
+REGISTER_RESOURCE_HANDLE_OP(StubResource);
+
+REGISTER_OP("ResourceInitializedOp")
+    .Input("resource: resource")
+    .Output("initialized: bool")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ResourceCreateOp")
+    .Input("resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("ResourceUsingOp")
     .Input("resource: resource")
@@ -111,20 +116,23 @@ class StubResource : public ResourceBase {
   string DebugString() override { return ""; }
 };
 
-// Constructs and returns a resource handle.
-class ResourceOp : public OpKernel {
- public:
-  explicit ResourceOp(OpKernelConstruction* context) : OpKernel(context) {}
+REGISTER_RESOURCE_HANDLE_KERNEL(StubResource);
 
-  void Compute(OpKernelContext* ctx) override {
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    output->flat<ResourceHandle>()(0) =
-        MakeResourceHandle<StubResource>(ctx, "container", "name");
+REGISTER_KERNEL_BUILDER(Name("ResourceInitializedOp").Device(DEVICE_CPU),
+                        IsResourceInitialized<StubResource>);
+
+class ResourceCreateOp : public OpKernel {
+ public:
+  ResourceCreateOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    OP_REQUIRES_OK(c,
+                   CreateResource(c, HandleFromInput(c, 0), new StubResource));
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("ResourceOp").Device(DEVICE_CPU), ResourceOp);
+REGISTER_KERNEL_BUILDER(Name("ResourceCreateOp").Device(DEVICE_CPU),
+                        ResourceCreateOp);
 
 // Uses a ResourceHandle to check its validity.
 class ResourceUsingOp : public OpKernel {
@@ -132,10 +140,9 @@ class ResourceUsingOp : public OpKernel {
   explicit ResourceUsingOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) {
-    const Tensor& pointer = ctx->input(0);
-    auto* r = new StubResource;
-    OP_REQUIRES_OK(ctx, CreateResource<StubResource>(
-                            ctx, pointer.flat<ResourceHandle>()(0), r));
+    StubResource* unused;
+    OP_REQUIRES_OK(ctx, LookupResource<StubResource>(
+                            ctx, HandleFromInput(ctx, 0), &unused));
   }
 };
 

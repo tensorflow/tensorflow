@@ -32,22 +32,38 @@ from tensorflow.python.framework import versions
 # Import gradients to register _IndexedSlicesToTensor.
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
-ops.RegisterShape("ResourceOp")(None)
-ops.RegisterShape("ResourceUsingOp")(None)
+ops.RegisterShape("ResourceOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceUsingOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceInitializedOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceCreateOp")(common_shapes.call_cpp_shape_fn)
 
 
 class ResourceTest(test_util.TensorFlowTestCase):
 
   def testBuildGraph(self):
     with self.test_session():
-      pt = test_ops.resource_op(container="a", shared_name="b")
-      test_ops.resource_using_op(pt).run()
+      pt = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      test_ops.resource_create_op(pt).run()
+
+  def testInitialize(self):
+    with self.test_session():
+      handle = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      resources.register_resource(
+          handle=handle,
+          create_op=test_ops.resource_create_op(handle),
+          is_initialized_op=test_ops.resource_initialized_op(handle))
+      self.assertEquals(len(resources.report_uninitialized_resources(
+          resources.shared_resources()).eval()), 1)
+      resources.initialize_resources(resources.shared_resources()).run()
+      self.assertEquals(len(resources.report_uninitialized_resources(
+          resources.shared_resources()).eval()), 0)
 
 
 class TensorTest(test_util.TensorFlowTestCase):
