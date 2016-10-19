@@ -339,11 +339,6 @@ class EventAccumulator(object):
     if self._graph is not None:
       graph.ParseFromString(self._graph)
       return graph
-    if self._meta_graph is not None:
-      meta_graph = meta_graph_pb2.MetaGraphDef()
-      meta_graph.ParseFromString(self._meta_graph)
-      if meta_graph.graph_def:
-        return meta_graph.graph_def
     raise ValueError('There is no graph in this EventAccumulator')
 
   def MetaGraph(self):
