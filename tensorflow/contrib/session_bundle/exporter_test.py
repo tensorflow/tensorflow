@@ -93,7 +93,8 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       save = tf.train.Saver({"v0": v0,
                              "v1": v1},
                             restore_sequentially=True,
-                            sharded=sharded)
+                            sharded=sharded,
+                            write_version=tf.train.SaverDef.V1)
       export = exporter.Exporter(save)
       compare_def = tf.get_default_graph().as_graph_def()
       export.init(compare_def,

@@ -129,6 +129,7 @@
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
   * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
+  * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
@@ -139,6 +140,8 @@
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
+  * [`quantize_v2`](../../api_docs/python/array_ops.md#quantize_v2)
+  * [`quantized_concat`](../../api_docs/python/array_ops.md#quantized_concat)
   * [`rank`](../../api_docs/python/array_ops.md#rank)
   * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
@@ -241,7 +244,6 @@
   * [`reduce_max`](../../api_docs/python/math_ops.md#reduce_max)
   * [`reduce_mean`](../../api_docs/python/math_ops.md#reduce_mean)
   * [`reduce_min`](../../api_docs/python/math_ops.md#reduce_min)
-  * [`reduce_nnz`](../../api_docs/python/math_ops.md#reduce_nnz)
   * [`reduce_prod`](../../api_docs/python/math_ops.md#reduce_prod)
   * [`reduce_sum`](../../api_docs/python/math_ops.md#reduce_sum)
   * [`round`](../../api_docs/python/math_ops.md#round)
@@ -491,6 +493,9 @@
   * [`nce_loss`](../../api_docs/python/nn.md#nce_loss)
   * [`normalize_moments`](../../api_docs/python/nn.md#normalize_moments)
   * [`pool`](../../api_docs/python/nn.md#pool)
+  * [`quantized_avg_pool`](../../api_docs/python/nn.md#quantized_avg_pool)
+  * [`quantized_max_pool`](../../api_docs/python/nn.md#quantized_max_pool)
+  * [`quantized_relu_x`](../../api_docs/python/nn.md#quantized_relu_x)
   * [`raw_rnn`](../../api_docs/python/nn.md#raw_rnn)
   * [`relu`](../../api_docs/python/nn.md#relu)
   * [`relu6`](../../api_docs/python/nn.md#relu6)
@@ -748,6 +753,8 @@
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
+  * [`Sigmoid`](../../api_docs/python/contrib.distributions.bijector.md#Sigmoid)
+  * [`Softmax`](../../api_docs/python/contrib.distributions.bijector.md#Softmax)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
@@ -917,9 +924,6 @@
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
-  * [`TensorFlowEstimator`](../../api_docs/python/contrib.learn.md#TensorFlowEstimator)
-  * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
-  * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
   * [`train`](../../api_docs/python/contrib.learn.md#train)
 
 * **[Monitors (contrib)](../../api_docs/python/contrib.learn.monitors.md)**:
@@ -1001,6 +1005,7 @@
   * [`streaming_sensitivity_at_specificity`](../../api_docs/python/contrib.metrics.md#streaming_sensitivity_at_specificity)
   * [`streaming_sparse_average_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_average_precision_at_k)
   * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
+  * [`streaming_sparse_precision_at_top_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_top_k)
   * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
   * [`streaming_specificity_at_sensitivity`](../../api_docs/python/contrib.metrics.md#streaming_specificity_at_sensitivity)
 
@@ -1013,7 +1018,6 @@
   * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
-  * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
   * [`weighted_resample`](../../api_docs/python/contrib.training.md#weighted_resample)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:

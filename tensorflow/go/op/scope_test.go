@@ -17,6 +17,8 @@ package op
 import (
 	"fmt"
 	"testing"
+
+	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func TestScopeSubScope(t *testing.T) {
@@ -49,6 +51,32 @@ func TestScopeSubScope(t *testing.T) {
 		}
 	}
 
+}
+
+func Example() {
+	// This example creates a Graph that multiplies a constant matrix with
+	// a matrix to be provided during graph execution (via
+	// tensorflow.Session).
+	scope := NewScope()
+	var m1, m2, product tf.Output
+	var err error
+	// A constant 2x1 matrix
+	if m1, err = Const(scope, [][]float32{{10}, {20}}); err != nil {
+		panic(err)
+	}
+	// A placeholder for another matrix
+	if m2, err = Placeholder(scope, tf.Float); err != nil {
+		panic(err)
+	}
+	// product = m1 x transpose(m2)
+	if product, err = MatMul(scope, m1, m2, MatMulTransposeB(true)); err != nil {// m1 x transpose(m2)
+		panic(err)
+	}
+	// Shape of the product: The number of rows is fixed by m1, but the
+	// number of columns will depend on m2, which is unknown.
+	shape, _ := product.Shape()
+	fmt.Println(shape)
+	// Output: [2 -1]
 }
 
 func ExampleScope_SubScope() {

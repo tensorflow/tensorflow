@@ -90,6 +90,8 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
 endif(WIN32)

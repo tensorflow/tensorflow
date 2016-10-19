@@ -50,7 +50,7 @@ if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC -D__VERSION__=\"MSVC\")
   # Suppress warnings to reduce build log size.
   add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
-  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} /MP)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -63,6 +63,7 @@ include(gif)
 include(png)
 include(jpeg)
 include(eigen)
+include(gemmlowp)
 include(jsoncpp)
 include(farmhash)
 include(highwayhash)
@@ -91,6 +92,7 @@ include_directories(
     ${png_INCLUDE_DIR}
     ${jpeg_INCLUDE_DIR}
     ${eigen_INCLUDE_DIRS}
+    ${gemmlowp_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}

@@ -137,7 +137,6 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_all
 @@reduce_any
 @@reduce_logsumexp
-@@reduce_nnz
 
 @@accumulate_n
 
@@ -556,11 +555,13 @@ def imag(input, name=None):
 def round(x, name=None):
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
+  Rounds half to even.  Also known as bankers rounding. If you want to round
+  according to the current system rounding mode use tf::cint.
   For example:
 
   ```python
-  # 'a' is [0.9, 2.5, 2.3, -4.4]
-  tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
+  # 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
+  tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
   Args:
@@ -574,7 +575,12 @@ def round(x, name=None):
   if x.dtype.is_integer:
     return x
   else:
+    # TODO(nolivia): Switch to new Round op
+    # return gen_math_ops.round(x, name=name)
     return gen_math_ops.floor(x + 0.5, name=name)
+
+
+ops.RegisterShape("Round")(common_shapes.call_cpp_shape_fn)
 
 
 def cast(x, dtype, name=None):
@@ -1081,57 +1087,6 @@ def reduce_sum(input_tensor, reduction_indices=None, keep_dims=False,
   return gen_math_ops._sum(input_tensor, _ReductionDims(input_tensor,
                                                         reduction_indices),
                            keep_dims, name=name)
-
-
-def reduce_nnz(input_tensor, reduction_indices=None, keep_dims=False,
-               dtype=dtypes.int32, name=None):
-  """Computes number of nonzero elements across dimensions of a tensor.
-
-  Reduces `input_tensor` along the dimensions given in `reduction_indices`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
-  are retained with length 1.
-
-  If `reduction_indices` has no entries, all dimensions are reduced, and a
-  tensor with a single element is returned.
-
-  **NOTE** Floating point comparison to zero is done by exact floating point
-  equality check.  Small values are **not** rounded to zero for purposes of
-  the nonzero check.
-
-  For example:
-
-  ```python
-  # 'x' is [[0, 1, 0]
-  #         [1, 1, 0]]
-  tf.reduce_nnz(x) ==> 3
-  tf.reduce_nnz(x, 0) ==> [1, 2, 0]
-  tf.reduce_nnz(x, 1) ==> [1, 2]
-  tf.reduce_nnz(x, 1, keep_dims=True) ==> [[1], [2]]
-  tf.reduce_nnz(x, [0, 1]) ==> 3
-  ```
-
-  Args:
-    input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
-    reduction_indices: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
-    keep_dims: If true, retains reduced dimensions with length 1.
-    dtype: The output dtype; defaults to `tf.int32`.
-    name: A name for the operation (optional).
-
-  Returns:
-    The reduced tensor.
-  """
-  with ops.name_scope(name, "NNZ", [input_tensor]):
-    input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
-    zero = input_tensor.dtype.as_numpy_dtype()
-    return cast(
-        reduce_sum(
-            # int64 reduction happens on GPU
-            to_int64(gen_math_ops.not_equal(input_tensor, zero)),
-            reduction_indices=reduction_indices,
-            keep_dims=keep_dims),
-        dtype=dtype)
 
 
 def reduce_mean(input_tensor, reduction_indices=None, keep_dims=False,
@@ -1999,3 +1954,6 @@ def reduced_shape(input_shape, axes):
        axes],                               # [1, 2]
       [input_shape,                         # [2, 3, 5, 7]
        array_ops.fill(axes_shape, 1)])      # [1, 1]
+
+
+ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)

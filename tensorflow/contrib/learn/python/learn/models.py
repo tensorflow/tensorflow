@@ -117,7 +117,7 @@ def logistic_regression(x,
   Args:
     x: tensor or placeholder for input features,
        shape should be [batch_size, n_features].
-    y: tensor or placeholder for target,
+    y: tensor or placeholder for target (one-hot),
        shape should be [batch_size, n_classes].
     class_weight: tensor, [n_classes], where for each class
                   it has weight of the class. If not provided
