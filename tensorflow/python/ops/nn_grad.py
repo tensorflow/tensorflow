@@ -230,9 +230,7 @@ def _BiasAddGradGrad(op, received_grad):
       0,
       [array_ops.ones_like(shape[:-3]), bias_shape, array_ops.ones_like(shape[-2:])]
     )
-
     tile_mults = array_ops.concat(0, [shape[:-3], [1], shape[-2:]])
-
   else:
     expanded_shape = array_ops.concat(0, [array_ops.ones_like(shape[:-1]), bias_shape])
     tile_mults = array_ops.concat(0, [shape[:-1], [1]])
