@@ -54,6 +54,10 @@ class WindowsEnv : public Env {
  public:
   WindowsEnv()
       : GetSystemTimePreciseAsFileTime_(NULL) {
+    // GetSystemTimePreciseAsFileTime function is only available in the latest
+    // versions of Windows. For that reason, we try to look it up in
+    // kernel32.dll at runtime and use an alternative option if the function
+    // is not available.
     HMODULE module = GetModuleHandle("kernel32.dll");
     if (module != NULL) {
       auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
@@ -72,8 +76,10 @@ class WindowsEnv : public Env {
 
   uint64 NowMicros() override {
     if (GetSystemTimePreciseAsFileTime_ != NULL) {
-      // all std::chrono clocks on windows proved to return
-      // values that may repeat that is not good enough for some uses.
+      // GetSystemTimePreciseAsFileTime function is only available in latest
+      // versions of Windows, so we need to check for its existence here.
+      // All std::chrono clocks on Windows proved to return
+      // values that may repeat, which is not good enough for some uses.
       constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
       constexpr int64_t kFtToMicroSec = 10;
 
