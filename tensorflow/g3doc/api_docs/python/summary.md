@@ -3,9 +3,9 @@
 # Summary Operations
 [TOC]
 
-This module contains ops for generating summaries.
+## Generation of summaries.
 
-## Summary Ops
+### Summary Ops
 - - -
 
 ### `tf.summary.tensor_summary(name, tensor, summary_description=None, collections=None)` {#tensor_summary}
