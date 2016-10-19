@@ -37,9 +37,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.http_archive(
     name = "gemmlowp",
+<<<<<<< a6125b624cf1757b4cc2751fe764b34fbc8c9074
     url = "http://github.com/google/gemmlowp/archive/a6f29d8ac48d63293f845f2253eccbf86bc28321.tar.gz",
     sha256 = "75d40ea8e68b0d1644f052fffe8f14a410b2a73d40ccb859a95c0578d194ec26",
     strip_prefix = "gemmlowp-a6f29d8ac48d63293f845f2253eccbf86bc28321",
+=======
+    url = "http://github.com/google/gemmlowp/archive/c0bacf11fb509a2cbe15a97362a2df067ffd57a2.tar.gz",
+    sha256 = "dc64a38f9927db18748d9024987c9b102115e25bc2be4b76aa8e422b8f83d882",
+    strip_prefix = "gemmlowp-c0bacf11fb509a2cbe15a97362a2df067ffd57a2",
+>>>>>>> Upgraded to the latest version of Eigen
   )
 
   native.new_http_archive(
@@ -101,9 +107,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.http_archive(
     name = "protobuf",
+<<<<<<< a6125b624cf1757b4cc2751fe764b34fbc8c9074
     url = "http://github.com/google/protobuf/archive/008b5a228b37c054f46ba478ccafa5e855cb16db.tar.gz",
     sha256 = "2737ad055eb8a9bc63ed068e32c4ea280b62d8236578cb4d4120eb5543f759ab",
     strip_prefix = "protobuf-008b5a228b37c054f46ba478ccafa5e855cb16db",
+=======
+    url = "http://github.com/google/protobuf/archive/c2b3e70efd2038a54ef8973771ac58192885125e.tar.gz",
+    sha256 = "eafc1bc4c27970d62effe64ba6610823fdd66711f440d8ca4a168167786a2fcb",
+    strip_prefix = "protobuf-c2b3e70efd2038a54ef8973771ac58192885125e",
+>>>>>>> Upgraded to the latest version of Eigen
   )
 
   native.new_http_archive(
