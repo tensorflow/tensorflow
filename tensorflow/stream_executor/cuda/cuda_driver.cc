@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 
 #if defined(PLATFORM_WINDOWS)
-// FIXME: in windows ARRAYSIZE is defined in winnt.h but including it
-//  here creates a conflict with cuda.h - for now redefine it.
+// TODO: in windows ARRAYSIZE is defined in winnt.h but including it
+//  here creates a conflict with cuda.h - for now define it here.
 #define ARRAYSIZE(a) \
   ((sizeof(a) / sizeof(*(a))) / \
   static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
