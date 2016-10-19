@@ -204,24 +204,36 @@ def _fused_batch_norm(
   Raises:
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: if the rank of `inputs` is undefined.
-    ValueError: if rank or last dimension of `inputs` is undefined.
+    ValueError: if the rank of `inputs` is neither 2 or 4.
+    ValueError: if rank or `C` dimension of `inputs` is undefined.
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
       scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
+    original_shape = inputs.get_shape()
+    original_rank = original_shape.ndims
+    if original_rank is None:
+      raise ValueError('Inputs %s has undefined rank' % inputs.name)
+    elif original_rank not in [2, 4]:
+      raise ValueError('Inputs %s has unsupported rank. \
+          Expected 2 or 4 but got %d' % (inputs.name, original_rank))
+    if original_rank == 2:
+      channels = inputs.get_shape()[-1].value
+      if channels is None:
+        raise ValueError('`C` dimension must be known but is None')
+      new_shape = [-1, channels, 1, 1] if data_format == DATA_FORMAT_NCHW else \
+          [-1, 1, 1, channels]
+      inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
-    inputs_rank = inputs_shape.ndims
-    if inputs_rank is None:
-      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
     dtype = inputs.dtype.base_dtype
     if data_format == DATA_FORMAT_NHWC:
       params_shape = inputs_shape[-1:]
     else:
       params_shape = inputs_shape[1:2]
     if not params_shape.is_fully_defined():
-      raise ValueError('Inputs %s has undefined last dimension %s.' %
+      raise ValueError('Inputs %s has undefined `C` dimension %s.' %
                        (inputs.name, params_shape))
 
     # Allocate parameters for the beta and gamma of the normalization.
@@ -277,31 +289,31 @@ def _fused_batch_norm(
         trainable=False,
         collections=moving_variance_collections)
 
+    def _fused_batch_norm_training():
+      return nn.fused_batch_norm(
+          inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
+    def _fused_batch_norm_inference():
+      return nn.fused_batch_norm(
+          inputs,
+          gamma,
+          beta,
+          mean=moving_mean,
+          variance=moving_variance,
+          epsilon=epsilon,
+          is_training=False,
+          data_format=data_format)
+    outputs, mean, variance = utils.smart_cond(is_training,
+                                               _fused_batch_norm_training,
+                                               _fused_batch_norm_inference)
+
     # If `is_training` doesn't have a constant value, because it is a `Tensor`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
-    # `needs_moments` will be true.
+    # `need_updates` will be true.
     is_training_value = utils.constant_value(is_training)
-    need_moments = is_training_value is None or is_training_value
-    if need_moments:
-      # Calculate the moments based on the individual batch.
-      def _fused_batch_norm_training():
-        return nn.fused_batch_norm(
-            inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
-      def _fused_batch_norm_inference():
-        return nn.fused_batch_norm(
-            inputs,
-            gamma,
-            beta,
-            mean=moving_mean,
-            variance=moving_variance,
-            epsilon=epsilon,
-            is_training=False,
-            data_format=data_format)
-      outputs, mean, variance = utils.smart_cond(is_training,
-                                                 _fused_batch_norm_training,
-                                                 _fused_batch_norm_inference)
-      moving_vars_fn = lambda: (moving_mean, moving_variance)
+    need_updates = is_training_value is None or is_training_value
+    if need_updates:
       if updates_collections is None:
+        _no_updates = lambda: outputs
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -310,12 +322,10 @@ def _fused_batch_norm(
               moving_variance, variance, decay)
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
-            return array_ops.identity(mean), array_ops.identity(variance)
-        mean, variance = utils.smart_cond(is_training, _force_updates,
-                                          moving_vars_fn)
-        with ops.control_dependencies([mean, variance]):
-          outputs = array_ops.identity(outputs)
+            return array_ops.identity(outputs)
+        outputs = utils.smart_cond(is_training, _force_updates, _no_updates)
       else:
+        moving_vars_fn = lambda: (moving_mean, moving_variance)
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -328,22 +338,10 @@ def _fused_batch_norm(
                                                         moving_vars_fn)
         ops.add_to_collections(updates_collections, update_mean)
         ops.add_to_collections(updates_collections, update_variance)
-        # Use computed moments during training and moving_vars otherwise.
-        vars_fn = lambda: (mean, variance)
-        mean, variance = utils.smart_cond(is_training, vars_fn, moving_vars_fn)
-    else:
-      mean, variance = moving_mean, moving_variance
-      outputs, _, _ = nn.fused_batch_norm(
-          inputs,
-          gamma,
-          beta,
-          mean=moving_mean,
-          variance=moving_variance,
-          epsilon=epsilon,
-          is_training=False,
-          data_format=data_format)
 
     outputs.set_shape(inputs_shape)
+    if original_shape.ndims == 2:
+      outputs = array_ops.reshape(outputs, original_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -610,6 +608,7 @@ def bias_add(inputs,
              variables_collections=None,
              outputs_collections=None,
              trainable=True,
+             data_format=DATA_FORMAT_NHWC,
              scope=None):
   """Adds a bias to the inputs.
 
@@ -629,16 +628,34 @@ def bias_add(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for variable_scope.
 
   Returns:
     a tensor representing the result of adding biases to the inputs.
+
+  Raises:
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: if `data_format` is `NCHW` and rank of `inputs` is not 4.
+    ValueError: if the rank of `inputs` is undefined.
+    ValueError: if rank or `C` dimension of `inputs` is undefined.
   """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(scope, 'BiasAdd', [inputs],
                                      reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
-    num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Dims of shape must be known but is None')
+    elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
+      raise ValueError('Data format NCHW only supports 4D Tensor')
+    axis = 1 if data_format==DATA_FORMAT_NCHW else -1
+    num_features = inputs_shape[axis].value
+    if num_features is None:
+      raise ValueError('`C` dimension must be known but is None')
     biases_collections = utils.get_variable_collections(variables_collections,
                                                         'biases')
     biases = variables.model_variable('biases',
@@ -648,7 +665,7 @@ def bias_add(inputs,
                                       regularizer=regularizer,
                                       collections=biases_collections,
                                       trainable=trainable)
-    outputs = nn.bias_add(inputs, biases)
+    outputs = nn.bias_add(inputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,

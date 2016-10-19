@@ -351,13 +351,16 @@ REGISTER_OP("FusedBatchNormGrad")
     .Attr("T: numbertype")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle y_backprop;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
       ShapeHandle x;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
 
+      bool is_training;
       string data_format;
+      c->GetAttr("is_training", &is_training);
       c->GetAttr("data_format", &data_format);
       DimensionHandle channel_dim = (data_format == "NHWC")
                                         ? c->Dim(y_backprop, 3)
@@ -386,8 +389,16 @@ REGISTER_OP("FusedBatchNormGrad")
       c->set_output(0, x_backprop);
       c->set_output(1, c->Vector(channel_dim));
       c->set_output(2, c->Vector(channel_dim));
-      c->set_output(3, c->Vector(0));
-      c->set_output(4, c->Vector(0));
+      // Set the correct shapes for reserve_spaces
+      // so that gradients can be performed when
+      // the op is in a symbolic condition.
+      if (is_training) {
+        c->set_output(3, c->Vector(0));
+        c->set_output(4, c->Vector(0));
+      } else {
+        c->set_output(3, c->Vector(channel_dim));
+        c->set_output(4, c->Vector(channel_dim));
+      }
       return Status::OK();
     })
     .Doc(R"doc(
@@ -412,6 +423,8 @@ T: The data type for the elements of input and output Tensors.
 epsilon: A small float number added to the variance of x.
 data_format: The data format for y_backprop, x, x_backprop.
              Either "NHWC" (default) or "NCHW".
+is_training: A bool value to indicate the operation is for training (default)
+             or inference.
 )doc");
 
 // --------------------------------------------------------------------------
