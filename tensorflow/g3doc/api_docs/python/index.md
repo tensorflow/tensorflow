@@ -189,6 +189,7 @@
   * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
+  * [`count_nonzero`](../../api_docs/python/math_ops.md#count_nonzero)
   * [`cross`](../../api_docs/python/math_ops.md#cross)
   * [`cumprod`](../../api_docs/python/math_ops.md#cumprod)
   * [`cumsum`](../../api_docs/python/math_ops.md#cumsum)
