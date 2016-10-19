@@ -246,10 +246,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
     return IOErrorFromWindowsError(context, ::GetLastError());
   }
 
-  UniqueCloseHandlePtr file_guard(hfile, CloseHandleFunc);
   result->reset(new WindowsRandomAccessFile(translated_fname, hfile));
-  file_guard.release();
-
   return Status::OK();
 }
 
@@ -268,10 +265,7 @@ Status WindowsFileSystem::NewWritableFile(
     return IOErrorFromWindowsError(context, ::GetLastError());
   }
 
-  UniqueCloseHandlePtr file_guard(hfile, CloseHandleFunc);
   result->reset(new WindowsWritableFile(translated_fname, hfile));
-  file_guard.release();
-
   return Status::OK();
 }
 
@@ -464,8 +458,7 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
   // so use OS API directly
   if (!::MoveFileExA(TranslateName(src).c_str(), TranslateName(target).c_str(),
       MOVEFILE_REPLACE_EXISTING)) {
-    string context("Failed to rename: ");
-    context.append(src).append(" to: ").append(target);
+    string context(strings::StrCat("Failed to rename: ", src, " to: ", target));
     result = IOErrorFromWindowsError(context, ::GetLastError());
   }
   return result;
