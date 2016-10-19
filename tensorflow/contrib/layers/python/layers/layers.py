@@ -911,7 +911,9 @@ def convolution2d_transpose(
   second variable called 'biases' is added to the result of the operation.
 
   Args:
-    inputs: a tensor of size [batch_size, height, width, channels].
+    inputs: A 4-D `Tensor` of type `float` and shape
+      `[batch, height, width, in_channels]` for `NHWC` data format or
+      `[batch, in_channels, height, width]` for `NCHW` data format.
     num_outputs: integer, the number of output filters.
     kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
       of the filters. Can be an int if both values are the same.
@@ -954,7 +956,7 @@ def convolution2d_transpose(
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
-    if data_format==DATA_FORMAT_NCHW:
+    if data_format == DATA_FORMAT_NCHW:
       c_axis, h_axis, w_axis = 1, 2, 3
     else:
       h_axis, w_axis, c_axis = 1, 2, 3
