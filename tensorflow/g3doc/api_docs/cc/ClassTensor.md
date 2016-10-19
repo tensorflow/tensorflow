@@ -12,9 +12,7 @@ Creates a 1-dimensional, 0-element float tensor.
 
 The returned Tensor is not a scalar (shape {}), but is instead an empty one-dimensional Tensor (shape {0}, NumElements() == 0). Since it has no elements, it does not need to be assigned a value and is initialized by default ( IsInitialized() is true). If this is undesirable, consider creating a one-element scalar which does require initialization:
 
-```c++ Tensor(DT_FLOAT, TensorShape({}))
-
-```
+{c++}   Tensor(DT_FLOAT, TensorShape({}))
 
 #### `tensorflow::Tensor::Tensor(DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
@@ -100,12 +98,6 @@ Convenience accessor for the tensor shape.
 
 
 
-#### `size_t tensorflow::Tensor::BufferHash() const` {#size_t_tensorflow_Tensor_BufferHash}
-
-
-
-
-
 #### `bool tensorflow::Tensor::IsInitialized() const` {#bool_tensorflow_Tensor_IsInitialized}
 
 If necessary, has this Tensor been initialized?
@@ -184,15 +176,7 @@ Use these methods when you know the data type and the number of dimensions of th
 
 Example:
 
-```c++ typedef float T;
-Tensor my_mat(...built with Shape{rows: 3, cols: 5}...);
-auto mat = my_mat.matrix<T>();    // 2D Eigen::Tensor, 3 x 5.
-auto mat = my_mat.tensor<T, 2>(); // 2D Eigen::Tensor, 3 x 5.
-auto vec = my_mat.vec<T>();       // CHECK fails as my_mat is 2D.
-auto vec = my_mat.tensor<T, 3>(); // CHECK fails as my_mat is 2D.
-auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
-
-```
+{c++}   typedef float T;  Tensor my_mat(...built with Shape{rows: 3, cols: 5}...);  auto mat = my_mat.matrix<T>(); // 2D Eigen::Tensor, 3 x 5.  auto mat = my_mat.tensor<T, 2>(); // 2D Eigen::Tensor, 3 x 5.  auto vec = my_mat.vec<T>(); // CHECK fails as my_mat is 2D.  auto vec = my_mat.tensor<T, 3>(); // CHECK fails as my_mat is 2D.  auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
 
 #### `TTypes<T>::Matrix tensorflow::Tensor::matrix()` {#TTypes_T_Matrix_tensorflow_Tensor_matrix}
 
@@ -220,22 +204,7 @@ These methods allow you to access the data with the dimensions and sizes of your
 
 Example:
 
-```c++ typedef float T;
-Tensor my_ten(...built with Shape{planes: 4, rows: 3, cols: 5}...);
-// 1D Eigen::Tensor, size 60:
-auto flat = my_ten.flat<T>();
-// 2D Eigen::Tensor 12 x 5:
-auto inner = my_ten.flat_inner_dims<T>();
-// 2D Eigen::Tensor 4 x 15:
-auto outer = my_ten.shaped<T, 2>({4, 15});
-// CHECK fails, bad num elements:
-auto outer = my_ten.shaped<T, 2>({4, 8});
-// 3D Eigen::Tensor 6 x 5 x 2:
-auto weird = my_ten.shaped<T, 3>({6, 5, 2});
-// CHECK fails, type mismatch:
-auto bad   = my_ten.flat<int32>();
-
-```
+{c++}   typedef float T;  Tensor my_ten(...built with Shape{planes: 4, rows: 3, cols: 5}...);  // 1D Eigen::Tensor, size 60:  auto flat = my_ten.flat<T>();  // 2D Eigen::Tensor 12 x 5:  auto inner = my_ten.flat_inner_dims<T>();  // 2D Eigen::Tensor 4 x 15:  auto outer = my_ten.shaped<T, 2>({4, 15});  // CHECK fails, bad num elements:  auto outer = my_ten.shaped<T, 2>({4, 8});  // 3D Eigen::Tensor 6 x 5 x 2:  auto weird = my_ten.shaped<T, 3>({6, 5, 2});  // CHECK fails, type mismatch:  auto bad = my_ten.flat<int32>();
 
 #### `TTypes<T>::UnalignedFlat tensorflow::Tensor::unaligned_flat()` {#TTypes_T_UnalignedFlat_tensorflow_Tensor_unaligned_flat}
 
@@ -379,7 +348,7 @@ NOTE: The underlying tensor buffer is refcounted, so the lifetime of the content
 
 REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
 
-#### `void tensorflow::Tensor::UnsafeCopyFromInternal(const Tensor &, const TensorShape &)` {#void_tensorflow_Tensor_UnsafeCopyFromInternal}
+#### `void tensorflow::Tensor::UnsafeCopyFromInternal(const Tensor &, DataType dtype, const TensorShape &)` {#void_tensorflow_Tensor_UnsafeCopyFromInternal}
 
 
 
