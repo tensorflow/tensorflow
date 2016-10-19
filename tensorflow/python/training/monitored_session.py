@@ -157,7 +157,7 @@ class Scaffold(object):
           'saver',
           ops.GraphKeys.SAVERS,
           lambda: training_saver.Saver(sharded=True, allow_empty=True,
-                                       write_version=saver_pb2.SaverDef.V1))
+                                       write_version=saver_pb2.SaverDef.V2))
     # pylint: enable=g-long-lambda
     self._saver.build()
 
