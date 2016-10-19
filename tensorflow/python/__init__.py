@@ -252,9 +252,9 @@ _allowed_symbols.extend([
 remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
                      compat, constant_op, control_flow_ops, functional_ops,
-                     histogram_ops, io_ops, math_ops, nn, script_ops,
-                     session_ops, sparse_ops, state_ops, string_ops,
-                     summary, tensor_array_ops, train])
+                     histogram_ops, io_ops, math_ops, nn, resource_loader,
+                     script_ops, session_ops, sparse_ops, state_ops,
+                     string_ops, summary, tensor_array_ops, train])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([
