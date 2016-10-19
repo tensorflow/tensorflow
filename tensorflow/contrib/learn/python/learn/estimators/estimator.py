@@ -176,8 +176,10 @@ def _get_replica_device_setter(config):
   Returns:
     A replica device setter, or None.
   """
-  ps_ops = ['Variable', 'AutoReloadVariable',
-            'MutableHashTable', 'MutableHashTableOfTensors']
+  ps_ops = [
+      'Variable', 'AutoReloadVariable', 'MutableHashTable',
+      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+  ]
 
   if config.job_name:
     worker_device = '/job:%s/task:%d' % (config.job_name, config.task)
