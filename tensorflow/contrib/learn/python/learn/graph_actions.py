@@ -25,7 +25,8 @@ import threading
 import time
 
 import numpy as np
-import six
+
+from six import reraise
 
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
@@ -578,7 +579,7 @@ def _train_internal(graph,
         logging.error('Got exception during tf.learn final checkpoint %s.', e)
       finally:
         if excinfo:
-          six.reraise(*excinfo)
+          reraise(*excinfo)
     return loss_value
 
 
@@ -628,14 +629,14 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
                _eval_results_to_str(eval_results))
   summary_writer = get_summary_writer(output_dir)
   summary = summary_pb2.Summary()
-  for key, eval_result in six.iteritems(eval_results):
+  for key in eval_results:
     if eval_results[key] is None:
       continue
     value = summary.value.add()
     value.tag = key
-    if (isinstance(eval_result, np.float32) or
-        isinstance(eval_result, float)):
-      value.simple_value = float(eval_result)
+    if (isinstance(eval_results[key], np.float32) or
+        isinstance(eval_results[key], float)):
+      value.simple_value = float(eval_results[key])
     else:
       logging.warn('Skipping summary for %s, must be a float or np.float32.',
                    key)
