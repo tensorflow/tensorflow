@@ -2072,9 +2072,6 @@ py_test(
     size = "small",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "notsan",  # http://b/32109634
-    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
