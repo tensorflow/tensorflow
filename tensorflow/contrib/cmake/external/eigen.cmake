@@ -46,3 +46,15 @@ ExternalProject_Add(eigen
         -DCMAKE_INSTALL_PREFIX:STRING=${eigen_INSTALL}
         -DINCLUDE_INSTALL_DIR:STRING=${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive
 )
+
+if(WIN32)
+    # temporarily patch eigen to workaround msvc+nvcc compile error
+    ExternalProject_Add_Step(eigen eigen_windows_patch
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/patches/eigen/windows/Macros.h ${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive/Eigen/src/Core/util/
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/patches/eigen/windows/SolveTriangular.h ${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive/Eigen/src/Core/
+        DEPENDEES patch
+        DEPENDEES install
+    )
+endif()
