@@ -2409,6 +2409,36 @@ shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
 )doc");
 
+// This version fixes an issue with the original version of Placeholder
+// where the empty shape attribute "[]" was used to denote
+// an unknown shape.  This meant that scalars (added later) could
+// not be represented natively.  This new version fixes that
+// limitation.
+REGISTER_OP("PlaceholderV2")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      TensorShapeProto shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A placeholder op for a value that will be fed into the computation.
+
+N.B. This operation will fail with an error if it is executed. It is
+intended as a way to represent a value that will always be fed, and to
+provide attrs that enable the fed value to be checked at runtime.
+
+output: A placeholder tensor that must be replaced using the feed mechanism.
+dtype: The type of elements in the tensor.
+shape: The shape of the tensor. The shape can be any partially-specified
+   shape.  To be unconstrained, pass in a shape with unknown rank.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("PlaceholderWithDefault")
     .Input("input: dtype")

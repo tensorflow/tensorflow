@@ -1534,6 +1534,7 @@ def meshgrid(*args, **kwargs):
 
 
 ops.RegisterShape("Placeholder")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PlaceholderV2")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)

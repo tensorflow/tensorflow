@@ -670,6 +670,54 @@ TEST(ArrayOpsTest, Placeholder_ShapeFn) {
   }
 }
 
+TEST(ArrayOpsTest, PlaceholderV2_ShapeFn) {
+  {
+    // 2D shape
+    ShapeInferenceTestOp op("PlaceholderV2");
+    TensorShape shape({1, 2});
+    TF_ASSERT_OK(NodeDefBuilder("test", "PlaceholderV2")
+                     .Attr("shape", shape)
+                     .Attr("dtype", DT_FLOAT)
+                     .Finalize(&op.node_def));
+    INFER_OK(op, "", "[1,2]");
+  }
+
+  {
+    // Scalar shapes are supported in V2.
+    ShapeInferenceTestOp op("PlaceholderV2");
+    TensorShape shape({});
+    TF_ASSERT_OK(NodeDefBuilder("test", "PlaceholderV2")
+                     .Attr("shape", shape)
+                     .Attr("dtype", DT_FLOAT)
+                     .Finalize(&op.node_def));
+    INFER_OK(op, "", "[]");
+  }
+
+  {
+    // Partial shape
+    ShapeInferenceTestOp op("PlaceholderV2");
+    const int64 dims[2] = {1, -1};
+    PartialTensorShape shape;
+    TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 2, &shape));
+    TF_ASSERT_OK(NodeDefBuilder("test", "PlaceholderV2")
+                     .Attr("shape", shape)
+                     .Attr("dtype", DT_FLOAT)
+                     .Finalize(&op.node_def));
+    INFER_OK(op, "", "[1,?]");
+  }
+
+  {
+    // Unknown shape
+    ShapeInferenceTestOp op("PlaceholderV2");
+    PartialTensorShape shape;
+    TF_ASSERT_OK(NodeDefBuilder("test", "PlaceholderV2")
+                     .Attr("shape", shape)
+                     .Attr("dtype", DT_FLOAT)
+                     .Finalize(&op.node_def));
+    INFER_OK(op, "", "?");
+  }
+}
+
 TEST(ArrayOpsTest, Transpose_ShapeFn) {
   ShapeInferenceTestOp op("Transpose");
   op.input_tensors.resize(2);
