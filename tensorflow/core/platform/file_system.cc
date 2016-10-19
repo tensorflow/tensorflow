@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -111,10 +112,22 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
     std::vector<string> children;
     Status s = GetChildren(current_dir, &children);
     ret.Update(s);
-    for (const string& child : children) {
-      const string child_path = io::JoinPath(current_dir, child);
+    if (children.size() == 0) continue;
+    // IsDirectory call can be expensive. Parallelizing it.
+    thread::ThreadPool* children_threads = new thread::ThreadPool(
+        Env::Default(), "TraverseChildren", children.size());
+    std::vector<bool> children_dir_status(children.size());
+    for (int i = 0; i < children.size(); ++i) {
+      const string child_path = io::JoinPath(current_dir, children[i]);
+      children_threads->Schedule([this, child_path, i, &children_dir_status] {
+        children_dir_status[i] = this->IsDirectory(child_path).ok();
+      });
+    }
+    delete children_threads;
+    for (int i = 0; i < children.size(); ++i) {
+      const string child_path = io::JoinPath(current_dir, children[i]);
       // If the child is a directory add it to the queue.
-      if (IsDirectory(child_path).ok()) {
+      if (children_dir_status[i]) {
         dir_q.push_back(child_path);
       }
       all_files.push_back(child_path);
