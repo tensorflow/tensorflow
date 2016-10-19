@@ -18,19 +18,24 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/dso_loader.h"
 
-#include <dlfcn.h>
 #include <limits.h>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
 #include <stdlib.h>
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
 #include <unistd.h>
+#endif
 #include <initializer_list>
 #include <vector>
 
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
@@ -45,7 +50,7 @@ string GetCudaVersion() { return TF_CUDA_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName(
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "cublas", GetCudaVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
@@ -55,35 +60,42 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
   // libcudnn is versioned differently than the other libraries and may have a
   // different version number than other CUDA libraries.  See b/22397368 for
   // some details about the complications surrounding this.
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName(
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "cudnn", GetCudnnVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName(
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "cufft", GetCudaVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCurandDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName(
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "curand", GetCudaVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
+#if defined(PLATFORM_WINDOWS)
   return GetDsoHandle(
-      FindDsoPath(tensorflow::internal::FormatLibraryFileName("cuda", "1"),
+      FindDsoPath(port::Env::Default()->FormatLibraryFileName("nvcuda", ""),
                   GetCudaDriverLibraryPath()),
       dso_handle);
+#else
+  return GetDsoHandle(
+      FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", "1"),
+                  GetCudaDriverLibraryPath()),
+      dso_handle);
+#endif
 }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName(
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "cupti", GetCudaVersion()),
                                   GetCudaCuptiLibraryPath()),
                       dso_handle);
@@ -101,8 +113,6 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
     return port::Status(port::error::INVALID_ARGUMENT,
                         "Only LoadKind::kLocal is currently supported");
   }
-  int dynload_flags =
-      RTLD_LAZY | (load_kind == LoadKind::kLocal ? RTLD_LOCAL : RTLD_GLOBAL);
   string path_string = path.ToString();
   port::Status s =
       port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
@@ -125,6 +135,9 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
   char unresolved_path[buffer_size];
   _NSGetExecutablePath(unresolved_path, &buffer_size);
   CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
+#elif defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
 #else
   CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
 #endif
@@ -159,6 +172,9 @@ static std::vector<string>* CreatePrimordialRpaths() {
 }
 
 /* static */ bool DsoLoader::TrySymbolicDereference(string* candidate) {
+#if defined(PLATFORM_WINDOWS)
+  return false;
+#else
   char buf[PATH_MAX];
   char* result = realpath(candidate->c_str(), buf);
   if (result == nullptr) {
@@ -168,6 +184,7 @@ static std::vector<string>* CreatePrimordialRpaths() {
           << result << "\"";
   *candidate = result;
   return true;
+#endif
 }
 
 /* static */ string DsoLoader::FindDsoPath(port::StringPiece library_name,
@@ -206,6 +223,8 @@ static std::vector<string>* CreatePrimordialRpaths() {
 /* static */ string DsoLoader::GetCudaDriverLibraryPath() {
 #if defined(__APPLE__)
   return "external/local_config_cuda/cuda/driver/lib";
+#elif defined(PLATFORM_WINDOWS)
+  return "";
 #else
   return "external/local_config_cuda/cuda/driver/lib64";
 #endif
