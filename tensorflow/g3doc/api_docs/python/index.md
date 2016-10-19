@@ -962,6 +962,7 @@
 
 * **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
+  * [`BidirectionalGridLSTMCell`](../../api_docs/python/contrib.rnn.md#BidirectionalGridLSTMCell)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
   * [`FusedRNNCell`](../../api_docs/python/contrib.rnn.md#FusedRNNCell)
   * [`FusedRNNCellAdaptor`](../../api_docs/python/contrib.rnn.md#FusedRNNCellAdaptor)
