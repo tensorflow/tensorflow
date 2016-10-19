@@ -10,6 +10,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
@@ -39,9 +40,11 @@ py_library(
         ":platform_test",
         ":summary",
         ":training",
-        "//tensorflow/contrib:contrib_py",
+        ":ops",
         "//tensorflow/python/debug:debug_py",
-    ],
+    ] + if_not_windows([
+        "//tensorflow/contrib:contrib_py",
+    ]),
 )
 
 py_library(

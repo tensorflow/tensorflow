@@ -141,6 +141,10 @@ def find_files(pattern, root):
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 
+if os.name == 'nt':
+  EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
+else:
+  EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'google/protobuf/src')) +
@@ -167,7 +171,7 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': ['python/_pywrap_tensorflow.so',
+        'tensorflow': [EXTENSION_NAME,
                        'tensorboard/dist/bazel-html-imports.html',
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',
