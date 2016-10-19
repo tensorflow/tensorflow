@@ -529,7 +529,6 @@ cc_library(
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:sdca_ops",
@@ -542,6 +541,7 @@ cc_library(
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
+        "//tensorflow/core/kernels:quantized_ops",
     ]),
 )
 
