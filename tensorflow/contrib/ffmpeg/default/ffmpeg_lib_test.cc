@@ -44,9 +44,9 @@ bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
 
 string ParseTestFlags(int* argc, char** argv) {
   mutex_lock l(mu);
-  vector<Flag> flag_list = {Flag("should_ffmpeg_be_installed",
-                                 &should_ffmpeg_be_installed,
-                                 "indicates that ffmpeg should be installed")};
+  std::vector<Flag> flag_list = {
+      Flag("should_ffmpeg_be_installed", &should_ffmpeg_be_installed,
+           "indicates that ffmpeg should be installed")};
   string usage = Flags::Usage(argv[0], flag_list);
   if (!Flags::Parse(argc, argv, flag_list)) {
     LOG(ERROR) << "\n" << usage;
