@@ -155,6 +155,9 @@ class FillOp : public OpKernel {
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
+// TODO(b/28917570): Add a test for this. Currently python 3 is not happy about
+// the conversion from uint8 to quint8.
+REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
