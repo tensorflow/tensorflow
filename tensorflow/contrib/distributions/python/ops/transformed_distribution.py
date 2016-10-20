@@ -190,12 +190,6 @@ class TransformedDistribution(distributions.Distribution):
   def _get_batch_shape(self):
     return self.distribution.get_batch_shape()
 
-  def _event_shape(self):
-    return self.distribution.event_shape()
-
-  def _get_event_shape(self):
-    return self.distribution.get_event_shape()
-
   @distribution_util.AppendDocstring(
       """Samples from the base distribution and then passes through
       the bijector's forward transform.""",
