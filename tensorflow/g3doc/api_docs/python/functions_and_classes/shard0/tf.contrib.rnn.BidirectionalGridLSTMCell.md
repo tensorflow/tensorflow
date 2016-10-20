@@ -36,7 +36,7 @@ Run one step of LSTM.
 
 - - -
 
-#### `tf.contrib.rnn.BidirectionalGridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=1, couple_input_forget_gates=False, backward_slice_offset=0)` {#BidirectionalGridLSTMCell.__init__}
+#### `tf.contrib.rnn.BidirectionalGridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=None, start_freqindex_list=None, end_freqindex_list=None, couple_input_forget_gates=False, backward_slice_offset=0)` {#BidirectionalGridLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -61,8 +61,13 @@ Initialize the parameters for an LSTM cell.
     the LSTM spans over.
 *  <b>`frequency_skip`</b>: (optional) int, default None, The amount the LSTM filter
     is shifted by in frequency.
-*  <b>`num_frequency_blocks`</b>: (optional) int, default 1, The total number of
-    frequency blocks needed to cover the whole input feature.
+*  <b>`num_frequency_blocks`</b>: [required] A list of frequency blocks needed to
+    cover the whole input feature splitting defined by start_freqindex_list
+    and end_freqindex_list.
+*  <b>`start_freqindex_list`</b>: [optional], list of ints, default None,  The
+    starting frequency index for each frequency block.
+*  <b>`end_freqindex_list`</b>: [optional], list of ints, default None. The ending
+    frequency index for each frequency block.
 *  <b>`couple_input_forget_gates`</b>: (optional) bool, default False, Whether to
     couple the input and forget gates, i.e. f_gate = 1.0 - i_gate, to reduce
     model parameters and computation cost.
