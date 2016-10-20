@@ -313,8 +313,8 @@ class BaseEstimator(
 
     # Features and targets TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive
-    self._features_info = None
-    self._targets_info = None
+    self._features_info = {}
+    self._targets_info = {}
 
     self._graph = None
 
@@ -612,28 +612,28 @@ class BaseEstimator(
     return tensor_signature.create_example_parser_from_signatures(
         self._features_info, examples_batch)
 
-  def _check_inputs(self, features, targets):
-    if self._features_info is not None:
-      logging.debug('Given features: %s, required signatures: %s.',
-                    str(features), str(self._features_info))
+  def _check_inputs(self, features, targets, mode):
+    if mode in self._features_info:
+      logging.debug('Given features for %s: %s, required signatures: %s.',
+                    mode, str(features), str(self._features_info[mode]))
       if not tensor_signature.tensors_compatible(features, self._features_info):
-        raise ValueError('Features are incompatible with given information. '
+        raise ValueError('Features are incompatible for %s with given information. '
                          'Given features: %s, required signatures: %s.' %
-                         (str(features), str(self._features_info)))
+                         (mode, str(features), str(self._features_info[mode])))
     else:
-      self._features_info = tensor_signature.create_signatures(features)
-      logging.debug('Setting feature info to %s.', str(self._features_info))
+      self._features_info[mode] = tensor_signature.create_signatures(features)
+      logging.debug('Setting feature info for %s to %s.', mode, str(self._features_info[mode]))
     if targets is not None:
-      if self._targets_info is not None:
+      if mode in self._targets_info:
         logging.debug('Given targets: %s, required signatures: %s.',
                       str(targets), str(self._targets_info))
-        if not tensor_signature.tensors_compatible(targets, self._targets_info):
+        if not tensor_signature.tensors_compatible(targets, self._targets_info[mode]):
           raise ValueError('Targets are incompatible with given information. '
                            'Given targets: %s, required signatures: %s.' %
-                           (str(targets), str(self._targets_info)))
+                           (str(targets), str(self._targets_info[mode])))
       else:
-        self._targets_info = tensor_signature.create_signatures(targets)
-        logging.debug('Setting targets info to %s', str(self._targets_info))
+        self._targets_info[mode] = tensor_signature.create_signatures(targets)
+        logging.debug('Setting targets for %s info to %s', mode, str(self._targets_info[mode]))
 
   def _train_model(self,
                    input_fn,
@@ -670,7 +670,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, targets = input_fn()
-      self._check_inputs(features, targets)
+      self._check_inputs(features, targets, 'train')
       train_op, loss_op = self._get_train_ops(features, targets)
 
       # Add default monitors.
@@ -770,7 +770,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, targets = input_fn()
-      self._check_inputs(features, targets)
+      self._check_inputs(features, targets, 'eval')
       eval_dict = self._get_eval_ops(features, targets, metrics)
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
       eval_results, current_global_step = graph_actions.evaluate(
