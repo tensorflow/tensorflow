@@ -609,9 +609,9 @@ by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
 [OverFeat: Integrated Recognition, Localization and Detection using
 Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks]
-(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
-to the so-called noble identities in multi-rate signal processing.
+Scanning with Deep Max-Pooling Convolutional Neural Networks](http://arxiv.org/abs/1302.1700).
+Atrous convolution is also closely related to the so-called noble identities
+in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
 above). The implementation here reduces
@@ -1032,7 +1032,7 @@ pooling region.
 *  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
     When set to True, generates the pooling sequence in a
     pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
     difference between pseudorandom and random.
 *  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
     When set to True, it means when pooling, the values at the boundary
@@ -1116,7 +1116,7 @@ For more details on fractional max pooling, see this paper:
 *  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
     When set to True, generates the pooling sequence in a
     pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
     difference between pseudorandom and random.
 *  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
     When set to True, it means when pooling, the values at the boundary
@@ -2301,9 +2301,6 @@ given.
     most TensorFlow data is batch-major, so by default this function
     accepts input and emits output in batch-major form.
 *  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    initial_state is not provided.
-*  <b>`sequence_length`</b>: An int32/int64 vector, size `[batch_size]`,
-    containing the actual lengths for each of the sequences.
     either of the initial states are not provided.
 *  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
 
@@ -2857,10 +2854,8 @@ TensorFlow provides the following sampled loss functions for faster training.
 Computes and returns the noise-contrastive estimation training loss.
 
 See [Noise-contrastive estimation: A new estimation principle for
-unnormalized statistical models]
-(http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-Also see our [Candidate Sampling Algorithms Reference]
-(../../extras/candidate_sampling.pdf)
+unnormalized statistical models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+Also see our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
 Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
 so your labels must be sorted in order of decreasing frequency to achieve
