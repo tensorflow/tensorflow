@@ -2,6 +2,7 @@
 
 ## Major Features and Improvements
 
+* CUDA 8 support.
 * cuDNN 5 support.
 * HDFS Support.
 * Adds Fused LSTM support via cuDNN 5 in `tensorflow/contrib/cudnn_rnn`.
