@@ -12675,6 +12675,61 @@ op {
   summary: "Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`"
 }
 op {
+  name: "QuantizedReshape"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    description: "Defines the shape of the output tensor."
+    type_attr: "Tshape"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The minimum value of the input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The maximum value of the input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_min"
+    description: "This value is copied from input_min."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "This value is copied from input_max."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Reshapes a quantized tensor as per the Reshape op."
+  description: "```"
+}
+op {
   name: "QueueClose"
   input_arg {
     name: "handle"
