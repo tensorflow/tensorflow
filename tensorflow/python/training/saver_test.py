@@ -192,9 +192,14 @@ class SaverTest(tf.test.TestCase):
     v0 = tf.Variable(0, name="v0")
     with self.test_session() as sess:
       save = tf.train.Saver({"v0": v0})
-      with self.assertRaisesRegexp(ValueError,
-                                   "^Restore called with invalid save path.*"):
-        save.restore(sess, "invalid path")
+      if save._write_version is saver_pb2.SaverDef.V1:
+        with self.assertRaisesRegexp(
+            ValueError, "^Restore called with invalid save path.*"):
+          save.restore(sess, "invalid path")
+      else:
+        with self.assertRaisesRegexp(errors.NotFoundError,
+                                     "Failed to find any matching files for"):
+          save.restore(sess, "invalid path")
 
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
@@ -542,45 +547,49 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       t0.insert("k1", 30.0).run()
       t1.insert("k2", 40.0).run()
       val = save.save(sess, save_path)
-      self.assertEqual(save_path + "-?????-of-00002", val)
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(save_path + "-?????-of-00002", val)
+      else:
+        self.assertEqual(save_path, val)
       meta_graph_filename = save._MetaGraphFilename(val)
       self.assertEqual(save_path + ".meta", meta_graph_filename)
 
-    # Restore different ops from shard 0 of the saved files.
-    with tf.Session(
-        target="",
-        config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
-      with sess.graph.device("/cpu:0"):
-        v0 = tf.Variable(111, name="v0")
-        t0 = CheckpointedOp(name="t0")
-      save = tf.train.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
-      tf.initialize_all_variables().run()
-      t0.insert("k11", 33.0).run()
-      self.assertEqual(111, v0.eval())
-      self.assertEqual(b"k11", t0.keys().eval())
-      self.assertEqual(33.0, t0.values().eval())
-      save.restore(sess, save_path + "-00000-of-00002")
-      self.assertEqual(10, v0.eval())
-      self.assertEqual(b"k1", t0.keys().eval())
-      self.assertEqual(30.0, t0.values().eval())
+    if save._write_version is saver_pb2.SaverDef.V1:
+      # Restore different ops from shard 0 of the saved files.
+      with tf.Session(
+          target="",
+          config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
+        with sess.graph.device("/cpu:0"):
+          v0 = tf.Variable(111, name="v0")
+          t0 = CheckpointedOp(name="t0")
+        save = tf.train.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
+        tf.initialize_all_variables().run()
+        t0.insert("k11", 33.0).run()
+        self.assertEqual(111, v0.eval())
+        self.assertEqual(b"k11", t0.keys().eval())
+        self.assertEqual(33.0, t0.values().eval())
+        save.restore(sess, save_path + "-00000-of-00002")
+        self.assertEqual(10, v0.eval())
+        self.assertEqual(b"k1", t0.keys().eval())
+        self.assertEqual(30.0, t0.values().eval())
 
-    # Restore different ops from shard 1 of the saved files.
-    with tf.Session(
-        target="",
-        config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
-      with sess.graph.device("/cpu:0"):
-        v1 = tf.Variable(222)
-        t1 = CheckpointedOp(name="t1")
-      save = tf.train.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
-      tf.initialize_all_variables().run()
-      t1.insert("k22", 44.0).run()
-      self.assertEqual(222, v1.eval())
-      self.assertEqual(b"k22", t1.keys().eval())
-      self.assertEqual(44.0, t1.values().eval())
-      save.restore(sess, save_path + "-00001-of-00002")
-      self.assertEqual(20, v1.eval())
-      self.assertEqual(b"k2", t1.keys().eval())
-      self.assertEqual(40.0, t1.values().eval())
+      # Restore different ops from shard 1 of the saved files.
+      with tf.Session(
+          target="",
+          config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
+        with sess.graph.device("/cpu:0"):
+          v1 = tf.Variable(222)
+          t1 = CheckpointedOp(name="t1")
+        save = tf.train.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
+        tf.initialize_all_variables().run()
+        t1.insert("k22", 44.0).run()
+        self.assertEqual(222, v1.eval())
+        self.assertEqual(b"k22", t1.keys().eval())
+        self.assertEqual(44.0, t1.values().eval())
+        save.restore(sess, save_path + "-00001-of-00002")
+        self.assertEqual(20, v1.eval())
+        self.assertEqual(b"k2", t1.keys().eval())
+        self.assertEqual(40.0, t1.values().eval())
 
     # Now try a restore with the sharded filename.
     with tf.Session(
@@ -608,7 +617,10 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       self.assertEqual(b"k22", t1.keys().eval())
       self.assertEqual(44.0, t1.values().eval())
       save_path = os.path.join(self.get_temp_dir(), "sharded")
-      save.restore(sess, save_path + "-?????-of-?????")
+      if save._write_version is saver_pb2.SaverDef.V1:
+        save.restore(sess, save_path + "-?????-of-?????")
+      else:
+        save.restore(sess, save_path)
       self.assertEqual(10, v0.eval())
       self.assertEqual(20, v1.eval())
       self.assertEqual(b"k1", t0.keys().eval())
@@ -616,9 +628,14 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       self.assertEqual(b"k2", t1.keys().eval())
       self.assertEqual(40.0, t1.values().eval())
 
-    self.assertEqual(
-        tf.train.latest_checkpoint(self.get_temp_dir()),
-        os.path.join(self.get_temp_dir(), "sharded-?????-of-00002"))
+    if save._write_version is saver_pb2.SaverDef.V1:
+      self.assertEqual(
+          tf.train.latest_checkpoint(self.get_temp_dir()),
+          os.path.join(self.get_temp_dir(), "sharded-?????-of-00002"))
+    else:
+      self.assertEqual(
+          tf.train.latest_checkpoint(self.get_temp_dir()),
+          os.path.join(self.get_temp_dir(), "sharded"))
 
   def testSaverDef(self):
     with self.test_session():
@@ -708,18 +725,18 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertFalse(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s3))
 
       # Create a second helper, identical to the first.
       save2 = tf.train.Saver(saver_def=save.as_saver_def())
@@ -734,22 +751,22 @@ class MaxToKeepTest(tf.test.TestCase):
       # Adding s2 again (old s2 is removed first, then new s2 appended)
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save.last_checkpoints)
-      self.assertFalse(gfile.Exists(s1))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
-      self.assertTrue(gfile.Exists(s3))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertFalse(tf.train.checkpoint_exists(s1))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(tf.train.checkpoint_exists(s3))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save.last_checkpoints)
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
 
       # Exercise the second helper.
 
@@ -757,23 +774,23 @@ class MaxToKeepTest(tf.test.TestCase):
       s2 = save2.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save2.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
       # Deleted by the first helper.
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save2.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save2.last_checkpoints)
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
 
       # Exercise the third helper.
 
@@ -781,23 +798,23 @@ class MaxToKeepTest(tf.test.TestCase):
       s2 = save3.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s2], save3.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
       # Deleted by the first helper.
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should not be deleted because helper is unaware of it)
       s1 = save3.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save3.last_checkpoints)
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
 
   def testSharded(self):
     save_dir = _TestDir("max_to_keep_sharded")
@@ -815,23 +832,39 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertEqual(2, len(gfile.Glob(s1)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s1)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s1 + "*")))
+
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertEqual(2, len(gfile.Glob(s1)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s1)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s1 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
-      self.assertEqual(2, len(gfile.Glob(s2)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s2)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s2 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertEqual(0, len(gfile.Glob(s1)))
+      self.assertEqual(0, len(gfile.Glob(s1 + "*")))
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
-      self.assertEqual(2, len(gfile.Glob(s2)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s2)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s2 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertEqual(2, len(gfile.Glob(s3)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s3)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s3 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
 
   def testNoMaxToKeep(self):
@@ -847,20 +880,20 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([], save.last_checkpoints)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
 
       # Test max_to_keep being 0.
       save2 = tf.train.Saver({"v": v}, max_to_keep=0)
       self.assertEqual([], save2.last_checkpoints)
       s1 = save2.save(sess, os.path.join(save_dir2, "s1"))
       self.assertEqual([], save2.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
       s2 = save2.save(sess, os.path.join(save_dir2, "s2"))
       self.assertEqual([], save2.last_checkpoints)
-      self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
 
   def testNoMetaGraph(self):
     save_dir = _TestDir("no_meta_graph")
@@ -872,7 +905,7 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"),
                      write_meta_graph=False)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
 
 
@@ -918,10 +951,10 @@ class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
       self.assertEqual([s3, s4], save.last_checkpoints)
 
       # Check that s1 is still here, but s2 is gone.
-      self.assertTrue(gfile.Exists(s1))
-      self.assertFalse(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(s3))
-      self.assertTrue(gfile.Exists(s4))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertFalse(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s3))
+      self.assertTrue(tf.train.checkpoint_exists(s4))
 
 
 class SaveRestoreWithVariableNameMap(tf.test.TestCase):
@@ -1570,8 +1603,12 @@ class MetaGraphTest(tf.test.TestCase):
       # Generates MetaGraphDef.
       meta_graph_def = save.export_meta_graph()
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
-      self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
-                             "RestoreV2", "SaveSlices", "Sub", "Variable"])
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
+                               "RestoreV2", "SaveSlices", "Sub", "Variable"])
+      else:
+        self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
+                               "RestoreV2", "SaveV2", "Sub", "Variable"])
 
       # Test calling stripped_op_list_for_graph directly
       op_list = tf.contrib.util.stripped_op_list_for_graph(
@@ -1673,7 +1710,6 @@ class CheckpointReaderTest(tf.test.TestCase):
 
 
 class CheckpointReaderForV2Test(CheckpointReaderTest):
-
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
