@@ -11345,6 +11345,26 @@ op {
   description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
 }
 op {
+  name: "PlaceholderV2"
+  output_arg {
+    name: "output"
+    description: "A placeholder tensor that must be replaced using the feed mechanism."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of elements in the tensor."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The shape of the tensor. The shape can be any partially-specified\nshape.  To be unconstrained, pass in a shape with unknown rank."
+  }
+  summary: "A placeholder op for a value that will be fed into the computation."
+  description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
+}
+op {
   name: "PlaceholderWithDefault"
   input_arg {
     name: "input"
