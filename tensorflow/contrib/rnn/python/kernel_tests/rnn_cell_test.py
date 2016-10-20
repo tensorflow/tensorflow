@@ -103,7 +103,7 @@ class RNNCellTest(tf.test.TestCase):
         cell = tf.contrib.rnn.GridLSTMCell(
             num_units=num_units, feature_size=feature_size,
             frequency_skip=frequency_skip, forget_bias=1.0,
-            num_frequency_blocks=num_shifts,
+            num_frequency_blocks=[num_shifts],
             couple_input_forget_gates=True,
             state_is_tuple=True)
         inputs = tf.constant(np.array([[1., 1., 1., 1.],
@@ -129,7 +129,54 @@ class RNNCellTest(tf.test.TestCase):
           self.assertTrue(
               float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
           self.assertTrue(float(np.linalg.norm(
-              (res[1].state_f00_c[0, :] - res[1].state_f00_c[i, :])))
+              (res[1].state_f00_b00_c[0, :] - res[1].state_f00_b00_c[i, :])))
+              > 1e-6)
+
+  def testGridLSTMCellWithFrequencyBlocks(self):
+    with self.test_session() as sess:
+      num_units = 8
+      batch_size = 3
+      input_size = 4
+      feature_size = 2
+      frequency_skip = 1
+      num_frequency_blocks = [1, 1]
+      total_blocks = num_frequency_blocks[0] + num_frequency_blocks[1]
+      start_freqindex_list = [0, 2]
+      end_freqindex_list = [2, 4]
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        cell = tf.contrib.rnn.GridLSTMCell(
+            num_units=num_units, feature_size=feature_size,
+            frequency_skip=frequency_skip, forget_bias=1.0,
+            num_frequency_blocks=num_frequency_blocks,
+            start_freqindex_list=start_freqindex_list,
+            end_freqindex_list=end_freqindex_list,
+            couple_input_forget_gates=True,
+            state_is_tuple=True)
+        inputs = tf.constant(np.array([[1., 1., 1., 1.],
+                                       [2., 2., 2., 2.],
+                                       [3., 3., 3., 3.]],
+                                      dtype=np.float32), dtype=tf.float32)
+        state_value = tf.constant(
+            0.1 * np.ones((batch_size, num_units), dtype=np.float32),
+            dtype=tf.float32)
+        init_state = cell.state_tuple_type(
+            *([state_value, state_value] * total_blocks))
+        output, state = cell(inputs, init_state)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([output, state])
+        self.assertEqual(len(res), 2)
+        # The numbers in results were not calculated, this is mostly just a
+        # smoke test.
+        self.assertEqual(res[0].shape,
+                         (batch_size, num_units * total_blocks * 2))
+        for ss in res[1]:
+          self.assertEqual(ss.shape, (batch_size, num_units))
+        # Different inputs so different outputs and states
+        for i in range(1, batch_size):
+          self.assertTrue(
+              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
+          self.assertTrue(float(np.linalg.norm(
+              (res[1].state_f00_b00_c[0, :] - res[1].state_f00_b00_c[i, :])))
               > 1e-6)
 
   def testGridLstmCellWithCoupledInputForgetGates(self):
@@ -162,7 +209,7 @@ class RNNCellTest(tf.test.TestCase):
           cell = tf.contrib.rnn.GridLSTMCell(
               num_units=num_units, feature_size=feature_size,
               frequency_skip=frequency_skip, forget_bias=1.0,
-              num_frequency_blocks=num_shifts,
+              num_frequency_blocks=[num_shifts],
               couple_input_forget_gates=True,
               state_is_tuple=state_is_tuple)
           inputs = tf.constant(np.array([[1., 1., 1., 1.],
@@ -238,7 +285,7 @@ class RNNCellTest(tf.test.TestCase):
             num_units=num_units, feature_size=feature_size,
             share_time_frequency_weights=True,
             frequency_skip=frequency_skip, forget_bias=1.0,
-            num_frequency_blocks=num_shifts)
+            num_frequency_blocks=[num_shifts])
         inputs = tf.constant(np.array([[1.0, 1.1, 1.2, 1.3],
                                        [2.0, 2.1, 2.2, 2.3],
                                        [3.0, 3.1, 3.2, 3.3]],
@@ -305,7 +352,7 @@ class RNNCellTest(tf.test.TestCase):
             num_units=num_units, feature_size=feature_size,
             share_time_frequency_weights=True,
             frequency_skip=frequency_skip, forget_bias=1.0,
-            num_frequency_blocks=num_shifts,
+            num_frequency_blocks=[num_shifts],
             backward_slice_offset=1)
         inputs = tf.constant(np.array([[1.0, 1.1, 1.2, 1.3],
                                        [2.0, 2.1, 2.2, 2.3],
