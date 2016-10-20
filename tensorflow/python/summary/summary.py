@@ -39,11 +39,11 @@ from google.protobuf import json_format as _json_format
 from tensorflow.core.framework import summary_pb2 as _summary_pb2
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
-from tensorflow.python.framework import tensor_shape as _tensor_shape
-from tensorflow.python.framework.dtypes import as_dtype as _as_dtype
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 # exports tensor_summary
+# pylint: disable=unused-import
 from tensorflow.python.ops.summary_ops import tensor_summary
+# pylint: enable=unused-import
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util import compat as _compat
 
@@ -55,7 +55,7 @@ def _collect(val, collections, default_collections):
     _ops.add_to_collection(key, val)
 
 
-def scalar(name, tensor, summary_description=None, collections=None):
+def scalar(name, tensor, collections=None):
   """Outputs a `Summary` protocol buffer containing a single scalar value.
 
   The generated Summary has a Tensor.proto containing the input Tensor.
@@ -63,8 +63,7 @@ def scalar(name, tensor, summary_description=None, collections=None):
   Args:
     name: A name for the generated node. Will also serve as the series name in
       TensorBoard.
-    tensor: A tensor containing a single floating point or integer value.
-    summary_description: Optional summary_description_pb2.SummaryDescription
+    tensor: A real numeric Tensor containing a single value.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
 
@@ -74,19 +73,12 @@ def scalar(name, tensor, summary_description=None, collections=None):
   Raises:
     ValueError: If tensor has the wrong shape or type.
   """
-  dtype = _as_dtype(tensor.dtype)
-  if dtype.is_quantized or not (dtype.is_integer or dtype.is_floating):
-    raise ValueError("Can't create scalar summary for type %s." % dtype)
-
-  shape = tensor.get_shape()
-  if not shape.is_compatible_with(_tensor_shape.scalar()):
-    raise ValueError("Can't create scalar summary for shape %s." % shape)
-
-  if summary_description is None:
-    summary_description = _summary_pb2.SummaryDescription()
-  summary_description.type_hint = 'scalar'
-
-  return tensor_summary(name, tensor, summary_description, collections)
+  with _ops.name_scope(name, None, [tensor]) as scope:
+    # pylint: disable=protected-access
+    val = _gen_logging_ops._scalar_summary(
+        tags=scope.rstrip('/'), values=tensor, name=scope)
+    _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
+  return val
 
 
 def image(name, tensor, max_outputs=3, collections=None):
