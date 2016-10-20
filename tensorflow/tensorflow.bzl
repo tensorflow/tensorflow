@@ -634,7 +634,7 @@ def transitive_hdrs(name, deps=[], **kwargs):
 # the direct dependencies of a target.
 def _collect_hdrs_aspect_impl(target, ctx):
   allhdrs = set()
-  for h in ctx.rule.attr.hdrs:
+  for h in getattr(ctx.rule.attr, 'hdrs', []):
     allhdrs = allhdrs | h.files
   return struct(tf_hdrs=allhdrs)
 
