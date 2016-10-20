@@ -97,11 +97,20 @@ Status DeviceFactory::AddDevices(const SessionOptions& options,
         gpu_factory->CreateDevices(options, name_prefix, devices));
   }
 
+  // Then SYCL.
+  auto sycl_factory = GetFactory("SYCL");
+
+  if (sycl_factory) {
+    TF_RETURN_IF_ERROR(
+        sycl_factory->CreateDevices(options, name_prefix, devices));
+  }
+
   // Then the rest.
   mutex_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {
     auto factory = p.second.factory.get();
-    if (factory != cpu_factory && factory != gpu_factory) {
+    if (factory != cpu_factory && factory != gpu_factory &&
+        factory != sycl_factory) {
       TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));
     }
   }

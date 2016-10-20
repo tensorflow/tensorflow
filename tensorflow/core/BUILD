@@ -505,6 +505,7 @@ cc_library(
     deps = [
         ":core_cpu",
         ":gpu_runtime",
+        ":sycl_runtime",
     ],
 )
 
@@ -1411,6 +1412,31 @@ tf_cuda_library(
     ] + if_not_windows([
         ":stream_executor",
     ]),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "sycl_runtime",
+    srcs = if_not_windows([
+        "common_runtime/sycl/sycl_device.cc",
+        "common_runtime/sycl/sycl_device_factory.cc",
+    ]),
+    hdrs = if_not_windows([
+        "common_runtime/sycl/sycl_device.h",
+    ]),
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        "//third_party/eigen3",
+        "@local_config_sycl//sycl:sycl",
+    ],
     alwayslink = 1,
 )
 

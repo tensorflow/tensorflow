@@ -20,6 +20,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/cwise_ops_sycl_common.h"
+#endif
+
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
@@ -33,6 +37,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif
 
 class BinaryOpShared : public OpKernel {
  public:
@@ -101,17 +108,17 @@ class BinaryOp : public BinaryOpShared {
       if (state.in1_num_elements == 1) {
         // tensor op scalar
         functor::BinaryFunctor<Device, Functor, 1>().Right(
-            eigen_device, out_flat, in0.template flat<Tin>(), in1.template scalar<Tin>(),
-            error_ptr);
+            eigen_device, out_flat, in0.template flat<Tin>(),
+            in1.template scalar<Tin>(), error_ptr);
       } else if (state.in0_num_elements == 1) {
         // scalar op tensor
         functor::BinaryFunctor<Device, Functor, 1>().Left(
-            eigen_device, out_flat, in0.template scalar<Tin>(), in1.template flat<Tin>(),
-            error_ptr);
+            eigen_device, out_flat, in0.template scalar<Tin>(),
+            in1.template flat<Tin>(), error_ptr);
       } else {
         functor::BinaryFunctor<Device, Functor, 1>()(
-            eigen_device, out_flat, in0.template flat<Tin>(), in1.template flat<Tin>(),
-            error_ptr);
+            eigen_device, out_flat, in0.template flat<Tin>(),
+            in1.template flat<Tin>(), error_ptr);
       }
     } else if (ndims == 2) {
       functor::BinaryFunctor<Device, Functor, 2>().BCast(

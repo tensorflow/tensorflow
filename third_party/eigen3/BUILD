@@ -23,5 +23,7 @@ cc_library(
         "unsupported/Eigen/CXX11/FixedPoint",
     ],
     visibility = ["//visibility:public"],
-    deps = ["@eigen_archive//:eigen"],
+    deps = ["@eigen_archive//:eigen",
+            "@local_config_sycl//sycl:sycl",
+    ],
 )
