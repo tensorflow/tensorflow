@@ -2100,6 +2100,7 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":platform",
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":summary_ops",

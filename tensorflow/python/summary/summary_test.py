@@ -65,6 +65,11 @@ class ScalarSummaryTest(tf.test.TestCase):
     self.assertEqual(len(summary.value), 1)
     self.assertEqual(summary.value[0].tag, 'outer/inner')
 
+  def testSummaryNameConversion(self):
+    c = tf.constant(3)
+    s = tf.summary.scalar('name with spaces', c)
+    self.assertEqual(s.op.name, 'name_with_spaces')
+
 
 if __name__ == '__main__':
   tf.test.main()
