@@ -131,14 +131,21 @@ def Assert(condition, data, summarize=None, name=None):
     `tf.errors.InvalidArgumentError` if `condition` is not true.
   """
   with ops.name_scope(name, "Assert", [condition, data]) as name:
-    condition = ops.convert_to_tensor(condition, name="Condition")
-    def true_assert():
+    xs = ops.convert_n_to_tensor(data)
+    if all([x.dtype in {dtypes.string, dtypes.int32} for x in xs]):
+      # As a simple heuristic, we assume that string and int32 are
+      # on host to avoid the need to use cond. If it is not case,
+      # we will pay the price copying the tensor to host memory.
       return gen_logging_ops._assert(
           condition, data, summarize, name="Assert")
-    # TODO(ebrevdo): Remove the cond once when can tell all inputs are on host.
-    guarded_assert = cond(
-        condition, no_op, true_assert, name="AssertGuard")
-    return guarded_assert.op
+    else:
+      condition = ops.convert_to_tensor(condition, name="Condition")
+      def true_assert():
+        return gen_logging_ops._assert(
+            condition, data, summarize, name="Assert")
+      guarded_assert = cond(
+          condition, no_op, true_assert, name="AssertGuard")
+      return guarded_assert.op
 
 
 def _Identity(data, name=None):
