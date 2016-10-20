@@ -13984,6 +13984,77 @@ op {
   summary: "Computes rectified linear gradients for a Relu operation."
 }
 op {
+  name: "Requantize"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The float value that the minimum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The float value that the maximum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "requested_output_min"
+    description: "The float value that the minimum quantized output value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "requested_output_max"
+    description: "The float value that the maximum quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "output_min"
+    description: "The requested_output_min value is copied into this output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "The requested_output_max value is copied into this output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    description: "The type of the input."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    description: "The type of the output. Should be a lower bit depth than Tinput."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Convert the quantized \'input\' tensor into a lower-precision \'output\', using the"
+  description: "output range specified with \'requested_output_min\' and \'requested_output_max\'.\n\n[input_min, input_max] are scalar floats that specify the range for the float\ninterpretation of the \'input\' data. For example, if input_min is -1.0f and\ninput_max is 1.0f, and we are dealing with quint16 quantized data, then a 0\nvalue in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f."
+}
+op {
   name: "Reshape"
   input_arg {
     name: "tensor"
