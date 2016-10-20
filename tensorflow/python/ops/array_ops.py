@@ -1040,6 +1040,7 @@ def split(split_dim, num_split, value, name="split"):
 
 
 ops.RegisterShape("Reverse")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ReverseV2")(common_shapes.call_cpp_shape_fn)
 
 
 def transpose(a, perm=None, name="transpose"):
