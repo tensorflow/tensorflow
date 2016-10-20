@@ -154,6 +154,8 @@ class DirichletMultinomial(distribution.Distribution):
     ```
 
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[n, alpha]) as ns:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
@@ -168,16 +170,15 @@ class DirichletMultinomial(distribution.Distribution):
       self._n = self._assert_valid_n(n, validate_args)
       self._alpha_sum = math_ops.reduce_sum(
           self._alpha, reduction_indices=[-1], keep_dims=False)
-      super(DirichletMultinomial, self).__init__(
-          dtype=self._alpha.dtype,
-          parameters={"alpha": self._alpha,
-                      "alpha_sum": self._alpha_sum,
-                      "n": self._n},
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=ns)
+    super(DirichletMultinomial, self).__init__(
+        dtype=self._alpha.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._n, self._alpha_sum],
+        name=ns)
 
   @property
   def n(self):
