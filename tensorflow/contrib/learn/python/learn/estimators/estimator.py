@@ -225,9 +225,12 @@ def _make_metrics_ops(metrics, features, targets, predictions):
       pred_name specified.
   """
   metrics = metrics or {}
+
+  # If target is a dict with a single key, unpack into a single tensor.
+  target_tensor_or_dict = targets
   if isinstance(targets, dict) and len(targets) == 1:
-    # Unpack single target into just tensor.
-    targets = targets[list(targets.keys())[0]]
+    target_tensor_or_dict = targets[list(targets.keys())[0]]
+
   result = {}
   for name, metric in six.iteritems(metrics):
     if isinstance(metric, metric_spec.MetricSpec):
@@ -255,15 +258,15 @@ def _make_metrics_ops(metrics, features, targets, predictions):
         result[name[0]] = metric(predictions[name[1]], targets[name[1]])
       else:
         # Otherwise pass the targets to the metric.
-        result[name[0]] = metric(predictions[name[1]], targets)
+        result[name[0]] = metric(predictions[name[1]], target_tensor_or_dict)
     else:
       # Single head metrics.
       if isinstance(predictions, dict):
         raise ValueError(
             'Metrics passed provide only name, no prediction, '
             'but predictions are dict. '
-            'Metrics: %s, Targets: %s.' % (metrics, targets))
-      result[name] = metric(predictions, targets)
+            'Metrics: %s, Targets: %s.' % (metrics, target_tensor_or_dict))
+      result[name] = metric(predictions, target_tensor_or_dict)
   return result
 
 
