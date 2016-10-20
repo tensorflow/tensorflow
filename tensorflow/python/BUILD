@@ -424,6 +424,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "framework_meta_graph_test",
+    size = "small",
+    srcs = ["framework/meta_graph_test.py"],
+    main = "framework/meta_graph_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "test_ops",
     out = "framework/test_ops.py",
