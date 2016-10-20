@@ -29,8 +29,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/load_library.h"
+#include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
@@ -97,19 +97,23 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 /* static */ port::Status DsoLoader::GetDsoHandle(port::StringPiece path,
                                                   void** dso_handle,
                                                   LoadKind load_kind) {
+  if (load_kind != LoadKind::kLocal) {
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "Only LoadKind::kLocal is currently supported");
+  }
   int dynload_flags =
       RTLD_LAZY | (load_kind == LoadKind::kLocal ? RTLD_LOCAL : RTLD_GLOBAL);
   string path_string = path.ToString();
-  *dso_handle = dlopen(path_string.c_str(), dynload_flags);
-  if (*dso_handle == nullptr) {
+  port::Status s =
+      port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
+  if (!s.ok()) {
     LOG(INFO) << "Couldn't open CUDA library " << path
               << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
-    return port::Status(
-        port::error::FAILED_PRECONDITION,
-        port::StrCat("could not dlopen DSO: ", path, "; dlerror: ", dlerror()));
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        port::StrCat("could not dlopen DSO: ", path,
+                                     "; dlerror: ", s.error_message()));
   }
-  LOG(INFO) << "successfully opened CUDA library " << path
-            << (load_kind == LoadKind::kLocal ? " locally" : " globally");
+  LOG(INFO) << "successfully opened CUDA library " << path << " locally";
   return port::Status::OK();
 }
 

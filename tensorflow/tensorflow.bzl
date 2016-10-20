@@ -141,6 +141,12 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+def if_not_windows(a):
+  return select({
+      "//tensorflow:windows": [],
+      "//conditions:default": a,
+  })  
+
 def tf_copts():
   return (["-DEIGEN_AVOID_STL_ARRAY",
            "-Iexternal/gemmlowp",
@@ -156,6 +162,10 @@ def tf_copts():
                   "-O2",
               ],
               "//tensorflow:darwin": [],
+              "//tensorflow:windows": [
+                "/DLANG_CXX11",
+                "/D__VERSION__=\\\"MSVC\\\"",
+              ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
 
@@ -565,12 +575,15 @@ def _py_wrap_cc_impl(ctx):
   args += ["-outdir", py_out.dirname]
   args += [src.path]
   outputs = [cc_out, py_out]
-  ctx.action(executable=ctx.executable.swig_binary,
-             arguments=args,
+  # TODO(pcloudy): Move args to arguments after
+  # https://github.com/bazelbuild/bazel/issues/1926 is fixed
+  ctx.action(command=" ".join(["tensorflow/tools/swig/swig.sh"] + args),
+             arguments=[],
              mnemonic="PythonSwig",
              inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
+             use_default_shell_env=True,
              progress_message="SWIGing {input}".format(input=src.path))
   return struct(files=set(outputs))
 
@@ -593,12 +606,6 @@ _py_wrap_cc = rule(
         )),
         "module_name": attr.string(mandatory = True),
         "py_module_name": attr.string(mandatory = True),
-        "swig_binary": attr.label(
-            default = Label("//tensorflow:swig"),
-            cfg = "host",
-            executable = True,
-            allow_files = True,
-        ),
     },
     outputs = {
         "cc_out": "%{module_name}.cc",
@@ -743,6 +750,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
   # and use that as the name for the rule producing the .so file.
   cc_library_name = "/".join(name.split("/")[:-1] + ["_" + module_name + ".so"])
+  cc_library_pyd_name = "/".join(name.split("/")[:-1] + ["_" + module_name + ".pyd"])
   extra_deps = []
   _py_wrap_cc(name=name + "_py_wrap",
               srcs=srcs,
@@ -755,6 +763,8 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
           "-Wl,-exported_symbols_list",
           "//tensorflow:tf_exported_symbols.lds"
       ],
+      "//tensorflow:windows": [
+      ],
       "//conditions:default": [
           "-Wl,--version-script",
           "//tensorflow:tf_version_script.lds"
@@ -762,6 +772,8 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   extra_deps += select({
       "@local_config_cuda//cuda:darwin": [
         "//tensorflow:tf_exported_symbols.lds"
+      ],
+      "//tensorflow:windows": [
       ],
       "//conditions:default": [
         "//tensorflow:tf_version_script.lds"
@@ -779,10 +791,19 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
       linkstatic=1,
       linkshared=1,
       deps=deps + extra_deps)
+  native.genrule(
+      name = "gen_" + cc_library_pyd_name,
+      srcs = [":" + cc_library_name],
+      outs = [cc_library_pyd_name],
+      cmd = "cp $< $@",
+  )
   native.py_library(name=name,
                     srcs=[":" + name + ".py"],
                     srcs_version="PY2AND3",
-                    data=[":" + cc_library_name])
+                    data=select({
+                      "//tensorflow:windows": [":" + cc_library_pyd_name],
+                      "//conditions:default": [":" + cc_library_name],
+                    }))
 
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                tags=[], shard_count=1, additional_deps=[], flaky=0):

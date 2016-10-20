@@ -842,9 +842,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   that effectively use atrous convolution in different ways are, among others,
   [OverFeat: Integrated Recognition, Localization and Detection using
   Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
-  Scanning with Deep Max-Pooling Convolutional Neural Networks]
-  (http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
-  to the so-called noble identities in multi-rate signal processing.
+  Scanning with Deep Max-Pooling Convolutional Neural Networks](http://arxiv.org/abs/1302.1700).
+  Atrous convolution is also closely related to the so-called noble identities
+  in multi-rate signal processing.
 
   There are many different ways to implement atrous convolution (see the refs
   above). The implementation here reduces

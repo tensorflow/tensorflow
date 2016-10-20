@@ -45,6 +45,12 @@ config_setting(
 )
 
 config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows_msvc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",
@@ -109,6 +115,7 @@ filegroup(
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/rnn:all_files",
+        "//tensorflow/contrib/seq2seq:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
         "//tensorflow/contrib/slim:all_files",

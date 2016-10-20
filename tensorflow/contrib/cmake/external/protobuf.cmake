@@ -15,6 +15,7 @@ endif()
 
 ExternalProject_Add(protobuf
     PREFIX protobuf
+    DEPENDS zlib
     GIT_REPOSITORY ${PROTOBUF_URL}
     GIT_TAG ${PROTOBUF_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
@@ -29,4 +30,5 @@ ExternalProject_Add(protobuf
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+	-DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )

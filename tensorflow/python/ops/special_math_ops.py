@@ -94,40 +94,92 @@ def einsum(axes, *inputs):
   """
   A generalized contraction between tensors of arbitrary dimension.
 
-  Like numpy.einsum.
-  """
+  Like `numpy.einsum`, but does not support:
+  * Ellipses (subscripts like `ij...,jk...->ik...`)
+  * Subscripts where an axis appears more than once for a single input (e.g. `ijj,jk->ik`).
 
-  match = re.match('([a-z,]+)->([a-z]+)', axes)
-  assert match, \
-    "Indices have incorrect format: %s" % axes
+  Args:
+    axes: a `str` describing the contraction, in the same format as `numpy.einsum`.
+    inputs: the inputs to contract (each one a `Tensor`), whose shapes should be consistent with `axes`.
+
+  Returns:
+    The contracted `Tensor`, with shape determined by `axes`.
+
+  Raises:
+    ValueError: If the format of `axes` is incorrect,
+                or the number of inputs implied by `axes` does not match `len(inputs)`,
+                or an axis appears in the output subscripts but not in any of the inputs,
+                or the number of dimensions of an input differs from the number of indices in its subscript,
+                or the input shapes are inconsistent along a particular axis.
+  """
+  if '...' in axes:
+    raise ValueError("Subscripts with ellipses are not yet supported.")
+
+  match = re.match('([a-z,]+)(->[a-z]*)?', axes)
+  if not match:
+    raise ValueError(
+      "Indices have incorrect format: %s" % axes
+    )
 
   inputs = list(inputs)
   idx_in = match.group(1).split(',')
-  idx_out = match.group(2)
   idx_all = set(''.join(idx_in))
+  indices = ''.join(sorted(idx_all))
 
+  if match.group(2):
+    idx_out = match.group(2)[2:]
 
-  assert len(idx_in) == len(inputs), \
-    "Expected %d inputs but only got %d" % (len(idx_in), len(inputs))
+  else:
+    # infer the output subscripts if not given, assume alphabetical order
+    counts = {ax: 0 for ax in indices}
+    for axes_ in idx_in:
+      for ax in axes_:
+        counts[ax] += 1
 
-  # transpose inputs so axes are in alphabetical order
+    idx_out = ''.join(sorted(
+      ax for ax in indices
+      if counts[ax] == 1
+    ))
+
+  if len(idx_in) != len(inputs):
+    raise ValueError(
+      "Expected %d inputs but got %d" % (len(idx_in), len(inputs))
+    )
+
+  missing_idx = set(idx_out).difference(idx_all)
+  if missing_idx:
+    raise ValueError(
+      "Unknown ouput axes: %s" % missing_idx
+    )
+
+  axis_order = {}
+  for ax in indices:
+    if ax not in idx_out:
+      axis_order[ax] = len(axis_order)
+  for ax in idx_out:
+    axis_order[ax] = len(axis_order)
+
+  # transpose inputs so axes are in order
   for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
-    assert input_.get_shape().ndims == len(axes_), \
-      "Input %d with axes %s has incorrect" \
-      " number of dimensions (expected %d, got %d)" % (
-        i, axes_, len(axes_), input_.get_shape().ndims
+    if input_.get_shape().ndims != len(axes_):
+      raise ValueError(
+        "Input %d with axes %s has incorrect" \
+        " number of dimensions (expected %d, got %d)" % (
+          i, axes_, len(axes_), input_.get_shape().ndims
+        )
       )
 
-    sorted_idx = sorted(axes_)
+    sorted_idx = sorted(axes_, key=axis_order.get)
+
+    if len(set(axes_)) != len(axes_):
+      raise ValueError(
+        "Subscript not supported: an axis appears more than once: %s" % axes_
+      )
 
     if list(axes_) != sorted_idx:
       permuted = [axes_.find(ax) for ax in sorted_idx]
       inputs[i] = array_ops.transpose(input_, permuted)
       idx_in[i] = sorted_idx
-
-  missing_idx = set(idx_out).difference(idx_all)
-  assert not missing_idx, \
-    "Unknown ouput axes: %s" % missing_idx
 
   reduction_idx = []
   shapes = [[dim if dim else -1
@@ -135,7 +187,7 @@ def einsum(axes, *inputs):
             for tensor in inputs]
 
   # validate shapes for broadcasting
-  for j, ax in enumerate(sorted(idx_all)):
+  for j, ax in enumerate(sorted(idx_all, key=axis_order.get)):
     dims = []
     for i, idx in enumerate(idx_in):
       if ax not in idx:
@@ -145,8 +197,10 @@ def einsum(axes, *inputs):
         if isinstance(dim, int) and dim > 1:
           dims.append(dim)
 
-    assert len(set(dims)) <= 1, \
-      "Dimension mismatch on axis: %s" % ax
+    if len(set(dims)) > 1:
+      raise ValueError(
+        "Dimension mismatch on axis: %s" % ax
+      )
 
     if ax not in idx_out:
       reduction_idx.append(j)

@@ -84,7 +84,7 @@ Snyder, @jpangburn, Jules Gagnon-Marchand, Karen Brems, @kborer, Kirill Bobyrev,
 Laurent Mazare, Longqi Yang, Malith Yapa, Maniteja Nandana, Martin Englund,
 Matthias Winkelmann, @mecab, Mu-Ik Jeon, Nand Dalal, Niels Ole Salscheider,
 Nikhil Mishra, Park Jiin, Pieter De Rijk, @raix852, Ritwik Gupta, Sahil Sharma,
-@Sangheum, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
+Sangheum Hwang, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
 Tiago Jorge, Tijmen Tieleman, @tvn, @tyfkda, Wang Yang, Wei-Ting Kuo, Wenjian
 Huang, Yan Chen, @YenChenLin, Yuan (Terry) Tang, Yuncheng Li, Yunfeng Wang, Zack
 Polizzi, @zhongzyd, Ziming Dong, @perhapszzy

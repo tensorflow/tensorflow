@@ -92,6 +92,15 @@ py_binary(
 )
 
 py_binary(
+    name = "resnet",
+    srcs = ["resnet.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
     name = "text_classification",
     srcs = ["text_classification.py"],
     srcs_version = "PY2AND3",
@@ -160,6 +169,7 @@ sh_test(
         ":iris_val_based_early_stopping",
         ":iris_with_pipeline",
         ":random_forest_mnist",
+        ":resnet",
         ":text_classification",
         ":text_classification_builtin_rnn_model",
         ":text_classification_character_cnn",

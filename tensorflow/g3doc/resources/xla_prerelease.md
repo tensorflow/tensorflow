@@ -1733,7 +1733,7 @@ degenerate dimensions to produce a 4x3x2 array result.
     for floats. However, if the range of the data is limited, floating-point
     addition is close enough to being associative for most practical uses. It
     is possible to conceive some complete un-associative reductions, however,
-    and these will produce wrong results in TLA reductions.
+    and these will produce wrong results in XLA reductions.
 
 ## C++ interface
 

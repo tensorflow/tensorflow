@@ -25,15 +25,6 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "resnet",
-    srcs = ["resnet.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(

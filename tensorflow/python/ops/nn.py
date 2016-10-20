@@ -1029,6 +1029,8 @@ def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
+  # Add 1e-12 to epsilon when epsilon <= 1e-5 to prevent CUDNN exception.
+  epsilon = epsilon if epsilon > 1e-5 else epsilon + 1e-12
   y, batch_mean, batch_var, _, _ = gen_nn_ops.fused_batch_norm(
       x,
       scale,
@@ -1271,10 +1273,8 @@ def nce_loss(weights,
   """Computes and returns the noise-contrastive estimation training loss.
 
   See [Noise-contrastive estimation: A new estimation principle for
-  unnormalized statistical models]
-  (http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-  Also see our [Candidate Sampling Algorithms Reference]
-  (../../extras/candidate_sampling.pdf)
+  unnormalized statistical models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  Also see our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve

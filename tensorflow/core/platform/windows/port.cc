@@ -20,6 +20,7 @@ limitations under the License.
 #include <snappy.h>
 #endif
 #include <WinSock2.h>
+#pragma comment(lib, "Ws2_32.lib")
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
