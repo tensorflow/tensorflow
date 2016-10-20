@@ -137,6 +137,35 @@ class FeatureColumnTest(tf.test.TestCase):
     for i in range(len(d1_value)):
       self.assertAllClose(d1_value[i], e1_value[i])
 
+  def testSharedEmbeddingColumnDeterminism(self):
+    # Tests determinism in auto-generated shared_embedding_name.
+    sparse_id_columns = tuple([
+        tf.contrib.layers.sparse_column_with_keys(k, ["foo", "bar"])
+        for k in ["07", "02", "00", "03", "05", "01", "09", "06", "04", "08"]
+    ])
+    output = tf.contrib.layers.shared_embedding_columns(
+        sparse_id_columns, dimension=2, combiner="mean")
+    self.assertEqual(len(output), 10)
+    for x in output:
+      self.assertEqual(x.shared_embedding_name,
+                       "00_01_02_plus_7_others_shared_embedding")
+
+  def testSharedEmbeddingColumnErrors(self):
+    # Tries passing in a string.
+    with self.assertRaises(TypeError):
+      invalid_string = "Invalid string."
+      tf.contrib.layers.shared_embedding_columns(
+          invalid_string, dimension=2, combiner="mean")
+
+    # Tries passing in a set of sparse columns.
+    with self.assertRaises(TypeError):
+      invalid_set = set([
+          tf.contrib.layers.sparse_column_with_keys("a", ["foo", "bar"]),
+          tf.contrib.layers.sparse_column_with_keys("b", ["foo", "bar"]),
+      ])
+      tf.contrib.layers.shared_embedding_columns(
+          invalid_set, dimension=2, combiner="mean")
+
   def testOneHotColumn(self):
     a = tf.contrib.layers.sparse_column_with_keys("a", ["a", "b", "c", "d"])
     onehot_a = tf.contrib.layers.one_hot_column(a)
