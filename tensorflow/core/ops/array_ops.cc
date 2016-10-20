@@ -109,6 +109,59 @@ Status PadShapeFn(InferenceContext* c) {
   }
 }
 
+Status SetOutputShapeForReshape(InferenceContext* c) {
+  ShapeHandle in = c->input(0);
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
+
+  // If the rank and all dimensions of the input tensor are known, we may
+  // infer missing shape information or perform shape checks.
+  // NumElements conveniently returns kUnknownDim upon missing rank or
+  // dimension information.
+  // Additionally, if the rank of the out shape is unknown we have no shape
+  // information to go off of.
+  DimensionHandle num_in_elems = c->NumElements(in);
+  DimensionHandle num_out_elems = c->NumElements(out);
+  if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
+    // Do nothing. We have no shape information to infer from so we directly
+    // return out as our shape.
+  } else if (c->ValueKnown(num_out_elems)) {
+    // If we know the number of output elements, we ensure that they
+    // are equal to the number of input elements.
+    if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
+      return errors::InvalidArgument(
+          "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
+          " elements to shape ", c->DebugString(out), " (",
+          c->DebugString(num_out_elems), " elements)");
+    }
+  } else {
+    // If we don't know the number of output elements, we can infer
+    // the missing dimension.
+    int32 unknown_idx = -1;
+    DimensionHandle known_elems = c->MakeDim(1);
+    for (int32 i = 0; i < c->Rank(out); ++i) {
+      DimensionHandle dim = c->Dim(out, i);
+      if (!c->ValueKnown(dim)) {
+        if (unknown_idx >= 0) {
+          return errors::InvalidArgument(
+              "Cannot infer multiple unknown dimensions in shape ",
+              c->DebugString(out));
+        }
+        unknown_idx = i;
+      } else {
+        TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
+      }
+    }
+    DimensionHandle inferred_dim;
+    TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                 true /* evenly_divisible */, &inferred_dim));
+    TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+  }
+
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("Pack")
@@ -1245,59 +1298,7 @@ REGISTER_OP("Reshape")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle in = c->input(0);
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
-
-      // If the rank and all dimensions of the input tensor are known, we may
-      // infer missing shape information or perform shape checks.
-      // NumElements conveniently returns kUnknownDim upon missing rank or
-      // dimension information.
-      // Additionally, if the rank of the out shape is unknown we have no shape
-      // information to go off of.
-      DimensionHandle num_in_elems = c->NumElements(in);
-      DimensionHandle num_out_elems = c->NumElements(out);
-      if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
-        // Do nothing. We have no shape information to infer from so we directly
-        // return out as our shape.
-      } else if (c->ValueKnown(num_out_elems)) {
-        // If we know the number of output elements, we ensure that they
-        // are equal to the number of input elements.
-        if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
-          return errors::InvalidArgument(
-              "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
-              " elements to shape ", c->DebugString(out), " (",
-              c->DebugString(num_out_elems), " elements)");
-        }
-      } else {
-        // If we don't know the number of output elements, we can infer
-        // the missing dimension.
-        int32 unknown_idx = -1;
-        DimensionHandle known_elems = c->MakeDim(1);
-        for (int32 i = 0; i < c->Rank(out); ++i) {
-          DimensionHandle dim = c->Dim(out, i);
-          if (!c->ValueKnown(dim)) {
-            if (unknown_idx >= 0) {
-              return errors::InvalidArgument(
-                  "Cannot infer multiple unknown dimensions in shape ",
-                  c->DebugString(out));
-            }
-            unknown_idx = i;
-          } else {
-            TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
-          }
-        }
-        DimensionHandle inferred_dim;
-        TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
-                                     true /* evenly_divisible */,
-                                     &inferred_dim));
-        TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
-      }
-
-      c->set_output(0, out);
-      return Status::OK();
-    })
+    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
     .Doc(R"Doc(
 Reshapes a tensor.
 
@@ -4328,6 +4329,36 @@ output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
 )doc");
+
+REGISTER_OP("QuantizedReshape")
+    .Input("tensor: T")
+    .Input("shape: Tshape")
+    .Input("input_min: float")
+    .Input("input_max: float")
+    .Output("output: T")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(SetOutputShapeForReshape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Reshapes a quantized tensor as per the Reshape op.
+```
+
+shape: Defines the shape of the output tensor.
+input_min: The minimum value of the input.
+input_max: The maximum value of the input.
+output_min: This value is copied from input_min.
+output_max: This value is copied from input_max.
+)Doc");
 
 // Deprecated op registrations:
 

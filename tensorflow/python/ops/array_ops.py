@@ -2325,6 +2325,10 @@ def squeeze(input, squeeze_dims=None, name=None):
   return gen_array_ops._squeeze(input, squeeze_dims, name)
 
 
+@ops.RegisterShape("QuantizedReshape")
+def _QuantizedReshapeShape(op):
+  return _ReshapeShape(op) + [tensor_shape.scalar(), tensor_shape.scalar()]
+
 # TODO(cwhipkey): Verify and enable shape functions for these.
 ops.RegisterShape("QuantizeV2")(None)
 ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
