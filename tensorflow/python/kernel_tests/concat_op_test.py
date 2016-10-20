@@ -287,9 +287,9 @@ class ConcatOpTest(tf.test.TestCase):
       tf.concat(3, [tf.constant(10.0, shape=[4, 4, 4]),
                     tf.constant(20.0, shape=[4, 4, 4])])
 
-    # concat_dim < 0
+    # concat_dim out of range
     with self.assertRaises(ValueError):
-      tf.concat(-1, [tf.constant(10.0, shape=[4, 4, 4]),
+      tf.concat(-4, [tf.constant(10.0, shape=[4, 4, 4]),
                      tf.constant(20.0, shape=[4, 4, 4])])
 
   def testShapeWithUnknownConcatDim(self):
@@ -453,6 +453,46 @@ class ConcatOpTest(tf.test.TestCase):
                                     cur_offset + params[p[i]].shape[concat_dim])
           cur_offset += params[p[i]].shape[concat_dim]
           self.assertAllEqual(result[index], params[p[i]])
+
+  def testConcatNegativeAxis(self):
+    with self.test_session(use_gpu=True):
+      t1 = [[1, 2, 3], [4, 5, 6]]
+      t2 = [[7, 8, 9], [10, 11, 12]]
+      output = tf.concat(-2, [t1, t2]).eval()
+      self.assertAllEqual(
+          [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+          output)
+      output = tf.concat(-1, [t1, t2]).eval()
+      self.assertAllEqual(
+          [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
+          output)
+
+  def testConcatV2Empty(self):
+    with self.test_session(use_gpu=True):
+      t1 = []
+      t2 = []
+      output = gen_array_ops._concat_v2([t1, t2], 0).eval()
+      self.assertFalse(output)  # Checks that output is empty
+
+  def testConcatV2InvalidAxis(self):
+    with self.assertRaises(ValueError):
+      with self.test_session(use_gpu=True):
+        t1 = [1]
+        t2 = [2]
+        gen_array_ops._concat_v2([t1, t2], 1).eval()
+
+  def testConcatV2NegativeAxis(self):
+    with self.test_session(use_gpu=True):
+      t1 = [[1, 2, 3], [4, 5, 6]]
+      t2 = [[7, 8, 9], [10, 11, 12]]
+      output = gen_array_ops._concat_v2([t1, t2], -2).eval()
+      self.assertAllEqual(
+          [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+          output)
+      output = gen_array_ops._concat_v2([t1, t2], -1).eval()
+      self.assertAllEqual(
+          [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
+          output)
 
 
 class ConcatOffsetTest(tf.test.TestCase):

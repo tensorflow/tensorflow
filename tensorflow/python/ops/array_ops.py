@@ -882,6 +882,12 @@ def _ConcatShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
+@ops.RegisterShape("ConcatV2")
+def _ConcatV2Shape(op):  # pylint: disable=invalid-name
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[len(op.inputs)-1])
+
+
 ops.RegisterShape("ConcatOffset")(common_shapes.call_cpp_shape_fn)
 
 

@@ -307,6 +307,26 @@ output: A `Tensor` with the concatenation of values stacked along the
   in `concat_dim` where it has the sum of the sizes.
 )doc");
 
+REGISTER_OP("ConcatV2")
+    .Input("values: N * T")
+    .Input("axis: Tidx")
+    .Output("output: T")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ConcatV2Shape)
+    .Doc(R"doc(
+Concatenates tensors along one dimension.
+
+values: List of `N` Tensors to concatenate. Their ranks and types must match,
+  and their sizes must match in all dimensions except `concat_dim`.
+axis: 0-D.  The dimension along which to concatenate.  Must be in the
+  range [0, rank(values)).
+output: A `Tensor` with the concatenation of values stacked along the
+  `concat_dim` dimension.  This tensor's shape matches that of `values` except
+  in `concat_dim` where it has the sum of the sizes.
+)doc");
+
 REGISTER_OP("ConcatOffset")
     .Input("concat_dim: int32")
     .Input("shape: N * int32")
