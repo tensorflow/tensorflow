@@ -45,7 +45,8 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
   - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
   - [swigwin-3.0.10](http://www.swig.org/download.html)
-
+  - [NVidia CUDA Toolkit 8.0] (https://developer.nvidia.com/cuda-downloads)
+  - [NVidia CUDNN 5.1] (https://developer.nvidia.com/cudnn)
 * Ubuntu 14.04
   - Makefile generator
   - Docker 1.9.1 (for automated testing)
@@ -184,6 +185,11 @@ Step-by-step Windows build
      SSL support (for making secure HTTP requests) in the TensorFlow runtime.
      This support is incomplete, and will be used for Google Cloud Storage
      support.
+     
+   * `-Dtensorflow_ENABLE_GPU=(ON|OFF)`. Defaults to `OFF`. Include
+     GPU support. If GPU is enabled you need to install the CUDA 8.0 Toolkit and CUDNN 5.1.
+     CMake will expect the location of CUDNN in -DCUDNN_HOME=path_you_unziped_cudnn.
+    
 
 4. Invoke MSBuild to build TensorFlow.
 

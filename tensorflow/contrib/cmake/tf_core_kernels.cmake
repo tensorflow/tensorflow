@@ -38,6 +38,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/metrics/kernels/set_kernels.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/metrics/ops/set_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
@@ -83,7 +84,7 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
-      # Not currently working on Windows:
+      # not working on windows yet
       "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
       "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
@@ -92,14 +93,38 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/svd*.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/avgpooling_op.*"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
 endif(WIN32)
 
+file(GLOB_RECURSE tf_core_gpu_kernels_srcs
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
+   "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
+)
+
+if(WIN32)
+  file(GLOB_RECURSE tf_core_gpu_kernels_exclude_srcs
+      # not working on windows yet
+      "${tensorflow_source_dir}/tensorflow/core/kernels/avgpooling_op_gpu.cu.cc"
+  )
+  list(REMOVE_ITEM tf_core_gpu_kernels_srcs ${tf_core_gpu_kernels_exclude_srcs})
+endif(WIN32)
+
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
+add_dependencies(tf_core_kernels tf_core_cpu)
 
 if(WIN32)
   target_compile_options(tf_core_kernels PRIVATE /MP)
+  if (tensorflow_ENABLE_GPU)
+    set_source_files_properties(${tf_core_gpu_kernels_srcs} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
+    set(tf_core_gpu_kernels_lib tf_core_gpu_kernels)
+    cuda_add_library(${tf_core_gpu_kernels_lib} ${tf_core_gpu_kernels_srcs})
+    set_target_properties(${tf_core_gpu_kernels_lib}
+                          PROPERTIES DEBUG_POSTFIX ""
+                          COMPILE_FLAGS "${TF_REGULAR_CXX_FLAGS}"
+    )
+    add_dependencies(${tf_core_gpu_kernels_lib} tf_core_cpu)
+  endif()
 endif()
-
-add_dependencies(tf_core_kernels tf_core_cpu)
