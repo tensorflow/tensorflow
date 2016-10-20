@@ -62,8 +62,8 @@ py_test(
     srcs = ["python/training/sampling_ops_threading_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "notsan",
         "manual",
+        "notsan",
     ],
     deps = [
         ":training_py",
