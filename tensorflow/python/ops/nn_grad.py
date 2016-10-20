@@ -25,7 +25,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_nn_ops
-
+from tensorflow.python.ops import gen_math_ops
 
 @ops.RegisterGradient("Conv2DBackpropInput")
 def _Conv2DBackpropInputGrad(op, grad):
