@@ -630,53 +630,11 @@ def transitive_hdrs(name, deps=[], **kwargs):
   native.filegroup(name=name,
                    srcs=[":" + name + "_gather"])
 
-# The following rules and aspects are used to collect the headers of
-# the direct dependencies of a target.
-def _collect_hdrs_aspect_impl(target, ctx):
-  allhdrs = set()
-  for h in getattr(ctx.rule.attr, 'hdrs', []):
-    allhdrs = allhdrs | h.files
-  return struct(tf_hdrs=allhdrs)
-
-collect_hdrs_aspect = aspect(
-    implementation=_collect_hdrs_aspect_impl,
-    attr_aspects=["deps"])
-
-def _exposed_hdrs_impl(ctx):
-  all_hdrs = set()
-  for input_dep in ctx.attr.deps:
-    if not hasattr(input_dep, "tf_hdrs"):
-      continue
-    all_hdrs = all_hdrs | input_dep.tf_hdrs
-  return struct(files=all_hdrs)
-
-_exposed_hdrs_rule = rule(
-    _exposed_hdrs_impl,
-    attrs = {
-        "deps": attr.label_list(
-            aspects=[collect_hdrs_aspect],
-            mandatory = True,
-            allow_files = True
-        ),
-    }
-)
-
-def _exposed_hdrs(name, deps=[], **kwargs):
-  _exposed_hdrs_rule(name=name + "_internal", deps=deps)
-  # Defines a filegroup containing all of the headers exposed by
-  # each target in 'deps'.
-  native.filegroup(name=name, srcs=[":" + name + "_internal"])
-
-
-# Create a header only library that includes all the headers exported
-# by the libraries in deps, and exports only the headers of the direct
-# dependencies of entries in 'deps' as a filegroup.
+# Create a header only library that includes all the headers exported by
+# the libraries in deps.
 def cc_header_only_library(name, deps=[], **kwargs):
   _transitive_hdrs(name=name + "_gather",
                    deps=deps)
-
-  _exposed_hdrs(name=name + "_headers", deps=deps)
-
   native.cc_library(name=name,
                     hdrs=[":" + name + "_gather"],
                     **kwargs)

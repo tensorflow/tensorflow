@@ -5,8 +5,6 @@ package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 
-# Bring in the eigen3 and generated protobuf headers that are not part
-# of the direct framework headers lib.
 transitive_hdrs(
     name = "other_headers",
     deps = [
@@ -40,7 +38,7 @@ sh_binary(
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
-        "//tensorflow/core:framework_headers_lib_headers",
+        "//tensorflow/core:framework_headers",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",
         "//tensorflow/models/image/alexnet:all_files",
