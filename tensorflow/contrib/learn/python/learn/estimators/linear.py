@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import math
 import re
 import tempfile
@@ -27,67 +26,33 @@ import tempfile
 import six
 
 from tensorflow.contrib import layers
-from tensorflow.contrib import losses
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training as train
 
-_CLASSES = "classes"
-_LOGISTIC = "logistic"
-_PROBABILITIES = "probabilities"
 
 # The default learning rate of 0.2 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
 _LEARNING_RATE = 0.2
-
-
-def _get_metric_args(metric):
-  if hasattr(metric, "__code__"):
-    return inspect.getargspec(metric).args
-  elif hasattr(metric, "func") and hasattr(metric, "keywords"):
-    return [arg for arg in inspect.getargspec(metric.func).args
-            if arg not in metric.keywords.keys()]
-
-
-def _wrap_metric(metric):
-  """Wraps metrics for mismatched prediction/target types."""
-  def wrapped(preds, targets):
-    targets = math_ops.cast(targets, preds.dtype)
-    return metric(preds, targets)
-
-  def wrapped_weights(preds, targets, weights=None):
-    targets = math_ops.cast(targets, preds.dtype)
-    if weights is not None:
-      weights = array_ops.reshape(math_ops.to_float(weights), shape=(-1,))
-    return metric(preds, targets, weights)
-
-  return wrapped_weights if "weights" in _get_metric_args(metric) else wrapped
 
 
 def _get_optimizer(spec):
@@ -106,27 +71,6 @@ def _as_iterable(preds, output):
     yield pred[output]
 
 
-def _centered_bias_step(targets, loss_fn, num_label_columns):
-  centered_bias = ops.get_collection("centered_bias")
-  batch_size = array_ops.shape(targets)[0]
-  logits = array_ops.reshape(
-      array_ops.tile(centered_bias[0], [batch_size]),
-      [batch_size, num_label_columns])
-  loss = loss_fn(logits, targets)
-  return train.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
-
-
-def _centered_bias(num_outputs):
-  centered_bias = variables.Variable(
-      array_ops.zeros([num_outputs]),
-      collections=["centered_bias", ops.GraphKeys.VARIABLES],
-      name="centered_bias_weight")
-  logging_ops.scalar_summary(
-      ["centered_bias_%d" % cb for cb in range(num_outputs)],
-      array_ops.reshape(centered_bias, [-1]))
-  return centered_bias
-
-
 def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
                      targets, columns_to_variables):
   # TODO(b/31008490): Move definition to a common constants place.
@@ -137,44 +81,6 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
   columns_to_tensors[bias_column] = array_ops.ones_like(targets,
                                                         dtype=dtypes.float32)
   columns_to_variables[bias_column] = [bias_variable]
-
-
-def _log_loss_with_two_classes(logits, target):
-  check_shape_op = control_flow_ops.Assert(
-      math_ops.less_equal(array_ops.rank(target), 2),
-      ["target's shape should be either [batch_size, 1] or [batch_size]"])
-  with ops.control_dependencies([check_shape_op]):
-    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0], 1])
-  return nn.sigmoid_cross_entropy_with_logits(
-      logits, math_ops.to_float(target))
-
-
-def _softmax_cross_entropy_loss(logits, target):
-  check_shape_op = control_flow_ops.Assert(
-      math_ops.less_equal(array_ops.rank(target), 2),
-      ["target's shape should be either [batch_size, 1] or [batch_size]"])
-  with ops.control_dependencies([check_shape_op]):
-    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0]])
-  return nn.sparse_softmax_cross_entropy_with_logits(logits, target)
-
-
-def _hinge_loss(logits, target):
-  check_shape_op = control_flow_ops.Assert(
-      math_ops.less_equal(array_ops.rank(target), 2),
-      ["target's shape should be either [batch_size, 1] or [batch_size]"])
-  with ops.control_dependencies([check_shape_op]):
-    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0], 1])
-  return losses.hinge_loss(logits, target)
-
-
-def _weighted_loss(loss, weight_tensor):
-  unweighted_loss = array_ops.reshape(loss, shape=(-1,))
-  weighted_loss = math_ops.mul(
-      unweighted_loss, array_ops.reshape(weight_tensor, shape=(-1,)))
-  return math_ops.div(
-      math_ops.reduce_sum(weighted_loss),
-      math_ops.to_float(math_ops.reduce_sum(weight_tensor)),
-      name="loss")
 
 
 def _linear_classifier_model_fn(features, targets, mode, params):
@@ -215,26 +121,27 @@ def _linear_classifier_model_fn(features, targets, mode, params):
     ValueError: If mode is not any of the `ModeKeys`.
   """
   feature_columns = params["feature_columns"]
-  n_classes = params["n_classes"]
-  weight_column_name = params["weight_column_name"]
   optimizer = params["optimizer"]
   gradient_clip_norm = params.get("gradient_clip_norm", None)
-  enable_centered_bias = params.get("enable_centered_bias", True)
   num_ps_replicas = params.get("num_ps_replicas", 0)
   joint_weights = params.get("joint_weights", False)
+
+  head = params.get("head", None)
+  if not head:
+    # TODO(zakaria): Remove these params and make head mandatory
+    head = head_lib._multi_class_head(  # pylint: disable=protected-access
+        params.get("n_classes"),
+        weight_column_name=params["weight_column_name"],
+        enable_centered_bias=params.get("enable_centered_bias", False))
 
   if not isinstance(features, dict):
     features = {"": features}
 
   parent_scope = "linear"
-  num_label_columns = 1 if n_classes == 2 else n_classes
-  loss_fn = _softmax_cross_entropy_loss
-  if n_classes == 2:
-    loss_fn = _log_loss_with_two_classes
-
   partitioner = partitioned_variables.min_max_variable_partitioner(
       max_partitions=num_ps_replicas,
       min_slice_size=64 << 20)
+
   with variable_scope.variable_op_scope(
       features.values(), parent_scope, partitioner=partitioner) as scope:
     if joint_weights:
@@ -242,7 +149,7 @@ def _linear_classifier_model_fn(features, targets, mode, params):
           layers.joint_weighted_sum_from_feature_columns(
               columns_to_tensors=features,
               feature_columns=feature_columns,
-              num_outputs=num_label_columns,
+              num_outputs=head.logits_dimension,
               weight_collections=[parent_scope],
               scope=scope))
     else:
@@ -250,46 +157,20 @@ def _linear_classifier_model_fn(features, targets, mode, params):
           layers.weighted_sum_from_feature_columns(
               columns_to_tensors=features,
               feature_columns=feature_columns,
-              num_outputs=num_label_columns,
+              num_outputs=head.logits_dimension,
               weight_collections=[parent_scope],
               scope=scope))
 
-  if enable_centered_bias:
-    logits = nn.bias_add(logits, _centered_bias(num_label_columns))
-
-  loss = None
-  if mode != estimator.ModeKeys.INFER:
-    loss = loss_fn(logits, targets)
-    if weight_column_name:
-      weight_tensor = array_ops.reshape(
-          math_ops.to_float(features[weight_column_name]), shape=(-1,))
-      loss = _weighted_loss(loss, weight_tensor)
-    else:
-      loss = math_ops.reduce_mean(loss, name="loss")
-    logging_ops.scalar_summary("loss", loss)
-
-  train_ops = []
-  if mode == estimator.ModeKeys.TRAIN:
+  def _train_op_fn(loss):
     global_step = contrib_variables.get_global_step()
-
     my_vars = ops.get_collection("linear")
     grads = gradients.gradients(loss, my_vars)
     if gradient_clip_norm:
       grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
-    train_ops.append(optimizer.apply_gradients(
+    return (optimizer.apply_gradients(
         zip(grads, my_vars), global_step=global_step))
-    if enable_centered_bias:
-      train_ops.append(
-          _centered_bias_step(targets, loss_fn, num_label_columns))
 
-  predictions = {}
-  if n_classes == 2:
-    predictions[_LOGISTIC] = math_ops.sigmoid(logits)
-    logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-  predictions[_PROBABILITIES] = nn.softmax(logits)
-  predictions[_CLASSES] = math_ops.argmax(logits, 1)
-
-  return predictions, loss, control_flow_ops.group(*train_ops)
+  return head.head_ops(features, targets, mode, _train_op_fn, logits)
 
 
 def sdca_classifier_model_fn(features, targets, mode, params):
@@ -324,16 +205,11 @@ def sdca_classifier_model_fn(features, targets, mode, params):
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   weight_column_name = params["weight_column_name"]
-  loss_type = params["loss_type"]
+  loss_type = params.get("loss_type", None)
   update_weights_hook = params.get("update_weights_hook")
 
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
-
-  loss_fn = {
-      "logistic_loss": _log_loss_with_two_classes,
-      "hinge_loss": _hinge_loss,
-  }[loss_type]
 
   logits, columns_to_variables, bias = (
       layers.weighted_sum_from_feature_columns(
@@ -344,13 +220,16 @@ def sdca_classifier_model_fn(features, targets, mode, params):
   _add_bias_column(feature_columns, features, bias, targets,
                    columns_to_variables)
 
-  loss = None
-  if mode != estimator.ModeKeys.INFER:
-    loss = math_ops.reduce_mean(loss_fn(logits, targets), name="loss")
-    logging_ops.scalar_summary("loss", loss)
-
-  train_op = None
-  if mode == estimator.ModeKeys.TRAIN:
+  if loss_type is "hinge_loss":
+    head = head_lib._binary_svm_head(  # pylint: disable=protected-access
+        weight_column_name=weight_column_name,
+        enable_centered_bias=False)
+  else:
+    # pylint: disable=protected-access
+    head = head_lib._multi_class_head(2,  # pylint: disable=protected-access
+                                      weight_column_name=weight_column_name,
+                                      enable_centered_bias=False)
+  def _train_op_fn(unused_loss):
     global_step = contrib_variables.get_global_step()
     sdca_model, train_op = optimizer.get_train_step(columns_to_variables,
                                                     weight_column_name,
@@ -358,14 +237,9 @@ def sdca_classifier_model_fn(features, targets, mode, params):
                                                     targets, global_step)
     if update_weights_hook is not None:
       update_weights_hook.set_parameters(sdca_model, train_op)
+    return train_op
 
-  predictions = {}
-  predictions[_LOGISTIC] = math_ops.sigmoid(logits)
-  logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-  predictions[_PROBABILITIES] = nn.softmax(logits)
-  predictions[_CLASSES] = math_ops.argmax(logits, 1)
-
-  return predictions, loss, train_op
+  return head.head_ops(features, targets, mode, _train_op_fn, logits)
 
 
 # Ensures consistency with LinearComposableModel.
@@ -466,7 +340,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                _joint_weight=False,
                config=None,
                feature_engineering_fn=None):
@@ -510,9 +384,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """
     # TODO(zoy): Give an unsupported error if enable_centered_bias is
     #    requested for SDCA once its default changes to False.
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     self._model_dir = model_dir or tempfile.mkdtemp()
     if n_classes < 2:
       raise ValueError("Classification requires n_classes >= 2")
@@ -529,6 +400,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
       assert not _joint_weight, ("_joint_weight is incompatible with the"
                                  " SDCAOptimizer")
+      assert n_classes == 2, "SDCA only applies to binary classification."
+
       model_fn = sdca_classifier_model_fn
       # We use a hook to perform the weight update and shrink step only on the
       # chief. Because the SdcaModel constructed by the estimator within the
@@ -545,13 +418,15 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       }
     else:
       model_fn = _linear_classifier_model_fn
+      head = head_lib._multi_class_head(  # pylint: disable=protected-access
+          n_classes,
+          weight_column_name=weight_column_name,
+          enable_centered_bias=enable_centered_bias)
       params = {
-          "n_classes": n_classes,
-          "weight_column_name": weight_column_name,
+          "head": head,
           "feature_columns": feature_columns,
           "optimizer": self._optimizer,
           "gradient_clip_norm": gradient_clip_norm,
-          "enable_centered_bias": enable_centered_bias,
           "num_ps_replicas": num_ps_replicas,
           "joint_weights": _joint_weight,
       }
@@ -599,45 +474,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
     """See evaluable.Evaluable."""
-    if not metrics:
-      metrics = {}
-      metrics["accuracy"] = metric_spec.MetricSpec(
-          metric_fn=_wrap_metric(metrics_lib.streaming_accuracy),
-          prediction_key=_CLASSES,
-          weight_key=self._weight_column_name)
-    if self._n_classes == 2:
-      additional_metrics = (
-          target_column.get_default_binary_metrics_for_eval([0.5]))
-      additional_metrics = {
-          name: metric_spec.MetricSpec(metric_fn=metric,
-                                       prediction_key=_LOGISTIC,
-                                       weight_key=self._weight_column_name)
-          for name, metric in additional_metrics.items()
-      }
-      metrics.update(additional_metrics)
-
-    # TODO(b/31229024): Remove this loop
-    for metric_name, metric in metrics.items():
-      if isinstance(metric, metric_spec.MetricSpec):
-        continue
-
-      if isinstance(metric_name, tuple):
-        if len(metric_name) != 2:
-          raise ValueError("Ignoring metric %s. It returned a tuple with len  "
-                           "%s, expected 2." % (metric_name, len(metric_name)))
-
-        valid_keys = {_CLASSES, _LOGISTIC, _PROBABILITIES}
-        if metric_name[1] not in valid_keys:
-          raise ValueError("Ignoring metric %s. The 2nd element of its name "
-                           "should be in %s" % (metric_name, valid_keys))
-      elif isinstance(metric_name, str):
-        metrics.pop(metric_name)
-        metric_name = (metric_name, _CLASSES)
-      else:
-        raise ValueError("Ignoring metric %s. Its name is not in the correct "
-                         "form." % metric_name)
-      metrics[metric_name] = _wrap_metric(metric)
-
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)
@@ -648,11 +484,12 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size, outputs=[_CLASSES],
+                                    batch_size=batch_size,
+                                    outputs=[head_lib.PredictionKey.CLASSES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_CLASSES)
-    return preds[_CLASSES]
+      return _as_iterable(preds, output=head_lib.PredictionKey.CLASSES)
+    return preds[head_lib.PredictionKey.CLASSES]
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -662,11 +499,12 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """Runs inference to determine the class probability predictions."""
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
-                                    outputs=[_PROBABILITIES],
+                                    outputs=[
+                                        head_lib.PredictionKey.PROBABILITIES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_PROBABILITIES)
-    return preds[_PROBABILITIES]
+      return _as_iterable(preds, output=head_lib.PredictionKey.PROBABILITIES)
+    return preds[head_lib.PredictionKey.PROBABILITIES]
 
   def get_variable_names(self):
     return [name for name, _ in list_variables(self._model_dir)]
@@ -694,7 +532,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         use_deprecated_input_fn=use_deprecated_input_fn,
         signature_fn=(
             signature_fn or export.classification_signature_fn_with_prob),
-        prediction_key=_PROBABILITIES,
+        prediction_key=head_lib.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
@@ -784,7 +622,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                target_dimension=1,
                _joint_weights=False,
                config=None,
@@ -822,10 +660,6 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
-
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
       enable_centered_bias = False
       logging.warning("centered_bias is not supported with SDCA, "

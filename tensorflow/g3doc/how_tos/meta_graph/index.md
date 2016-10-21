@@ -219,7 +219,7 @@ Here are some of the typical usage models:
                                                             name="xentropy")
     loss = tf.reduce_mean(cross_entropy, name="xentropy_mean")
 
-    tf.scalar_summary(loss.op.name, loss)
+    tf.summary.scalar('loss', loss)
     # Creates the gradient descent optimizer with the given learning rate.
     optimizer = tf.train.GradientDescentOptimizer(0.01)
 

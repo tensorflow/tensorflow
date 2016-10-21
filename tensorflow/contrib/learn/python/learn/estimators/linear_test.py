@@ -74,7 +74,6 @@ class LinearClassifierTest(tf.test.TestCase):
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
   def testJointTrain(self):
     """Tests that loss goes down with training with joint weights."""
@@ -99,7 +98,6 @@ class LinearClassifierTest(tf.test.TestCase):
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
   def testMultiClass_MatrixData(self):
     """Tests multi-class classification using matrix data as input."""
@@ -297,7 +295,7 @@ class LinearClassifierTest(tf.test.TestCase):
 
     # Test the case where the 2nd element of the key is neither "classes" nor
     # "probabilities".
-    with self.assertRaises(ValueError):
+    with self.assertRaises(KeyError):
       classifier.evaluate(
           input_fn=_input_fn,
           steps=100,
@@ -364,7 +362,7 @@ class LinearClassifierTest(tf.test.TestCase):
             num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({})))
     classifier.fit(input_fn=_input_fn, steps=200)
     loss = classifier.evaluate(input_fn=_input_fn, steps=1)['loss']
-    self.assertLess(loss, 0.05)
+    self.assertLess(loss, 0.07)
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
@@ -516,6 +514,25 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=input_fn, steps=100)
     self.assertFalse('centered_bias_weight' in classifier.get_variable_names())
 
+  def testEnableCenteredBias(self):
+    """Tests that we can disable centered bias."""
+
+    def input_fn():
+      return {
+          'age': tf.constant([1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    age = tf.contrib.layers.real_valued_column('age')
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[age, language], enable_centered_bias=True)
+    classifier.fit(input_fn=input_fn, steps=100)
+    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
   def testTrainOptimizerWithL1Reg(self):
     """Tests l1 regularized model has higher loss."""
 
@@ -555,7 +572,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(feature_columns=[language])
     classifier.fit(input_fn=input_fn, steps=100)
     loss = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
-    self.assertLess(loss, 0.05)
+    self.assertLess(loss, 0.07)
 
   def testSdcaOptimizerRealValuedFeatures(self):
     """Tests LinearClasssifier with SDCAOptimizer and real valued features."""

@@ -901,7 +901,7 @@ class ExecutorState {
   void DumpState();
   const Tensor* GetTensorValueForDump(const Entry& input);
 
-  // One thread of control finishes.
+  // Clean up when this executor is done.
   void Finish();
 
   // A standalone routine for this expression so that we can express
@@ -1221,15 +1221,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         OpKernelContext ctx(&params, item.num_outputs);
         if (stats) nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
-        // The final node in the step is always a Sink node. Block
-        // this Op from completing until the device has finished all
-        // queued operations. For devices like GPUs that continue to
-        // execute Ops after their Compute methods have completed,
-        // this ensures that control is not returned to the user until
-        // the step (and its side-effects) has actually completed.
-        if (node->IsSink() && ctx.status().ok()) {
-          ctx.SetStatus(device->Sync());
-        }
         if (stats) nodestats::SetOpEnd(stats);
 
         s = ProcessOutputs(item, &ctx, &outputs, stats);
@@ -1786,6 +1777,13 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  if (status.ok()) {
+    // Block until the device has finished all queued operations. For
+    // devices like GPUs that continue to execute Ops after their Compute
+    // methods have completed, this ensures that control is not returned to
+    // the user until the step (and its side-effects) has actually completed.
+    status = impl_->params_.device->Sync();
+  }
   delete this;
   CHECK(done_cb != nullptr);
   runner([=]() { done_cb(status); });

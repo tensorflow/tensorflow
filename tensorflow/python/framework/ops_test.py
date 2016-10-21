@@ -32,22 +32,38 @@ from tensorflow.python.framework import versions
 # Import gradients to register _IndexedSlicesToTensor.
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
-ops.RegisterShape("ResourceOp")(None)
-ops.RegisterShape("ResourceUsingOp")(None)
+ops.RegisterShape("ResourceOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceUsingOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceInitializedOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceCreateOp")(common_shapes.call_cpp_shape_fn)
 
 
 class ResourceTest(test_util.TensorFlowTestCase):
 
   def testBuildGraph(self):
     with self.test_session():
-      pt = test_ops.resource_op(container="a", shared_name="b")
-      test_ops.resource_using_op(pt).run()
+      pt = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      test_ops.resource_create_op(pt).run()
+
+  def testInitialize(self):
+    with self.test_session():
+      handle = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      resources.register_resource(
+          handle=handle,
+          create_op=test_ops.resource_create_op(handle),
+          is_initialized_op=test_ops.resource_initialized_op(handle))
+      self.assertEquals(len(resources.report_uninitialized_resources(
+          resources.shared_resources()).eval()), 1)
+      resources.initialize_resources(resources.shared_resources()).run()
+      self.assertEquals(len(resources.report_uninitialized_resources(
+          resources.shared_resources()).eval()), 0)
 
 
 class TensorTest(test_util.TensorFlowTestCase):
@@ -1616,6 +1632,35 @@ class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "`dtype`"):
       ops.register_dense_tensor_like_type(
           DenseTensorLikeTypeTest.BadClassBadDtype)
+
+
+class NameScopeTest(test_util.TensorFlowTestCase):
+
+  def testStripAndPrependScope(self):
+    strs = ["hidden1/hidden1/weights",       # Same prefix. Should strip.
+            "hidden1///hidden1/weights",     # Extra "/". Should strip.
+            "^hidden1/hidden1/weights",      # Same prefix. Should strip.
+            "loc:@hidden1/hidden1/weights",  # Same prefix. Should strip.
+            "hhidden1/hidden1/weights",  # Different prefix. Should keep.
+            "hidden1"]                   # Not a prefix. Should keep.
+    expected_striped = ["hidden1/weights",
+                        "hidden1/weights",
+                        "^hidden1/weights",
+                        "loc:@hidden1/weights",
+                        "hhidden1/hidden1/weights",
+                        "hidden1"]
+    expected_prepended = ["hidden2/hidden1/weights",
+                          "hidden2/hidden1/weights",
+                          "^hidden2/hidden1/weights",
+                          "loc:@hidden2/hidden1/weights",
+                          "hidden2/hhidden1/hidden1/weights",
+                          "hidden2/hidden1"]
+    name_scope_to_strip = "hidden1"
+    name_scope_to_add = "hidden2"
+    for es, ep, s in zip(expected_striped, expected_prepended, strs):
+      striped = ops.strip_name_scope(s, name_scope_to_strip)
+      self.assertEqual(es, striped)
+      self.assertEqual(ep, ops.prepend_name_scope(striped, name_scope_to_add))
 
 
 if __name__ == "__main__":

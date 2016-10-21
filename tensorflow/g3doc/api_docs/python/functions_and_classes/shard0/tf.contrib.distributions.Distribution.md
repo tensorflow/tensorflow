@@ -112,7 +112,7 @@ dist.mean().eval()
 ```
 - - -
 
-#### `tf.contrib.distributions.Distribution.__init__(dtype, parameters, is_continuous, is_reparameterized, validate_args, allow_nan_stats, name=None)` {#Distribution.__init__}
+#### `tf.contrib.distributions.Distribution.__init__(dtype, is_continuous, is_reparameterized, validate_args, allow_nan_stats, parameters=None, graph_parents=None, name=None)` {#Distribution.__init__}
 
 Constructs the `Distribution`.
 
@@ -122,7 +122,6 @@ Constructs the `Distribution`.
 
 
 *  <b>`dtype`</b>: The type of the event samples. `None` implies no type-enforcement.
-*  <b>`parameters`</b>: Python dictionary of parameters used by this `Distribution`.
 *  <b>`is_continuous`</b>: Python boolean. If `True` this
     `Distribution` is continuous over its supported domain.
 *  <b>`is_reparameterized`</b>: Python boolean. If `True` this
@@ -136,7 +135,15 @@ Constructs the `Distribution`.
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
-*  <b>`name`</b>: A name for this distribution (optional).
+*  <b>`parameters`</b>: Python dictionary of parameters used to instantiate this
+    `Distribution`.
+*  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Distribution`.
+*  <b>`name`</b>: A name for this distribution. Default: subclass name.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if any member of graph_parents is `None` or not a `Tensor`.
 
 
 - - -
@@ -476,7 +483,7 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.Distribution.parameters` {#Distribution.parameters}
 
-Dictionary of parameters used by this `Distribution`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -

@@ -30,7 +30,7 @@ from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_rea
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.head import MetricKey
-from tensorflow.contrib.learn.python.learn.estimators.head import PedictionKey
+from tensorflow.contrib.learn.python.learn.estimators.head import PredictionKey
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor

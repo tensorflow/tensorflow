@@ -14,8 +14,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "97c1ebe6ccc2"
-  eigen_sha256 = "58ab9fa44391c850d783fe0867f42a00b5300293b7d73bbbbc8756c2e649fea2"
+  eigen_version = "1c7159a65db4"
+  eigen_sha256 = "b089a6eae493c32703c6beb5fdae9d64a7667c3a5440bae00ac8e517cc822e62"
 
   native.new_http_archive(
     name = "eigen_archive",
@@ -124,6 +124,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "python_headers",
     actual = str(Label("//util/python:python_headers")),
+  )
+
+  native.new_http_archive(
+    name = "pcre",
+    sha256 = "ccdf7e788769838f8285b3ee672ed573358202305ee361cfec7a4a4fb005bbc7",
+    url = "http://ftp.cs.stanford.edu/pub/exim/pcre/pcre-8.39.tar.gz",
+    strip_prefix = "pcre-8.39",
+    build_file = str(Label("//third_party:pcre.BUILD")),
+  )
+
+  native.new_http_archive(
+    name = "swig",
+    sha256 = "a2669657cabcedc371f63c0457407a183e0b6b2ef4e7e303c1ec9a3964cc7813",
+    url = "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.2/swig-3.0.2.tar.gz",
+    strip_prefix = "swig-3.0.2",
+    build_file = str(Label("//third_party:swig.BUILD")),
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler

@@ -33,7 +33,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
       targets = tf.constant([[0.], [1.], [1.]])
       model_fn_ops = head.head_ops({}, targets,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=prediction)
+                                   _noop_train_op, logits=prediction)
       self.assertAlmostEqual(5. / 3, sess.run(model_fn_ops.loss))
 
   def testRegressionWithWeights(self):
@@ -45,7 +45,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
       targets = tf.constant([[0.], [1.], [1.]])
       model_fn_ops = head.head_ops(features, targets,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=prediction)
+                                   _noop_train_op, logits=prediction)
       self.assertAlmostEqual(2. / 3, sess.run(model_fn_ops.loss), places=3)
 
   def testErrorInSparseTensorTarget(self):
@@ -58,8 +58,8 @@ class RegressionModelHeadTest(tf.test.TestCase):
           shape=[3, 1])
       with self.assertRaisesRegexp(
           ValueError, "SparseTensor is not supported as a target"):
-        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN, None,
-                      logits=prediction)
+        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN,
+                      _noop_train_op, logits=prediction)
 
 
 class MultiClassModelHeadTest(tf.test.TestCase):
@@ -73,7 +73,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.head_ops({}, targets,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
+                                   _noop_train_op, logits=logits)
       self.assertAlmostEqual(.81326163, sess.run(model_fn_ops.loss))
 
   def testErrorInSparseTensorTarget(self):
@@ -86,8 +86,8 @@ class MultiClassModelHeadTest(tf.test.TestCase):
           shape=[3, 1])
       with self.assertRaisesRegexp(
           ValueError, "SparseTensor is not supported as a target"):
-        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN, None,
-                      logits=prediction)
+        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN,
+                      _noop_train_op, logits=prediction)
 
   def testBinaryClassificationWithWeights(self):
     head = head_lib._multi_class_head(
@@ -100,7 +100,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.head_ops(features, targets,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
+                                   _noop_train_op, logits=logits)
       self.assertAlmostEqual(.31326166 / 2, sess.run(model_fn_ops.loss))
 
   def testMultiClass(self):
@@ -112,7 +112,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.head_ops({}, targets,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
+                                   _noop_train_op, logits=logits)
       self.assertAlmostEqual(1.5514446, sess.run(model_fn_ops.loss))
 
   def testMultiClassWithWeight(self):
@@ -126,7 +126,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.head_ops(features, targets,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
+                                   _noop_train_op, logits=logits)
       self.assertAlmostEqual(.15514446, sess.run(model_fn_ops.loss))
 
   def testMultiClassWithInvalidNClass(self):
@@ -146,7 +146,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
     targets = tf.constant([0, 1])
     model_fn_ops = head.head_ops({}, targets,
                                  tf.contrib.learn.ModeKeys.TRAIN,
-                                 None, logits=predictions)
+                                 _noop_train_op, logits=predictions)
     # Prediction for first example is in the right side of the hyperplane (i.e.,
     # < 0) but it is within the [-1,1] margin. There is a 0.5 loss incurred by
     # this example. The 2nd prediction is outside the margin so it incurs no
@@ -162,13 +162,16 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
     features = {"weights": tf.constant([2.0, 10.0])}
     model_fn_ops = head.head_ops(features, targets,
                                  tf.contrib.learn.ModeKeys.TRAIN,
-                                 None, logits=predictions)
+                                 _noop_train_op, logits=predictions)
     # Prediction for both examples are in the right side of the hyperplane but
     # within the margin. The (weighted) loss incurred is 2*0.3=0.6 and 10*0.8=8
     # respectively. The overall (normalized) loss is therefore 8.6/12.
     with tf.Session() as sess:
       self.assertAlmostEqual(8.6 / 2, sess.run(model_fn_ops.loss), places=3)
 
+
+def _noop_train_op(unused_loss):
+  return tf.no_op()
 
 if __name__ == "__main__":
   tf.test.main()

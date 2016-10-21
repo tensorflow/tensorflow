@@ -718,18 +718,22 @@ Status ReductionShapeForReduceJoin(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ConcatShape(InferenceContext* c) {
-  ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+Status ConcatShapeHelper(InferenceContext* c, bool dim_is_last_argument) {
+  const int dim_index = dim_is_last_argument ? c->num_inputs() - 1 : 0;
+  const int start_value_index = dim_is_last_argument ? 0 : 1;
+  const int end_value_index =
+      dim_is_last_argument ? c->num_inputs() - 1 : c->num_inputs();
 
-  const Tensor* concat_dim_t = c->input_tensor(0);
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(dim_index), 0, &unused));
+  const Tensor* concat_dim_t = c->input_tensor(dim_index);
   if (concat_dim_t == nullptr) {
     // Return an unknown shape with same rank as inputs, or an unknown rank
     // if no input's rank is known.
 
     // Find rank.
     int32 rank = InferenceContext::kUnknownRank;
-    for (int i = 1; i < c->num_inputs(); ++i) {
+    for (int i = start_value_index; i < end_value_index; ++i) {
       if (rank == InferenceContext::kUnknownRank) rank = c->Rank(c->input(i));
       if (rank != InferenceContext::kUnknownRank) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
@@ -753,25 +757,23 @@ Status ConcatShape(InferenceContext* c) {
   // Merge all the non-concat dims, and sum the concat dim to make an output
   // shape.
   const int32 concat_dim = concat_dim_t->scalar<int32>()();
-  if (concat_dim < 0) {
-    return errors::InvalidArgument("Expected concat_dim >= 0, but got ",
-                                   concat_dim);
-  }
+  // Minimum required number of dimensions.
+  const int min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
 
   ShapeHandle output_before;
   ShapeHandle output_after;
 
-  ShapeHandle input = c->input(c->num_inputs() - 1);
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+  ShapeHandle input = c->input(end_value_index - 1);
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, min_rank, &input));
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
   DimensionHandle output_middle = c->Dim(input, concat_dim);
   TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
 
-  for (int i = c->num_inputs() - 2; i > 0; --i) {
+  for (int i = end_value_index - 2; i >= start_value_index; --i) {
     ShapeHandle before;
     ShapeHandle after;
     input = c->input(i);
-    TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, min_rank, &input));
     TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
     DimensionHandle middle = c->Dim(input, concat_dim);
     TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
@@ -787,6 +789,14 @@ Status ConcatShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(s, output_after, &s));
   c->set_output(0, s);
   return Status::OK();
+}
+
+Status ConcatShape(InferenceContext* c) {
+  return ConcatShapeHelper(c, /* dim_is_last_argument */ false);
+}
+
+Status ConcatV2Shape(InferenceContext* c) {
+  return ConcatShapeHelper(c, /* dim_is_last_argument */ true);
 }
 
 Status BroadcastBinaryOpShapeFn(InferenceContext* c) {

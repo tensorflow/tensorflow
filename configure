@@ -107,20 +107,6 @@ else
   perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
 fi
 
-## Find swig path
-if [ -z "$SWIG_PATH" ]; then
-  SWIG_PATH=`type -p swig 2> /dev/null || true`
-fi
-if [[ ! -e "$SWIG_PATH" ]]; then
-  echo "Can't find swig.  Ensure swig is in \$PATH or set \$SWIG_PATH."
-  exit 1
-fi
-# Convert swig path to Windows style before writing into swig_path
-if is_windows; then
-  SWIG_PATH="$(cygpath -m "$SWIG_PATH")"
-fi
-echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
-
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
 

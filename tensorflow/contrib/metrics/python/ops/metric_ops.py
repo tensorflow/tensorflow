@@ -506,8 +506,8 @@ def streaming_accuracy(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights=weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   if labels.dtype != predictions.dtype:
     predictions = math_ops.cast(predictions, labels.dtype)
@@ -566,8 +566,8 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
   with variable_scope.variable_scope(
       name, 'precision', [predictions, labels]):
 
-    predictions, labels = tensor_util.remove_squeezable_dimensions(
-        predictions, labels)
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     weights = _mask_weights(ignore_mask, weights)
@@ -645,8 +645,8 @@ def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
       tuple.
   """
   with variable_scope.variable_scope(name, 'recall', [predictions, labels]):
-    predictions, labels = tensor_util.remove_squeezable_dimensions(
-        predictions, labels)
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     weights = _mask_weights(ignore_mask, weights)
@@ -721,8 +721,8 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
       `weights` is not `None` and its shape doesn't match `predictions`.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   num_thresholds = len(thresholds)
@@ -768,8 +768,9 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
 
   if weights is not None:
     weights = math_ops.to_float(weights)
-    weights_tiled = array_ops.tile(array_ops.reshape(
-        _broadcast_weights(weights, predictions), [1, -1]), [num_thresholds, 1])
+    weights_tiled = array_ops.tile(array_ops.reshape(_broadcast_weights(
+        weights, predictions), [1, -1]), [num_thresholds, 1])
+
     thresh_tiled.get_shape().assert_is_compatible_with(
         weights_tiled.get_shape())
     is_true_positive *= weights_tiled
@@ -2304,8 +2305,8 @@ def streaming_mean_absolute_error(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   absolute_errors = math_ops.abs(predictions - labels)
   return streaming_mean(absolute_errors, weights, metrics_collections,
@@ -2357,8 +2358,8 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   predictions, normalizer = tensor_util.remove_squeezable_dimensions(
@@ -2416,8 +2417,8 @@ def streaming_mean_squared_error(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   squared_error = math_ops.square(labels - predictions)
   return streaming_mean(squared_error, weights, metrics_collections,
@@ -2468,8 +2469,8 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   value_tensor, update_op = streaming_mean_squared_error(
       predictions, labels, weights, None, None,
@@ -2540,8 +2541,8 @@ def streaming_covariance(predictions,
       `metrics_collections` or `updates_collections` are not a list or tuple.
   """
   with variable_scope.variable_scope(name, 'covariance', [predictions, labels]):
-    predictions, labels = tensor_util.remove_squeezable_dimensions(
-        predictions, labels)
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     count = _create_local('count', [])
     mean_prediction = _create_local('mean_prediction', [])
@@ -2663,8 +2664,8 @@ def streaming_pearson_correlation(predictions,
       `updates_collections` are not a `list` or `tuple`.
   """
   with variable_scope.variable_scope(name, 'pearson_r', [predictions, labels]):
-    predictions, labels = tensor_util.remove_squeezable_dimensions(
-        predictions, labels)
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     cov, update_cov = streaming_covariance(
         predictions, labels, weights=weights, name='covariance')
@@ -2736,8 +2737,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.mul(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
@@ -3104,6 +3105,50 @@ def aggregate_metric_map(names_to_tuples):
   metric_names = names_to_tuples.keys()
   value_ops, update_ops = zip(*names_to_tuples.values())
   return dict(zip(metric_names, value_ops)), dict(zip(metric_names, update_ops))
+
+
+def _remove_squeezable_dimensions(predictions, labels, weights):
+  """Squeeze last dim if needed.
+
+  Squeezes `predictions` and `labels` if their rank differs by 1.
+  Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
+
+  This will use static shape if available. Otherwise, it will add graph
+  operations, which could result in a performance hit.
+
+  Args:
+    predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    labels: Label values, a `Tensor` whose dimensions match `predictions`.
+    weights: optional `weights` tensor. It will be squeezed if its rank is 1
+      more than the new rank of `predictions`
+
+  Returns:
+    Tuple of `predictions`, `labels` and `weights`, possibly with the last
+    dimension squeezed.
+  """
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
+      predictions, labels)
+  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+
+  if weights is not None:
+    predictions_shape = predictions.get_shape()
+    predictions_rank = predictions_shape.ndims
+    weights_shape = weights.get_shape()
+    weights_rank = weights_shape.ndims
+
+    if (predictions_rank is not None) and (weights_rank is not None):
+      # Use static rank.
+      if weights_rank - predictions_rank == 1:
+        weights = array_ops.squeeze(weights, [-1])
+    elif (weights_rank is None) or (
+        weights_shape.dims[-1].is_compatible_with(1)):
+      # Use dynamic rank
+      weights = control_flow_ops.cond(
+          math_ops.equal(array_ops.rank(weights),
+                         math_ops.add(array_ops.rank(predictions), 1)),
+          lambda: array_ops.squeeze(weights, [-1]),
+          lambda: weights)
+  return predictions, labels, weights
 
 
 __all__ = [

@@ -293,6 +293,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["nomsan"],  # disable to avoid false positives from scipy.
 )
 
 cuda_py_tests(

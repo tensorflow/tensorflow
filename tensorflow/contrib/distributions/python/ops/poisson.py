@@ -71,18 +71,21 @@ class Poisson(distribution.Distribution):
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[lam]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(lam)] if
                                     validate_args else []):
         self._lam = array_ops.identity(lam, name="lam")
-        super(Poisson, self).__init__(
-            dtype=self._lam.dtype,
-            parameters={"lam": self._lam},
-            is_continuous=False,
-            is_reparameterized=False,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Poisson, self).__init__(
+        dtype=self._lam.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._lam],
+        name=ns)
 
   @property
   def lam(self):

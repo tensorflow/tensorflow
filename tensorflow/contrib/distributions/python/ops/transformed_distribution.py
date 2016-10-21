@@ -140,6 +140,7 @@ class TransformedDistribution(distributions.Distribution):
   def __init__(self,
                distribution,
                bijector,
+               validate_args=False,
                name=None):
     """Construct a Transformed Distribution.
 
@@ -148,27 +149,30 @@ class TransformedDistribution(distributions.Distribution):
         instance of `Distribution`.
       bijector: The object responsible for calculating the transformation.
         Typically an instance of `Bijector`.
+      validate_args: Python boolean.  Whether to validate input with asserts.
+        If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
       name: The name for the distribution. Default:
         `bijector.name + distribution.name`.
     """
+    parameters = locals()
+    parameters.pop("self")
     name = name or bijector.name + distribution.name
-    with ops.name_scope(name) as ns:
-      self._distribution = distribution
-      self._bijector = bijector
-      self._inverse_cache = {}
-      parameters = {}
-      for k, v in distribution.parameters.items():
-        parameters["distribution_" + k] = v
-      for k, v in bijector.parameters.items():
-        parameters["bijector_" + k] = v
-      super(TransformedDistribution, self).__init__(
-          dtype=self._distribution.dtype,
-          parameters=parameters,
-          is_continuous=self._distribution.is_continuous,
-          is_reparameterized=self._distribution.is_reparameterized,
-          validate_args=self._distribution.validate_args,
-          allow_nan_stats=self._distribution.allow_nan_stats,
-          name=ns)
+    self._distribution = distribution
+    self._bijector = bijector
+    self._inverse_cache = {}
+    super(TransformedDistribution, self).__init__(
+        dtype=self._distribution.dtype,
+        is_continuous=self._distribution.is_continuous,
+        is_reparameterized=self._distribution.is_reparameterized,
+        validate_args=validate_args,
+        allow_nan_stats=self._distribution.allow_nan_stats,
+        parameters=parameters,
+        # We let TransformedDistribution access _graph_parents since this class
+        # is more like a baseclass than derived.
+        graph_parents=(distribution._graph_parents +  # pylint: disable=protected-access
+                       list(bijector.parameters.values())),
+        name=name)
 
   @property
   def distribution(self):
@@ -185,12 +189,6 @@ class TransformedDistribution(distributions.Distribution):
 
   def _get_batch_shape(self):
     return self.distribution.get_batch_shape()
-
-  def _event_shape(self):
-    return self.distribution.event_shape()
-
-  def _get_event_shape(self):
-    return self.distribution.get_event_shape()
 
   @distribution_util.AppendDocstring(
       """Samples from the base distribution and then passes through

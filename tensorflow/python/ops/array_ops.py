@@ -882,6 +882,12 @@ def _ConcatShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
+@ops.RegisterShape("ConcatV2")
+def _ConcatV2Shape(op):  # pylint: disable=invalid-name
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[len(op.inputs)-1])
+
+
 ops.RegisterShape("ConcatOffset")(common_shapes.call_cpp_shape_fn)
 
 
@@ -1040,6 +1046,7 @@ def split(split_dim, num_split, value, name="split"):
 
 
 ops.RegisterShape("Reverse")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ReverseV2")(common_shapes.call_cpp_shape_fn)
 
 
 def transpose(a, perm=None, name="transpose"):
@@ -1534,6 +1541,7 @@ def meshgrid(*args, **kwargs):
 
 
 ops.RegisterShape("Placeholder")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PlaceholderV2")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)
@@ -2322,6 +2330,10 @@ def squeeze(input, squeeze_dims=None, name=None):
     squeeze_dims = [squeeze_dims]
   return gen_array_ops._squeeze(input, squeeze_dims, name)
 
+
+@ops.RegisterShape("QuantizedReshape")
+def _QuantizedReshapeShape(op):
+  return _ReshapeShape(op) + [tensor_shape.scalar(), tensor_shape.scalar()]
 
 # TODO(cwhipkey): Verify and enable shape functions for these.
 ops.RegisterShape("QuantizeV2")(None)

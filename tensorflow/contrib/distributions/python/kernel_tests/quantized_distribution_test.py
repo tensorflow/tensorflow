@@ -381,10 +381,10 @@ class QuantizedDistributionTest(tf.test.TestCase):
   def testLowerCutoffMustBeBelowUpperCutoffOrWeRaise(self):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(
-              mu=0., sigma=1., validate_args=True),
+          distribution=distributions.Normal(mu=0., sigma=1.),
           lower_cutoff=1.,  # not strictly less than upper_cutoff.
-          upper_cutoff=1.)
+          upper_cutoff=1.,
+          validate_args=True)
 
       self.assertTrue(qdist.validate_args)  # Default is True.
       with self.assertRaisesOpError("must be strictly less"):
@@ -393,10 +393,10 @@ class QuantizedDistributionTest(tf.test.TestCase):
   def testCutoffsMustBeIntegerValuedIfValidateArgsTrue(self):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Normal(
-              mu=0., sigma=1., validate_args=True),
+          distribution=distributions.Normal(mu=0., sigma=1.),
           lower_cutoff=1.5,
-          upper_cutoff=10.)
+          upper_cutoff=10.,
+          validate_args=True)
 
       self.assertTrue(qdist.validate_args)  # Default is True.
       with self.assertRaisesOpError("has non-integer components"):

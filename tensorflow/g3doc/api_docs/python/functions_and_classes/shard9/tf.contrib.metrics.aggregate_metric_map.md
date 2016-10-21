@@ -5,6 +5,7 @@ Aggregates the metric names to tuple dictionary.
 This function is useful for pairing metric names with their associated value
 and update ops when the list of metrics is long. For example:
 
+```python
   metrics_to_values, metrics_to_updates = slim.metrics.aggregate_metric_map({
       'Mean Absolute Error': new_slim.metrics.streaming_mean_absolute_error(
           predictions, labels, weights),
@@ -15,6 +16,7 @@ and update ops when the list of metrics is long. For example:
       'RMSE Log': new_slim.metrics.streaming_root_mean_squared_error(
           predictions, labels, weights),
   })
+```
 
 ##### Args:
 

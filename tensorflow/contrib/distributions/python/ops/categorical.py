@@ -104,6 +104,8 @@ class Categorical(distribution.Distribution):
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[logits]) as ns:
       self._logits, self._p = distribution_util.get_logits_and_prob(
           name=name, logits=logits, p=p, validate_args=validate_args,
@@ -138,14 +140,15 @@ class Categorical(distribution.Distribution):
       else:
         with ops.name_scope(name="batch_shape"):
           self._batch_shape_val = logits_shape[:-1]
-      super(Categorical, self).__init__(
-          dtype=dtype,
-          parameters={"logits": self._logits, "num_classes": self._num_classes},
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=ns)
+    super(Categorical, self).__init__(
+        dtype=dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._logits, self._num_classes],
+        name=ns)
 
   @property
   def num_classes(self):
