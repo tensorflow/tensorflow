@@ -126,6 +126,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = str(Label("//util/python:python_headers")),
   )
 
+  native.new_http_archive(
+    name = "pcre",
+    sha256 = "ccdf7e788769838f8285b3ee672ed573358202305ee361cfec7a4a4fb005bbc7",
+    url = "http://ftp.cs.stanford.edu/pub/exim/pcre/pcre-8.39.tar.gz",
+    strip_prefix = "pcre-8.39",
+    build_file = str(Label("//third_party:pcre.BUILD")),
+  )
+
+  native.new_http_archive(
+    name = "swig",
+    sha256 = "a2669657cabcedc371f63c0457407a183e0b6b2ef4e7e303c1ec9a3964cc7813",
+    url = "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.2/swig-3.0.2.tar.gz",
+    strip_prefix = "swig-3.0.2",
+    build_file = str(Label("//third_party:swig.BUILD")),
+  )
+
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
   native.bind(

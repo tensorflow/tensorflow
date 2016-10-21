@@ -275,5 +275,8 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
 %unignoreall
 
 %include "tensorflow/c/tf_status_helper.h"
+
+%ignore tensorflow::io::internal::JoinPathImpl;
 %include "tensorflow/core/lib/io/path.h"
+
 %include "tensorflow/core/platform/file_statistics.h"
