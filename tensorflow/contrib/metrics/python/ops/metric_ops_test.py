@@ -536,6 +536,41 @@ class StreamingAccuracyTest(tf.test.TestCase):
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
+  def testEffectivelyEquivalentSizesWithStaicShapedWeight(self):
+    predictions = tf.convert_to_tensor([1, 1, 1])  # shape 3,
+    labels = tf.expand_dims(tf.convert_to_tensor([1, 0, 0]), 1)  # shape 3, 1
+    weights = tf.expand_dims(tf.convert_to_tensor([100, 1, 1]), 1)  # shape 3, 1
+
+    with self.test_session() as sess:
+      accuracy, update_op = metrics.streaming_accuracy(
+          predictions, labels, weights)
+
+      sess.run(tf.initialize_local_variables())
+      # if streaming_accuracy does not flatten the weight, accuracy would be
+      # 0.33333334 due to an intended broadcast of weight. Due to flattening,
+      # it will be higher than .95
+      self.assertGreater(update_op.eval(), .95)
+      self.assertGreater(accuracy.eval(), .95)
+
+  def testEffectivelyEquivalentSizesWithDynamicallyShapedWeight(self):
+    predictions = tf.convert_to_tensor([1, 1, 1])  # shape 3,
+    labels = tf.expand_dims(tf.convert_to_tensor([1, 0, 0]), 1)  # shape 3, 1
+
+    weights = [[100], [1], [1]]  # shape 3, 1
+    weights_placeholder = tf.placeholder(dtype=tf.int32, name='weights')
+    feed_dict = {weights_placeholder: weights}
+
+    with self.test_session() as sess:
+      accuracy, update_op = metrics.streaming_accuracy(
+          predictions, labels, weights_placeholder)
+
+      sess.run(tf.initialize_local_variables())
+      # if streaming_accuracy does not flatten the weight, accuracy would be
+      # 0.33333334 due to an intended broadcast of weight. Due to flattening,
+      # it will be higher than .95
+      self.assertGreater(update_op.eval(feed_dict=feed_dict), .95)
+      self.assertGreater(accuracy.eval(feed_dict=feed_dict), .95)
+
   def testMultipleUpdatesWithWeightedValues(self):
     with self.test_session() as sess:
       # Create the queue that populates the predictions.

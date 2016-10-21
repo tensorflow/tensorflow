@@ -48,7 +48,7 @@ class Dimension(object):
     """Returns true if `other` has the same known value as this Dimension."""
     try:
       other = as_dimension(other)
-    except ValueError:
+    except (TypeError, ValueError):
       return NotImplemented
     if self._value is None or other.value is None:
       return None
@@ -58,7 +58,7 @@ class Dimension(object):
     """Returns true if `other` has a different known value from `self`."""
     try:
       other = as_dimension(other)
-    except ValueError:
+    except (TypeError, ValueError):
       return NotImplemented
     if self._value is None or other.value is None:
       return None

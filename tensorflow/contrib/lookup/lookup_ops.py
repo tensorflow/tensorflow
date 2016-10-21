@@ -726,8 +726,8 @@ class MutableHashTable(LookupInterface):
         the given name across multiple sessions.
       name: A name for the operation (optional).
       checkpoint: if True, the contents of the table are saved to and restored
-        from checkpoints. If `shared_name` is empty, the table is shared using
-        the table node name.
+        from checkpoints. If `shared_name` is empty for a checkpointed table, it
+        is shared using the table node name.
 
     Returns:
       A `MutableHashTable` object.
@@ -739,8 +739,9 @@ class MutableHashTable(LookupInterface):
                                                 dtype=value_dtype)
     self._value_shape = self._default_value.get_shape()
 
-    # The table must be shared if checkpointing is requested. Use the node name
-    # if no shared_name has been explicitly specified.
+    # The table must be shared if checkpointing is requested for multi-worker
+    # training to work correctly. Use the node name if no shared_name has been
+    # explicitly specified.
     use_node_name_sharing = checkpoint and shared_name is None
     # pylint: disable=protected-access
     if self._default_value.get_shape().ndims == 0:
@@ -764,7 +765,7 @@ class MutableHashTable(LookupInterface):
                                                "/")[-1])
 
     if checkpoint:
-      saveable = MutableHashTable.MutableHashTableSaveable(self, name)
+      saveable = MutableHashTable._Saveable(self, name)
       ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def size(self, name=None):
@@ -780,7 +781,6 @@ class MutableHashTable(LookupInterface):
                         [self._table_ref]) as name:
       # pylint: disable=protected-access
       return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
-      # pylint: enable=protected-access
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -810,7 +810,6 @@ class MutableHashTable(LookupInterface):
                                                     keys,
                                                     self._default_value,
                                                     name=name)
-      # pylint: enable=protected-access
 
     values.set_shape(keys.get_shape().concatenate(self._value_shape))
     return values
@@ -838,7 +837,6 @@ class MutableHashTable(LookupInterface):
       # pylint: disable=protected-access
       op = gen_data_flow_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
-      # pylint: enable=protected-access
       return op
 
   def export(self, name=None):
@@ -859,13 +857,12 @@ class MutableHashTable(LookupInterface):
           self._key_dtype,
           self._value_dtype,
           name=name)
-      # pylint: enable=protected-access
 
     exported_values.set_shape(exported_keys.get_shape().concatenate(
         self._value_shape))
     return exported_keys, exported_values
 
-  class MutableHashTableSaveable(BaseSaverBuilder.SaveableObject):
+  class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for MutableHashTable."""
 
     def __init__(self, table, name):
@@ -874,9 +871,8 @@ class MutableHashTable(LookupInterface):
           BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
           BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
       ]
-      super(MutableHashTable.MutableHashTableSaveable, self).__init__(table,
-                                                                      specs,
-                                                                      name)
+      # pylint: disable=protected-access
+      super(MutableHashTable._Saveable, self).__init__(table, specs, name)
 
     def restore(self, restored_tensors, unused_restored_shapes):
       # pylint: disable=protected-access
@@ -918,7 +914,8 @@ class MutableDenseHashTable(LookupInterface):
                empty_key,
                initial_num_buckets=None,
                shared_name=None,
-               name="MutableDenseHashTable"):
+               name="MutableDenseHashTable",
+               checkpoint=True):
     """Creates an empty `MutableDenseHashTable` object.
 
     Creates a table, the type of its keys and values are specified by key_dtype
@@ -934,6 +931,9 @@ class MutableDenseHashTable(LookupInterface):
       shared_name: If non-empty, this table will be shared under
         the given name across multiple sessions.
       name: A name for the operation (optional).
+      checkpoint: if True, the contents of the table are saved to and restored
+        from checkpoints. If `shared_name` is empty for a checkpointed table, it
+        is shared using the table node name.
 
     Returns:
       A `MutableHashTable` object.
@@ -945,11 +945,16 @@ class MutableDenseHashTable(LookupInterface):
         default_value, dtype=value_dtype)
     self._value_shape = self._default_value.get_shape()
 
+    # The table must be shared if checkpointing is requested for multi-worker
+    # training to work correctly. Use the node name if no shared_name has been
+    # explicitly specified.
+    use_node_name_sharing = checkpoint and shared_name is None
     empty_key = ops.convert_to_tensor(empty_key, dtype=key_dtype)
     # pylint: disable=protected-access
     self._table_ref = gen_data_flow_ops._mutable_dense_hash_table(
         empty_key=empty_key,
         shared_name=shared_name,
+        use_node_name_sharing=use_node_name_sharing,
         value_dtype=value_dtype,
         value_shape=self._value_shape,
         initial_num_buckets=initial_num_buckets,
@@ -957,6 +962,10 @@ class MutableDenseHashTable(LookupInterface):
     # pylint: enable=protected-access
     super(MutableDenseHashTable, self).__init__(
         key_dtype, value_dtype, self._table_ref.op.name.split("/")[-1])
+
+    if checkpoint:
+      saveable = MutableDenseHashTable._Saveable(self, name)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def size(self, name=None):
     """Compute the number of elements in this table.
@@ -971,7 +980,6 @@ class MutableDenseHashTable(LookupInterface):
                         [self._table_ref]) as name:
       # pylint: disable=protected-access
       return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
-      # pylint: enable=protected-access
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -999,9 +1007,11 @@ class MutableDenseHashTable(LookupInterface):
       # pylint: disable=protected-access
       values = gen_data_flow_ops._lookup_table_find(
           self._table_ref, keys, self._default_value, name=name)
-      # pylint: enable=protected-access
 
-    values.set_shape(keys.get_shape().concatenate(self._value_shape))
+    if keys.get_shape().ndims is not None and keys.get_shape().ndims > 0:
+      values.set_shape(
+          tensor_shape.TensorShape([keys.get_shape().dims[0]]).concatenate(
+              self._value_shape))
     return values
 
   def insert(self, keys, values, name=None):
@@ -1027,5 +1037,42 @@ class MutableDenseHashTable(LookupInterface):
       # pylint: disable=protected-access
       op = gen_data_flow_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
-      # pylint: enable=protected-access
       return op
+
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_lookup_table_export_values" % self._name,
+                        [self._table_ref]) as name:
+      # pylint: disable=protected-access
+      exported_keys, exported_values = gen_data_flow_ops._lookup_table_export(
+          self._table_ref, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
+
+  class _Saveable(BaseSaverBuilder.SaveableObject):
+    """SaveableObject implementation for MutableDenseHashTable."""
+
+    def __init__(self, table, name):
+      tensors = table.export()
+      specs = [
+          BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
+          BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
+      ]
+      # pylint: disable=protected-access
+      super(MutableDenseHashTable._Saveable, self).__init__(table, specs, name)
+
+    def restore(self, restored_tensors, unused_restored_shapes):
+      # pylint: disable=protected-access
+      return gen_data_flow_ops._lookup_table_import(self.op._table_ref,
+                                                    restored_tensors[0],
+                                                    restored_tensors[1])

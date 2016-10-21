@@ -1,4 +1,4 @@
-## Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -141,7 +141,8 @@ class SavedModelBuilder(object):
     Args:
       assets_collection_to_add: The collection where the asset paths are setup.
     """
-    asset_source_filepath_list = self._save_assets(assets_collection_to_add)
+    asset_source_filepath_list = self._maybe_save_assets(
+        assets_collection_to_add)
 
     # Return if there are no assets to write.
     if len(asset_source_filepath_list) is 0:
@@ -167,7 +168,22 @@ class SavedModelBuilder(object):
 
     tf_logging.info("Assets written to: %s", assets_destination_dir)
 
-  def _save_assets(self, assets_collection_to_add=None):
+  def _maybe_add_legacy_init_op(self, legacy_init_op=None):
+    """Add legacy init op to the SavedModel.
+
+    Args:
+      legacy_init_op: Optional legacy init op to support backward compatibility.
+
+    Raises:
+      TypeError if legacy init op is not of type `Operation`.
+    """
+    if legacy_init_op is not None:
+      if not isinstance(legacy_init_op, ops.Operation):
+        raise TypeError("legacy_init_op needs to be an Operation: %r" %
+                        legacy_init_op)
+      ops.add_to_collection(constants.LEGACY_INIT_OP_KEY, legacy_init_op)
+
+  def _maybe_save_assets(self, assets_collection_to_add=None):
     """Saves assets to the meta graph.
 
     Args:
@@ -225,8 +241,11 @@ class SavedModelBuilder(object):
     proto_meta_graph_def = self._saved_model.meta_graphs.add()
     proto_meta_graph_def.CopyFrom(meta_graph_def)
 
-  def add_meta_graph(self, tags, signature_def_map=None,
-                     assets_collection=None):
+  def add_meta_graph(self,
+                     tags,
+                     signature_def_map=None,
+                     assets_collection=None,
+                     legacy_init_op=None):
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -240,6 +259,8 @@ class SavedModelBuilder(object):
       assets_collection: Assets collection to be saved with SavedModel. Note
           that this collection should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
+      legacy_init_op: Op or group of ops to execute after the restore op upon a
+        load.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
@@ -251,12 +272,16 @@ class SavedModelBuilder(object):
           "Please invoke `add_meta_graph_and_variables()` first.")
 
     # Save asset files, if any.
-    self._save_assets(assets_collection)
+    self._maybe_save_assets(assets_collection)
+
+    # Add legacy init op to the SavedModel.
+    self._maybe_add_legacy_init_op(legacy_init_op)
 
     saver = tf_saver.Saver(
         variables.all_variables(),
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
+
     meta_graph_def = saver.export_meta_graph()
 
     # Tag the meta graph def and add it to the SavedModel.
@@ -266,7 +291,8 @@ class SavedModelBuilder(object):
                                    sess,
                                    tags,
                                    signature_def_map=None,
-                                   assets_collection=None):
+                                   assets_collection=None,
+                                   legacy_init_op=None):
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -282,6 +308,8 @@ class SavedModelBuilder(object):
       signature_def_map: The map of signature def map to add to the meta graph
         def.
       assets_collection: Assets collection to be saved with SavedModel.
+      legacy_init_op: Op or group of ops to execute after the restore op upon a
+        load.
     """
     if self._has_saved_variables:
       raise AssertionError("Variables and assets have already been saved. "
@@ -300,6 +328,9 @@ class SavedModelBuilder(object):
     variables_path = os.path.join(
         compat.as_text(variables_dir),
         compat.as_text(constants.VARIABLES_FILENAME))
+
+    # Add legacy init op to the SavedModel.
+    self._maybe_add_legacy_init_op(legacy_init_op)
 
     # Save the variables and export meta graph def.
     saver = tf_saver.Saver(

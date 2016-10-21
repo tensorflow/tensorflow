@@ -88,6 +88,8 @@ class Mixture(distribution.Distribution):
         matching static batch shapes, or all components do not
         have matching static event shapes.
     """
+    parameters = locals()
+    parameters.pop("self")
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)
@@ -121,7 +123,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]):
+    with ops.name_scope(name, values=[cat.logits]) as ns:
       num_components = cat.num_classes
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -160,15 +162,21 @@ class Mixture(distribution.Distribution):
       self._static_event_shape = static_event_shape
       self._static_batch_shape = static_batch_shape
 
-      super(Mixture, self).__init__(
-          dtype=dtype,
-          parameters={"cat": self._cat, "components": self._components,
-                      "num_components": self._num_components},
-          is_reparameterized=False,
-          is_continuous=is_continuous,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=name)
+    # We let the Mixture distribution access _graph_parents since its arguably
+    # more like a baseclass.
+    graph_parents = self._cat._graph_parents  # pylint: disable=protected-access
+    for c in self._components:
+      graph_parents += c._graph_parents  # pylint: disable=protected-access
+
+    super(Mixture, self).__init__(
+        dtype=dtype,
+        is_reparameterized=False,
+        is_continuous=is_continuous,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=graph_parents,
+        name=ns)
 
   @property
   def cat(self):

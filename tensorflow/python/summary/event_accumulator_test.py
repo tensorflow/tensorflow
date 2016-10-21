@@ -28,13 +28,22 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator as ea
+from tensorflow.python.summary.writer.writer import SummaryToEventTransformer
 from tensorflow.python.training import saver
 
 
 class _EventGenerator(object):
+  """Class that can add_events and then yield them back.
 
-  def __init__(self):
+  Satisfies the EventGenerator API required for the EventAccumulator.
+  Satisfies the EventWriter API required to create a SummaryWriter.
+
+  Has additional convenience methods for adding test events.
+  """
+
+  def __init__(self, zero_out_timestamps=False):
     self.items = []
+    self.zero_out_timestamps = zero_out_timestamps
 
   def Load(self):
     while self.items:
@@ -107,7 +116,13 @@ class _EventGenerator(object):
     self.AddEvent(event)
 
   def AddEvent(self, event):
+    if self.zero_out_timestamps:
+      event.wall_time = 0
     self.items.append(event)
+
+  def add_event(self, event):  # pylint: disable=invalid-name
+    """Match the EventWriter API."""
+    self.AddEvent(event)
 
 
 class EventAccumulatorTest(tf.test.TestCase):
@@ -610,6 +625,86 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.FirstEventTimestamp(), 1)
     acc.Reload()
     self.assertEqual(acc.file_version, 2.0)
+
+  def testTFSummaryScalar(self):
+    """Verify processing of tf.summary.scalar, which uses TensorSummary op."""
+    event_sink = _EventGenerator(zero_out_timestamps=True)
+    writer = SummaryToEventTransformer(event_sink)
+    with self.test_session() as sess:
+      ipt = tf.placeholder(tf.float32)
+      tf.summary.scalar('scalar1', ipt)
+      tf.summary.scalar('scalar2', ipt * ipt)
+      merged = tf.merge_all_summaries()
+      writer.add_graph(sess.graph)
+      for i in xrange(10):
+        summ = sess.run(merged, feed_dict={ipt: i})
+        writer.add_summary(summ, global_step=i)
+
+    accumulator = ea.EventAccumulator(event_sink)
+    accumulator.Reload()
+
+    seq1 = [ea.ScalarEvent(wall_time=0, step=i, value=i) for i in xrange(10)]
+    seq2 = [
+        ea.ScalarEvent(
+            wall_time=0, step=i, value=i * i) for i in xrange(10)
+    ]
+
+    self.assertTagsEqual(accumulator.Tags(), {
+        ea.IMAGES: [],
+        ea.AUDIO: [],
+        ea.SCALARS: ['scalar1', 'scalar2'],
+        ea.HISTOGRAMS: [],
+        ea.COMPRESSED_HISTOGRAMS: [],
+        ea.GRAPH: True,
+        ea.META_GRAPH: False,
+        ea.RUN_METADATA: []
+    })
+
+    self.assertEqual(accumulator.Scalars('scalar1'), seq1)
+    self.assertEqual(accumulator.Scalars('scalar2'), seq2)
+    first_value = accumulator.Scalars('scalar1')[0].value
+    self.assertTrue(isinstance(first_value, float))
+
+  def testTFSummaryImage(self):
+    """Verify processing of tf.summary.image."""
+    event_sink = _EventGenerator(zero_out_timestamps=True)
+    writer = SummaryToEventTransformer(event_sink)
+    with self.test_session() as sess:
+      ipt = tf.ones([10, 4, 4, 3], tf.uint8)
+      # This is an interesting example, because the old tf.image_summary op
+      # would throw an error here, because it would be tag reuse.
+      # Using the tf node name instead allows argument re-use to the image
+      # summary.
+      with tf.name_scope('1'):
+        tf.summary.image('images', ipt, max_outputs=1)
+      with tf.name_scope('2'):
+        tf.summary.image('images', ipt, max_outputs=2)
+      with tf.name_scope('3'):
+        tf.summary.image('images', ipt, max_outputs=3)
+      merged = tf.merge_all_summaries()
+      writer.add_graph(sess.graph)
+      for i in xrange(10):
+        summ = sess.run(merged)
+        writer.add_summary(summ, global_step=i)
+
+    accumulator = ea.EventAccumulator(event_sink)
+    accumulator.Reload()
+
+    tags = [
+        u'1/images/image', u'2/images/image/0', u'2/images/image/1',
+        u'3/images/image/0', u'3/images/image/1', u'3/images/image/2'
+    ]
+
+    self.assertTagsEqual(accumulator.Tags(), {
+        ea.IMAGES: tags,
+        ea.AUDIO: [],
+        ea.SCALARS: [],
+        ea.HISTOGRAMS: [],
+        ea.COMPRESSED_HISTOGRAMS: [],
+        ea.GRAPH: True,
+        ea.META_GRAPH: False,
+        ea.RUN_METADATA: []
+    })
 
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):

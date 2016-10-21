@@ -28,6 +28,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 
@@ -49,6 +50,15 @@ def iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
   target = tf.reshape(tf.constant(iris.target), [-1])
+  return features, target
+
+
+def iris_input_fn_target_dict():
+  iris = tf.contrib.learn.datasets.load_iris()
+  features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
+  target = {
+      'target': tf.reshape(tf.constant(iris.target), [-1])
+  }
   return features, target
 
 
@@ -90,6 +100,8 @@ def linear_model_fn(features, target, mode):
 
 
 def logistic_model_no_mode_fn(features, target):
+  if isinstance(target, dict):
+    target = target['target']
   target = tf.one_hot(target, 3, 1, 0)
   prediction, loss = (
       tf.contrib.learn.models.logistic_regression_zero_init(features, target)
@@ -133,7 +145,7 @@ class EstimatorTest(tf.test.TestCase):
       tf.Variable(42.0, 'weight')
       return None, None, None
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
-    with self.assertRaisesRegexp(ValueError, 'Missing train_op'):
+    with self.assertRaisesRegexp(ValueError, 'Missing training_op'):
       est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_loss(self):
@@ -159,7 +171,8 @@ class EstimatorTest(tf.test.TestCase):
       return None, loss, train_op
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
     est.fit(input_fn=boston_input_fn, steps=1)
-    est.evaluate(input_fn=boston_eval_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
+      est.evaluate(input_fn=boston_eval_fn, steps=1)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
       est.predict(input_fn=boston_input_fn)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
@@ -319,6 +332,23 @@ class EstimatorTest(tf.test.TestCase):
     est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
     est.fit(input_fn=iris_input_fn, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    predictions = list(est.predict(x=iris.data))
+    self.assertEqual(len(predictions), iris.target.shape[0])
+
+  def testIrisInputFnTargetIsDict(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    est.fit(input_fn=iris_input_fn_target_dict, steps=100)
+    _ = est.evaluate(
+        input_fn=iris_input_fn_target_dict,
+        steps=1,
+        metrics={
+            'accuracy':
+                metric_spec.MetricSpec(
+                    metric_fn=tf.contrib.metrics.streaming_accuracy,
+                    prediction_key='class',
+                    label_key='target')
+        })
     predictions = list(est.predict(x=iris.data))
     self.assertEqual(len(predictions), iris.target.shape[0])
 

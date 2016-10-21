@@ -14,7 +14,7 @@ exp = Inline(
 The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.__init__(forward_fn, inverse_fn, inverse_log_det_jacobian_fn, is_constant_jacobian=False, name='Inline')` {#Inline.__init__}
+#### `tf.contrib.distributions.bijector.Inline.__init__(forward_fn=None, inverse_fn=None, inverse_log_det_jacobian_fn=None, forward_log_det_jacobian_fn=None, is_constant_jacobian=False, validate_args=False, name='inline')` {#Inline.__init__}
 
 Creates a `Bijector` from callables.
 
@@ -24,9 +24,13 @@ Creates a `Bijector` from callables.
 *  <b>`forward_fn`</b>: Python callable implementing the forward transformation.
 *  <b>`inverse_fn`</b>: Python callable implementing the inverse transformation.
 *  <b>`inverse_log_det_jacobian_fn`</b>: Python callable implementing the
-    inverse_log_det_jacobian transformation.
+    log o det o jacobian of the inverse transformation.
+*  <b>`forward_log_det_jacobian_fn`</b>: Python callable implementing the
+    log o det o jacobian of the forward transformation.
 *  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is constant
     for all input arguments.
+*  <b>`validate_args`</b>: `Boolean` indicated whether arguments should be checked for
+    correctness.
 *  <b>`name`</b>: `String`, name given to ops managed by this object.
 
 
@@ -60,6 +64,32 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 *  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Inline.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Inline.forward_log_det_jacobian}
+
+Returns both the forward_log_det_jacobian.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
 
 
 - - -

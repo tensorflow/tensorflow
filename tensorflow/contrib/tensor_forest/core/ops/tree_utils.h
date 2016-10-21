@@ -20,6 +20,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -99,12 +100,27 @@ bool BestSplitDominatesRegression(
     const Tensor& split_sums, const Tensor& split_squares,
     int32 accumulator);
 
+// Performs booststrap_samples bootstrap samples of the best split's class
+// counts and the second best splits's class counts, and returns true if at
+// least dominate_fraction of the time, the former has a better (lower)
+// Gini impurity.  Does not take over ownership of *rand.
+bool BestSplitDominatesClassificationBootstrap(
+    const Tensor& total_counts, const Tensor& split_counts, int32 accumulator,
+    float dominate_fraction, tensorflow::random::SimplePhilox* rand);
+
 // Returns true if the best split's Gini impurity is sufficiently smaller than
-// that of the next best split.
-bool BestSplitDominatesClassification(
-    const Tensor& total_counts,
-    const Tensor& split_counts, int32 accumulator,
-    float dominate_fraction);
+// that of the next best split, as measured by the Hoeffding Tree bound.
+bool BestSplitDominatesClassificationHoeffding(const Tensor& total_counts,
+                                               const Tensor& split_counts,
+                                               int32 accumulator,
+                                               float dominate_fraction);
+
+// Returns true if the best split's Gini impurity is sufficiently smaller than
+// that of the next best split, as measured by a Chebyshev bound.
+bool BestSplitDominatesClassificationChebyshev(const Tensor& total_counts,
+                                               const Tensor& split_counts,
+                                               int32 accumulator,
+                                               float dominate_fraction);
 
 // Initializes everything in the given tensor to the given value.
 template <typename T>

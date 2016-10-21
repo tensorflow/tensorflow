@@ -19,17 +19,15 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework.python.framework import tensor_util
 
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
 
-_set_ops = load_library.load_op_library(
+_set_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile("_set_ops.so"))
-assert _set_ops, "Could not load _set_ops.so."
-
 
 _VALID_DTYPES = set([
     dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,

@@ -363,7 +363,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                config=None,
                feature_engineering_fn=None):
     """Initializes a DNNClassifier instance.
@@ -407,9 +407,6 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     Raises:
       ValueError: If `n_classes` < 2.
     """
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     self._hidden_units = hidden_units
     self._feature_columns = feature_columns
     self._model_dir = model_dir or tempfile.mkdtemp()
@@ -604,7 +601,11 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         self._model_dir, name=("dnn/hiddenlayer_%d/biases" % i))
                         for i, _ in enumerate(self._hidden_units)]
     logits_bias = [load_variable(self._model_dir, name="dnn/logits/biases")]
-    centered_bias = [load_variable(self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
+    if self._estimator.params["enable_centered_bias"]:
+      centered_bias = [
+          load_variable(self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
+    else:
+      centered_bias = []
     return hiddenlayer_bias + logits_bias + centered_bias
 
   @property
@@ -677,7 +678,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                config=None,
                feature_engineering_fn=None):
     """Initializes a `DNNRegressor` instance.
@@ -716,9 +717,6 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `DNNRegressor` estimator.
     """
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,

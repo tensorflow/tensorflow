@@ -4039,6 +4039,12 @@ class GraphKeys(object):
   LOSSES = "losses"
   # Key to collect BaseSaverBuilder.SaveableObject instances for checkpointing.
   SAVEABLE_OBJECTS = "saveable_objects"
+  # Key to collect all shared resources used by the graph which need to be
+  # initialized once per cluster.
+  RESOURCES = "resources"
+  # Key to collect all shared resources used in this graph which need to be
+  # initialized once per session.
+  LOCAL_RESOURCES = "local_resources"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
@@ -4178,6 +4184,45 @@ def name_scope(name, default_name=None, values=None):
   with g.as_default(), g.name_scope(n) as scope:
     yield scope
 # pylint: enable=g-doc-return-or-yield
+
+
+def strip_name_scope(name, export_scope):
+  """Removes name scope from a name.
+
+  Args:
+    name: A `string` name.
+    export_scope: Optional `string`. Name scope to remove.
+
+  Returns:
+    Name with name scope removed, or the original name if export_scope
+    is None.
+  """
+  if export_scope:
+    # Strips export_scope/, export_scope///,
+    # ^export_scope/, loc:@export_scope/.
+    str_to_replace = r"([\^]|loc:@|^)" + export_scope + r"[\/]+(.*)"
+    return re.sub(str_to_replace, r"\1\2", compat.as_str(name), count=1)
+  else:
+    return name
+
+
+def prepend_name_scope(name, import_scope):
+  """Prepends name scope to a name.
+
+  Args:
+    name: A `string` name.
+    import_scope: Optional `string`. Name scope to add.
+
+  Returns:
+    Name with name scope added, or the original name if import_scope
+    is None.
+  """
+  if import_scope:
+    str_to_replace = r"([\^]|loc:@|^)(.*)"
+    return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",
+                  compat.as_str(name))
+  else:
+    return name
 
 
 # pylint: disable=g-doc-return-or-yield

@@ -152,7 +152,8 @@ class Variable(object):
                name=None,
                variable_def=None,
                dtype=None,
-               expected_shape=None):
+               expected_shape=None,
+               import_scope=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -194,6 +195,8 @@ class Variable(object):
         a Tensor), or `convert_to_tensor` will decide.
       expected_shape: A TensorShape. If set, initial_value is expected
         to have this shape.
+      import_scope: Optional `string`. Name scope to add to the
+        `Variable.` Only used when initializing from protocol buffer.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -205,7 +208,7 @@ class Variable(object):
       if initial_value:
         raise ValueError("variable_def and initial_value are mutually "
                          "exclusive.")
-      self._init_from_proto(variable_def)
+      self._init_from_proto(variable_def, import_scope=import_scope)
     else:
       # Create from initial_value.
       self._init_from_args(
@@ -353,18 +356,25 @@ class Variable(object):
     self._caching_device = caching_device
     self._save_slice_info = None
 
-  def _init_from_proto(self, variable_def):
+  def _init_from_proto(self, variable_def, import_scope=None):
     """Creates a new variable from `VariableDef` protocol buffer.
 
     Args:
       variable_def: `VariableDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(variable_def, variable_pb2.VariableDef)
     # Create from variable_def.
     g = ops.get_default_graph()
-    self._variable = g.as_graph_element(variable_def.variable_name)
-    self._initializer_op = g.as_graph_element(variable_def.initializer_name)
-    self._snapshot = g.as_graph_element(variable_def.snapshot_name)
+    self._variable = g.as_graph_element(
+        ops.prepend_name_scope(variable_def.variable_name,
+                               import_scope=import_scope))
+    self._initializer_op = g.as_graph_element(
+        ops.prepend_name_scope(variable_def.initializer_name,
+                               import_scope=import_scope))
+    self._snapshot = g.as_graph_element(
+        ops.prepend_name_scope(variable_def.snapshot_name,
+                               import_scope=import_scope))
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = Variable.SaveSliceInfo(
           save_slice_info_def=variable_def.save_slice_info_def)
@@ -696,24 +706,37 @@ class Variable(object):
     """
     return self._variable.get_shape()
 
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
 
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
+
     Returns:
-      A `VariableDef` protocol buffer.
+      A `VariableDef` protocol buffer, or `None` if the `Variable` is not
+      in the specified name scope.
     """
-    var_def = variable_pb2.VariableDef()
-    var_def.variable_name = self._variable.name
-    var_def.initializer_name = self.initializer.name
-    var_def.snapshot_name = self._snapshot.name
-    if self._save_slice_info:
-      var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto())
-    return var_def
+    if (export_scope is None or
+        self._variable.name.startswith(export_scope)):
+      var_def = variable_pb2.VariableDef()
+      var_def.variable_name = ops.strip_name_scope(
+          self._variable.name, export_scope)
+      var_def.initializer_name = ops.strip_name_scope(
+          self.initializer.name, export_scope)
+      var_def.snapshot_name = ops.strip_name_scope(
+          self._snapshot.name, export_scope)
+      if self._save_slice_info:
+        var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto(
+            export_scope=export_scope))
+      return var_def
+    else:
+      return None
 
   @staticmethod
-  def from_proto(variable_def):
+  def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return Variable(variable_def=variable_def)
+    return Variable(variable_def=variable_def,
+                    import_scope=import_scope)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
@@ -734,7 +757,8 @@ class Variable(object):
                  full_shape=None,
                  var_offset=None,
                  var_shape=None,
-                 save_slice_info_def=None):
+                 save_slice_info_def=None,
+                 import_scope=None):
       """Create a `SaveSliceInfo`.
 
       Args:
@@ -748,10 +772,13 @@ class Variable(object):
           recreates the SaveSliceInfo object its contents.
           `save_slice_info_def` and other arguments are mutually
           exclusive.
+        import_scope: Optional `string`. Name scope to add. Only used
+          when initializing from protocol buffer.
       """
       if save_slice_info_def:
         assert isinstance(save_slice_info_def, variable_pb2.SaveSliceInfoDef)
-        self.full_name = save_slice_info_def.full_name
+        self.full_name = ops.prepend_name_scope(
+            save_slice_info_def.full_name, import_scope=import_scope)
         self.full_shape = [i for i in save_slice_info_def.full_shape]
         self.var_offset = [i for i in save_slice_info_def.var_offset]
         self.var_shape = [i for i in save_slice_info_def.var_shape]
@@ -770,17 +797,30 @@ class Variable(object):
       ])
       return full_shape_str + sl_spec
 
-    def to_proto(self):
-      """Returns a SaveSliceInfoDef() proto."""
-      save_slice_info_def = variable_pb2.SaveSliceInfoDef()
-      save_slice_info_def.full_name = self.full_name
-      for i in self.full_shape:
-        save_slice_info_def.full_shape.append(i)
-      for i in self.var_offset:
-        save_slice_info_def.var_offset.append(i)
-      for i in self.var_shape:
-        save_slice_info_def.var_shape.append(i)
-      return save_slice_info_def
+    def to_proto(self, export_scope=None):
+      """Returns a SaveSliceInfoDef() proto.
+
+      Args:
+        export_scope: Optional `string`. Name scope to remove.
+
+      Returns:
+        A `SaveSliceInfoDef` protocol buffer, or None if the `Variable` is not
+        in the specified name scope.
+      """
+      if (export_scope is None or
+          self.full_name.startswith(export_scope)):
+        save_slice_info_def = variable_pb2.SaveSliceInfoDef()
+        save_slice_info_def.full_name = ops.strip_name_scope(
+            self.full_name, export_scope)
+        for i in self.full_shape:
+          save_slice_info_def.full_shape.append(i)
+        for i in self.var_offset:
+          save_slice_info_def.var_offset.append(i)
+        for i in self.var_shape:
+          save_slice_info_def.var_shape.append(i)
+        return save_slice_info_def
+      else:
+        return None
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `Variable`.

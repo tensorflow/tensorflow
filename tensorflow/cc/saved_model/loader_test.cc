@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"

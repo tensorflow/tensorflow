@@ -289,7 +289,11 @@ class TensorShapeUtils {
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 
-  static bool StartsWith(const TensorShape& shape0, const TensorShape& shape1);
+  /// \brief Returns true iff `shape` starts with `prefix`.
+  static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
+
+  /// \brief Returns true iff `shape` ends with `suffix`.
+  static bool EndsWith(const TensorShape& shape, const TensorShape& suffix);
 };
 
 // ----------------------------------------------------------------------------

@@ -120,6 +120,8 @@ class StudentT(distribution.Distribution):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[df, mu, sigma]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(df),
@@ -130,14 +132,15 @@ class StudentT(distribution.Distribution):
         self._sigma = array_ops.identity(sigma, name="sigma")
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._mu, self._sigma))
-        super(StudentT, self).__init__(
-            dtype=self._sigma.dtype,
-            parameters={"df": self._df, "mu": self._mu, "sigma": self._sigma},
-            is_continuous=True,
-            is_reparameterized=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(StudentT, self).__init__(
+        dtype=self._sigma.dtype,
+        is_continuous=True,
+        is_reparameterized=True,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._df, self._mu, self._sigma],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -290,7 +293,9 @@ class StudentTWithAbsDfSoftplusSigma(StudentT):
                validate_args=False,
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusSigma"):
-    with ops.name_scope(name, values=[df, mu, sigma]) as ns:
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[df, sigma]) as ns:
       super(StudentTWithAbsDfSoftplusSigma, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           mu=mu,
@@ -298,3 +303,4 @@ class StudentTWithAbsDfSoftplusSigma(StudentT):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

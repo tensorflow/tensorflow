@@ -21,12 +21,12 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
+from tensorflow.contrib.util import loader
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -75,9 +75,8 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   Raises:
     ValueError: If ref tensor is initialized.
   """
-  _variable_ops = load_op_library(resource_loader.get_path_to_datafile(
-        "_variable_ops.so"))
-  assert _variable_ops, "Could not load _variable_ops.so"
+  loader.load_op_library(
+      resource_loader.get_path_to_datafile("_variable_ops.so"))
   return gen_variable_ops.zero_initializer(ref, name=name)
 
 

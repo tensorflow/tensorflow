@@ -109,6 +109,59 @@ Status PadShapeFn(InferenceContext* c) {
   }
 }
 
+Status SetOutputShapeForReshape(InferenceContext* c) {
+  ShapeHandle in = c->input(0);
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
+
+  // If the rank and all dimensions of the input tensor are known, we may
+  // infer missing shape information or perform shape checks.
+  // NumElements conveniently returns kUnknownDim upon missing rank or
+  // dimension information.
+  // Additionally, if the rank of the out shape is unknown we have no shape
+  // information to go off of.
+  DimensionHandle num_in_elems = c->NumElements(in);
+  DimensionHandle num_out_elems = c->NumElements(out);
+  if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
+    // Do nothing. We have no shape information to infer from so we directly
+    // return out as our shape.
+  } else if (c->ValueKnown(num_out_elems)) {
+    // If we know the number of output elements, we ensure that they
+    // are equal to the number of input elements.
+    if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
+      return errors::InvalidArgument(
+          "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
+          " elements to shape ", c->DebugString(out), " (",
+          c->DebugString(num_out_elems), " elements)");
+    }
+  } else {
+    // If we don't know the number of output elements, we can infer
+    // the missing dimension.
+    int32 unknown_idx = -1;
+    DimensionHandle known_elems = c->MakeDim(1);
+    for (int32 i = 0; i < c->Rank(out); ++i) {
+      DimensionHandle dim = c->Dim(out, i);
+      if (!c->ValueKnown(dim)) {
+        if (unknown_idx >= 0) {
+          return errors::InvalidArgument(
+              "Cannot infer multiple unknown dimensions in shape ",
+              c->DebugString(out));
+        }
+        unknown_idx = i;
+      } else {
+        TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
+      }
+    }
+    DimensionHandle inferred_dim;
+    TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                 true /* evenly_divisible */, &inferred_dim));
+    TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+  }
+
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("Pack")
@@ -249,6 +302,26 @@ concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
   range [0, rank(values)).
 values: The `N` Tensors to concatenate. Their ranks and types must match,
   and their sizes must match in all dimensions except `concat_dim`.
+output: A `Tensor` with the concatenation of values stacked along the
+  `concat_dim` dimension.  This tensor's shape matches that of `values` except
+  in `concat_dim` where it has the sum of the sizes.
+)doc");
+
+REGISTER_OP("ConcatV2")
+    .Input("values: N * T")
+    .Input("axis: Tidx")
+    .Output("output: T")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ConcatV2Shape)
+    .Doc(R"doc(
+Concatenates tensors along one dimension.
+
+values: List of `N` Tensors to concatenate. Their ranks and types must match,
+  and their sizes must match in all dimensions except `concat_dim`.
+axis: 0-D.  The dimension along which to concatenate.  Must be in the
+  range [0, rank(values)).
 output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
@@ -792,6 +865,79 @@ output: The same shape as `tensor`.
 )Doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ReverseV2")
+    .Input("tensor: T")
+    .Input("axis: Tidx")
+    .Output("output: T")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr(
+        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "complex128}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input = c->input(0);
+      ShapeHandle axis;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &axis));
+      // TODO(aselle): if input(0)'s dimension is known we could validate axis
+      if (c->Rank(input) > 8) {
+        return errors::InvalidArgument(
+            "reverse does not work on tensors with more than 8 dimensions");
+      }
+      c->set_output(0, input);
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Reverses specific dimensions of a tensor.
+
+Given a `tensor`, and a `int32` tensor `axis` representing the set of
+dimensions of `tensor` to reverse. This operation reverses each dimension
+`i` for which there exists `j` s.t. `axis[j] == i`.
+
+`tensor` can have up to 8 dimensions. The number of dimensions specified
+in `axis` may be 0 or more entries. If an index is specified more than
+once, a InvalidArgument error is raised.
+
+For example:
+
+```prettyprint
+# tensor 't' is [[[[ 0,  1,  2,  3],
+#                  [ 4,  5,  6,  7],
+#                  [ 8,  9, 10, 11]],
+#                 [[12, 13, 14, 15],
+#                  [16, 17, 18, 19],
+#                  [20, 21, 22, 23]]]]
+# tensor 't' shape is [1, 2, 3, 4]
+
+# 'dims' is [3] or 'dims' is -1
+reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
+                        [ 7,  6,  5,  4],
+                        [ 11, 10, 9, 8]],
+                       [[15, 14, 13, 12],
+                        [19, 18, 17, 16],
+                        [23, 22, 21, 20]]]]
+
+# 'dims' is '[1]' (or 'dims' is '[-3]')
+reverse(t, dims) ==> [[[[12, 13, 14, 15],
+                        [16, 17, 18, 19],
+                        [20, 21, 22, 23]
+                       [[ 0,  1,  2,  3],
+                        [ 4,  5,  6,  7],
+                        [ 8,  9, 10, 11]]]]
+
+# 'dims' is '[2]' (or 'dims' is '[-2]')
+reverse(t, dims) ==> [[[[8, 9, 10, 11],
+                        [4, 5, 6, 7],
+                        [0, 1, 2, 3]]
+                       [[20, 21, 22, 23],
+                        [16, 17, 18, 19],
+                        [12, 13, 14, 15]]]]
+```
+
+tensor: Up to 8-D.
+axis: 1-D. The indices of the dimensions to reverse.
+output: The same shape as `tensor`.
+)Doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("EditDistance")
     .Input("hypothesis_indices: int64")
     .Input("hypothesis_values: T")
@@ -1172,59 +1318,7 @@ REGISTER_OP("Reshape")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle in = c->input(0);
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
-
-      // If the rank and all dimensions of the input tensor are known, we may
-      // infer missing shape information or perform shape checks.
-      // NumElements conveniently returns kUnknownDim upon missing rank or
-      // dimension information.
-      // Additionally, if the rank of the out shape is unknown we have no shape
-      // information to go off of.
-      DimensionHandle num_in_elems = c->NumElements(in);
-      DimensionHandle num_out_elems = c->NumElements(out);
-      if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
-        // Do nothing. We have no shape information to infer from so we directly
-        // return out as our shape.
-      } else if (c->ValueKnown(num_out_elems)) {
-        // If we know the number of output elements, we ensure that they
-        // are equal to the number of input elements.
-        if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
-          return errors::InvalidArgument(
-              "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
-              " elements to shape ", c->DebugString(out), " (",
-              c->DebugString(num_out_elems), " elements)");
-        }
-      } else {
-        // If we don't know the number of output elements, we can infer
-        // the missing dimension.
-        int32 unknown_idx = -1;
-        DimensionHandle known_elems = c->MakeDim(1);
-        for (int32 i = 0; i < c->Rank(out); ++i) {
-          DimensionHandle dim = c->Dim(out, i);
-          if (!c->ValueKnown(dim)) {
-            if (unknown_idx >= 0) {
-              return errors::InvalidArgument(
-                  "Cannot infer multiple unknown dimensions in shape ",
-                  c->DebugString(out));
-            }
-            unknown_idx = i;
-          } else {
-            TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
-          }
-        }
-        DimensionHandle inferred_dim;
-        TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
-                                     true /* evenly_divisible */,
-                                     &inferred_dim));
-        TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
-      }
-
-      c->set_output(0, out);
-      return Status::OK();
-    })
+    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
     .Doc(R"Doc(
 Reshapes a tensor.
 
@@ -2407,6 +2501,36 @@ output: A placeholder tensor that must be replaced using the feed mechanism.
 dtype: The type of elements in the tensor.
 shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
+)doc");
+
+// This version fixes an issue with the original version of Placeholder
+// where the empty shape attribute "[]" was used to denote
+// an unknown shape.  This meant that scalars (added later) could
+// not be represented natively.  This new version fixes that
+// limitation.
+REGISTER_OP("PlaceholderV2")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      TensorShapeProto shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A placeholder op for a value that will be fed into the computation.
+
+N.B. This operation will fail with an error if it is executed. It is
+intended as a way to represent a value that will always be fed, and to
+provide attrs that enable the fed value to be checked at runtime.
+
+output: A placeholder tensor that must be replaced using the feed mechanism.
+dtype: The type of elements in the tensor.
+shape: The shape of the tensor. The shape can be any partially-specified
+   shape.  To be unconstrained, pass in a shape with unknown rank.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -4225,6 +4349,36 @@ output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
 )doc");
+
+REGISTER_OP("QuantizedReshape")
+    .Input("tensor: T")
+    .Input("shape: Tshape")
+    .Input("input_min: float")
+    .Input("input_max: float")
+    .Output("output: T")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(SetOutputShapeForReshape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Reshapes a quantized tensor as per the Reshape op.
+```
+
+shape: Defines the shape of the output tensor.
+input_min: The minimum value of the input.
+input_max: The maximum value of the input.
+output_min: This value is copied from input_min.
+output_max: This value is copied from input_max.
+)Doc");
 
 // Deprecated op registrations:
 

@@ -100,6 +100,7 @@ def _multi_class_head(n_classes, label_name=None, weight_column_name=None,
   """
   if n_classes < 2:
     raise ValueError("n_classes must be > 1 for classification.")
+
   if n_classes == 2:
     loss_fn = _log_loss_with_two_classes
   else:
@@ -119,7 +120,7 @@ def _binary_svm_head(label_name=None, weight_column_name=None,
                      thresholds=None,):
   """Creates a _TargetColumn for binary classification with SVMs.
 
-  The target column uses binary hinge loss.
+  The head uses binary hinge loss.
 
   Args:
     label_name: String, name of the key in label dict. Can be null if label
@@ -220,7 +221,7 @@ class _Head(object):
       loss, additional_train_op = self._training_loss(features, target,
                                                       logits, logits_input)
 
-      train_op = train_op_fn(loss) if train_op_fn else None
+      train_op = train_op_fn(loss)
 
       if additional_train_op:
         if train_op:
@@ -230,17 +231,17 @@ class _Head(object):
 
       return estimator.ModelFnOps(None, loss, train_op,
                                   self._default_metric(),
-                                  self._create_signature_fn())
+                                  self._create_signature_fn(), mode)
     if mode == estimator.ModeKeys.INFER:
       predictions = self._infer_op(logits, logits_input)
       return estimator.ModelFnOps(predictions, None, None,
                                   self._default_metric(),
-                                  self._create_signature_fn())
+                                  self._create_signature_fn(), mode)
     if mode == estimator.ModeKeys.EVAL:
       predictions, loss = self._eval_op(features, target, logits, logits_input)
       return estimator.ModelFnOps(predictions, loss, None,
                                   self._default_metric(),
-                                  self._create_signature_fn())
+                                  self._create_signature_fn(), mode)
     raise ValueError("mode=%s unrecognized" % str(mode))
 
   @abc.abstractmethod
@@ -376,17 +377,17 @@ class _RegressionHead(_Head):
   def _logits_to_prediction(self, logits=None):
     predictions = {}
     if self.logits_dimension == 1:
-      predictions[PedictionKey.SCORES] = array_ops.squeeze(
+      predictions[PredictionKey.SCORES] = array_ops.squeeze(
           logits, squeeze_dims=[1])
     else:
-      predictions[PedictionKey.SCORES] = logits
+      predictions[PredictionKey.SCORES] = logits
     return predictions
 
   # pylint: disable=undefined-variable
   def _create_signature_fn(self):
     def _regression_signature_fn(examples, unused_features, predictions):
       if isinstance(predictions, dict):
-        score = predictions[PedictionKey.SCORES]
+        score = predictions[PredictionKey.SCORES]
       else:
         score = predictions
 
@@ -399,7 +400,7 @@ class _RegressionHead(_Head):
   def _default_metric(self):
     return {_head_prefixed(self._head_name, MetricKey.LOSS):
             _weighted_average_loss_metric_spec(self._eval_loss_fn,
-                                               PedictionKey.SCORES,
+                                               PredictionKey.SCORES,
                                                self._label_name,
                                                self._weight_column_name)}
 
@@ -518,14 +519,13 @@ class _MultiClassHead(_Head):
     return self._logits_to_prediction(logits)
 
   def _logits_to_prediction(self, logits=None):
-    predictions = {PedictionKey.LOGITS: logits}
+    predictions = {PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
-      predictions[PedictionKey.LOGISTIC] = math_ops.sigmoid(logits)
+      predictions[PredictionKey.LOGISTIC] = math_ops.sigmoid(logits)
       logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[PedictionKey.PROBABILITIES] = nn.softmax(logits)
-    # Workaround for argmax dropping the second demension.
-    predictions[PedictionKey.CLASSES] = array_ops.expand_dims(
-        math_ops.argmax(logits, 1), 1)
+    predictions[PredictionKey.PROBABILITIES] = nn.softmax(logits)
+    predictions[PredictionKey.CLASSES] = math_ops.argmax(logits, 1)
+
     return predictions
 
   def _create_signature_fn(self):
@@ -535,8 +535,8 @@ class _MultiClassHead(_Head):
       if isinstance(predictions, dict):
         default_signature = exporter.classification_signature(
             input_tensor=examples,
-            classes_tensor=predictions[PedictionKey.CLASSES],
-            scores_tensor=predictions[PedictionKey.PROBABILITIES])
+            classes_tensor=predictions[PredictionKey.CLASSES],
+            scores_tensor=predictions[PredictionKey.PROBABILITIES])
       else:
         default_signature = exporter.classification_signature(
             input_tensor=examples,
@@ -549,7 +549,7 @@ class _MultiClassHead(_Head):
   def _default_metric(self):
     metrics = {_head_prefixed(self._head_name, MetricKey.LOSS):
                _weighted_average_loss_metric_spec(self._eval_loss_fn,
-                                                  PedictionKey.LOGITS,
+                                                  PredictionKey.LOGITS,
                                                   self._label_name,
                                                   self._weight_column_name)}
 
@@ -557,14 +557,15 @@ class _MultiClassHead(_Head):
     # "accuracy/threshold_0.500000_mean" metric for binary classification.
     metrics[_head_prefixed(self._head_name, MetricKey.ACCURACY)] = (
         metric_spec.MetricSpec(metrics_lib.streaming_accuracy,
-                               PedictionKey.CLASSES, self._label_name,
+                               PredictionKey.CLASSES, self._label_name,
                                self._weight_column_name))
     if self.logits_dimension == 1:
       def _add_binary_metric(metric_key, metric_fn):
         metrics[_head_prefixed(self._head_name, metric_key)] = (
             metric_spec.MetricSpec(metric_fn,
-                                   PedictionKey.LOGISTIC,
-                                   self._label_name))
+                                   PredictionKey.LOGISTIC,
+                                   self._label_name,
+                                   self._weight_column_name))
       _add_binary_metric(MetricKey.PREDICTION_MEAN, _predictions_streaming_mean)
       _add_binary_metric(MetricKey.TARGET_MEAN, _target_streaming_mean)
 
@@ -623,14 +624,24 @@ class _BinarySvmHead(_MultiClassHead):
 
   def _logits_to_prediction(self, logits=None):
     predictions = {}
-    # Workaround for argmax dropping the second demension.
-    predictions[PedictionKey.LOGITS] = array_ops.expand_dims(
-        math_ops.argmax(logits, 1), 1)
+    predictions[PredictionKey.LOGITS] = logits
     logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[PedictionKey.CLASSES] = array_ops.expand_dims(
-        math_ops.argmax(logits, 1), 1)
+    predictions[PredictionKey.CLASSES] = math_ops.argmax(logits, 1)
 
     return predictions
+
+  def _default_metric(self):
+    metrics = {_head_prefixed(self._head_name, MetricKey.LOSS):
+               _weighted_average_loss_metric_spec(self._eval_loss_fn,
+                                                  PredictionKey.LOGITS,
+                                                  self._label_name,
+                                                  self._weight_column_name)}
+    metrics[_head_prefixed(self._head_name, MetricKey.ACCURACY)] = (
+        metric_spec.MetricSpec(metrics_lib.streaming_accuracy,
+                               PredictionKey.CLASSES, self._label_name,
+                               self._weight_column_name))
+    # TODO(sibyl-vie3Poto): add more metrics relevant for svms.
+    return metrics
 
 
 class _MultiLabelHead(_MultiClassHead):
@@ -652,13 +663,12 @@ class _MultiLabelHead(_MultiClassHead):
         thresholds=thresholds)
 
   def _logits_to_prediction(self, logits=None):
-    predictions = {PedictionKey.LOGITS: logits}
+    predictions = {PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
-      predictions[PedictionKey.LOGISTIC] = math_ops.sigmoid(logits)
+      predictions[PredictionKey.LOGISTIC] = math_ops.sigmoid(logits)
       logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[PedictionKey.PROBABILITIES] = math_ops.sigmoid(logits)
-    # Workaround for argmax dropping the second demension.
-    predictions[PedictionKey.CLASSES] = math_ops.to_int64(
+    predictions[PredictionKey.PROBABILITIES] = math_ops.sigmoid(logits)
+    predictions[PredictionKey.CLASSES] = math_ops.to_int64(
         math_ops.greater(logits, 0))
     return predictions
 
@@ -783,6 +793,8 @@ def _weighted_average_loss_metric_spec(loss_fn, predictoin_key,
                                        label_key, weight_key):
   def _streaming_weighted_average_loss(predictions, target, weights=None):
     loss_unweighted = loss_fn(predictions, target)
+    if weights is not None:
+      weights = math_ops.to_float(weights)
     _, weighted_average_loss = _loss(loss_unweighted,
                                      weights,
                                      name="eval_loss")
@@ -827,8 +839,7 @@ def _streaming_at_threshold(streaming_metrics_fn, threshold):
   return _streaming_metrics
 
 
-# PedictionKey.CLASSES
-class PedictionKey(object):
+class PredictionKey(object):
   CLASSES = "classes"
   PROBABILITIES = "probabilities"
   LOGITS = "logits"

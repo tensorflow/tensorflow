@@ -1259,7 +1259,7 @@ Reinterpret the bytes of a string as a vector of numbers.
 
 *  <b>`bytes`</b>: A `Tensor` of type `string`.
     All the elements must have the same length.
-*  <b>`out_type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
+*  <b>`out_type`</b>: A `tf.DType` from: `tf.half, tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
 *  <b>`little_endian`</b>: An optional `bool`. Defaults to `True`.
     Whether the input `bytes` are in little-endian order.
     Ignored for `out_type` values that are stored in a single byte like
@@ -1464,8 +1464,7 @@ Alias for field number 0
 
 Parses `Example` protos into a `dict` of tensors.
 
-Parses a number of serialized [`Example`]
-(https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
