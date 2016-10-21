@@ -1,8 +1,11 @@
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -12,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -20,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/Eigen/Core"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -43,88 +46,82 @@ perftools::gputools::DeviceMemory<Scalar> AsDeviceMemory(
 
 template <class Scalar>
 class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
-public:
-    typedef LinearAlgebraOp<Scalar> Base;
+ public:
+  typedef LinearAlgebraOp<Scalar> Base;
 
-    explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
-        : Base(context)
-        , lower_(true)
-        , adjoint_(false)
-    {
-        OP_REQUIRES_OK(context, context->GetAttr("lower", &lower_));
-        OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
-    }
+  explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
+      : Base(context), lower_(true), adjoint_(false) {
+    OP_REQUIRES_OK(context, context->GetAttr("lower", &lower_));
+    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+  }
 
-    using TensorShapes = typename Base::TensorShapes;
-    using Matrix = typename Base::Matrix;
-    using MatrixMap = typename Base::MatrixMap;
-    using MatrixMaps = typename Base::MatrixMaps;
-    using ConstMatrixMap = typename Base::ConstMatrixMap;
-    using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+  using TensorShapes = typename Base::TensorShapes;
+  using Matrix = typename Base::Matrix;
+  using MatrixMap = typename Base::MatrixMap;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
-    virtual void ValidateInputMatrixShapes(
-        OpKernelContext* context,
-        const TensorShapes& input_matrix_shapes) const final
-    {
-        Base::ValidateSquareSolver(context, input_matrix_shapes);
-    }
+  virtual void ValidateInputMatrixShapes(
+      OpKernelContext* context,
+      const TensorShapes& input_matrix_shapes) const final {
+    Base::ValidateSquareSolver(context, input_matrix_shapes);
+  }
 
-    TensorShapes GetOutputMatrixShapes(
-        const TensorShapes& input_matrix_shapes) const final
-    {
-        return TensorShapes({ TensorShape({ input_matrix_shapes[0].dim_size(1),
-            input_matrix_shapes[1].dim_size(1) }) });
-    }
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    return TensorShapes({TensorShape({input_matrix_shapes[0].dim_size(1),
+                                      input_matrix_shapes[1].dim_size(1)})});
+  }
 
-    int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final
-    {
-        double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
-        double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
+  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+    double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
+    double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
         double cost = rows * rows * num_rhss * 
           (Eigen::TensorOpCost::AddCost<Scalar>() + 
            Eigen::TensorOpCost::MulCost<Scalar>());
-        return cost >= static_cast<double>(kint64max) ? kint64max
-                                                      : static_cast<int64>(cost);
+    return cost >= static_cast<double>(kint64max) ? kint64max
+                                                  : static_cast<int64>(cost);
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& matrix = inputs[0];
+    const ConstMatrixMap& rhs = inputs[1];
+    MatrixMap& output = outputs->at(0);
+
+    if (matrix.rows() == 0 || rhs.cols() == 0) {
+      // To be consistent with the MatrixInverse op, we define the solution for
+      // an empty set of equation as the empty matrix.
+      return;
     }
-
-    void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-        MatrixMaps* outputs) final
-    {
-        const ConstMatrixMap& matrix = inputs[0];
-        const ConstMatrixMap& rhs = inputs[1];
-        MatrixMap& output = outputs->at(0);
-
-        if (matrix.rows() == 0 || rhs.cols() == 0) {
-            // To be consistent with the MatrixInverse op, we define the solution for
-            // an empty set of equation as the empty matrix.
-            return;
-        }
-        const Scalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
-        OP_REQUIRES(context, min_abs_pivot > Scalar(0),
-            errors::InvalidArgument("Input matrix is not invertible."));
-        if (lower_) {
-            auto triangle = matrix.template triangularView<Eigen::Lower>();
-            if (adjoint_) {
-                output.noalias() = triangle.adjoint().solve(rhs);
-            } else {
-                output.noalias() = triangle.solve(rhs);
-            }
-        } else {
-            auto triangle = matrix.template triangularView<Eigen::Upper>();
-            if (adjoint_) {
-                output.noalias() = triangle.adjoint().solve(rhs);
-            } else {
-                output.noalias() = triangle.solve(rhs);
-            }
-        }
+    const Scalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
+    OP_REQUIRES(context, min_abs_pivot > Scalar(0),
+                errors::InvalidArgument("Input matrix is not invertible."));
+    if (lower_) {
+      auto triangle = matrix.template triangularView<Eigen::Lower>();
+      if (adjoint_) {
+        output.noalias() = triangle.adjoint().solve(rhs);
+      } else {
+        output.noalias() = triangle.solve(rhs);
+      }
+    } else {
+      auto triangle = matrix.template triangularView<Eigen::Upper>();
+      if (adjoint_) {
+        output.noalias() = triangle.adjoint().solve(rhs);
+      } else {
+        output.noalias() = triangle.solve(rhs);
+      }
     }
+  }
 
-private:
-    bool lower_;
-    bool adjoint_;
+ private:
+  bool lower_;
+  bool adjoint_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(MatrixTriangularSolveOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixTriangularSolveOp);
 };
+
 
 #ifdef GOOGLE_CUDA
 template <class Scalar>
@@ -186,7 +183,8 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     auto* stream = context->op_device_context()->stream();
     uint64 rhs_elems = rhs.rows() * rhs.cols();
     bool copy_status =
-        stream->ThenMemcpyD2D(&out_ptr, rhs_ptr, sizeof(Scalar) * rhs_elems).ok();
+        stream->ThenMemcpyD2D(&out_ptr, rhs_ptr, sizeof(Scalar) * rhs_elems)
+        .ok();
     if (!copy_status) {
       context->SetStatus(
           errors::Internal("Failed to copy rhs into output before solve"));
