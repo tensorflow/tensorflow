@@ -641,11 +641,15 @@
 
 * **[Testing](../../api_docs/python/test.md)**:
   * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
+  * [`Benchmark`](../../api_docs/python/test.md#Benchmark)
   * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
   * [`compute_gradient_error`](../../api_docs/python/test.md#compute_gradient_error)
   * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
+  * [`is_gpu_available`](../../api_docs/python/test.md#is_gpu_available)
   * [`main`](../../api_docs/python/test.md#main)
+  * [`test_src_dir_path`](../../api_docs/python/test.md#test_src_dir_path)
+  * [`TestCase`](../../api_docs/python/test.md#TestCase)
 
 * **[BayesFlow Entropy (contrib)](../../api_docs/python/contrib.bayesflow.entropy.md)**:
   * [`elbo_ratio`](../../api_docs/python/contrib.bayesflow.entropy.md#elbo_ratio)

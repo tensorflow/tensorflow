@@ -2080,7 +2080,7 @@ Create a `Supervisor`.
     The directory will be created if it does not exist.
 *  <b>`summary_op`</b>: An `Operation` that returns a Summary for the event logs.
     Used by chief supervisors if a `logdir` was specified.  Defaults to the
-    operation returned from merge_all_summaries().  If `None`, summaries are
+    operation returned from summary.merge_all().  If `None`, summaries are
     not computed automatically.
 *  <b>`saver`</b>: A Saver object.  Used by chief supervisors if a `logdir` was
     specified.  Defaults to the saved returned by Saver().
@@ -4559,8 +4559,8 @@ Initializes a `SummarySaver` monitor.
       one will be created accordingly.
 *  <b>`scaffold`</b>: `Scaffold` to get summary_op if it's not provided.
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `scalar_summary` or
-      `merge_all_summaries`.
+      buffer, as output by TF summary methods like `tf.summary.scalar` or
+      `tf.summary.merge_all`.
 
 ##### Raises:
 
