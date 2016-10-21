@@ -238,13 +238,13 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
 #endif  // GOOGLE_CUDA
 
 REGISTER_LINALG_OP("MatrixTriangularSolve", (MatrixTriangularSolveOp<float>),
-    float);
+                   float);
 REGISTER_LINALG_OP("MatrixTriangularSolve", (MatrixTriangularSolveOp<double>),
-    double);
+                   double);
 REGISTER_LINALG_OP("BatchMatrixTriangularSolve",
-    (MatrixTriangularSolveOp<float>), float);
+                   (MatrixTriangularSolveOp<float>), float);
 REGISTER_LINALG_OP("BatchMatrixTriangularSolve",
-    (MatrixTriangularSolveOp<double>), double);
+                   (MatrixTriangularSolveOp<double>), double);
 
 #ifdef GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(
