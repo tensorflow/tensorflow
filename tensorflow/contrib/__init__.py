@@ -45,3 +45,5 @@ from tensorflow.contrib import testing
 from tensorflow.contrib import tfprof
 from tensorflow.contrib import training
 from tensorflow.contrib import util
+from tensorflow.contrib.ndlstm import python as ndlstm
+from tensorflow.contrib.specs import python as specs
