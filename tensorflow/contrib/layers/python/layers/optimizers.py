@@ -244,8 +244,8 @@ def optimize_loss(loss,
           logging_ops.histogram_summary(variable.name + "/gradients",
                                         grad_values)
         if "gradient_norm" in summaries:
-          logging_ops.histogram_summary(variable.name + "/gradient_norm",
-                                        clip_ops.global_norm([grad_values]))
+          logging_ops.scalar_summary(variable.name + "/gradient_norm",
+                                     clip_ops.global_norm([grad_values]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(gradients,
