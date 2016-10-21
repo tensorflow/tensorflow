@@ -21,6 +21,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -288,7 +289,7 @@ class FinishedNodes : public OpKernel {
 
         params.random_seed = random_seed_;
         if (params.random_seed == 0) {
-          params.random_seed = static_cast<uint64>(std::clock());
+          params.random_seed = static_cast<uint64>(Env::Default()->NowMicros());
         }
 
         params.dominate_method =
