@@ -517,135 +517,145 @@ class Convolution2dTransposeTests(tf.test.TestCase):
 
 
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
-    num_filters = 32
-    input_size = [5, 3, 10, 12]
-    expected_size = [5, num_filters, 12, 14]
+    # `NCHW` data fomat is only supported for `GPU` device.
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 32
+        input_size = [5, 3, 10, 12]
+        expected_size = [5, num_filters, 12, 14]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [3, 3], stride=1,
-        padding='VALID', data_format='NCHW')
-    self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [3, 3], stride=1,
+            padding='VALID', data_format='NCHW')
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
 
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        sess.run(tf.initialize_all_variables())
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStrideTwoValidPaddingNCHW(self):
-    num_filters = 32
-    input_size = [5, 3, 9, 11]
-    expected_size = [5, num_filters, 19, 23]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 32
+        input_size = [5, 3, 9, 11]
+        expected_size = [5, num_filters, 19, 23]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [3, 3], stride=[2, 2],
-        padding='VALID', data_format='NCHW')
-    self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [3, 3], stride=[2, 2],
+            padding='VALID', data_format='NCHW')
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.get_shape().as_list()), expected_size)
 
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        sess.run(tf.initialize_all_variables())
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoSamePaddingNCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 1, 1]
-    expected_size = [1, num_filters, 2, 2]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 1, 1]
+        expected_size = [1, num_filters, 2, 2]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 2], stride=[2, 2],
-        padding='SAME', data_format='NCHW')
-    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 2], stride=[2, 2],
+            padding='SAME', data_format='NCHW')
+        self.assertListEqual(list(output.get_shape().as_list()), expected_size)
 
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoValidPaddingNCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 1, 1]
-    expected_size = [1, num_filters, 2, 2]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 1, 1]
+        expected_size = [1, num_filters, 2, 2]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 2], stride=[2, 2],
-        padding='VALID', data_format='NCHW')
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 2], stride=[2, 2],
+            padding='VALID', data_format='NCHW')
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoSamePaddingNCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 2, 2]
-    expected_size = [1, num_filters, 4, 4]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 2, 2]
+        expected_size = [1, num_filters, 4, 4]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 2], stride=[2, 2],
-        padding='SAME', data_format='NCHW')
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 2], stride=[2, 2],
+            padding='SAME', data_format='NCHW')
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoValidPaddingNCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 2, 2]
-    expected_size = [1, num_filters, 4, 4]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 2, 2]
+        expected_size = [1, num_filters, 4, 4]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 2], stride=[2, 2],
-        padding='VALID', data_format='NCHW')
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 2], stride=[2, 2],
+            padding='VALID', data_format='NCHW')
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x1NCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 3, 2]
-    expected_size = [1, num_filters, 6, 5]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 3, 2]
+        expected_size = [1, num_filters, 6, 5]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 4], stride=[2, 1],
-        padding='VALID', data_format='NCHW')
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 4], stride=[2, 1],
+            padding='VALID', data_format='NCHW')
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x4NCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 3, 2]
-    expected_size = [1, num_filters, 6, 8]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 3, 2]
+        expected_size = [1, num_filters, 6, 8]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 4], stride=[2, 4],
-        padding='VALID', data_format='NCHW')
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 4], stride=[2, 4],
+            padding='VALID', data_format='NCHW')
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x5NCHW(self):
-    num_filters = 1
-    input_size = [1, 1, 3, 2]
-    expected_size = [1, num_filters, 6, 10]
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 1
+        input_size = [1, 1, 3, 2]
+        expected_size = [1, num_filters, 6, 10]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [2, 4], stride=[2, 5],
-        padding='VALID', data_format='NCHW')
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [2, 4], stride=[2, 5],
+            padding='VALID', data_format='NCHW')
+        sess.run(tf.initialize_all_variables())
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
 
   def testOutputSizeWithStrideOneSamePadding(self):
