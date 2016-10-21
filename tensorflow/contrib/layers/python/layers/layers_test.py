@@ -101,6 +101,90 @@ class AvgPool2DTest(tf.test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
 
+class PoolTest(tf.test.TestCase):
+
+  def testCreatePool(self):
+    height, width = 3, 3
+    images = np.random.uniform(size=(5, height, width, 3))
+    output = tf.contrib.layers.pool(images, [3, 3], pooling_type='AVG')
+    self.assertEqual(output.op.name, 'avg_pool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+
+  def testCreatePoolNCHW(self):
+    height, width = 3, 3
+    images = np.random.uniform(size=(5, 3, height, width))
+    output = tf.contrib.layers.pool(
+        images, [3, 3], pooling_type='AVG', data_format='NCHW')
+    self.assertEqual(output.op.name, 'avg_pool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 1])
+
+  def testCollectOutputs(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(images, [3, 3],
+                                    pooling_type='AVG',
+                                    outputs_collections='outputs')
+    output_collected = tf.get_collection('outputs')[0]
+    self.assertEqual(output_collected.alias, 'avg_pool')
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareAvgPool(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(images, 3, pooling_type='AVG')
+    self.assertEqual(output.op.name, 'avg_pool')
+    self.assertEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+
+  def testCreateMaxPoolWithScope(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(
+        images, [3, 3], pooling_type='MAX', scope='pool1')
+    self.assertEqual(output.op.name, 'pool1')
+
+  def testCreateMaxPoolWithSamePadding(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(
+        images, [3, 3], pooling_type='MAX', padding='SAME')
+    self.assertEqual(output.get_shape().as_list(), [5, 3, 3, 3])
+
+  def testCreateAvgPoolStrideWithSamePadding(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(
+        images, [3, 3], stride=1, padding='SAME', pooling_type='AVG')
+    self.assertEqual(output.get_shape().as_list(), [5, height, width, 3])
+
+  def testGlobalAvgPool(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(
+        images, images.get_shape()[1:3], stride=1, pooling_type='AVG')
+    self.assertEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+
+  def testAvgPoolWithStride(self):
+    height, width = 5, 8
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(
+        images, [2, 3], stride=[1, 2], pooling_type='AVG')
+    self.assertEqual(output.get_shape().as_list(), [5, 4, 3, 3])
+
+  def testAvgPoolWithDilation(self):
+    height, width = 5, 8
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.pool(
+        images, [2, 3], dilation_rate=[1, 2], pooling_type='AVG')
+    self.assertEqual(output.get_shape().as_list(), [5, 4, 4, 3])
+
+  def testAvgPoolWithDilationNCHW(self):
+    height, width = 5, 8
+    images = tf.random_uniform((5, 3, height, width), seed=1)
+    output = tf.contrib.layers.pool(
+        images, [2, 3], dilation_rate=[1, 2], pooling_type='AVG', data_format='NCHW')
+    self.assertEqual(output.get_shape().as_list(), [5, 3, 4, 4])
+
+
 class BiasAddTest(tf.test.TestCase):
 
   def testCreate(self):
@@ -132,14 +216,14 @@ class BiasAddTest(tf.test.TestCase):
         self.assertListEqual(biases.get_shape().as_list(), [input_shape[-1]])
 
 
-class Convolution2dTest(tf.test.TestCase):
+class ConvolutionTest(tf.test.TestCase):
 
   def testInvalidDataFormat(self):
     height, width = 7, 9
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       with self.assertRaisesRegexp(
-          ValueError, 'data_format has to be either NCHW or NHWC.'):
+          ValueError, 'data_format'):
         tf.contrib.layers.convolution2d(images, 32, 3, data_format='CHWN')
 
   def testCreateConv(self):
@@ -404,6 +488,20 @@ class Convolution2dTest(tf.test.TestCase):
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())
       self.assertEqual(output.op.name, 'Conv/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testOutputSizeWithRateTwoThreeValidPadding(self):
+    num_filters = 32
+    input_size = [5, 10, 12, 3]
+    expected_size = [5, 6, 6, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=[2, 3], padding='VALID')
+    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'Conv/Relu')
       self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testDynamicOutputSizeWithRateOneValidPadding(self):
@@ -2135,7 +2233,7 @@ class RepeatTests(tf.test.TestCase):
       images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.repeat(images, 3,
                                         tf.contrib.layers.conv2d, 32, [3, 3])
-      self.assertEqual(output.op.name, 'Repeat/convolution2d_3/Relu')
+      self.assertEqual(output.op.name, 'Repeat/convolution_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
 
   def testRepeatWithScope(self):
@@ -2419,7 +2517,7 @@ class StackTests(tf.test.TestCase):
                                        [10, 20, 30],
                                        kernel_size=[3, 3],
                                        padding='SAME')
-      self.assertEqual(output.op.name, 'Stack/convolution2d_3/Relu')
+      self.assertEqual(output.op.name, 'Stack/convolution_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
 
   def testStackWithScope(self):
