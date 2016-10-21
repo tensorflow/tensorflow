@@ -27,6 +27,7 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -288,11 +289,12 @@ class Distribution(_BaseDistribution):
 
   def __init__(self,
                dtype,
-               parameters,
                is_continuous,
                is_reparameterized,
                validate_args,
                allow_nan_stats,
+               parameters=None,
+               graph_parents=None,
                name=None):
     """Constructs the `Distribution`.
 
@@ -300,7 +302,6 @@ class Distribution(_BaseDistribution):
 
     Args:
       dtype: The type of the event samples. `None` implies no type-enforcement.
-      parameters: Python dictionary of parameters used by this `Distribution`.
       is_continuous: Python boolean. If `True` this
         `Distribution` is continuous over its supported domain.
       is_reparameterized: Python boolean. If `True` this
@@ -314,18 +315,26 @@ class Distribution(_BaseDistribution):
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
-      name: A name for this distribution (optional).
+      parameters: Python dictionary of parameters used to instantiate this
+        `Distribution`.
+      graph_parents: Python list of graph prerequisites of this `Distribution`.
+      name: A name for this distribution. Default: subclass name.
+
+    Raises:
+      ValueError: if any member of graph_parents is `None` or not a `Tensor`.
     """
-    self._name = name
-    if self._name is None:
-      with ops.name_scope(type(self).__name__) as ns:
-        self._name = ns
+    graph_parents = [] if graph_parents is None else graph_parents
+    for i, t in enumerate(graph_parents):
+      if t is None or not contrib_framework.is_tensor(t):
+        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtype
-    self._parameters = parameters or {}
     self._is_continuous = is_continuous
     self._is_reparameterized = is_reparameterized
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
+    self._parameters = parameters or {}
+    self._graph_parents = graph_parents
+    self._name = name or type(self).__name__
 
   @classmethod
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
@@ -391,7 +400,7 @@ class Distribution(_BaseDistribution):
 
   @property
   def parameters(self):
-    """Dictionary of parameters used by this `Distribution`."""
+    """Dictionary of parameters used to instantiate this `Distribution`."""
     return self._parameters
 
   @property
@@ -878,7 +887,7 @@ class Distribution(_BaseDistribution):
     """Helper function to standardize op scope."""
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=(
-          (values or []) + list(self.parameters.values()))) as scope:
+          (values or []) + self._graph_parents)) as scope:
         yield scope
 
   def _expand_sample_shape(self, sample_shape):

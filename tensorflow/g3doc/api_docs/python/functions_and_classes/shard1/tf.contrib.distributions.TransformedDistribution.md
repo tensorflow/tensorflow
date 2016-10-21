@@ -102,7 +102,7 @@ normal = ds.TransformedDistribution(
 ```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, validate_args=False, name=None)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
@@ -113,6 +113,9 @@ Construct a Transformed Distribution.
     instance of `Distribution`.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
     Typically an instance of `Bijector`.
+*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
 *  <b>`name`</b>: The name for the distribution. Default:
     `bijector.name + distribution.name`.
 
@@ -182,8 +185,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -300,8 +303,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -384,8 +387,8 @@ Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -423,8 +426,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -506,7 +509,7 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.TransformedDistribution.parameters` {#TransformedDistribution.parameters}
 
-Dictionary of parameters used by this `Distribution`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
@@ -576,8 +579,8 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -630,8 +633,8 @@ Samples from the base distribution and then passes through
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 
@@ -679,8 +682,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 *  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
 
 ##### Args:
 

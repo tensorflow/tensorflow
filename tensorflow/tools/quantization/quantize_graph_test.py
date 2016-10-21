@@ -228,6 +228,55 @@ class QuantizeGraphTest(tf.test.TestCase):
               [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
               [1, 4, 7, 2, 5, 8, 3, 6, 9])
 
+  def test_reshape(self):
+    """Tests that MatMul->Reshape->MatMul avoids extra quantize/dequantize."""
+    def make_matmul(name, a, b):
+      n = quantize_graph.create_node("MatMul", name, [a.name, b.name])
+      quantize_graph.set_attr_dtype(n, "T", tf.float32)
+      quantize_graph.set_attr_bool(n, "transpose_a", False)
+      quantize_graph.set_attr_bool(n, "transpose_b", False)
+      return n
+
+    # matmul_1 = input*weight_1
+    input_node = quantize_graph.create_constant_node(
+        "input", value=[0, 1, 2, 3], dtype=tf.float32, shape=[4, 1])
+    weight_1_node = quantize_graph.create_constant_node(
+        "weight_1", value=[.5, .6, .7, .8, .9], dtype=tf.float32, shape=[1, 5])
+    matmul_1_node = make_matmul("matmul_1", input_node, weight_1_node)
+
+    # Reshape 4x5 to 10x2.
+    new_shape_node = quantize_graph.create_constant_node(
+        "new_shape_node", value=[10, 2], dtype=tf.int32, shape=[2])
+    reshape_node = quantize_graph.create_node(
+        "Reshape", "reshape", [matmul_1_node.name, new_shape_node.name])
+    quantize_graph.set_attr_dtype(reshape_node, "T", tf.float32)
+
+    # matmul_2_node = reshape*weight_2
+    weight_2_node = quantize_graph.create_constant_node(
+        "weight_2", value=[1.5, 2.5], dtype=tf.float32, shape=[2, 1])
+    matmul_2_node = make_matmul("matmul_2", reshape_node, weight_2_node)
+
+    g = tf.GraphDef()
+    g.node.extend([input_node, weight_1_node, matmul_1_node,
+                   new_shape_node, reshape_node, weight_2_node,
+                   matmul_2_node])
+
+    # Test the graph
+    test_graph(g, {}, ["matmul_2"])
+
+    # Verify there is only one Quantize and one Requantize op.
+    eightbit_rewriter = quantize_graph.GraphRewriter(g, "eightbit")
+    eightbit_graph_def = eightbit_rewriter.rewrite(["matmul_2"])
+
+    tf.logging.info("S:\n%s", str(eightbit_graph_def))
+
+    ops = [node.op for node in eightbit_graph_def.node]
+    # No quantize since all inputs are const and can be quantized up-front.
+    self.assertEqual(0, ops.count("QuantizeV2") + ops.count("Quantize"))
+
+    # One dequantize at the end.
+    self.assertEqual(1, ops.count("Dequantize"))
+
   def test_quantize_array(self):
     # Test invalid parameters (empty array, or 0 buckets.
     self.assertRaises(ValueError, quantize_graph.quantize_array,

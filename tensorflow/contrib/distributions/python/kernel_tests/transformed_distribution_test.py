@@ -116,6 +116,23 @@ class TransformedDistributionTest(tf.test.TestCase):
           np.sign(conditional_normal.sample_n(
               5, bijector_kwargs={"z": z}).eval()), z)
 
+  def testShapeChangingBijector(self):
+    with self.test_session():
+      softmax = bijectors.SoftmaxCentered()
+      standard_normal = distributions.Normal(mu=0., sigma=1.)
+      multi_logit_normal = distributions.TransformedDistribution(
+          distribution=standard_normal,
+          bijector=softmax)
+      x = [[-np.log(3.), 0.],
+           [np.log(3), np.log(5)]]
+      y = softmax.forward(x).eval()
+      expected_log_pdf = (stats.norm(loc=0., scale=1.).logpdf(x) -
+                          np.sum(np.log(y), axis=-1))
+      self.assertAllClose(expected_log_pdf,
+                          multi_logit_normal.log_prob(y).eval())
+      self.assertAllClose([1, 2, 3, 2],
+                          tf.shape(multi_logit_normal.sample([1, 2, 3])).eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

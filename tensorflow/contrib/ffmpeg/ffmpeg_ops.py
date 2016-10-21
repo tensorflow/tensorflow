@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
 from tensorflow.python.framework import common_shapes
@@ -115,4 +117,5 @@ def _load_library(name, op_list=None):
     logging.warning('%s file could not be loaded.', name)
 
 
-_load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])
+if os.name != 'nt':
+  _load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])

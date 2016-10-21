@@ -78,6 +78,9 @@ class LookupInterface : public ResourceBase {
   // Returns the data type of the value.
   virtual DataType value_dtype() const = 0;
 
+  // Returns the shape of a key in the table.
+  virtual TensorShape key_shape() const = 0;
+
   // Returns the shape of a value in the table.
   virtual TensorShape value_shape() const = 0;
 
@@ -107,6 +110,9 @@ class LookupInterface : public ResourceBase {
 
  protected:
   virtual ~LookupInterface() = default;
+
+ private:
+  Status CheckKeyAndValueTypes(const Tensor& keys, const Tensor& values);
 };
 
 }  // namespace lookup
