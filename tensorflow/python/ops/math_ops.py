@@ -1733,7 +1733,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   performed
   instead:
   ```prettyprint
-  tf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]
+  tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
   ```
 
   By setting the `reverse` kwarg to `True`, the cumprod is performed in the
@@ -1745,7 +1745,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 
   The `reverse` and `exclusive` kwargs can also be combined:
   ```prettyprint
-  tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]
+  tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
   ```
 
   Args:
