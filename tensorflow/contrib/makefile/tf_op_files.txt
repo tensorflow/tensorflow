@@ -152,6 +152,8 @@ tensorflow/core/kernels/quantized_concat_op.cc
 tensorflow/core/kernels/quantized_conv_ops.cc
 tensorflow/core/kernels/quantized_matmul_op.cc
 tensorflow/core/kernels/quantized_pooling_ops.cc
+tensorflow/core/kernels/quantized_reshape_op.cc
+tensorflow/core/kernels/requantize.cc
 tensorflow/core/ops/training_ops.cc
 tensorflow/core/ops/string_ops.cc
 tensorflow/core/ops/state_ops.cc

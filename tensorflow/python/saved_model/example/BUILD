@@ -36,6 +36,7 @@ py_binary(
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
     ],
 )

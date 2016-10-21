@@ -488,6 +488,7 @@ Status FastParseSerializedExample(
       switch (config.dense[d].dtype) {
         case DT_INT64: {
           SmallVector<int64> list;
+          list.reserve(num_elements);
           if (!feature.ParseInt64List(&list)) return parse_error();
           if (list.size() != num_elements) {
             return shape_error(list.size(), "int64");
@@ -498,6 +499,7 @@ Status FastParseSerializedExample(
         }
         case DT_FLOAT: {
           SmallVector<float> list;
+          list.reserve(num_elements);
           if (!feature.ParseFloatList(&list)) return parse_error();
           if (list.size() != num_elements) {
             return shape_error(list.size(), "float");
@@ -508,6 +510,7 @@ Status FastParseSerializedExample(
         }
         case DT_STRING: {
           SmallVector<string> list;
+          list.reserve(num_elements);
           if (!feature.ParseBytesList(&list)) return parse_error();
           if (list.size() != num_elements) {
             return shape_error(list.size(), "bytes");

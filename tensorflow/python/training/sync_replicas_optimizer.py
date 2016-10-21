@@ -262,6 +262,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
         initial_value=0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]

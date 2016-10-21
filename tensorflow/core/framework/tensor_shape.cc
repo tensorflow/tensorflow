@@ -339,8 +339,20 @@ string TensorShape::DebugString(const TensorShapeProto& proto) {
 bool TensorShapeUtils::StartsWith(const TensorShape& shape,
                                   const TensorShape& prefix) {
   if (shape.dims() < prefix.dims()) return false;
-  for (int i = 0; i < prefix.dims(); i++) {
+  for (int i = 0; i < prefix.dims(); ++i) {
     if (shape.dim_size(i) != prefix.dim_size(i)) return false;
+  }
+  return true;
+}
+
+bool TensorShapeUtils::EndsWith(const TensorShape& shape,
+                                const TensorShape& suffix) {
+  const int suffix_size = suffix.dims();
+  if (shape.dims() < suffix_size) return false;
+  for (int i = 0; i < suffix_size; ++i) {
+    if (shape.dim_size(shape.dims() - suffix_size + i) != suffix.dim_size(i)) {
+      return false;
+    }
   }
   return true;
 }

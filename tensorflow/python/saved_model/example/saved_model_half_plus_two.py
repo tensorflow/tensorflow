@@ -35,8 +35,8 @@ import tensorflow as tf
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
@@ -114,10 +114,9 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # Initialize all variables and then save the SavedModel.
     sess.run(tf.initialize_all_variables())
     builder.add_meta_graph_and_variables(
-        sess, [constants.TAG_SERVING],
+        sess, [tag_constants.SERVING],
         signature_def_map={
-            signature_constants.REGRESS_METHOD_NAME:
-                signature_def
+            signature_constants.REGRESS_METHOD_NAME: signature_def
         },
         assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS))
     builder.save(as_text)

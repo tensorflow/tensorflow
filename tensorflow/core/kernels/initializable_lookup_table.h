@@ -64,6 +64,8 @@ class InitializableLookupTable : public LookupInterface {
         "implementations");
   }
 
+  TensorShape key_shape() const final { return TensorShape(); }
+
   TensorShape value_shape() const final { return TensorShape(); }
 
   // Returns whether the table was initialized and is ready to serve lookups.

@@ -289,7 +289,6 @@ cc_test(
     srcs = ["bundle_shim_test.cc"],
     data = [
         ":saved_model_half_plus_two",
-        "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     # Link in all registered kernels.
@@ -299,6 +298,8 @@ cc_test(
         ":bundle_shim_constants",
         ":test_util",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:signature_constants",
+        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

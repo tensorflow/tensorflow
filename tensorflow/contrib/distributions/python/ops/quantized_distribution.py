@@ -182,12 +182,13 @@ class QuantizedDistribution(distributions.Distribution):
                distribution,
                lower_cutoff=None,
                upper_cutoff=None,
+               validate_args=False,
                name="QuantizedDistribution"):
     """Construct a Quantized Distribution representing `Y = ceiling(X)`.
 
-    Some properties are inherited from the distribution defining `X`.
-    In particular, `validate_args` and `allow_nan_stats` are determined for this
-    `QuantizedDistribution` by reading the `distribution`.
+    Some properties are inherited from the distribution defining `X`. Example:
+    `allow_nan_stats` is determined for this `QuantizedDistribution` by reading
+    the `distribution`.
 
     Args:
       distribution:  The base distribution class to transform. Typically an
@@ -201,6 +202,9 @@ class QuantizedDistribution(distributions.Distribution):
         If provided, base distribution's pdf/pmf should be defined at
         `upper_cutoff - 1`.
         `upper_cutoff` must be strictly greater than `lower_cutoff`.
+      validate_args: Python boolean.  Whether to validate input with asserts.
+        If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
       name: The name for the distribution.
 
     Raises:
@@ -208,23 +212,13 @@ class QuantizedDistribution(distributions.Distribution):
           `Distribution` or continuous.
       NotImplementedError:  If the base distribution does not implement `cdf`.
     """
+    parameters = locals()
+    parameters.pop("self")
     values = (
         list(distribution.parameters.values()) +
         [lower_cutoff, upper_cutoff])
-    with ops.name_scope(name, values=values):
+    with ops.name_scope(name, values=values) as ns:
       self._dist = distribution
-      super(QuantizedDistribution, self).__init__(
-          dtype=self._dist.dtype,
-          parameters={
-              "distribution": distribution,
-              "lower_cutoff": lower_cutoff,
-              "upper_cutoff": upper_cutoff,
-          },
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=self._dist.validate_args,
-          allow_nan_stats=self._dist.allow_nan_stats,
-          name=name)
 
       if lower_cutoff is not None:
         lower_cutoff = ops.convert_to_tensor(lower_cutoff, name="lower_cutoff")
@@ -233,22 +227,38 @@ class QuantizedDistribution(distributions.Distribution):
       contrib_tensor_util.assert_same_float_dtype(
           tensors=[self.distribution, lower_cutoff, upper_cutoff])
 
+      # We let QuantizedDistribution access _graph_parents since this class is
+      # more like a baseclass.
+      graph_parents = self._dist._graph_parents  # pylint: disable=protected-access
+
       checks = []
       if lower_cutoff is not None and upper_cutoff is not None:
         message = "lower_cutoff must be strictly less than upper_cutoff."
         checks.append(
             check_ops.assert_less(
                 lower_cutoff, upper_cutoff, message=message))
-
-      with ops.control_dependencies(checks if self.validate_args else []):
+      self._validate_args = validate_args  # self._check_integer uses this.
+      with ops.control_dependencies(checks if validate_args else []):
         if lower_cutoff is not None:
           self._lower_cutoff = self._check_integer(lower_cutoff)
+          graph_parents += [self._lower_cutoff]
         else:
           self._lower_cutoff = None
         if upper_cutoff is not None:
           self._upper_cutoff = self._check_integer(upper_cutoff)
+          graph_parents += [self._upper_cutoff]
         else:
           self._upper_cutoff = None
+
+    super(QuantizedDistribution, self).__init__(
+        dtype=self._dist.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=self._dist.allow_nan_stats,
+        parameters=parameters,
+        graph_parents=graph_parents,
+        name=ns)
 
   def _batch_shape(self):
     return self.distribution.batch_shape()

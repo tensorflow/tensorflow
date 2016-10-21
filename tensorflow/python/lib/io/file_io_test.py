@@ -47,6 +47,13 @@ class FileIoTest(tf.test.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual(b"testing", file_contents)
 
+  def testAtomicWriteStringToFile(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "testing")
+    self.assertTrue(file_io.file_exists(file_path))
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual(b"testing", file_contents)
+
   def testAppend(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="w") as f:

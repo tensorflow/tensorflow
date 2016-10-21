@@ -25,7 +25,6 @@ from six.moves import range
 from tensorflow.contrib.lookup import lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
