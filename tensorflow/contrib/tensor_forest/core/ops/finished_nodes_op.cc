@@ -71,9 +71,9 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
   std::vector<int32> stale;
 
   std::unique_ptr<random::SimplePhilox> simple_philox;
+  random::PhiloxRandom rnd_gen(params.random_seed);
 
   if (params.need_random) {
-    random::PhiloxRandom rnd_gen(params.random_seed);
     simple_philox.reset(new random::SimplePhilox(&rnd_gen));
   }
 
