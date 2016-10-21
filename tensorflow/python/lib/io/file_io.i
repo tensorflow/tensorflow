@@ -253,5 +253,9 @@ void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);
 %include "tensorflow/core/lib/io/buffered_inputstream.h"
 %unignoreall
 
+%include "tensorflow/c/tf_status_helper.h"
+
+%ignore tensorflow::io::internal::JoinPathImpl;
 %include "tensorflow/core/lib/io/path.h"
+
 %include "tensorflow/core/platform/file_statistics.h"

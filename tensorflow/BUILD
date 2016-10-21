@@ -60,12 +60,6 @@ package_group(
     ],
 )
 
-sh_binary(
-    name = "swig",
-    srcs = ["tools/swig/swig.sh"],
-    data = glob(["tools/swig/**"]),
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(
