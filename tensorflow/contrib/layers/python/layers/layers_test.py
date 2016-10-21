@@ -501,23 +501,24 @@ class Convolution2dTransposeTests(tf.test.TestCase):
 
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
-    num_filters = 32
-    input_size = [5, 3, 10, 12]
-    expected_size = [5, num_filters, 10, 12]
+    # `NCHW` data fomat is only supported for `GPU` device.
+    if tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        num_filters = 32
+        input_size = [5, 3, 10, 12]
+        expected_size = [5, num_filters, 10, 12]
 
-    images = tf.random_uniform(input_size, seed=1)
-    output = tf.contrib.layers.conv2d_transpose(
-        images, num_filters, [3, 3], stride=1,
-        padding='SAME', data_format='NCHW')
-    self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
+        images = tf.random_uniform(input_size, seed=1)
+        output = tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [3, 3], stride=1,
+            padding='SAME', data_format='NCHW')
+        self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
 
-    with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      self.assertListEqual(list(output.eval().shape), expected_size)
+        sess.run(tf.initialize_all_variables())
+        self.assertListEqual(list(output.eval().shape), expected_size)
 
 
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
     if tf.test.is_gpu_available():
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
