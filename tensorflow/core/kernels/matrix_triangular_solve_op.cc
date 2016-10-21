@@ -272,4 +272,4 @@ REGISTER_KERNEL_BUILDER(
     MatrixTriangularSolveOpGPU<double>);
 #endif //GOOGLE_CUDA
 
-} // namespace tensorflow
+}  // namespace tensorflow
