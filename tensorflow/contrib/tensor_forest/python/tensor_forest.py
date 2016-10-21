@@ -62,6 +62,8 @@ class ForestHParams(object):
                split_after_samples=250,
                min_split_samples=5,
                valid_leaf_threshold=1,
+               dominate_method='hoeffding',
+               dominate_fraction=0.99,
                **kwargs):
     self.num_trees = num_trees
     self.max_nodes = max_nodes
@@ -72,6 +74,8 @@ class ForestHParams(object):
     self.split_after_samples = split_after_samples
     self.min_split_samples = min_split_samples
     self.valid_leaf_threshold = valid_leaf_threshold
+    self.dominate_method = dominate_method
+    self.dominate_fraction = dominate_fraction
 
     for name, value in kwargs.items():
       setattr(self, name, value)
@@ -647,7 +651,9 @@ class RandomTreeGraphs(object):
           self.variables.start_epoch,
           epoch,
           num_split_after_samples=self.params.split_after_samples,
-          min_split_samples=self.params.min_split_samples)
+          min_split_samples=self.params.min_split_samples,
+          dominate_method=self.params.dominate_method,
+          dominate_fraction=self.params.dominate_fraction)
 
     # Update leaf scores.
     # TODO(thomaswc): Store the leaf scores in a TopN and only update the
