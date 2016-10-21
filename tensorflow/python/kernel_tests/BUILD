@@ -1264,7 +1264,19 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["notsan"],  # http://b/30445083
+)
+
+cuda_py_test(
+    name = "large_concat_op_test",
+    size = "small",
+    srcs = ["large_concat_op_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
 )
 
 cuda_py_test(
@@ -1322,6 +1334,7 @@ cuda_py_test(
     srcs = ["svd_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 20,
+    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 filegroup(

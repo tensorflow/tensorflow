@@ -139,7 +139,7 @@ def run_training():
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
     # Build the summary Tensor based on the TF collection of Summaries.
-    summary = tf.merge_all_summaries()
+    summary = tf.summary.merge_all()
 
     # Add the variable initializer Op.
     init = tf.initialize_all_variables()

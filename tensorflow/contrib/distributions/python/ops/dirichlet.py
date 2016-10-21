@@ -135,6 +135,8 @@ class Dirichlet(distribution.Distribution):
     ```
 
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[alpha]) as ns:
       alpha = ops.convert_to_tensor(alpha, name="alpha")
       with ops.control_dependencies([
@@ -145,14 +147,15 @@ class Dirichlet(distribution.Distribution):
         self._alpha_sum = math_ops.reduce_sum(alpha,
                                               reduction_indices=[-1],
                                               keep_dims=False)
-        super(Dirichlet, self).__init__(
-            dtype=self._alpha.dtype,
-            parameters={"alpha": self._alpha, "alpha_sum": self._alpha_sum},
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            is_continuous=True,
-            is_reparameterized=False,
-            name=ns)
+    super(Dirichlet, self).__init__(
+        dtype=self._alpha.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        is_reparameterized=False,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._alpha_sum],
+        name=ns)
 
   @property
   def alpha(self):

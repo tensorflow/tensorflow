@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import uuid
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -321,6 +322,24 @@ def rename(oldname, newname, overwrite=False):
   with errors.raise_exception_on_not_ok_status() as status:
     pywrap_tensorflow.RenameFile(
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
+
+
+def atomic_write_string_to_file(filename, contents):
+  """Writes to `filename` atomically.
+
+  This means that when `filename` appears in the filesystem, it will contain
+  all of `contents`. With write_string_to_file, it is possible for the file
+  to appear in the filesystem with `contents` only partially written.
+
+  Accomplished by writing to a temp file and then renaming it.
+
+  Args:
+    filename: string, pathname for a file
+    contents: string, contents that need to be written to the file
+  """
+  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+  write_string_to_file(temp_pathname, contents)
+  rename(temp_pathname, filename, overwrite=True)
 
 
 def delete_recursively(dirname):

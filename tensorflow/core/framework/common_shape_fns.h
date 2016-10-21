@@ -185,6 +185,9 @@ Status ReductionShapeForReduceJoin(shape_inference::InferenceContext* c);
 // Shape function for concat operations.
 Status ConcatShape(shape_inference::InferenceContext* c);
 
+// Shape function for concat operations.
+Status ConcatV2Shape(shape_inference::InferenceContext* c);
+
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
 Status BroadcastBinaryOpShapeFn(InferenceContext* c);

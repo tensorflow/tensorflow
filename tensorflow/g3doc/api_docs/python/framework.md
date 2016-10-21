@@ -645,8 +645,8 @@ Note that this is unrelated to the
 
 The GraphDef version information of this graph.
 
-For details on the meaning of each version, see [`GraphDef`]
-(https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+For details on the meaning of each version, see
+[`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
 ##### Returns:
 
@@ -2272,6 +2272,23 @@ Returns a `numpy.dtype` based on this `DType`.
 #### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
 
 Returns a `types_pb2.DataType` enum value based on this `DType`.
+
+
+
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
 
 
 

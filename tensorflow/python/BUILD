@@ -178,6 +178,7 @@ cc_library(
 cc_binary(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
+    copts = ["-Wno-sign-compare"],
     linkopts = select({
         "//conditions:default": [
             "-lm",
@@ -220,6 +221,7 @@ cc_library(
     name = "cpp_shape_inference",
     srcs = ["framework/cpp_shape_inference.cc"],
     hdrs = ["framework/cpp_shape_inference.h"],
+    copts = ["-Wno-sign-compare"],
     visibility = ["//visibility:public"],
     deps = [
         ":numpy_lib",
@@ -422,6 +424,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "framework_meta_graph_test",
+    size = "small",
+    srcs = ["framework/meta_graph_test.py"],
+    main = "framework/meta_graph_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "test_ops",
     out = "framework/test_ops.py",
@@ -461,6 +476,7 @@ py_test(
         ":gradients",
         ":math_ops",
         ":platform_test",
+        ":resources",
         ":session",
         ":sparse_ops",
         ":test_ops",
@@ -962,6 +978,18 @@ py_library(
 )
 
 py_library(
+    name = "resources",
+    srcs = ["ops/resources.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+    ],
+)
+
+py_library(
     name = "nn",
     srcs = ["ops/nn.py"],
     srcs_version = "PY2AND3",
@@ -1381,6 +1409,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":random_ops_gen",
+        ":resources",
         ":rnn",
         ":rnn_cell",
         ":script_ops",
@@ -2059,9 +2088,6 @@ py_test(
     size = "small",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "notsan",  # http://b/32109634
-    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -2087,6 +2113,7 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":platform",
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":summary_ops",

@@ -250,7 +250,7 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
     gpu::StreamExecutor* se =
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     if (gpu_allocators_[gpu_id] &&
-        se->GetDeviceDescription().numa_node() == bus_id) {
+        (se->GetDeviceDescription().numa_node() + 1) == bus_id) {
       gpu_allocators_[gpu_id]->AddAllocVisitor(visitor);
     }
   }

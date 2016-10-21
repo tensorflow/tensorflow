@@ -19,16 +19,15 @@ from __future__ import print_function
 
 
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
-_sparse_feature_cross_op = load_library.load_op_library(
+_sparse_feature_cross_op = loader.load_op_library(
     resource_loader.get_path_to_datafile("_sparse_feature_cross_op.so"))
-assert _sparse_feature_cross_op, "Could not load _sparse_feature_cross_op.so."
 
 # Default hash key for the FingerprintCat64.
 SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY = 0xDECAFCAFFE

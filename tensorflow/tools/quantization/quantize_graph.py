@@ -463,6 +463,8 @@ class GraphRewriter(object):
       self.eightbitize_concat_node(current_node)
     elif current_node.op == "BatchNormWithGlobalNormalization":
       self.eightbitize_batch_norm_node(current_node)
+    elif current_node.op == "Reshape":
+      self.eightbitize_reshape_node(current_node)
     else:
       new_node = tf.NodeDef()
       new_node.CopyFrom(current_node)
@@ -545,19 +547,20 @@ class GraphRewriter(object):
     return quantize_down_name
 
   def add_dequantize_result_node(self, quantized_output_name,
-                                 original_node_name):
+                                 original_node_name, min_tensor_index=1):
     dequantize_name = original_node_name
-    dequantize_node = create_node("Dequantize", dequantize_name,
-                                  [quantized_output_name,
-                                   quantized_output_name + ":1",
-                                   quantized_output_name + ":2"])
+    dequantize_node = create_node(
+        "Dequantize", dequantize_name,
+        [quantized_output_name,
+         "%s:%s" % (quantized_output_name, min_tensor_index),
+         "%s:%s" % (quantized_output_name, (min_tensor_index + 1))])
     set_attr_dtype(dequantize_node, "T", tf.quint8)
     set_attr_string(dequantize_node, "mode", b"MIN_FIRST")
     self.add_output_graph_node(dequantize_node)
 
   def eightbitize_mat_mul_node(self, original_node):
     """Replaces a MatMul node with the eight bit equivalent sub-graph."""
-    quantized_mat_mul_name = original_node.name + "_eightbit_quantized_bias_add"
+    quantized_mat_mul_name = original_node.name + "_eightbit_quantized_mat_mul"
     all_input_names = self.add_eightbit_prologue_nodes(original_node)
     quantized_mat_mul_node = create_node(
         "QuantizedMatMul", quantized_mat_mul_name,
@@ -742,6 +745,31 @@ class GraphRewriter(object):
     set_attr_dtype(quantized_concat_node, "T", tf.quint8)
     self.add_output_graph_node(quantized_concat_node)
     self.add_dequantize_result_node(quantized_concat_name, original_node.name)
+
+  def eightbitize_reshape_node(self, original_node):
+    """Replaces a Reshape node with the eight bit equivalent sub-graph.
+
+    Args:
+      original_node: Float node to be converted.
+
+    Returns:
+      Subgraph representing the quantized version of the original node.
+
+    """
+    namespace_prefix = original_node.name + "_eightbit"
+    quantized_reshape_name = namespace_prefix + "_quantized_reshape"
+    reshape_dims_name, reduction_dims_name = self.add_common_quantization_nodes(
+        namespace_prefix)
+    shape_input_name = original_node.input[1]
+    quantize_input_name, min_input_name, max_input_name = (
+        self.eightbitize_input_to_node(namespace_prefix, original_node.input[0],
+                                       reshape_dims_name, reduction_dims_name))
+    quantized_reshape_node = create_node(
+        "QuantizedReshape", quantized_reshape_name,
+        [quantize_input_name, shape_input_name, min_input_name, max_input_name])
+    set_attr_dtype(quantized_reshape_node, "T", tf.quint8)
+    self.add_output_graph_node(quantized_reshape_node)
+    self.add_dequantize_result_node(quantized_reshape_name, original_node.name)
 
   def eightbitize_batch_norm_node(self, original_node):
     """Replaces a MatMul node with the eight bit equivalent sub-graph."""

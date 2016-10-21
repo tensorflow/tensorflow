@@ -36,10 +36,6 @@ constexpr char kSavedModelVariablesDirectory[] = "variables";
 // SavedModel variables filename.
 constexpr char kSavedModelVariablesFilename[] = "variables";
 
-// Commonly used tags.
-constexpr char kSavedModelTagServe[] = "serve";
-constexpr char kSavedModelTagTrain[] = "train";
-
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_

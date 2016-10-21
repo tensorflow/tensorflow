@@ -28,7 +28,7 @@ class Resource : public ResourceBase {
   explicit Resource(const string& label) : label_(label) {}
   ~Resource() override {}
 
-  string DebugString() { return strings::StrCat("R/", label_); }
+  string DebugString() override { return strings::StrCat("R/", label_); }
 
  private:
   string label_;
@@ -39,7 +39,7 @@ class Other : public ResourceBase {
   explicit Other(const string& label) : label_(label) {}
   ~Other() override {}
 
-  string DebugString() { return strings::StrCat("O/", label_); }
+  string DebugString() override { return strings::StrCat("O/", label_); }
 
  private:
   string label_;
