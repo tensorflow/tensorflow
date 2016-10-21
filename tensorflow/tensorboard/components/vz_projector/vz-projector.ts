@@ -184,7 +184,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
           newSelectedPointIndices[0], this.inspectorPanel.distFunc,
           this.inspectorPanel.numNN);
       this.metadataCard.updateMetadata(
-          this.dataSet.points[newSelectedPointIndices[0]].metadata);
+          this.currentDataSet.points[newSelectedPointIndices[0]].metadata);
     } else {
       this.metadataCard.updateMetadata(null);
     }

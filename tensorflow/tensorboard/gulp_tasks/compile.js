@@ -32,7 +32,7 @@ var tsProject = ts.createProject('./tsconfig.json', {
 
 /** List of components (and their external deps) that are using es6 modules. */
 var ES6_COMPONENTS = [{
-  name: 'vz-projector',
+  name: 'vz_projector',
   deps: [
     'd3/d3.min.js', 'weblas/dist/weblas.js', 'three.js/build/three.min.js',
     'three.js/examples/js/controls/OrbitControls.js',
