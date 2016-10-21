@@ -15,8 +15,7 @@ Current Status
 
 The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
-bindings. Currently, only CPU builds are supported, but we are working on
-providing a GPU build as well.
+bindings.
 
 Note: Windows support is in an **alpha** state, and we welcome your feedback.
 
@@ -52,12 +51,6 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
   - Docker 1.9.1 (for automated testing)
 
 ### Current known limitations
-
-* CPU support only
-
-  - We are in the process of porting the GPU code in
-    `tensorflow/stream_executor` to build with CMake and work on non-POSIX
-    platforms.
 
 * Additional limitations for the Windows build:
 
@@ -148,7 +141,12 @@ Step-by-step Windows build
    More? -DPYTHON_EXECUTABLE=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/python.exe ^
    More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib
    ```
-
+   To build with GPU support add those lines:
+   ```
+   More? -Dtensorflow_ENABLE_GPU=ON ^
+   More? -DCUDNN_HOME="D:\...\cudnn"
+   ```
+    
    Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
    configuration that you choose when invoking `msbuild`. The known-good
    values are `Release` and `RelWithDebInfo`. The `Debug` build type is
