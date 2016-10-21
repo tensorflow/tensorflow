@@ -145,7 +145,7 @@ class EstimatorTest(tf.test.TestCase):
       tf.Variable(42.0, 'weight')
       return None, None, None
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
-    with self.assertRaisesRegexp(ValueError, 'Missing train_op'):
+    with self.assertRaisesRegexp(ValueError, 'Missing training_op'):
       est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_loss(self):
@@ -171,7 +171,8 @@ class EstimatorTest(tf.test.TestCase):
       return None, loss, train_op
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
     est.fit(input_fn=boston_input_fn, steps=1)
-    est.evaluate(input_fn=boston_eval_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
+      est.evaluate(input_fn=boston_eval_fn, steps=1)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
       est.predict(input_fn=boston_input_fn)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):

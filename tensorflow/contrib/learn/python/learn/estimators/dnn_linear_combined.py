@@ -445,7 +445,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         head=head,
         config=config,
         feature_engineering_fn=feature_engineering_fn,
-        default_prediction_key=head_lib.PedictionKey.CLASSES,
+        default_prediction_key=head_lib.PredictionKey.CLASSES,
         enable_centered_bias=enable_centered_bias)
 
   @deprecated_arg_values(
@@ -500,7 +500,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
   def _get_predict_ops(self, features):
     """See base class."""
     return super(DNNLinearCombinedClassifier, self)._get_predict_ops(features)[
-        head_lib.PedictionKey.PROBABILITIES]
+        head_lib.PredictionKey.PROBABILITIES]
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -642,12 +642,12 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         head=head,
         config=config,
         feature_engineering_fn=feature_engineering_fn,
-        default_prediction_key=head_lib.PedictionKey.SCORES,
+        default_prediction_key=head_lib.PredictionKey.SCORES,
         enable_centered_bias=enable_centered_bias)
 
   def _get_predict_ops(self, features):
     """See base class."""
     return super(DNNLinearCombinedRegressor, self)._get_predict_ops(features)[
-        head_lib.PedictionKey.SCORES]
+        head_lib.PredictionKey.SCORES]
 
 

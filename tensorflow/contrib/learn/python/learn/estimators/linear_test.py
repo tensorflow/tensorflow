@@ -295,7 +295,7 @@ class LinearClassifierTest(tf.test.TestCase):
 
     # Test the case where the 2nd element of the key is neither "classes" nor
     # "probabilities".
-    with self.assertRaises(ValueError):
+    with self.assertRaises(KeyError):
       classifier.evaluate(
           input_fn=_input_fn,
           steps=100,

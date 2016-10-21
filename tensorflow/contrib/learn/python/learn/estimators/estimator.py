@@ -87,7 +87,60 @@ class ModeKeys(object):
 class ModelFnOps(
     collections.namedtuple('ModelFnOps', ['predictions', 'loss', 'training_op',
                                           'default_metrics', 'signature_fn'])):
-  pass
+
+  def __new__(cls, predictions, loss, training_op, default_metrics,
+              signature_fn, mode):
+    # Validate training_op.
+    if training_op is None:
+      if mode == ModeKeys.TRAIN:
+        raise ValueError('Missing training_op.')
+    elif not isinstance(training_op, ops.Operation):
+      # TODO(ptucker): Should this be allowed? Consider raising error.
+      training_op = ops.convert_to_tensor(training_op).op
+
+    # Validate loss.
+    if loss is None:
+      if mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
+        raise ValueError('Missing loss.')
+    else:
+      loss = ops.convert_to_tensor(loss)
+      loss_shape = loss.get_shape()
+      if loss_shape.num_elements() not in (None, 1):
+        raise ValueError('Loss must be scalar: %s.' % loss)
+      if not loss_shape.is_compatible_with(tensor_shape.scalar()):
+        loss = array_ops.reshape(loss, [])
+
+    # Validate predictions.
+    if predictions is None:
+      if mode == ModeKeys.INFER or mode == ModeKeys.EVAL:
+        raise ValueError('Missing predictions.')
+    else:
+      if isinstance(predictions, dict):
+        predictions = {
+            k: contrib_framework.convert_to_tensor_or_sparse_tensor(v)
+            for k, v in six.iteritems(predictions)
+        }
+      else:
+        predictions = contrib_framework.convert_to_tensor_or_sparse_tensor(
+            predictions)
+
+    # Validate default_metrics
+    if default_metrics is None:
+      default_metrics = {}
+    else:
+      if not isinstance(default_metrics, dict):
+        raise ValueError('default_metrics must be a dict.')
+      for k, v in default_metrics.items():
+        if not isinstance(v, metric_spec.MetricSpec):
+          raise ValueError('Metric with key=%s is not MetricSpec' % k)
+
+    # validate signature_fn
+    if signature_fn:
+      if not callable(signature_fn):
+        raise ValueError('signature_fn is not callable.')
+
+    return super(ModelFnOps, cls).__new__(cls, predictions, loss, training_op,
+                                          default_metrics, signature_fn)
 
 
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
@@ -962,53 +1015,40 @@ class Estimator(BaseEstimator):
         feature_engineering_fn or _identity_feature_engineering_fn)
 
   def _call_model_fn(self, features, targets, mode):
-    """Calls model function with support of 2, 3 or 4 arguments."""
+    """Calls model function with support of 2, 3 or 4 arguments.
+
+    Args:
+      features: features dict.
+      targets: targets dict.
+      mode: ModeKeys
+
+    Returns:
+      A ModelFnOps object. If model_fn returns a tuple, wraps them up in a
+      ModelFnOps object.
+
+    Raises:
+      ValueError: if model_fn returns invalid objects.
+    """
     features, targets = self._feature_engineering_fn(features, targets)
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
       if 'params' in model_fn_args:
-        predictions, loss, train_op = self._model_fn(
-            features, targets, mode=mode, params=self.params)
+        model_fn_results = self._model_fn(features, targets, mode=mode,
+                                          params=self.params)
       else:
-        predictions, loss, train_op = self._model_fn(
-            features, targets, mode=mode)
+        model_fn_results = self._model_fn(features, targets, mode=mode)
     else:
-      predictions, loss, train_op = self._model_fn(features, targets)
+      model_fn_results = self._model_fn(features, targets)
 
-    # Validate train_op.
-    if train_op is None:
-      if mode == ModeKeys.TRAIN:
-        raise ValueError('Missing train_op.')
-    elif not isinstance(train_op, ops.Operation):
-      train_op = ops.convert_to_tensor(train_op).op
-
-    # Validate loss.
-    if loss is None:
-      if mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
-        raise ValueError('Missing loss.')
+    if isinstance(model_fn_results, ModelFnOps):
+      return model_fn_results
     else:
-      loss = ops.convert_to_tensor(loss)
-      loss_shape = loss.get_shape()
-      if loss_shape.num_elements() not in (None, 1):
-        raise ValueError('Loss must be scalar: %s.' % loss)
-      if not loss_shape.is_compatible_with(tensor_shape.scalar()):
-        loss = array_ops.reshape(loss, [])
-
-    # Validate predictions.
-    if predictions is None:
-      if mode == ModeKeys.INFER:
-        raise ValueError('Missing predictions.')
-    else:
-      if isinstance(predictions, dict):
-        predictions = {
-            k: contrib_framework.convert_to_tensor_or_sparse_tensor(v)
-            for k, v in six.iteritems(predictions)
-        }
-      else:
-        predictions = contrib_framework.convert_to_tensor_or_sparse_tensor(
-            predictions)
-
-    return predictions, loss, train_op
+      # Here model_fn_ops should be a tuple with 3 elements.
+      if len(model_fn_results) != 3:
+        raise ValueError('Unrecognized value returned by model_fn, '
+                         'please return ModelFnOps.')
+      return ModelFnOps(model_fn_results[0], model_fn_results[1],
+                        model_fn_results[2], None, None, mode)
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -1024,8 +1064,8 @@ class Estimator(BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    _, loss, train_op = self._call_model_fn(features, targets, ModeKeys.TRAIN)
-    return train_op, loss
+    model_fn_ops = self._call_model_fn(features, targets, ModeKeys.TRAIN)
+    return model_fn_ops.training_op, model_fn_ops.loss
 
   def _get_eval_ops(self, features, targets, metrics):
     """Method that builds model graph and returns evaluation ops.
@@ -1052,9 +1092,17 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if `metrics` don't match `targets`.
     """
-    predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
-    result = {'loss': metrics_lib.streaming_mean(loss)}
-    result.update(_make_metrics_ops(metrics, features, targets, predictions))
+    model_fn_ops = self._call_model_fn(features, targets, ModeKeys.EVAL)
+
+    all_metrics = model_fn_ops.default_metrics
+    # Custom metrics should overwrite defaults.
+    if metrics:
+      all_metrics.update(metrics)
+
+    result = _make_metrics_ops(all_metrics, features, targets,
+                               model_fn_ops.predictions)
+    if 'loss' not in result:
+      result['loss'] = metrics_lib.streaming_mean(model_fn_ops.loss)
     return result
 
   def _get_predict_ops(self, features):
@@ -1072,5 +1120,6 @@ class Estimator(BaseEstimator):
     """
     targets = tensor_signature.create_placeholders_from_signatures(
         self._targets_info)
-    predictions, _, _ = self._call_model_fn(features, targets, ModeKeys.INFER)
-    return predictions
+    model_fn_ops = self._call_model_fn(features, targets, ModeKeys.INFER)
+    return model_fn_ops.predictions
+
