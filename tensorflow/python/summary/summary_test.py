@@ -40,6 +40,21 @@ class ScalarSummaryTest(tf.test.TestCase):
     self.assertEqual(values[0].tag, 'outer/inner')
     self.assertEqual(values[0].simple_value, 3.0)
 
+  def testSummarizingVariable(self):
+    with self.test_session() as s:
+      c = tf.constant(42.0)
+      v = tf.Variable(c)
+      ss = tf.summary.scalar('summary', v)
+      init = tf.initialize_all_variables()
+      s.run(init)
+      summ_str = s.run(ss)
+    summary = tf.Summary()
+    summary.ParseFromString(summ_str)
+    self.assertEqual(len(summary.value), 1)
+    value = summary.value[0]
+    self.assertEqual(value.tag, 'summary')
+    self.assertEqual(value.simple_value, 42.0)
+
   def testImageSummary(self):
     with self.test_session() as s:
       i = tf.ones((5, 4, 4, 3))
