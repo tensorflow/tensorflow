@@ -45,6 +45,7 @@ def _bytes_feature(value):
 
 
 def convert_to(data_set, name):
+  """Converts a dataset to tfrecords."""
   images = data_set.images
   labels = data_set.labels
   num_examples = data_set.num_examples
@@ -71,7 +72,7 @@ def convert_to(data_set, name):
   writer.close()
 
 
-def main(argv):
+def main(unused_argv):
   # Get the data.
   data_sets = mnist.read_data_sets(FLAGS.directory,
                                    dtype=tf.uint8,

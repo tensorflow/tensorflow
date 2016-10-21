@@ -81,7 +81,7 @@ def run_training():
     eval_correct = mnist.evaluation(logits, labels)
 
     # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
 
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver()

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cmath>
 #include <functional>
-#include <typeinfo>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -86,7 +85,7 @@ struct safe_div_or_mod_op {
 template <typename T, typename DivOrMod>
 struct functor_traits<safe_div_or_mod_op<T, DivOrMod>> {
   enum {
-    Cost = scalar_div_cost<T, false>::value,
+    Cost = functor_traits<DivOrMod>::Cost + NumTraits<T>::AddCost,
     PacketAccess = false,
   };
 };
@@ -237,6 +236,70 @@ struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
   };
 };
 
+// TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
+template <typename T>
+struct google_floor_div {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    if ((x < T(0)) != (y < T(0))) {
+      T abs_x = std::abs(x);
+      T abs_y = std::abs(y);
+      return -(abs_x + abs_y - 1) / abs_y;
+    } else {
+      return x / y;
+    }
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<google_floor_div<Scalar>> {
+  enum {
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
+           2 * NumTraits<Scalar>::AddCost,
+    PacketAccess = false
+  };
+};
+
+// TODO(b//32239616): This kernel should be moved into Eigen and vectorized.
+template <typename T>
+struct google_floor_fmod {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // EIGEN_STATIC_ASSERT(NUMERIC_TYPE_MUST_BE_REAL);
+    T trunc_mod = std::fmod(x, y);
+    return (x < T(0)) == (y < T(0)) ? trunc_mod : std::fmod(trunc_mod + y, y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<google_floor_fmod<Scalar>> {
+  enum {
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
+           2 * NumTraits<Scalar>::AddCost,
+    PacketAccess = false
+  };
+};
+
+// TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
+template <typename T>
+struct google_floor_mod {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // EIGEN_STATIC_ASSERT(!NUMERIC_TYPE_MUST_BE_REAL);
+    T trunc_mod = x % y;
+    return (x < T(0)) == (y < T(0)) ? trunc_mod : (trunc_mod + y) % y;
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<google_floor_mod<Scalar>> {
+  enum {
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
+           2 * NumTraits<Scalar>::AddCost,
+    PacketAccess = false
+  };
+};
+
 #if EIGEN_COMP_GNUC && __cplusplus > 199711L
 #define DISABLE_FLOAT_EQUALITY_WARNING \
   _Pragma("GCC diagnostic push")       \
@@ -254,8 +317,7 @@ struct scalar_round_op_google {
     EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
                         NUMERIC_TYPE_MUST_BE_REAL)
 
-    Scalar round_val;
-    round_val = Eigen::numext::floor(x);
+    Scalar round_val = Eigen::numext::floor(x);
     const Scalar fraction = x - round_val;
     if (fraction > Scalar(.5)) {
       round_val += Scalar(1.0);
@@ -495,6 +557,24 @@ struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
 template <typename T>
 struct safe_mod : base<T, Eigen::internal::safe_div_or_mod_op<
                               T, Eigen::internal::scalar_mod2_op<T>>> {
+  static const bool has_errors = true;
+};
+
+template <typename T>
+struct floor_fmod : base<T, Eigen::internal::google_floor_fmod<T>> {};
+
+template <typename T>
+struct safe_floor_mod : base<T, Eigen::internal::safe_div_or_mod_op<
+                                    T, Eigen::internal::google_floor_mod<T>>> {
+  static const bool has_errors = true;
+};
+
+template <typename T>
+struct floor_div : base<T, Eigen::internal::google_floor_div<T>> {};
+
+template <typename T>
+struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
+                                    T, Eigen::internal::google_floor_div<T>>> {
   static const bool has_errors = true;
 };
 

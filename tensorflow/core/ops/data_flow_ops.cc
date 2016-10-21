@@ -1518,6 +1518,7 @@ REGISTER_OP("MutableDenseHashTable")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")
     .Attr("initial_num_buckets: int = 131072")  // 2^17
+    .Attr("max_load_factor: float = 0.8")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
@@ -1528,7 +1529,7 @@ This op creates a mutable hash table, specifying the type of its keys and
 values. Each value must be a scalar. Data can be inserted into the table using
 the insert operations. It does not support the initialization operation.
 
-empty_key: The key to use to represent empty buckets internally. Must not
+empty_key: The key used to represent empty key buckets internally. Must not
   be used in insert or lookup operations.
 table_handle: Handle to a table.
 container: If non-empty, this table is placed in the given container.
@@ -1540,6 +1541,8 @@ value_dtype: Type of the table values.
 value_shape: The shape of each value.
 initial_num_buckets: The initial number of hash table buckets. Must be a power
   to 2.
+max_load_factor: The maximum ratio between number of entries and number of
+  buckets before growing the table. Must be between 0 and 1.
 )doc");
 
 REGISTER_OP("InitializeTable")

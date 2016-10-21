@@ -309,7 +309,7 @@ concatenated.
 
 - - -
 
-### `tf.nn.convolution(input, filter, padding, strides=None, dilation_rate=None, name=None)` {#convolution}
+### `tf.nn.convolution(input, filter, padding, strides=None, dilation_rate=None, name=None, data_format=None)` {#convolution}
 
 Computes sums of N-D convolutions (actually cross-correlation).
 
@@ -319,7 +319,8 @@ convolution, based on the French word "trous" meaning holes in English) via
 the optional `dilation_rate` parameter.  Currently, however, output striding
 is not supported for atrous convolutions.
 
-Specifically, given rank (N+2) `input` Tensor of shape
+Specifically, in the case that `data_format` does not start with "NC", given
+a rank (N+2) `input` Tensor of shape
 
   [num_batches,
    input_spatial_shape[0],
@@ -344,17 +345,25 @@ position (x[0], ..., x[N-1]):
 
       sum_{z[0], ..., z[N-1], q}
 
-          filters[z[0], ..., z[N-1], q, k] *
+          filter[z[0], ..., z[N-1], q, k] *
           padded_input[b,
                        x[0]*strides[0] + dilation_rate[0]*z[0],
                        ...,
                        x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
-                       q],
+                       q]
 
 where `padded_input` is obtained by zero padding the input using an effective
 spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
 output striding `strides` as described in the
 [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+
+In the case that `data_format` does start with `"NC"`, the `input` and output
+(but not the `filter`) are simply transposed as follows:
+
+  convolution(input, data_format, **kwargs) =
+    tf.transpose(convolution(tf.transpose(input, [0] + range(2,N+2) + [1]),
+                             **kwargs),
+                 [0, N+1] + range(1, N+1))
 
 It is required that 1 <= N <= 3.
 
@@ -362,7 +371,10 @@ It is required that 1 <= N <= 3.
 
 
 *  <b>`input`</b>: An N-D `Tensor` of type `T`, of shape
-    `[batch_size] + input_spatial_shape + [in_channels]`.
+    `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
+    not start with "NC" (default), or
+    `[batch_size, in_channels] + input_spatial_shape` if data_format starts
+    with "NC".
 *  <b>`filter`</b>: An N-D `Tensor` with the same type as `input` and shape
     `spatial_filter_shape + [in_channels, out_channels]`.
 *  <b>`padding`</b>: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
@@ -378,13 +390,24 @@ It is required that 1 <= N <= 3.
     filter in each spatial dimension i.  If any value of dilation_rate is > 1,
     then all values of strides must be 1.
 *  <b>`name`</b>: Optional name for the returned tensor.
+*  <b>`data_format`</b>: A string or None.  Specifies whether the channel dimension of
+    the `input` and output is the last dimension (default, or if `data_format`
+    does not start with "NC"), or the second dimension (if `data_format`
+    starts with "NC").  For N=1, the valid values are "NWC" (default) and
+    "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+    N=3, the valid value is "NDHWC".
 
 ##### Returns:
 
-  A `Tensor` with the same type as `value` of shape
+  A `Tensor` with the same type as `input` of shape
 
-      `[batch_size] + output_spatial_shape + [out_channels]`,
+      `[batch_size] + output_spatial_shape + [out_channels]`
 
+  if data_format is None or does not start with "NC", or
+
+      `[batch_size, out_channels] + output_spatial_shape`
+
+  if data_format starts with "NC",
   where `output_spatial_shape` depends on the value of `padding`.
 
   If padding == "SAME":
@@ -399,8 +422,8 @@ It is required that 1 <= N <= 3.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If input/output depth does not match `filter` shape, or if
-    padding is other than `"VALID"` or `"SAME"`.
+*  <b>`ValueError`</b>: If input/output depth does not match `filter` shape, if padding
+    is other than `"VALID"` or `"SAME"`, or if data_format is invalid.
 
 
 - - -
@@ -586,9 +609,9 @@ by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
 [OverFeat: Integrated Recognition, Localization and Detection using
 Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks]
-(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
-to the so-called noble identities in multi-rate signal processing.
+Scanning with Deep Max-Pooling Convolutional Neural Networks](http://arxiv.org/abs/1302.1700).
+Atrous convolution is also closely related to the so-called noble identities
+in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
 above). The implementation here reduces
@@ -710,19 +733,27 @@ deconvolution.
 
 Computes a 1-D convolution given 3-D input and filter tensors.
 
-Given an input tensor of shape [batch, in_width, in_channels]
+Given an input tensor of shape
+  [batch, in_width, in_channels]
+if data_format is "NHWC", or
+  [batch, in_channels, in_width]
+if data_format is "NCHW",
 and a filter / kernel tensor of shape
 [filter_width, in_channels, out_channels], this op reshapes
 the arguments to pass them to conv2d to perform the equivalent
 convolution operation.
 
-Internally, this op reshapes the input tensors and invokes
-`tf.nn.conv2d`.  A tensor of shape [batch, in_width, in_channels]
-is reshaped to [batch, 1, in_width, in_channels], and the filter
-is reshaped to [1, filter_width, in_channels, out_channels].
-The result is then reshaped back to [batch, out_width, out_channels]
-(where out_width is a function of the stride and padding as in
-conv2d) and returned to the caller.
+Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
+For example, if `data_format` does not start with "NC", a tensor of shape
+  [batch, in_width, in_channels]
+is reshaped to
+  [batch, 1, in_width, in_channels],
+and the filter is reshaped to
+  [1, filter_width, in_channels, out_channels].
+The result is then reshaped back to
+  [batch, out_width, out_channels]
+(where out_width is a function of the stride and padding as in conv2d) and
+returned to the caller.
 
 ##### Args:
 
@@ -742,6 +773,11 @@ conv2d) and returned to the caller.
 ##### Returns:
 
   A `Tensor`.  Has the same type as input.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `data_format` is invalid.
 
 
 - - -
@@ -996,7 +1032,7 @@ pooling region.
 *  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
     When set to True, generates the pooling sequence in a
     pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
     difference between pseudorandom and random.
 *  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
     When set to True, it means when pooling, the values at the boundary
@@ -1080,7 +1116,7 @@ For more details on fractional max pooling, see this paper:
 *  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
     When set to True, generates the pooling sequence in a
     pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
     difference between pseudorandom and random.
 *  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
     When set to True, it means when pooling, the values at the boundary
@@ -1116,11 +1152,11 @@ For more details on fractional max pooling, see this paper:
 
 - - -
 
-### `tf.nn.pool(input, window_shape, pooling_type, padding, dilation_rate=None, strides=None, name=None)` {#pool}
+### `tf.nn.pool(input, window_shape, pooling_type, padding, dilation_rate=None, strides=None, name=None, data_format=None)` {#pool}
 
 Performs an N-D pooling operation.
 
-Computes for
+In the case that `data_format` does not start with "NC", computes for
     0 <= b < batch_size,
     0 <= x[i] < output_spatial_shape[i],
     0 <= c < num_channels:
@@ -1138,12 +1174,22 @@ and pad_before is defined based on the value of `padding` as described in the
 [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
 The reduction never includes out-of-bounds positions.
 
+In the case that `data_format` starts with `"NC"`, the `input` and output are
+simply transposed as follows:
+
+  pool(input, data_format, **kwargs) =
+    tf.transpose(pool(tf.transpose(input, [0] + range(2,N+2) + [1]),
+                      **kwargs),
+                 [0, N+1] + range(1, N+1))
+
 ##### Args:
 
 
 *  <b>`input`</b>: Tensor of rank N+2, of shape
-    [batch_size] + input_spatial_shape + [num_channels].
-    Pooling happens over the spatial dimensions only.
+    `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
+    not start with "NC" (default), or
+    `[batch_size, num_channels] + input_spatial_shape` if data_format starts
+    with "NC".  Pooling happens over the spatial dimensions only.
 *  <b>`window_shape`</b>: Sequence of N ints >= 1.
 *  <b>`pooling_type`</b>: Specifies pooling operation, must be "AVG" or "MAX".
 *  <b>`padding`</b>: The padding algorithm, must be "SAME" or "VALID".
@@ -1155,11 +1201,23 @@ The reduction never includes out-of-bounds positions.
     If any value of strides is > 1, then all values of dilation_rate must be
     1.
 *  <b>`name`</b>: Optional. Name of the op.
+*  <b>`data_format`</b>: A string or None.  Specifies whether the channel dimension of
+    the `input` and output is the last dimension (default, or if `data_format`
+    does not start with "NC"), or the second dimension (if `data_format`
+    starts with "NC").  For N=1, the valid values are "NWC" (default) and
+    "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+    N=3, the valid value is "NDHWC".
 
 ##### Returns:
 
   Tensor of rank N+2, of shape
-    [batch_size] + output_spatial_shape + [num_channels],
+    [batch_size] + output_spatial_shape + [num_channels]
+
+  if data_format is None or does not start with "NC", or
+
+    [batch_size, num_channels] + output_spatial_shape
+
+  if data_format starts with "NC",
   where `output_spatial_shape` depends on the value of padding:
 
   If padding = "SAME":
@@ -1636,7 +1694,7 @@ equivalent formulation
 
 ### `tf.nn.softmax(logits, dim=-1, name=None)` {#softmax}
 
-Computes log softmax activations.
+Computes softmax activations.
 
 For each batch `i` and class `j` we have
 
@@ -1670,7 +1728,7 @@ Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
-    logsoftmax = logits - reduce_sum(exp(logits), dim)
+    logsoftmax = logits - log(reduce_sum(exp(logits), dim))
 
 ##### Args:
 
@@ -2243,9 +2301,6 @@ given.
     most TensorFlow data is batch-major, so by default this function
     accepts input and emits output in batch-major form.
 *  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    initial_state is not provided.
-*  <b>`sequence_length`</b>: An int32/int64 vector, size `[batch_size]`,
-    containing the actual lengths for each of the sequences.
     either of the initial states are not provided.
 *  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
 
@@ -2799,10 +2854,8 @@ TensorFlow provides the following sampled loss functions for faster training.
 Computes and returns the noise-contrastive estimation training loss.
 
 See [Noise-contrastive estimation: A new estimation principle for
-unnormalized statistical models]
-(http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-Also see our [Candidate Sampling Algorithms Reference]
-(../../extras/candidate_sampling.pdf)
+unnormalized statistical models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+Also see our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
 Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
 so your labels must be sorted in order of decreasing frequency to achieve

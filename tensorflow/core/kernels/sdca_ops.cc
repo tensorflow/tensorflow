@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ./ops/sdca_ops.cc.
+// See docs in ../ops/sdca_ops.cc.
 
 #define EIGEN_USE_THREADS
 
@@ -64,13 +64,25 @@ using UnalignedInt64Vector = TTypes<const int64>::UnalignedConstVec;
 
 // Statistics computed with input (ModelWeights, Example).
 struct ExampleStatistics {
-  // feature_weights dot feature_values for the example.
-  double wx = 0;
-  // dot product using the previous weights
-  double prev_wx = 0;
-  // sum of squared feature values occurring in the example divided by
+  // Logits for each class.
+  // For binary case, this should be a vector of length 1; while for multiclass
+  // case, this vector has the same length as the number of classes, where each
+  // value corresponds to one class.
+  // Using InlinedVector is to avoid heap allocation for small number of
+  // classes, and 3 is chosen to minimize memory usage for the multiclass case.
+  gtl::InlinedVector<double, 3> wx;
+
+  // Multiplication using the previous weights.
+  gtl::InlinedVector<double, 3> prev_wx;
+
+  // Sum of squared feature values occurring in the example divided by
   // L2 * sum(example_weights).
   double normalized_squared_norm = 0;
+
+  // Num_weight_vectors equals to the number of classification classes in the
+  // multiclass case; while for binary case, it is 1.
+  ExampleStatistics(const int num_weight_vectors)
+      : wx(num_weight_vectors, 0.0), prev_wx(num_weight_vectors, 0.0) {}
 };
 
 class Regularizations {
@@ -95,8 +107,16 @@ class Regularizations {
   }
 
   // Vectorized float variant of the above.
-  Eigen::Tensor<float, 1, Eigen::RowMajor> EigenShrink(
+  Eigen::Tensor<float, 1, Eigen::RowMajor> EigenShrinkVector(
       const Eigen::Tensor<float, 1, Eigen::RowMajor> weights) const {
+    // Proximal step on the weights which is sign(w)*|w - shrinkage|+.
+    return weights.sign() * ((weights.abs() - weights.constant(shrinkage_))
+                                 .cwiseMax(weights.constant(0.0)));
+  }
+
+  // Matrix float variant of the above.
+  Eigen::Tensor<float, 2, Eigen::RowMajor> EigenShrinkMatrix(
+      const Eigen::Tensor<float, 2, Eigen::RowMajor> weights) const {
     // Proximal step on the weights which is sign(w)*|w - shrinkage|+.
     return weights.sign() * ((weights.abs() - weights.constant(shrinkage_))
                                  .cwiseMax(weights.constant(0.0)));
@@ -119,11 +139,15 @@ class ModelWeights;
 // Struct describing a single example.
 class Example {
  public:
-  // Compute dot product between weights, and example feature values. This
-  // method also computes the normalized example norm used in SDCA update.
+  // Compute matrix vector product between weights (a matrix) and features
+  // (a vector). This method also computes the normalized example norm used
+  // in SDCA update.
+  // For multiclass case, num_weight_vectors equals to the number of classes;
+  // while for binary case, it is 1.
   const ExampleStatistics ComputeWxAndWeightedExampleNorm(
       const int num_loss_partitions, const ModelWeights& model_weights,
-      const Regularizations& regularization) const;
+      const Regularizations& regularization,
+      const int num_weight_vectors) const;
 
   float example_label() const { return example_label_; }
 
@@ -145,9 +169,16 @@ class Example {
     // Returns a row slice from the matrix.
     Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>> row()
         const {
-      // TensorMap to a row slice of the matrix.
       return Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>>(
           data_matrix.data() + row_index * data_matrix.dimension(1),
+          data_matrix.dimension(1));
+    }
+
+    // Returns a row slice as a 1 * F matrix, where F is the number of features.
+    Eigen::TensorMap<Eigen::Tensor<const float, 2, Eigen::RowMajor>>
+    row_as_matrix() const {
+      return Eigen::TensorMap<Eigen::Tensor<const float, 2, Eigen::RowMajor>>(
+          data_matrix.data() + row_index * data_matrix.dimension(1), 1,
           data_matrix.dimension(1));
     }
 
@@ -176,55 +207,59 @@ class Example {
 // delta weight which the optimizer learns in each call to the optimizer.
 class FeatureWeightsDenseStorage {
  public:
-  FeatureWeightsDenseStorage(const TTypes<const float>::Vec nominals,
-                             TTypes<float>::Vec deltas)
+  FeatureWeightsDenseStorage(const TTypes<const float>::Matrix nominals,
+                             TTypes<float>::Matrix deltas)
       : nominals_(nominals), deltas_(deltas) {}
 
   // Check if a feature index is with-in the bounds.
   bool IndexValid(const int64 index) const {
-    return index >= 0 && index < deltas_.size();
+    return index >= 0 && index < deltas_.dimension(1);
   }
 
-  // Nominals here are the original weight vector.
-  TTypes<const float>::Vec nominals() const { return nominals_; }
+  // Nominals here are the original weight matrix.
+  TTypes<const float>::Matrix nominals() const { return nominals_; }
 
   // Delta weights durining mini-batch updates.
-  TTypes<float>::Vec deltas() const { return deltas_; }
-
-  // Nominal value at a particular feature index.
-  float nominals(const int64 index) const { return nominals_(index); }
-
-  // Delta value at a particular feature index.
-  float deltas(const int64 index) const { return deltas_(index); }
+  TTypes<float>::Matrix deltas() const { return deltas_; }
 
   // Updates delta weights based on active dense features in the example and
   // the corresponding dual residual.
-  void UpdateDenseDeltaWeights(const Eigen::ThreadPoolDevice& device,
-                               const Example::DenseVector& dense_vector,
-                               const double normalized_bounded_dual_delta) {
+  void UpdateDenseDeltaWeights(
+      const Eigen::ThreadPoolDevice& device,
+      const Example::DenseVector& dense_vector,
+      const std::vector<double>& normalized_bounded_dual_delta) {
+    // Transform the dual vector into a column matrix.
+    const Eigen::TensorMap<Eigen::Tensor<const double, 2, Eigen::RowMajor>>
+        dual_matrix(normalized_bounded_dual_delta.data(),
+                    normalized_bounded_dual_delta.size(), 1);
+    const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
+        Eigen::IndexPair<int>(1, 0)};
+    // This essentially computes delta_w += delta_vector / \lamdba * N.
     deltas_.device(device) =
-        deltas_ +
-        dense_vector.row() * deltas_.constant(normalized_bounded_dual_delta);
+        (deltas_.cast<double>() +
+         dual_matrix.contract(dense_vector.row_as_matrix().cast<double>(),
+                              product_dims))
+            .cast<float>();
   }
 
  private:
   // The nominal value of the weight for a feature (indexed by its id).
-  const TTypes<const float>::Vec nominals_;
+  const TTypes<const float>::Matrix nominals_;
   // The accumulated delta weight for a feature (indexed by its id).
-  TTypes<float>::Vec deltas_;
+  TTypes<float>::Matrix deltas_;
 };
 
 // Similar to FeatureWeightsDenseStorage, but the underlying weights are stored
-// a hash map.
+// in an unordered map.
 class FeatureWeightsSparseStorage {
  public:
   FeatureWeightsSparseStorage(const TTypes<const int64>::Vec indices,
-                              const TTypes<const float>::Vec nominals,
-                              TTypes<float>::Vec deltas)
+                              const TTypes<const float>::Matrix nominals,
+                              TTypes<float>::Matrix deltas)
       : nominals_(nominals), deltas_(deltas) {
     // Create a map from sparse index to the dense index of the underlying
     // storage.
-    for (int j = 0; j < indices.size(); ++j) {
+    for (int64 j = 0; j < indices.size(); ++j) {
       indices_to_id_[indices(j)] = j;
     }
   }
@@ -234,37 +269,41 @@ class FeatureWeightsSparseStorage {
     return indices_to_id_.find(index) != indices_to_id_.end();
   }
 
-  // Nominal value at a particular feature index.
-  float nominals(const int64 index) const {
+  // Nominal value at a particular feature index and class label.
+  float nominals(const int class_id, const int64 index) const {
     auto it = indices_to_id_.find(index);
-    return nominals_(it->second);
+    return nominals_(class_id, it->second);
   }
 
   // Delta weights durining mini-batch updates.
-  float deltas(const int64 index) const {
+  float deltas(const int class_id, const int64 index) const {
     auto it = indices_to_id_.find(index);
-    return deltas_(it->second);
+    return deltas_(class_id, it->second);
   }
 
   // Updates delta weights based on active sparse features in the example and
   // the corresponding dual residual.
-  void UpdateSparseDeltaWeights(const Eigen::ThreadPoolDevice& device,
-                                const Example::SparseFeatures& sparse_features,
-                                const double normalized_bounded_dual_delta) {
+  void UpdateSparseDeltaWeights(
+      const Eigen::ThreadPoolDevice& device,
+      const Example::SparseFeatures& sparse_features,
+      const std::vector<double>& normalized_bounded_dual_delta) {
     for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
       const double feature_value = sparse_features.values == nullptr
                                        ? 1.0
                                        : (*sparse_features.values)(k);
       auto it = indices_to_id_.find((*sparse_features.indices)(k));
-      deltas_(it->second) += feature_value * normalized_bounded_dual_delta;
+      for (size_t l = 0; l < normalized_bounded_dual_delta.size(); ++l) {
+        deltas_(l, it->second) +=
+            feature_value * normalized_bounded_dual_delta[l];
+      }
     }
   }
 
  private:
   // The nominal value of the weight for a feature (indexed by its id).
-  const TTypes<const float>::Vec nominals_;
+  const TTypes<const float>::Matrix nominals_;
   // The accumulated delta weight for a feature (indexed by its id).
-  TTypes<float>::Vec deltas_;
+  TTypes<float>::Matrix deltas_;
   // Map from feature index to an index to the dense vector.
   std::unordered_map<int64, int64> indices_to_id_;
 };
@@ -285,9 +324,9 @@ class ModelWeights {
 
   // Go through all the features present in the example, and update the
   // weights based on the dual delta.
-  void UpdateDeltaWeights(const Eigen::ThreadPoolDevice& device,
-                          const Example& example,
-                          const double normalized_bounded_dual_delta) {
+  void UpdateDeltaWeights(
+      const Eigen::ThreadPoolDevice& device, const Example& example,
+      const std::vector<double>& normalized_bounded_dual_delta) {
     // Sparse weights.
     for (size_t j = 0; j < sparse_weights_.size(); ++j) {
       sparse_weights_[j].UpdateSparseDeltaWeights(
@@ -324,11 +363,14 @@ class ModelWeights {
       Tensor* delta_t;
       sparse_weights_outputs.allocate(i, sparse_weights_inputs[i].shape(),
                                       &delta_t);
-      auto deltas = delta_t->flat<float>();
+      // Convert the input vector to a row matrix in internal representation.
+      auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
       deltas.setZero();
       sparse_weights_.emplace_back(FeatureWeightsSparseStorage{
           sparse_indices_inputs[i].flat<int64>(),
-          sparse_weights_inputs[i].flat<float>(), deltas});
+          sparse_weights_inputs[i].shaped<float, 2>(
+              {1, sparse_weights_inputs[i].NumElements()}),
+          deltas});
     }
 
     // Reads in the weights, and allocates and initializes the delta weights.
@@ -338,10 +380,13 @@ class ModelWeights {
       for (int i = 0; i < weight_inputs.size(); ++i) {
         Tensor* delta_t;
         weight_outputs->allocate(i, weight_inputs[i].shape(), &delta_t);
-        auto deltas = delta_t->flat<float>();
+        // Convert the input vector to a row matrix in internal representation.
+        auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
         deltas.setZero();
         feature_weights->emplace_back(
-            FeatureWeightsDenseStorage{weight_inputs[i].flat<float>(), deltas});
+            FeatureWeightsDenseStorage{weight_inputs[i].shaped<float, 2>(
+                                           {1, weight_inputs[i].NumElements()}),
+                                       deltas});
       }
     };
 
@@ -370,15 +415,14 @@ class ModelWeights {
 // as we need definition of ModelWeights and Regularizations.
 const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
     const int num_loss_partitions, const ModelWeights& model_weights,
-    const Regularizations& regularization) const {
-  ExampleStatistics result;
+    const Regularizations& regularization, const int num_weight_vectors) const {
+  ExampleStatistics result(num_weight_vectors);
 
   result.normalized_squared_norm =
       squared_norm_ / regularization.symmetric_l2();
 
-  // Compute the w \dot x and prev_w \dot x.
-
-  // Sparse features contribution.
+  // Compute w \dot x and prev_w \dot x.
+  // This is for sparse features contribution to the logit.
   for (size_t j = 0; j < sparse_features_.size(); ++j) {
     const Example::SparseFeatures& sparse_features = sparse_features_[j];
     const FeatureWeightsSparseStorage& sparse_weights =
@@ -389,35 +433,43 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
       const double feature_value = sparse_features.values == nullptr
                                        ? 1.0
                                        : (*sparse_features.values)(k);
-      const double feature_weight =
-          sparse_weights.nominals(feature_index) +
-          sparse_weights.deltas(feature_index) * num_loss_partitions;
-      result.prev_wx +=
-          feature_value *
-          regularization.Shrink(sparse_weights.nominals(feature_index));
-      result.wx += feature_value * regularization.Shrink(feature_weight);
+      for (int l = 0; l < num_weight_vectors; ++l) {
+        const float sparse_weight = sparse_weights.nominals(l, feature_index);
+        const double feature_weight =
+            sparse_weight +
+            sparse_weights.deltas(l, feature_index) * num_loss_partitions;
+        result.prev_wx[l] +=
+            feature_value * regularization.Shrink(sparse_weight);
+        result.wx[l] += feature_value * regularization.Shrink(feature_weight);
+      }
     }
   }
 
-  // Dense features contribution.
+  // Compute w \dot x and prev_w \dot x.
+  // This is for dense features contribution to the logit.
   for (size_t j = 0; j < dense_vectors_.size(); ++j) {
     const Example::DenseVector& dense_vector = *dense_vectors_[j];
     const FeatureWeightsDenseStorage& dense_weights =
         model_weights.dense_weights()[j];
 
-    const Eigen::Tensor<float, 1, Eigen::RowMajor> feature_weights =
+    const Eigen::Tensor<float, 2, Eigen::RowMajor> feature_weights =
         dense_weights.nominals() +
         dense_weights.deltas() *
             dense_weights.deltas().constant(num_loss_partitions);
-    const Eigen::Tensor<float, 0, Eigen::RowMajor> prev_prediction =
-        (dense_vector.row() *
-         regularization.EigenShrink(dense_weights.nominals()))
-            .sum();
-    const Eigen::Tensor<float, 0, Eigen::RowMajor> prediction =
-        (dense_vector.row() * regularization.EigenShrink(feature_weights))
-            .sum();
-    result.prev_wx += prev_prediction();
-    result.wx += prediction();
+    const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
+        Eigen::IndexPair<int>(1, 1)};
+    const Eigen::Tensor<float, 2, Eigen::RowMajor> prev_prediction =
+        regularization.EigenShrinkMatrix(dense_weights.nominals())
+            .contract(dense_vector.row_as_matrix(), product_dims);
+    const Eigen::Tensor<float, 2, Eigen::RowMajor> prediction =
+        regularization.EigenShrinkMatrix(feature_weights)
+            .contract(dense_vector.row_as_matrix(), product_dims);
+    // The result of "tensor contraction" (multiplication)  in the code
+    // above is of dimension num_weight_vectors * 1.
+    for (int l = 0; l < num_weight_vectors; ++l) {
+      result.prev_wx[l] += prev_prediction(l, 0);
+      result.wx[l] += prediction(l, 0);
+    }
   }
 
   return result;
@@ -438,11 +490,20 @@ class Examples {
     return id;
   }
 
-  void SampleAdaptativeProbabilities(
+  // Adaptive SDCA in the current implementation only works for
+  // binary classification, where the input argument for num_weight_vectors
+  // is 1.
+  Status SampleAdaptativeProbabilities(
       const int num_loss_partitions, const Regularizations& regularization,
       const ModelWeights& model_weights,
       const TTypes<float>::Matrix example_state_data,
-      const std::unique_ptr<DualLossUpdater>& loss_updater) {
+      const std::unique_ptr<DualLossUpdater>& loss_updater,
+      const int num_weight_vectors = 1) {
+    if (num_weight_vectors != 1) {
+      return errors::InvalidArgument(
+          "Adaptive SDCA only works with binary SDCA, "
+          "where num_weight_vectors should be 1.");
+    }
     // Compute the probabilities
     for (int example_id = 0; example_id < num_examples(); ++example_id) {
       const Example& example = examples_[example_id];
@@ -450,11 +511,12 @@ class Examples {
       float label = example.example_label();
       const Status conversion_status = loss_updater->ConvertLabel(&label);
       const ExampleStatistics example_statistics =
-          example.ComputeWxAndWeightedExampleNorm(
-              num_loss_partitions, model_weights, regularization);
+          example.ComputeWxAndWeightedExampleNorm(num_loss_partitions,
+                                                  model_weights, regularization,
+                                                  num_weight_vectors);
       const double kappa = example_state_data(example_id, 0) +
                            loss_updater->PrimalLossDerivative(
-                               example_statistics.wx, label, example_weight);
+                               example_statistics.wx[0], label, example_weight);
       probabilities_[example_id] =
           example_weight * sqrt(examples_[example_id].squared_norm_ +
                                 regularization.symmetric_l2() *
@@ -504,6 +566,7 @@ class Examples {
     for (int i = id; i < num_examples(); ++i) {
       sampled_count_[i] = examples_not_seen[i - id].first;
     }
+    return Status::OK();
   }
 
   int num_examples() const { return examples_.size(); }
@@ -583,7 +646,7 @@ Status Examples::Initialize(OpKernelContext* const context,
 
   if (example_weights.size() >= std::numeric_limits<int>::max()) {
     return errors::InvalidArgument(strings::Printf(
-        "Too many examples in a mini-batch: %ld > %d", example_weights.size(),
+        "Too many examples in a mini-batch: %zu > %d", example_weights.size(),
         std::numeric_limits<int>::max()));
   }
 
@@ -825,6 +888,9 @@ struct ComputeOptions {
   Regularizations regularizations;
 };
 
+// TODO(shengx): The helper classes/methods are changed to support multiclass
+// SDCA, which lead to changes within this function. Need to revisit the
+// convergence once the multiclass SDCA is in.
 void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   ModelWeights model_weights;
   OP_REQUIRES_OK(context, model_weights.Initialize(context));
@@ -852,9 +918,10 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   context->set_output("out_example_state_data", mutable_example_state_data_t);
 
   if (options.adaptative) {
-    examples.SampleAdaptativeProbabilities(
-        options.num_loss_partitions, options.regularizations, model_weights,
-        example_state_data, options.loss_updater);
+    OP_REQUIRES_OK(
+        context, examples.SampleAdaptativeProbabilities(
+                     options.num_loss_partitions, options.regularizations,
+                     model_weights, example_state_data, options.loss_updater));
   }
 
   mutex mu;
@@ -882,27 +949,29 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
 
       // Compute wx, example norm weighted by regularization, dual loss,
       // primal loss.
+      // For binary SDCA, num_weight_vectors should be one.
       const ExampleStatistics example_statistics =
-          example.ComputeWxAndWeightedExampleNorm(options.num_loss_partitions,
-                                                  model_weights,
-                                                  options.regularizations);
+          example.ComputeWxAndWeightedExampleNorm(
+              options.num_loss_partitions, model_weights,
+              options.regularizations, 1 /* num_weight_vectors */);
 
       const double new_dual = options.loss_updater->ComputeUpdatedDual(
           options.num_loss_partitions, example_label, example_weight, dual,
-          example_statistics.wx, example_statistics.normalized_squared_norm);
+          example_statistics.wx[0], example_statistics.normalized_squared_norm);
 
       // Compute new weights.
       const double normalized_bounded_dual_delta =
           (new_dual - dual) * example_weight /
           options.regularizations.symmetric_l2();
-      model_weights.UpdateDeltaWeights(context->eigen_cpu_device(), example,
-                                       normalized_bounded_dual_delta);
+      model_weights.UpdateDeltaWeights(
+          context->eigen_cpu_device(), example,
+          std::vector<double>{normalized_bounded_dual_delta});
 
       // Update example data.
       example_state_data(example_index, 0) = new_dual;
       example_state_data(example_index, 1) =
           options.loss_updater->ComputePrimalLoss(
-              example_statistics.prev_wx, example_label, example_weight);
+              example_statistics.prev_wx[0], example_label, example_weight);
       example_state_data(example_index, 2) =
           options.loss_updater->ComputeDualLoss(dual, example_label,
                                                 example_weight);
@@ -956,7 +1025,7 @@ class SdcaShrinkL1 : public OpKernel {
       for (int i = begin; i < end; ++i) {
         auto prox_w = weights_inputs.at(i, /*lock_held=*/true).flat<float>();
         prox_w.device(context->eigen_cpu_device()) =
-            regularizations_.EigenShrink(prox_w);
+            regularizations_.EigenShrinkVector(prox_w);
       }
     };
 

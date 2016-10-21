@@ -27,6 +27,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
@@ -67,7 +68,7 @@ class SavedModelTest(tf.test.TestCase):
       v = tf.Variable(42, name="v")
       sess.run(tf.initialize_all_variables())
       self.assertEqual(42, v.eval())
-      builder.add_meta_graph_and_variables(sess, [constants.TAG_TRAINING])
+      builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
@@ -76,7 +77,7 @@ class SavedModelTest(tf.test.TestCase):
       v = tf.Variable(43, name="v")
       sess.run(tf.initialize_all_variables())
       self.assertEqual(43, v.eval())
-      builder.add_meta_graph([constants.TAG_SERVING])
+      builder.add_meta_graph([tag_constants.SERVING])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
@@ -92,13 +93,13 @@ class SavedModelTest(tf.test.TestCase):
 
     # Restore the graph with a single predefined tag whose variables were saved.
     with self.test_session(graph=tf.Graph()) as sess:
-      loader.load(sess, [constants.TAG_TRAINING], export_dir)
+      loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
     # Restore the graph with a single predefined tag whose variables were not
     # saved.
     with self.test_session(graph=tf.Graph()) as sess:
-      loader.load(sess, [constants.TAG_SERVING], export_dir)
+      loader.load(sess, [tag_constants.SERVING], export_dir)
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
     # Restore the graph with multiple tags. Provide duplicate tags to test set
@@ -371,6 +372,40 @@ class SavedModelTest(tf.test.TestCase):
           compat.as_bytes(constants.ASSETS_DIRECTORY),
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
+
+  def testLegacyInitOp(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_legacy_init_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = tf.Variable(1, name="v1")
+      tf.add_to_collection("v", v1)
+      v2 = tf.Variable(2, name="v2")
+      tf.add_to_collection("v", v2)
+
+      # Initialize another variable `v3` to 42.
+      v3 = tf.Variable(42, name="v3", trainable=False, collections=[])
+      tf.add_to_collection("v", v3)
+
+      # Set up an assignment op to be run as part of the legacy_init_op.
+      assign_v3 = tf.assign(v3, tf.add(v1, v2))
+      legacy_init_op = tf.group(assign_v3, name="legacy_init_op")
+
+      sess.run(tf.initialize_all_variables())
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], legacy_init_op=legacy_init_op)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, tf.get_collection("v")[0].eval())
+      self.assertEqual(2, tf.get_collection("v")[1].eval())
+      # Evaluates to the sum of the first two variables and assigned as part of
+      # the legacy_init_op, following a restore.
+      self.assertEqual(3, tf.get_collection("v")[2].eval())
 
   def testOp(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_op")

@@ -34,6 +34,8 @@ of the subclasses.
 @@MomentumOptimizer
 @@AdamOptimizer
 @@FtrlOptimizer
+@@ProximalGradientDescentOptimizer
+@@ProximalAdagradOptimizer
 @@RMSPropOptimizer
 
 ## Gradient Computation
@@ -134,11 +136,13 @@ TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
 overview of summaries, event files, and visualization in TensorBoard.
 
 @@SummaryWriter
+@@SummaryWriterCache
 @@summary_iterator
 
 ## Training utilities
 
 @@global_step
+@@basic_train_loop
 @@get_global_step
 @@assert_global_step
 @@write_graph
@@ -146,6 +150,7 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
+@@NewCheckpointReader
 @@StepCounterHook
 @@NanLossDuringTrainingError
 @@NanTensorHook
@@ -153,7 +158,7 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@SessionRunArgs
 @@SessionRunContext
 @@SessionRunValues
-
+@@LooperThread
 """
 # pylint: enable=line-too-long
 
@@ -162,13 +167,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import sys as _sys
+
+from tensorflow.python.ops import io_ops as _io_ops
+from tensorflow.python.ops import state_ops as _state_ops
+from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=g-bad-import-order,unused-import
-from tensorflow.python.ops import gradients
-from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import state_ops
-
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
@@ -245,7 +250,7 @@ from tensorflow.core.protobuf.saver_pb2 import *
 from tensorflow.python.training.learning_rate_decay import *
 
 
-# Distributed computing support
+# Distributed computing support.
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
@@ -253,31 +258,43 @@ from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
 
 
-from tensorflow.python.util.all_util import make_all
+# Symbols whitelisted for export without documentation.
+_allowed_symbols = [
+    # TODO(cwhipkey): review these and move to contrib or expose through
+    # documentation.
+    "generate_checkpoint_state_proto",   # Used internally by saver.
+    "checkpoint_exists",  # Only used in test?
+    "get_checkpoint_mtimes",  # Only used in test?
+
+    # Legacy: remove.
+    "do_quantize_training_on_graphdef",  # At least use grah_def, not graphdef.
+                                         # No uses within tensorflow.
+    "queue_runner",  # Use tf.train.start_queue_runner etc directly.
+                     # This is also imported internally.
+
+    # TODO(drpng): document these. The reference in howtos/distributed does
+    # not link.
+    "SyncReplicasOptimizer",
+    "SyncReplicasOptimizerV2",
+
+    # Protobufs:
+    "BytesList",          # from example_pb2.
+    "ClusterDef",
+    "Example",            # from example_pb2
+    "Feature",            # from example_pb2
+    "Features",           # from example_pb2
+    "FeatureList",        # from example_pb2
+    "FeatureLists",       # from example_pb2
+    "FloatList",          # from example_pb2.
+    "Int64List",          # from example_pb2.
+    "JobDef",
+    "SaverDef",           # From saver_pb2.
+    "SequenceExample",    # from example_pb2.
+    "ServerDef",
+]
 
 # Include extra modules for docstrings because:
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.
-__all__ = make_all(__name__, [sys.modules[__name__], io_ops, state_ops])
-
-# Symbols whitelisted for export without documentation.
-# TODO(cwhipkey): review these and move to contrib or expose through
-# documentation.
-__all__.extend([
-    "BytesList",
-    "Example",
-    "Feature",
-    "FeatureList",
-    "FeatureLists",
-    "Features",
-    "FloatList",
-    "Int64List",
-    "LooperThread",
-    "SaverDef",
-    "SequenceExample",
-    "do_quantize_training_on_graphdef",
-    "export_meta_graph",
-    "generate_checkpoint_state_proto",
-    "import_meta_graph",
-    "queue_runner",
-])
+remove_undocumented(__name__, _allowed_symbols,
+                    [_sys.modules[__name__], _io_ops, _state_ops])

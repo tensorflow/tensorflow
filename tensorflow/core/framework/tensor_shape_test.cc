@@ -516,6 +516,45 @@ TEST(TensorShapeTest, Randomized) {
   }
 }
 
+TEST(TensorShapeUtilsTest, StartsWith) {
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                           TensorShape({2, 3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3}),
+                                            TensorShape({2, 3, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                            TensorShape({3, 4})));
+}
+
+TEST(TensorShapeUtilsTest, EndsWith) {
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({2, 3})));
+}
+
 // A few different test cases for tensor sizes for benchmarks
 static std::vector<int64> MakeSizes(int arg) {
   std::vector<int64> sizes;

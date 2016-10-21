@@ -176,8 +176,10 @@ def _get_replica_device_setter(config):
   Returns:
     A replica device setter, or None.
   """
-  ps_ops = ['Variable', 'AutoReloadVariable',
-            'MutableHashTable', 'MutableHashTableOfTensors']
+  ps_ops = [
+      'Variable', 'AutoReloadVariable', 'MutableHashTable',
+      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+  ]
 
   if config.job_name:
     worker_device = '/job:%s/task:%d' % (config.job_name, config.task)
@@ -214,12 +216,8 @@ def _make_metrics_ops(metrics, features, targets, predictions):
       predictions.
 
   Returns:
-    `dict` whose keys are summary names, and values are the result of the
-    metric, either:
-      - `Tensor` values (in which case only the result of the last eval batch
-        will be summarized).
-      - `tuple` of 2 `Tensor` objects, update op and value. The update op will
-        be run once each eval step, and the value written to summary.
+    A dict mapping the friendly given in `metrics` to the result of calling the
+    given metric function.
 
   Raises:
     ValueError: If metrics specifications do not work with the type of
@@ -227,9 +225,12 @@ def _make_metrics_ops(metrics, features, targets, predictions):
       pred_name specified.
   """
   metrics = metrics or {}
+
+  # If target is a dict with a single key, unpack into a single tensor.
+  target_tensor_or_dict = targets
   if isinstance(targets, dict) and len(targets) == 1:
-    # Unpack single target into just tensor.
-    targets = targets[list(targets.keys())[0]]
+    target_tensor_or_dict = targets[list(targets.keys())[0]]
+
   result = {}
   for name, metric in six.iteritems(metrics):
     if isinstance(metric, metric_spec.MetricSpec):
@@ -257,23 +258,16 @@ def _make_metrics_ops(metrics, features, targets, predictions):
         result[name[0]] = metric(predictions[name[1]], targets[name[1]])
       else:
         # Otherwise pass the targets to the metric.
-        result[name[0]] = metric(predictions[name[1]], targets)
+        result[name[0]] = metric(predictions[name[1]], target_tensor_or_dict)
     else:
       # Single head metrics.
       if isinstance(predictions, dict):
         raise ValueError(
             'Metrics passed provide only name, no prediction, '
             'but predictions are dict. '
-            'Metrics: %s, Targets: %s.' % (metrics, targets))
-      result[name] = metric(predictions, targets)
+            'Metrics: %s, Targets: %s.' % (metrics, target_tensor_or_dict))
+      result[name] = metric(predictions, target_tensor_or_dict)
   return result
-
-
-def _maybe_add_streaming_mean(result, key, value):
-  if key in result:
-    logging.warning('Metrics already contains %s, skipping.', key)
-    return
-  result[key] = metrics_lib.streaming_mean(value)
 
 
 class BaseEstimator(
@@ -583,7 +577,7 @@ class BaseEstimator(
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
-      metrics: Dict of metrics to run. If `None`, the default metric functions
+      metrics: Dict of metrics to run. If None, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
         model outputs to evaluate against which targets with which metric
@@ -1053,28 +1047,14 @@ class Estimator(BaseEstimator):
         `../metric_spec.py`.
 
     Returns:
-      `dict` whose keys are summary names, and values are either:
-        - `Tensor` values (in which case only the result of the last eval batch
-          will be summarized).
-        - `tuple` of 2 `Tensor` objects, update op and value. The update op will
-          be run once each eval step, and the value written to summary.
+      metrics: `dict` of `Tensor` objects.
 
     Raises:
       ValueError: if `metrics` don't match `targets`.
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
-    result = _make_metrics_ops(metrics, features, targets, predictions)
-    _maybe_add_streaming_mean(result, 'loss', loss)
-
-    # TODO(ptucker): Work-around until we have an easier way to specify metrics
-    # from model_fn.
-    if predictions is not None:
-      if isinstance(predictions, dict):
-        for k, v in six.iteritems(predictions):
-          _maybe_add_streaming_mean(result, k, v)
-      else:
-        _maybe_add_streaming_mean(result, 'predictions', predictions)
-
+    result = {'loss': metrics_lib.streaming_mean(loss)}
+    result.update(_make_metrics_ops(metrics, features, targets, predictions))
     return result
 
   def _get_predict_ops(self, features):

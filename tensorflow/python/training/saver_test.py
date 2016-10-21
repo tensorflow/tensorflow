@@ -32,12 +32,12 @@ import six
 
 from google.protobuf.any_pb2 import Any
 
-from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import gfile
@@ -192,9 +192,14 @@ class SaverTest(tf.test.TestCase):
     v0 = tf.Variable(0, name="v0")
     with self.test_session() as sess:
       save = tf.train.Saver({"v0": v0})
-      with self.assertRaisesRegexp(ValueError,
-                                   "^Restore called with invalid save path.*"):
-        save.restore(sess, "invalid path")
+      if save._write_version is saver_pb2.SaverDef.V1:
+        with self.assertRaisesRegexp(
+            ValueError, "^Restore called with invalid save path.*"):
+          save.restore(sess, "invalid path")
+      else:
+        with self.assertRaisesRegexp(errors.NotFoundError,
+                                     "Failed to find any matching files for"):
+          save.restore(sess, "invalid path")
 
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
@@ -542,45 +547,49 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       t0.insert("k1", 30.0).run()
       t1.insert("k2", 40.0).run()
       val = save.save(sess, save_path)
-      self.assertEqual(save_path + "-?????-of-00002", val)
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(save_path + "-?????-of-00002", val)
+      else:
+        self.assertEqual(save_path, val)
       meta_graph_filename = save._MetaGraphFilename(val)
       self.assertEqual(save_path + ".meta", meta_graph_filename)
 
-    # Restore different ops from shard 0 of the saved files.
-    with tf.Session(
-        target="",
-        config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
-      with sess.graph.device("/cpu:0"):
-        v0 = tf.Variable(111, name="v0")
-        t0 = CheckpointedOp(name="t0")
-      save = tf.train.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
-      tf.initialize_all_variables().run()
-      t0.insert("k11", 33.0).run()
-      self.assertEqual(111, v0.eval())
-      self.assertEqual(b"k11", t0.keys().eval())
-      self.assertEqual(33.0, t0.values().eval())
-      save.restore(sess, save_path + "-00000-of-00002")
-      self.assertEqual(10, v0.eval())
-      self.assertEqual(b"k1", t0.keys().eval())
-      self.assertEqual(30.0, t0.values().eval())
+    if save._write_version is saver_pb2.SaverDef.V1:
+      # Restore different ops from shard 0 of the saved files.
+      with tf.Session(
+          target="",
+          config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
+        with sess.graph.device("/cpu:0"):
+          v0 = tf.Variable(111, name="v0")
+          t0 = CheckpointedOp(name="t0")
+        save = tf.train.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
+        tf.initialize_all_variables().run()
+        t0.insert("k11", 33.0).run()
+        self.assertEqual(111, v0.eval())
+        self.assertEqual(b"k11", t0.keys().eval())
+        self.assertEqual(33.0, t0.values().eval())
+        save.restore(sess, save_path + "-00000-of-00002")
+        self.assertEqual(10, v0.eval())
+        self.assertEqual(b"k1", t0.keys().eval())
+        self.assertEqual(30.0, t0.values().eval())
 
-    # Restore different ops from shard 1 of the saved files.
-    with tf.Session(
-        target="",
-        config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
-      with sess.graph.device("/cpu:0"):
-        v1 = tf.Variable(222)
-        t1 = CheckpointedOp(name="t1")
-      save = tf.train.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
-      tf.initialize_all_variables().run()
-      t1.insert("k22", 44.0).run()
-      self.assertEqual(222, v1.eval())
-      self.assertEqual(b"k22", t1.keys().eval())
-      self.assertEqual(44.0, t1.values().eval())
-      save.restore(sess, save_path + "-00001-of-00002")
-      self.assertEqual(20, v1.eval())
-      self.assertEqual(b"k2", t1.keys().eval())
-      self.assertEqual(40.0, t1.values().eval())
+      # Restore different ops from shard 1 of the saved files.
+      with tf.Session(
+          target="",
+          config=tf.ConfigProto(device_count={"CPU": 2})) as sess:
+        with sess.graph.device("/cpu:0"):
+          v1 = tf.Variable(222)
+          t1 = CheckpointedOp(name="t1")
+        save = tf.train.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
+        tf.initialize_all_variables().run()
+        t1.insert("k22", 44.0).run()
+        self.assertEqual(222, v1.eval())
+        self.assertEqual(b"k22", t1.keys().eval())
+        self.assertEqual(44.0, t1.values().eval())
+        save.restore(sess, save_path + "-00001-of-00002")
+        self.assertEqual(20, v1.eval())
+        self.assertEqual(b"k2", t1.keys().eval())
+        self.assertEqual(40.0, t1.values().eval())
 
     # Now try a restore with the sharded filename.
     with tf.Session(
@@ -608,7 +617,10 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       self.assertEqual(b"k22", t1.keys().eval())
       self.assertEqual(44.0, t1.values().eval())
       save_path = os.path.join(self.get_temp_dir(), "sharded")
-      save.restore(sess, save_path + "-?????-of-?????")
+      if save._write_version is saver_pb2.SaverDef.V1:
+        save.restore(sess, save_path + "-?????-of-?????")
+      else:
+        save.restore(sess, save_path)
       self.assertEqual(10, v0.eval())
       self.assertEqual(20, v1.eval())
       self.assertEqual(b"k1", t0.keys().eval())
@@ -616,9 +628,14 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       self.assertEqual(b"k2", t1.keys().eval())
       self.assertEqual(40.0, t1.values().eval())
 
-    self.assertEqual(
-        tf.train.latest_checkpoint(self.get_temp_dir()),
-        os.path.join(self.get_temp_dir(), "sharded-?????-of-00002"))
+    if save._write_version is saver_pb2.SaverDef.V1:
+      self.assertEqual(
+          tf.train.latest_checkpoint(self.get_temp_dir()),
+          os.path.join(self.get_temp_dir(), "sharded-?????-of-00002"))
+    else:
+      self.assertEqual(
+          tf.train.latest_checkpoint(self.get_temp_dir()),
+          os.path.join(self.get_temp_dir(), "sharded"))
 
   def testSaverDef(self):
     with self.test_session():
@@ -708,18 +725,18 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertFalse(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s3))
 
       # Create a second helper, identical to the first.
       save2 = tf.train.Saver(saver_def=save.as_saver_def())
@@ -734,22 +751,22 @@ class MaxToKeepTest(tf.test.TestCase):
       # Adding s2 again (old s2 is removed first, then new s2 appended)
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save.last_checkpoints)
-      self.assertFalse(gfile.Exists(s1))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
-      self.assertTrue(gfile.Exists(s3))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertFalse(tf.train.checkpoint_exists(s1))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(tf.train.checkpoint_exists(s3))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save.last_checkpoints)
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
 
       # Exercise the second helper.
 
@@ -757,23 +774,23 @@ class MaxToKeepTest(tf.test.TestCase):
       s2 = save2.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save2.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
       # Deleted by the first helper.
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save2.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save2.last_checkpoints)
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
 
       # Exercise the third helper.
 
@@ -781,23 +798,23 @@ class MaxToKeepTest(tf.test.TestCase):
       s2 = save3.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s2], save3.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
       # Deleted by the first helper.
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should not be deleted because helper is unaware of it)
       s1 = save3.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save3.last_checkpoints)
-      self.assertFalse(gfile.Exists(s3))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
-      self.assertTrue(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertTrue(gfile.Exists(s1))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(tf.train.checkpoint_exists(s3))
+      self.assertFalse(tf.train.checkpoint_exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(save._MetaGraphFilename(s1)))
 
   def testSharded(self):
     save_dir = _TestDir("max_to_keep_sharded")
@@ -815,23 +832,39 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertEqual(2, len(gfile.Glob(s1)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s1)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s1 + "*")))
+
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertEqual(2, len(gfile.Glob(s1)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s1)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s1 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
-      self.assertEqual(2, len(gfile.Glob(s2)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s2)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s2 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertEqual(0, len(gfile.Glob(s1)))
+      self.assertEqual(0, len(gfile.Glob(s1 + "*")))
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
-      self.assertEqual(2, len(gfile.Glob(s2)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s2)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s2 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
-      self.assertEqual(2, len(gfile.Glob(s3)))
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(2, len(gfile.Glob(s3)))
+      else:
+        self.assertEqual(4, len(gfile.Glob(s3 + "*")))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
 
   def testNoMaxToKeep(self):
@@ -847,20 +880,20 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([], save.last_checkpoints)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([], save.last_checkpoints)
-      self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
 
       # Test max_to_keep being 0.
       save2 = tf.train.Saver({"v": v}, max_to_keep=0)
       self.assertEqual([], save2.last_checkpoints)
       s1 = save2.save(sess, os.path.join(save_dir2, "s1"))
       self.assertEqual([], save2.last_checkpoints)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
       s2 = save2.save(sess, os.path.join(save_dir2, "s2"))
       self.assertEqual([], save2.last_checkpoints)
-      self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s2))
 
   def testNoMetaGraph(self):
     save_dir = _TestDir("no_meta_graph")
@@ -872,7 +905,7 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"),
                      write_meta_graph=False)
-      self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
 
 
@@ -918,10 +951,10 @@ class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
       self.assertEqual([s3, s4], save.last_checkpoints)
 
       # Check that s1 is still here, but s2 is gone.
-      self.assertTrue(gfile.Exists(s1))
-      self.assertFalse(gfile.Exists(s2))
-      self.assertTrue(gfile.Exists(s3))
-      self.assertTrue(gfile.Exists(s4))
+      self.assertTrue(tf.train.checkpoint_exists(s1))
+      self.assertFalse(tf.train.checkpoint_exists(s2))
+      self.assertTrue(tf.train.checkpoint_exists(s3))
+      self.assertTrue(tf.train.checkpoint_exists(s4))
 
 
 class SaveRestoreWithVariableNameMap(tf.test.TestCase):
@@ -1174,58 +1207,6 @@ class CheckpointStateTest(tf.test.TestCase):
                      os.path.join(save_dir, "./model.ckpt-687529"))
 
 class MetaGraphTest(tf.test.TestCase):
-
-  def testNoVariables(self):
-    test_dir = _TestDir("no_variables")
-    filename = os.path.join(test_dir, "metafile")
-
-    input_feed_value = -10  # Arbitrary input value for feed_dict.
-
-    orig_graph = tf.Graph()
-    with self.test_session(graph=orig_graph) as sess:
-      # Create a minimal graph with zero variables.
-      input_tensor = tf.placeholder(tf.float32, shape=[], name="input")
-      offset = tf.constant(42, dtype=tf.float32, name="offset")
-      output_tensor = tf.add(input_tensor, offset, name="add_offset")
-
-      # Add input and output tensors to graph collections.
-      tf.add_to_collection("input_tensor", input_tensor)
-      tf.add_to_collection("output_tensor", output_tensor)
-
-      output_value = sess.run(output_tensor, {input_tensor: input_feed_value})
-      self.assertEqual(output_value, 32)
-
-      # Generates MetaGraphDef.
-      #
-      # Note that this is calling the saver *module-level* export_meta_graph and
-      # not the Saver.export_meta_graph instance-level method.
-      meta_graph_def = saver_module.export_meta_graph(
-          filename=filename,
-          graph_def=tf.get_default_graph().as_graph_def(add_shapes=True),
-          collection_list=["input_tensor", "output_tensor"],
-          saver_def=None,
-      )
-
-    # Create a clean graph and import the MetaGraphDef nodes.
-    new_graph = tf.Graph()
-    with self.test_session(graph=new_graph) as sess:
-      # Import the previously export meta graph.
-      saver_instance = saver_module.import_meta_graph(filename)
-      # The saver instance should be None since there are no graph variables
-      # to be restored in this case.
-      self.assertIsNone(saver_instance)
-
-      # Re-exports the current graph state for comparison to the original.
-      new_meta_graph_def = saver_module.export_meta_graph(filename + "_new")
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
-
-      # Ensures that we can still get a reference to our graph collections.
-      new_input_tensor = tf.get_collection("input_tensor")[0]
-      new_output_tensor = tf.get_collection("output_tensor")[0]
-      # Verifies that the new graph computes the same result as the original.
-      new_output_value = sess.run(
-          new_output_tensor, {new_input_tensor: input_feed_value})
-      self.assertEqual(new_output_value, output_value)
 
   def testAddCollectionDef(self):
     test_dir = _TestDir("good_collection")
@@ -1523,7 +1504,7 @@ class MetaGraphTest(tf.test.TestCase):
                                                               name="xentropy")
       loss = tf.reduce_mean(cross_entropy, name="xentropy_mean")
 
-      tf.scalar_summary(loss.op.name, loss)
+      tf.summary.scalar("loss", loss)
       # Creates the gradient descent optimizer with the given learning rate.
       optimizer = tf.train.GradientDescentOptimizer(0.01)
 
@@ -1570,8 +1551,12 @@ class MetaGraphTest(tf.test.TestCase):
       # Generates MetaGraphDef.
       meta_graph_def = save.export_meta_graph()
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
-      self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
-                             "RestoreV2", "SaveSlices", "Sub", "Variable"])
+      if save._write_version is saver_pb2.SaverDef.V1:
+        self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
+                               "RestoreV2", "SaveSlices", "Sub", "Variable"])
+      else:
+        self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
+                               "RestoreV2", "SaveV2", "Sub", "Variable"])
 
       # Test calling stripped_op_list_for_graph directly
       op_list = tf.contrib.util.stripped_op_list_for_graph(
@@ -1581,46 +1566,36 @@ class MetaGraphTest(tf.test.TestCase):
         self.assertEqual(o.summary, "")
         self.assertEqual(o.description, "")
 
-  def testStrippedOpListNestedFunctions(self):
-    with self.test_session():
-      # Square two levels deep
-      @function.Defun(tf.int32)
-      def f0(x):
-        return tf.square(x)
-      @function.Defun(tf.int32)
-      def f1(x):
-        return f0(x)
+  def testImportIntoNamescope(self):
+    # Test that we can import a meta graph into a namescope.
+    test_dir = _TestDir("import_into_namescope")
+    filename = os.path.join(test_dir, "ckpt")
+    image = tf.placeholder(tf.float32, [None, 784])
+    label = tf.placeholder(tf.float32, [None, 10])
+    with tf.Session() as sess:
+      label = tf.identity(label, name="label")
+      image = tf.identity(image, name="image")
+      weights = tf.Variable(tf.random_uniform([784, 10]), name="weights")
+      bias = tf.Variable(tf.zeros([10]), name="bias")
+      logit = tf.nn.relu(tf.matmul(image, weights) + bias, name="logits")
+      tf.nn.softmax(logit, name="prediction")
+      cost = tf.nn.softmax_cross_entropy_with_logits(logit, label, name="cost")
+      tf.train.AdamOptimizer().minimize(cost, name="optimize")
+      saver = saver_module.Saver()
+      sess.run(tf.initialize_all_variables())
+      saver.save(sess, filename)
 
-      # At this point we've defined two functions but haven't called them, so
-      # there should be no used ops.
-      op_list = tf.contrib.util.stripped_op_list_for_graph(
-          tf.get_default_graph().as_graph_def())
-      self.assertEquals(len(op_list.op), 0)
-
-      # If we call the function on a constant, there should be two ops
-      _ = f1(tf.constant(7))
-      op_list = tf.contrib.util.stripped_op_list_for_graph(
-          tf.get_default_graph().as_graph_def())
-      self.assertEquals(["Const", "Square"], [op.name for op in op_list.op])
-
-  def testStrippedOpListRecursiveFunctions(self):
-    # The function module doesn't support recursive functions, so we build a
-    # recursive function situation by ourselves: A calls B calls A and Const.
-    graph = graph_pb2.GraphDef()
-    a = graph.library.function.add()
-    b = graph.library.function.add()
-    a.signature.name = "A"
-    b.signature.name = "B"
-    a.node.add().op = "B"
-    b.node.add().op = "Const"
-    b.node.add().op = "A"
-
-    # Use A in the graph
-    graph.node.add().op = "A"
-
-    # The stripped op list should contain just Const.
-    op_list = tf.contrib.util.stripped_op_list_for_graph(graph)
-    self.assertEquals(["Const"], [op.name for op in op_list.op])
+    graph = tf.Graph()
+    with tf.Session(graph=graph) as sess:
+      new_saver = tf.train.import_meta_graph(
+          filename + ".meta", graph=graph, import_scope="new_model")
+      new_saver.restore(sess, filename)
+      tf.train.write_graph(graph, "/tmp", "new_graph.pbtxt", as_text=True)
+      label = [0] * 10
+      label[4] = 4
+      sess.run(["new_model/optimize"],
+               {"new_model/image:0": np.random.random([1, 784]),
+                "new_model/label:0": np.reshape(label, [1, 10])})
 
 
 class CheckpointReaderTest(tf.test.TestCase):
@@ -1673,7 +1648,6 @@ class CheckpointReaderTest(tf.test.TestCase):
 
 
 class CheckpointReaderForV2Test(CheckpointReaderTest):
-
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
@@ -1731,6 +1705,194 @@ class SaverUtilsTest(tf.test.TestCase):
     mtimes = tf.train.get_checkpoint_mtimes(prefixes)
     self.assertEqual(2, len(mtimes))
     self.assertTrue(mtimes[1] >= mtimes[0])
+
+
+class ScopedGraphTest(tf.test.TestCase):
+
+  def _testScopedSave(self, test_dir, exported_filename, ckpt_filename):
+    graph = tf.Graph()
+    with graph.as_default():
+      # Creates an inference graph.
+      # Hidden 1
+      images = tf.constant(1.2, tf.float32, shape=[100, 28], name="images")
+      with tf.name_scope("hidden1"):
+        weights1 = tf.Variable(
+            tf.truncated_normal([28, 128],
+                                stddev=1.0 / math.sqrt(float(28))),
+            name="weights")
+        # The use of control_flow_ops.cond here is purely for adding test
+        # coverage the save and restore of control flow context (which doesn't
+        # make any sense here from a machine learning perspective).  The typical
+        # biases is a simple Variable without the conditions.
+        biases1 = tf.Variable(
+            control_flow_ops.cond(tf.less(random.random(), 0.5),
+                                  lambda: tf.ones([128]),
+                                  lambda: tf.zeros([128])),
+            name="biases")
+        hidden1 = tf.nn.relu(tf.matmul(images, weights1) + biases1)
+
+      # Hidden 2
+      with tf.name_scope("hidden2"):
+        weights2 = tf.Variable(
+            tf.truncated_normal([128, 32],
+                                stddev=1.0 / math.sqrt(float(128))),
+            name="weights")
+        # The use of control_flow_ops.while_loop here is purely for adding test
+        # coverage the save and restore of control flow context (which doesn't
+        # make any sense here from a machine learning perspective).  The typical
+        # biases is a simple Variable without the conditions.
+        def loop_cond(it, _):
+          return it < 2
+        def loop_body(it, biases2):
+          biases2 += tf.constant(0.1, shape=[32])
+          return it + 1, biases2
+        _, biases2 = control_flow_ops.while_loop(
+            loop_cond, loop_body,
+            [tf.constant(0), tf.Variable(tf.zeros([32]))])
+        hidden2 = tf.nn.relu(tf.matmul(hidden1, weights2) + biases2)
+      # Linear
+      with tf.name_scope("softmax_linear"):
+        weights3 = tf.Variable(
+            tf.truncated_normal([32, 10],
+                                stddev=1.0 / math.sqrt(float(32))),
+            name="weights")
+        biases3 = tf.Variable(tf.zeros([10]), name="biases")
+        logits = tf.matmul(hidden2, weights3) + biases3
+        tf.add_to_collection("logits", logits)
+      _, var_list = meta_graph.export_scoped_meta_graph(
+          filename=os.path.join(test_dir, exported_filename),
+          graph=tf.get_default_graph(), export_scope="hidden1")
+      self.assertEqual(["biases:0", "weights:0"], sorted(var_list.keys()))
+
+    with self.test_session(graph=graph) as sess:
+      sess.run(tf.initialize_all_variables())
+      saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
+      saver.save(sess, os.path.join(test_dir, ckpt_filename),
+                 write_state=False)
+
+  def _testScopedRestore(self, test_dir, exported_filename,
+                         new_exported_filename, ckpt_filename):
+    graph = tf.Graph()
+    # Create all the missing inputs.
+    with graph.as_default():
+      new_image = tf.constant(1.2, tf.float32, shape=[100, 28],
+                              name="images")
+    var_list = meta_graph.import_scoped_meta_graph(
+        os.path.join(test_dir, exported_filename),
+        graph=graph,
+        input_map={"$unbound_inputs_images": new_image},
+        import_scope="new_hidden1")
+    self.assertEqual(["biases:0", "weights:0"], sorted(var_list.keys()))
+    hidden1 = graph.as_graph_element("new_hidden1/Relu:0")
+    weights1 = graph.as_graph_element("new_hidden1/weights:0")
+    biases1 = graph.as_graph_element("new_hidden1/biases:0")
+
+    with graph.as_default():
+      # Hidden 2
+      with tf.name_scope("hidden2"):
+        weights = tf.Variable(
+            tf.truncated_normal([128, 32],
+                                stddev=1.0 / math.sqrt(float(128))),
+            name="weights")
+        # The use of control_flow_ops.while_loop here is purely for adding test
+        # coverage the save and restore of control flow context (which doesn't
+        # make any sense here from a machine learning perspective).  The typical
+        # biases is a simple Variable without the conditions.
+        def loop_cond(it, _):
+          return it < 2
+        def loop_body(it, biases):
+          biases += tf.constant(0.1, shape=[32])
+          return it + 1, biases
+        _, biases = control_flow_ops.while_loop(
+            loop_cond, loop_body,
+            [tf.constant(0), tf.Variable(tf.zeros([32]))])
+        hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+      # Linear
+      with tf.name_scope("softmax_linear"):
+        weights = tf.Variable(
+            tf.truncated_normal([32, 10],
+                                stddev=1.0 / math.sqrt(float(32))),
+            name="weights")
+        biases = tf.Variable(tf.zeros([10]), name="biases")
+        logits = tf.matmul(hidden2, weights) + biases
+        tf.add_to_collection("logits", logits)
+
+      # The rest of the variables.
+      rest_variables = list(set(tf.all_variables()) - set(var_list.keys()))
+      init_rest_op = tf.initialize_variables(rest_variables)
+
+    with self.test_session(graph=graph) as sess:
+      saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
+      saver.restore(sess, os.path.join(test_dir, ckpt_filename))
+      # Verify that we have restored weights1 and biases1.
+      sess.run([weights1, biases1])
+      # Initialize the rest of the variables and run logits.
+      sess.run(init_rest_op)
+      sess.run(logits)
+
+  # Verifies that we can save the subgraph under "hidden1" and restore it
+  # into "new_hidden1" in the new graph.
+  def testScopedSaveAndRestore(self):
+    test_dir = _TestDir("scoped_export_import")
+    ckpt_filename = "ckpt"
+    self._testScopedSave(test_dir, "exported_hidden1.pbtxt", ckpt_filename)
+    self._testScopedRestore(test_dir, "exported_hidden1.pbtxt",
+                            "exported_new_hidden1.pbtxt", ckpt_filename)
+
+  # Verifies that we can copy the subgraph under "hidden1" and copy it
+  # to different name scope in the same graph or different graph.
+  def testCopyScopedGraph(self):
+    test_dir = _TestDir("scoped_copy")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    graph1 = tf.Graph()
+    with graph1.as_default():
+      with tf.name_scope("hidden1"):
+        images = tf.constant(1.0, tf.float32, shape=[3, 2], name="images")
+        weights1 = tf.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                               name="weights")
+        biases1 = tf.Variable([0.1] * 3, name="biases")
+        tf.nn.relu(tf.matmul(images, weights1) + biases1, name="relu")
+
+    # Run the graph and save scoped checkpoint.
+    with self.test_session(graph=graph1) as sess:
+      sess.run(tf.initialize_all_variables())
+      _, var_list_1 = meta_graph.export_scoped_meta_graph(
+          export_scope="hidden1")
+      saver = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
+      saver.save(sess, saver0_ckpt, write_state=False)
+
+    expected = np.reshape([[5.0999999, 7.0999999, 9.10000038] * 3], (3, 3))
+
+    # Verifies copy to the same graph with the same name fails.
+    with graph1.as_default():
+      with self.assertRaisesWithPredicateMatch(
+          ValueError, lambda e: "need to be different" in str(e)):
+        meta_graph.copy_scoped_meta_graph(from_scope="hidden1",
+                                          to_scope="hidden1")
+
+    # Verifies copy to the same graph.
+    with graph1.as_default():
+      var_list_2 = meta_graph.copy_scoped_meta_graph(from_scope="hidden1",
+                                                     to_scope="hidden2")
+
+    with self.test_session(graph=graph1) as sess:
+      saver1 = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
+      saver1.restore(sess, saver0_ckpt)
+      saver2 = saver_module.Saver(var_list=var_list_2, max_to_keep=1)
+      saver2.restore(sess, saver0_ckpt)
+      self.assertAllClose(expected, sess.run("hidden1/relu:0"))
+      self.assertAllClose(expected, sess.run("hidden2/relu:0"))
+
+    # Verifies copy to differen graph.
+    graph2 = tf.Graph()
+    new_var_list_1 = meta_graph.copy_scoped_meta_graph(
+        from_scope="hidden1", to_scope="new_hidden1",
+        from_graph=graph1, to_graph=graph2)
+
+    with self.test_session(graph=graph2) as sess:
+      saver3 = saver_module.Saver(var_list=new_var_list_1, max_to_keep=1)
+      saver3.restore(sess, saver0_ckpt)
+      self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
 
 if __name__ == "__main__":

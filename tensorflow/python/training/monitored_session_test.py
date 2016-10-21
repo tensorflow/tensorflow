@@ -161,12 +161,12 @@ class MonitoredTrainingSessionTest(tf.test.TestCase):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      do_step = tf.assign_add(gstep, 1)
-      tf.scalar_summary('my_summary_tag', gstep * 2)
+      new_gstep = tf.assign_add(gstep, 1)
+      tf.summary.scalar('my_summary_tag', new_gstep * 2)
       with tf.train.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         for _ in range(101):  # 100 is default summary writing steps
-          session.run(do_step)
+          session.run(new_gstep)
     summaries = testing.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)

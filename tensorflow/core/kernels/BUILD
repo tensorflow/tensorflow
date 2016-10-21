@@ -206,6 +206,7 @@ cc_library(
     name = "ops_util",
     srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
+    copts = ["-Wno-sign-compare"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -289,6 +290,7 @@ cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
+    copts = ["-Wno-sign-compare"],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
@@ -2402,7 +2404,10 @@ filegroup(
         "quantized_conv_ops.cc",
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
+        "quantized_reshape_op.cc",
         "reference_gemm.h",
+        "requantize.cc",
+        "reshape_op.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -2498,6 +2503,9 @@ tf_kernel_library(
         "quantized_conv_ops.cc",
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
+        "quantized_reshape_op.cc",
+        "requantize.cc",
+        "reshape_op.h",
     ],
     hdrs = [
         "quantization_utils.h",
@@ -2526,10 +2534,23 @@ tf_cc_test(
     srcs = ["quantize_down_and_shrink_range_op_test.cc"],
     deps = [
         ":quantized_ops",
-        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test(
+    name = "requantize_op_test",
+    size = "small",
+    srcs = ["requantize_op_test.cc"],
+    deps = [
+        ":quantized_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -2663,6 +2684,23 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test(
+    name = "quantized_reshape_op_test",
+    size = "small",
+    srcs = ["quantized_reshape_op_test.cc"],
+    deps = [
+        ":quantized_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

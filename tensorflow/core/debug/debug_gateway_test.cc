@@ -168,11 +168,9 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetwork) {
   // NodeOutputCallback as well.
   ASSERT_GT(completed_nodes_wo_outputs.size(), 0);
 
-  // The DebugGateway should have captured the _SOURCE and _SINK nodes.
+  // The DebugGateway should have captured the _SOURCE node.
   ASSERT_LE(1, std::count(completed_nodes_wo_outputs.begin(),
                           completed_nodes_wo_outputs.end(), "_SOURCE"));
-  ASSERT_LE(1, std::count(completed_nodes_wo_outputs.begin(),
-                          completed_nodes_wo_outputs.end(), "_SINK"));
 
   // Verify the calling history of the value callabck
   ASSERT_EQ(completed_nodes_w_outputs.size(), tensors_initialized.size());

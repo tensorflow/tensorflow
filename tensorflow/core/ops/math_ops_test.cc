@@ -446,4 +446,17 @@ TEST(MathOpsTest, Betainc_ShapeFn) {
   INFER_ERROR("must be equal", op, "[1,2];[];[1,2,3]");
 }
 
+TEST(MathOpsTest, Requantize_ShapeFn) {
+  ShapeInferenceTestOp op("Requantize");
+
+  INFER_OK(op, "?;?;?;?;?", "in0;[];[]");
+  INFER_OK(op, "?;[];[];[];[]", "in0;[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[4]");
+}
+
 }  // end namespace tensorflow

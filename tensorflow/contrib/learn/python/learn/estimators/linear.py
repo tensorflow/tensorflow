@@ -219,7 +219,7 @@ def _linear_classifier_model_fn(features, targets, mode, params):
   weight_column_name = params["weight_column_name"]
   optimizer = params["optimizer"]
   gradient_clip_norm = params.get("gradient_clip_norm", None)
-  enable_centered_bias = params.get("enable_centered_bias", True)
+  enable_centered_bias = params.get("enable_centered_bias", False)
   num_ps_replicas = params.get("num_ps_replicas", 0)
   joint_weights = params.get("joint_weights", False)
 
@@ -466,7 +466,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                _joint_weight=False,
                config=None,
                feature_engineering_fn=None):
@@ -510,9 +510,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """
     # TODO(zoy): Give an unsupported error if enable_centered_bias is
     #    requested for SDCA once its default changes to False.
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     self._model_dir = model_dir or tempfile.mkdtemp()
     if n_classes < 2:
       raise ValueError("Classification requires n_classes >= 2")
@@ -784,7 +781,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                target_dimension=1,
                _joint_weights=False,
                config=None,
@@ -822,10 +819,6 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
-
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
       enable_centered_bias = False
       logging.warning("centered_bias is not supported with SDCA, "

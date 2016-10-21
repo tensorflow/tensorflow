@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.specs.python import specs
 from tensorflow.contrib.specs.python import summaries
+specs = tf.contrib.specs
 
 
 def _rand(*size):

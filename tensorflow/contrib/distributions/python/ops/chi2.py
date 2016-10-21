@@ -56,19 +56,21 @@ class Chi2(gamma.Gamma):
         undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
+    parameters = locals()
+    parameters.pop("self")
     # Even though all stats of chi2 are defined for valid parameters, this is
     # not true in the parent class "gamma."  therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
     with ops.name_scope(name, values=[df]) as ns:
-      df = ops.convert_to_tensor(df, name="df")
-      self._df = df
+      self._df = ops.convert_to_tensor(df, name="df")
       super(Chi2, self).__init__(
-          alpha=0.5 * df,
-          beta=constant_op.constant(0.5, dtype=df.dtype),
+          alpha=0.5 * self._df,
+          beta=constant_op.constant(0.5, dtype=self._df.dtype),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -82,11 +84,17 @@ class Chi2(gamma.Gamma):
 class Chi2WithAbsDf(Chi2):
   """Chi2 with parameter transform `df = floor(abs(df))`."""
 
-  def __init__(self, df, validate_args=False, allow_nan_stats=True,
+  def __init__(self,
+               df,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Chi2WithAbsDf"):
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[df]) as ns:
       super(Chi2WithAbsDf, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters
