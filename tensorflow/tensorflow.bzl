@@ -461,7 +461,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
   When the library is built with --config=cuda:
 
   - both deps and cuda_deps are used as dependencies
-  - the gcudacc runtime is added as a dependency (if necessary)
+  - the cuda runtime is added as a dependency (if necessary)
   - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts
 
   Args:
