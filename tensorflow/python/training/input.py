@@ -27,6 +27,7 @@ import collections
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -35,7 +36,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
@@ -147,9 +147,8 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
     enq = q.enqueue_many([input_tensor])
     queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
     if summary_name is not None:
-      logging_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
-                                 math_ops.cast(q.size(), dtypes.float32) *
-                                 (1. / capacity))
+      summary.scalar("queue/%s/%s" % (q.name, summary_name),
+                     math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
     return q
 
 
@@ -650,9 +649,9 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     print("Enqueueing: ", enqueue_many, tensor_list, shapes)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
+    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+                   math_ops.cast(queue.size(), dtypes.float32) *
+                   (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -763,9 +762,9 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many)
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
+    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+                   math_ops.cast(queue.size(), dtypes.float32) *
+                   (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -874,7 +873,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     summary_name = (
         "queue/%sfraction_over_%d_of_%d_full" %
         (name, min_after_dequeue, capacity - min_after_dequeue))
-    logging_ops.scalar_summary(summary_name, full)
+    summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -978,7 +977,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
     summary_name = (
         "queue/%sfraction_over_%d_of_%d_full" %
         (name, min_after_dequeue, capacity - min_after_dequeue))
-    logging_ops.scalar_summary(summary_name, full)
+    summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)

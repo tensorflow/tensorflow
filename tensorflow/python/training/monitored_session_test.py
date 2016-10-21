@@ -162,7 +162,7 @@ class MonitoredTrainingSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       new_gstep = tf.assign_add(gstep, 1)
-      tf.scalar_summary('my_summary_tag', new_gstep * 2)
+      tf.summary.scalar('my_summary_tag', new_gstep * 2)
       with tf.train.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         for _ in range(101):  # 100 is default summary writing steps

@@ -333,7 +333,7 @@ class SummarySaverHookTest(tf.test.TestCase):
 
     var = tf.Variable(0.0)
     tensor = tf.assign_add(var, 1.0)
-    self.summary_op = tf.scalar_summary('my_summary', tensor)
+    self.summary_op = tf.summary.scalar('my_summary', tensor)
 
     global_step = tf.contrib.framework.get_or_create_global_step()
     self.train_op = tf.assign_add(global_step, 1)

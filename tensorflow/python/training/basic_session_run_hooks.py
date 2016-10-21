@@ -372,8 +372,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
           one will be created accordingly.
       scaffold: `Scaffold` to get summary_op if it's not provided.
       summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `scalar_summary` or
-          `merge_all_summaries`.
+          buffer, as output by TF summary methods like `tf.summary.scalar` or
+          `tf.summary.merge_all`.
 
     Raises:
       ValueError: Exactly one of scaffold or summary_op should be set.

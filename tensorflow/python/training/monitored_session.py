@@ -22,12 +22,12 @@ from __future__ import print_function
 import abc
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import summary
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.training import basic_session_run_hooks
@@ -148,9 +148,9 @@ class Scaffold(object):
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
           Scaffold._default_local_init_op)
     if self._summary_op is None:
-      self._summary_op = Scaffold.get_or_default(
-          'summary_op', ops.GraphKeys.SUMMARY_OP,
-          logging_ops.merge_all_summaries)
+      self._summary_op = Scaffold.get_or_default('summary_op',
+                                                 ops.GraphKeys.SUMMARY_OP,
+                                                 summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
       self._saver = Scaffold.get_or_default(
