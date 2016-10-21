@@ -139,9 +139,9 @@ Step-by-step Windows build
    D:\...\build> cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release ^
    More? -DSWIG_EXECUTABLE=C:/tools/swigwin-3.0.10/swig.exe ^
    More? -DPYTHON_EXECUTABLE=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/python.exe ^
-   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib ^
+   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib 
    ```
-   To build with GPU support add those lines:
+   To build with GPU support add "^" at the end of the last line above following with:
    ```
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
