@@ -14091,6 +14091,49 @@ op {
   summary: "Computes rectified linear gradients for a Relu operation."
 }
 op {
+  name: "RequantizationRange"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The float value that the minimum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The float value that the maximum quantized input value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_min"
+    description: "The computed min output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "the computed max output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    description: "The type of the input."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Given a quantized tensor described by (input, input_min, input_max), outputs a"
+  description: "range that covers the actual values present in that tensor.  This op is\ntypically used to produce the requested_output_min and requested_output_max for\nRequantize."
+}
+op {
   name: "Requantize"
   input_arg {
     name: "input"
