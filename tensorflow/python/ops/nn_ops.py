@@ -1010,6 +1010,7 @@ def conv2d_transpose(value,
                      output_shape,
                      strides,
                      padding="SAME",
+                     data_format="NHWC",
                      name=None):
   """The transpose of `conv2d`.
 
@@ -1020,7 +1021,8 @@ def conv2d_transpose(value,
 
   Args:
     value: A 4-D `Tensor` of type `float` and shape
-      `[batch, height, width, in_channels]`.
+      `[batch, height, width, in_channels]` for `NHWC` data format or
+      `[batch, in_channels, height, width]` for `NCHW` data format.
     filter: A 4-D `Tensor` with the same type as `value` and shape
       `[height, width, output_channels, in_channels]`.  `filter`'s
       `in_channels` dimension must match that of `value`.
@@ -1030,6 +1032,7 @@ def conv2d_transpose(value,
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the returned tensor.
 
   Returns:
@@ -1041,9 +1044,12 @@ def conv2d_transpose(value,
   """
   with ops.name_scope(name, "conv2d_transpose",
                       [value, filter, output_shape]) as name:
+    if data_format not in ("NCHW", "NHWC"):
+      raise ValueError("data_format has to be either NCHW or NHWC.")
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
-    if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
+    axis = 3 if data_format=="NHWC" else 1
+    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[3], filter.get_shape(
                        )[3]))
@@ -1055,10 +1061,10 @@ def conv2d_transpose(value,
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
-      if not filter.get_shape()[2].is_compatible_with(output_shape[3]):
+      if not filter.get_shape()[2].is_compatible_with(output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[3], filter.get_shape()[2]))
+            "{} != {}".format(output_shape[axis], filter.get_shape()[2]))
 
     if padding != "VALID" and padding != "SAME":
       raise ValueError("padding must be either VALID or SAME:"
@@ -1069,6 +1075,7 @@ def conv2d_transpose(value,
                                             out_backprop=value,
                                             strides=strides,
                                             padding=padding,
+                                            data_format=data_format,
                                             name=name)
 
 
