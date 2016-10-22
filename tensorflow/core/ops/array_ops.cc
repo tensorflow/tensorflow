@@ -114,48 +114,49 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
 
-  // If the rank and all dimensions of the input tensor are known, we may
-  // infer missing shape information or perform shape checks.
-  // NumElements conveniently returns kUnknownDim upon missing rank or
-  // dimension information.
-  // Additionally, if the rank of the out shape is unknown we have no shape
-  // information to go off of.
+  if (!c->RankKnown(out)) {
+    // We have no information about the shape of the output.
+    c->set_output(0, out);
+    return Status::OK();
+  }
   DimensionHandle num_in_elems = c->NumElements(in);
-  DimensionHandle num_out_elems = c->NumElements(out);
-  if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
-    // Do nothing. We have no shape information to infer from so we directly
-    // return out as our shape.
-  } else if (c->ValueKnown(num_out_elems)) {
-    // If we know the number of output elements, we ensure that they
-    // are equal to the number of input elements.
-    if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
+  if (c->FullyDefined(out)) {
+    DimensionHandle num_out_elems = c->NumElements(out);
+    if (c->ValueKnown(num_in_elems) &&
+        c->Value(num_in_elems) != c->Value(num_out_elems)) {
       return errors::InvalidArgument(
           "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
           " elements to shape ", c->DebugString(out), " (",
           c->DebugString(num_out_elems), " elements)");
     }
-  } else {
-    // If we don't know the number of output elements, we can infer
+    c->set_output(0, out);
+    return Status::OK();
+  }
+
+  if (c->ValueKnown(num_in_elems)) {
+    // We don't know the number of output elements, but we can try to infer
     // the missing dimension.
     int32 unknown_idx = -1;
+    bool too_many_unknown = false;
     DimensionHandle known_elems = c->MakeDim(1);
     for (int32 i = 0; i < c->Rank(out); ++i) {
       DimensionHandle dim = c->Dim(out, i);
       if (!c->ValueKnown(dim)) {
         if (unknown_idx >= 0) {
-          return errors::InvalidArgument(
-              "Cannot infer multiple unknown dimensions in shape ",
-              c->DebugString(out));
+          too_many_unknown = true;
+          break;
         }
         unknown_idx = i;
       } else {
         TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
       }
     }
-    DimensionHandle inferred_dim;
-    TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
-                                 true /* evenly_divisible */, &inferred_dim));
-    TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+    if (!too_many_unknown) {
+      DimensionHandle inferred_dim;
+      TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                   true /* evenly_divisible */, &inferred_dim));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+    }
   }
 
   c->set_output(0, out);
