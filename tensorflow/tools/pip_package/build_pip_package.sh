@@ -107,7 +107,8 @@ function main() {
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow}
   for header in $(find protobuf -name \*.h); do
-    cp --parents "$header" ${TMPDIR}/google;
+    mkdir -p "${TMPDIR}/google/$(dirname ${header})"
+    cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done
   popd
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
