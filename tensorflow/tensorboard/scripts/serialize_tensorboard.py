@@ -25,7 +25,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import json
 import os
 import os.path
@@ -40,7 +39,21 @@ import tensorflow as tf
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
-FLAGS = None
+tf.flags.DEFINE_string('logdir', None, """the logdir to pass to the TensorBoard
+backend; data will be read from this logdir for serialization.""")
+
+tf.flags.DEFINE_string('target', None, """The directoy where serialized data
+will be written""")
+
+tf.flags.DEFINE_boolean('overwrite', False, """Whether to remove and overwrite
+TARGET if it already exists.""")
+
+tf.flags.DEFINE_boolean(
+    'purge_orphaned_data', True, 'Whether to purge data that '
+    'may have been orphaned due to TensorBoard restarts. '
+    'Disabling purge_orphaned_data can be used to debug data '
+    'disappearance.')
+FLAGS = tf.flags.FLAGS
 
 BAD_CHARACTERS = "#%&{}\\/<>*? $!'\":@+`|="
 DEFAULT_SUFFIX = '.json'
@@ -195,38 +208,4 @@ def main(unused_argv=None):
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--logdir',
-      type=str,
-      default=None,
-      help="""\
-      the logdir to pass to the TensorBoard backend; data will be read from
-      this logdir for serialization.\
-      """
-  )
-  parser.add_argument(
-      '--target',
-      type=str,
-      default=None,
-      help='The directoy where serialized data will be written'
-  )
-  parser.add_argument(
-      '--overwrite',
-      default=False,
-      help='Whether to remove and overwrite TARGET if it already exists.',
-      action='store_true'
-  )
-  parser.add_argument(
-      '--purge_orphaned_data',
-      type=bool,
-      default=True,
-      help="""\
-      Whether to purge data that may have been orphaned due to TensorBoard
-      restarts. Disabling purge_orphaned_data can be used to debug data
-      disappearance.\
-      """
-  )
-  FLAGS = parser.parse_args()
-
   tf.app.run()
