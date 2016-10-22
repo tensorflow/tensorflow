@@ -5,6 +5,7 @@ package(default_visibility = [
     "//tensorflow:internal",
     "//tensorflow_models:__subpackages__",
 ])
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -1614,7 +1615,6 @@ py_library(
         ":sparse_ops",
         ":state_ops",
         ":string_ops",
-        ":summary",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
