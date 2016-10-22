@@ -21,7 +21,7 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
 
 ### Pre-requisites
 
-* CMake version 3.1 or later
+* CMake version 3.1 up to 3.6
 
 * [Git](http://git-scm.com)
 
