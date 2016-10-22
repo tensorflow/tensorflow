@@ -647,7 +647,6 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
     # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
-    print("Enqueueing: ", enqueue_many, tensor_list, shapes)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
     summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
                    math_ops.cast(queue.size(), dtypes.float32) *
