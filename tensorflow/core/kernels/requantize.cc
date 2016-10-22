@@ -55,9 +55,10 @@ class RequantizeOp : public OpKernel {
         errors::InvalidArgument("requested_output_min must be <= 0, but got ",
                                 requested_output_min_float));
     OP_REQUIRES(
-        ctx, requested_output_max_float >= 0.0f,
-        errors::InvalidArgument("requested_output_max must be <= 0, but got ",
-                                requested_output_max_float));
+        ctx, requested_output_max_float >= requested_output_min_float,
+        errors::InvalidArgument(
+            "requested_output_max must be >= requested_output_min, but got ",
+            requested_output_max_float, " and ", requested_output_min_float));
 
     auto input_array = input.flat<T1>();
 

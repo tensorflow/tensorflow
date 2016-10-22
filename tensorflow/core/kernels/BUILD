@@ -2406,6 +2406,7 @@ filegroup(
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
         "reference_gemm.h",
+        "requantization_range_op.cc",
         "requantize.cc",
         "reshape_op.h",
     ],
@@ -2504,6 +2505,7 @@ tf_kernel_library(
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
+        "requantization_range_op.cc",
         "requantize.cc",
         "reshape_op.h",
     ],
@@ -2525,6 +2527,22 @@ tf_kernel_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+    ],
+)
+
+tf_cc_test(
+    name = "requantization_range_op_test",
+    size = "small",
+    srcs = ["requantization_range_op_test.cc"],
+    deps = [
+        ":quantized_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

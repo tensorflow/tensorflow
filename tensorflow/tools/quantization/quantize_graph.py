@@ -535,16 +535,25 @@ class GraphRewriter(object):
     max_output_name = quantize_input_name + ":2"
     return quantize_input_name, min_output_name, max_output_name
 
-  def add_quantize_down_node(self, original_node, quantized_output_name):
-    quantize_down_name = original_node.name + "_eightbit_quantize_down"
-    quantize_down_node = create_node(
-        "QuantizeDownAndShrinkRange", quantize_down_name,
-        [quantized_output_name, quantized_output_name + ":1",
-         quantized_output_name + ":2"])
-    set_attr_dtype(quantize_down_node, "Tinput", tf.qint32)
-    set_attr_dtype(quantize_down_node, "out_type", tf.quint8)
-    self.add_output_graph_node(quantize_down_node)
-    return quantize_down_name
+  def add_quantize_down_nodes(self, original_node, quantized_output_name):
+    quantized_outputs = [
+        quantized_output_name, quantized_output_name + ":1",
+        quantized_output_name + ":2"
+    ]
+    requant_range_node = create_node(
+        "RequantizationRange", original_node.name + "_eightbit_requant_range",
+        quantized_outputs)
+    set_attr_dtype(requant_range_node, "Tinput", tf.qint32)
+    self.add_output_graph_node(requant_range_node)
+
+    requantize_node = create_node(
+        "Requantize", original_node.name + "_eightbit_requantize",
+        (quantized_outputs +
+         [requant_range_node.name + ":0", requant_range_node.name + ":1"]))
+    set_attr_dtype(requantize_node, "Tinput", tf.qint32)
+    set_attr_dtype(requantize_node, "out_type", tf.quint8)
+    self.add_output_graph_node(requantize_node)
+    return requantize_node.name
 
   def add_dequantize_result_node(self, quantized_output_name,
                                  original_node_name, min_tensor_index=1):
@@ -573,8 +582,8 @@ class GraphRewriter(object):
     copy_attr(quantized_mat_mul_node, "transpose_b",
               original_node.attr["transpose_b"])
     self.add_output_graph_node(quantized_mat_mul_node)
-    quantize_down_name = self.add_quantize_down_node(original_node,
-                                                     quantized_mat_mul_name)
+    quantize_down_name = self.add_quantize_down_nodes(original_node,
+                                                      quantized_mat_mul_name)
     self.add_dequantize_result_node(quantize_down_name, original_node.name)
 
   def eightbitize_conv_node(self, original_node):
@@ -589,8 +598,8 @@ class GraphRewriter(object):
     set_attr_dtype(quantized_conv_node, "Tfilter", tf.quint8)
     set_attr_dtype(quantized_conv_node, "out_type", tf.qint32)
     self.add_output_graph_node(quantized_conv_node)
-    quantize_down_name = self.add_quantize_down_node(original_node,
-                                                     quantized_conv_name)
+    quantize_down_name = self.add_quantize_down_nodes(original_node,
+                                                      quantized_conv_name)
     self.add_dequantize_result_node(quantize_down_name, original_node.name)
 
   def eightbitize_bias_add_node(self, original_node):
@@ -605,8 +614,8 @@ class GraphRewriter(object):
     set_attr_dtype(quantized_bias_add_node, "T2", tf.quint8)
     set_attr_dtype(quantized_bias_add_node, "out_type", tf.qint32)
     self.add_output_graph_node(quantized_bias_add_node)
-    quantize_down_name = self.add_quantize_down_node(original_node,
-                                                     quantized_bias_add_name)
+    quantize_down_name = self.add_quantize_down_nodes(original_node,
+                                                      quantized_bias_add_name)
     self.add_dequantize_result_node(quantize_down_name, original_node.name)
 
   def eightbitize_single_input_tensor_node(self, original_node,
@@ -812,8 +821,8 @@ class GraphRewriter(object):
     copy_attr(quantized_batch_norm_node, "variance_epsilon",
               original_node.attr["variance_epsilon"])
     self.add_output_graph_node(quantized_batch_norm_node)
-    quantize_down_name = self.add_quantize_down_node(original_node,
-                                                     quantized_batch_norm_name)
+    quantize_down_name = self.add_quantize_down_nodes(original_node,
+                                                      quantized_batch_norm_name)
     self.add_dequantize_result_node(quantize_down_name, original_node.name)
 
   def add_output_graph_node(self, output_node):

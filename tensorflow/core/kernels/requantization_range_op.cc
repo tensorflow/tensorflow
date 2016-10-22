@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,24 +31,22 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <class T1, class T2>
-class QuantizeDownAndShrinkRangeOp : public OpKernel {
+template <class T1>
+class RequantizationRangeOp : public OpKernel {
  public:
-  explicit QuantizeDownAndShrinkRangeOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+  explicit RequantizationRangeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
     const float input_min_float = ctx->input(1).flat<float>()(0);
     const float input_max_float = ctx->input(2).flat<float>()(0);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     Tensor* output_min = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &output_min));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output_min));
     Tensor* output_max = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({}), &output_max));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &output_max));
 
-    // See QuantizationRangeOp as well, which has a copy of this logic.
+    // See the deprecated QuantizeDownAndShrinkRangeOp as well, which has a copy
+    // of this logic.
     auto input_array = input.flat<T1>();
     const int32 input_lowest_quantized =
         static_cast<int32>(Eigen::NumTraits<T1>::lowest());
@@ -69,30 +67,14 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
     const float actual_max_float = QuantizedToFloat(
         actual_max_quantized, input_min_float, input_max_float);
 
-#if 0
-    // This is the reference, non-eigen implementation:
-    auto output_array = output->flat<T2>();
-    RequantizeManyInNewRange<T1, T2>(input_array.data(), input_array.size(),
-                                     input_min_float, input_max_float,
-                                     actual_min_float, actual_max_float,
-                                     output_array.data());
-#endif
-
-    if (input_array.size() > 0) {
-      RequantizeManyInNewRangeUsingEigen<T1, T2>(
-          ctx->eigen_device<CPUDevice>(), input, input_min_float,
-          input_max_float, actual_min_float, actual_max_float, output);
-    }
-
     output_min->flat<float>().setConstant(actual_min_float);
     output_max->flat<float>().setConstant(actual_max_float);
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("QuantizeDownAndShrinkRange")
+REGISTER_KERNEL_BUILDER(Name("RequantizationRange")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<qint32>("Tinput")
-                            .TypeConstraint<quint8>("out_type"),
-                        QuantizeDownAndShrinkRangeOp<qint32, quint8>);
+                            .TypeConstraint<qint32>("Tinput"),
+                        RequantizationRangeOp<qint32>);
 
 }  // namespace tensorflow
