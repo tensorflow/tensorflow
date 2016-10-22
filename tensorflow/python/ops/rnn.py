@@ -785,7 +785,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   if not time_major:
     # (B,T,D) => (T,B,D)
-    flat_input = tuple(array_ops.transpose(input_, [1, 0, 2])
+    flat_input = tuple(array_ops.transpose(input_, [1, 0]+range(2,input_.get_shape().ndims))
                        for input_ in flat_input)
 
   parallel_iterations = parallel_iterations or 32
@@ -850,7 +850,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = nest.flatten(outputs)
-      flat_output = [array_ops.transpose(output, [1, 0, 2])
+      flat_output = [array_ops.transpose(output, [1, 0]+range(2,output.get_shape().ndims))
                      for output in flat_output]
       outputs = nest.pack_sequence_as(
           structure=outputs, flat_sequence=flat_output)
