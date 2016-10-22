@@ -82,11 +82,11 @@ This will allow you to save work and have access to generated files on the host 
 Pushing a Google Cloud release
 ------------------------------
 
-    V=0.5.0
-    docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:$V
-    gcloud docker push b.gcr.io/tensorflow-udacity/assignments
-    docker tag -f $USER/assignments b.gcr.io/tensorflow-udacity/assignments:latest
-    gcloud docker push b.gcr.io/tensorflow-udacity/assignments
+    V=0.6.0
+    docker tag $USER/assignments gcr.io/tensorflow/udacity-assignments:$V
+    gcloud docker push gcr.io/tensorflow/udacity-assignments
+    docker tag -f $USER/assignments gcr.io/tensorflow/udacity-assignments:latest
+    gcloud docker push gcr.io/tensorflow/udacity-assignments
 
 History
 -------
@@ -96,3 +96,4 @@ History
 * 0.3.0: Use 0.7.1 release.
 * 0.4.0: Move notMMNIST data for Google Cloud.
 * 0.5.0: Actually use 0.7.1 release.
+* 0.6.0: Update to TF 0.10.0, add libjpeg (for Pillow).
