@@ -16,7 +16,7 @@ else()
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
 endif()
-  
+
 ExternalProject_Add(grpc
     PREFIX grpc
     DEPENDS protobuf zlib
@@ -30,6 +30,7 @@ ExternalProject_Add(grpc
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
-	-DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
+        -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
+        -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )
 
