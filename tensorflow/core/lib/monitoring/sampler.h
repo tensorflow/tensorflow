@@ -171,7 +171,7 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
                 "Mismatch between Sampler<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {labels...};
+  const LabelArray& label_array = {{labels...}};
   mutex_lock l(mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {

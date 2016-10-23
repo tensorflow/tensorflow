@@ -237,7 +237,7 @@ struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
 };
 
 // TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
-template <typename T>
+template <typename T, typename Enable = void>
 struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
@@ -248,6 +248,15 @@ struct google_floor_div {
     } else {
       return x / y;
     }
+  }
+};
+
+template <typename T>
+struct google_floor_div<
+    T, typename std::enable_if<std::is_unsigned<T>::value>::type> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    return x / y;
   }
 };
 
