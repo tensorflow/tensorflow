@@ -39,7 +39,11 @@ struct SelectScalarFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat then_flat,
                   typename TTypes<T>::ConstFlat else_flat) {
 
+#if !defined(EIGEN_HAS_INDEX_LIST)
+  Eigen::array<int, 2> rank1;
+#else
   Eigen::IndexList<Eigen::type2index<1>> rank1;
+#endif
   const int size  = then_flat.dimension(0);
   Eigen::array<int, 1> broadcast_dims{size};
 
