@@ -51,9 +51,6 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
   - Docker 1.9.1 (for automated testing)
 
 ### Current known limitations
-
-* Additional limitations for the Windows build:
-
   - The Python package supports **Python 3.5 only**, because that is the only
     version for which standard Python binaries exist and those binaries are
     compatible with the TensorFlow runtime. (On Windows, the standard Python
