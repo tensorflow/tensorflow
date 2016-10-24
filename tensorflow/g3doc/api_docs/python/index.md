@@ -362,6 +362,7 @@
   * [`non_max_suppression`](../../api_docs/python/image.md#non_max_suppression)
   * [`pad_to_bounding_box`](../../api_docs/python/image.md#pad_to_bounding_box)
   * [`per_image_standardization`](../../api_docs/python/image.md#per_image_standardization)
+  * [`per_image_whitening`](../../api_docs/python/image.md#per_image_whitening)
   * [`random_brightness`](../../api_docs/python/image.md#random_brightness)
   * [`random_contrast`](../../api_docs/python/image.md#random_contrast)
   * [`random_flip_left_right`](../../api_docs/python/image.md#random_flip_left_right)
