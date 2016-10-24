@@ -261,11 +261,9 @@ handle these situations gracefully.
         var color = scale.scale(p.name);
         p.style['color'] = color;
       });
-      this.updateStyles();
       // The updateStyles call fails silently if the browser doesn't have focus,
       // e.g. if TensorBoard was opened into a new tab that isn't visible.
-      // As a workaround... we know requestAnimationFrame won't fire until the
-      // page has focus, so updateStyles again on requestAnimationFrame.
+      // So we wait for requestAnimationFrame.
       var _this = this;
       window.requestAnimationFrame(function() {_this.updateStyles();});
     },
