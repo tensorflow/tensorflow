@@ -564,6 +564,24 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "fake_quant_ops_test",
+    size = "small",
+    srcs = ["fake_quant_ops_test.cc"],
+    deps = [
+        ":fake_quant_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
     srcs = ["fused_batch_norm_op_test.cc"],
@@ -1708,6 +1726,22 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
+)
+
+tf_kernel_library(
+    name = "fake_quant_ops",
+    srcs = ["fake_quant_ops.cc"],
+    hdrs = ["fake_quant_ops_functor.h"],
+    gpu_srcs = [
+        "fake_quant_ops_gpu.cu.cc",
+        "fake_quant_ops_functor.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
 )
 
 tf_kernel_library(

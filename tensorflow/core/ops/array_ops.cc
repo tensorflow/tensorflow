@@ -4383,6 +4383,117 @@ output_min: This value is copied from input_min.
 output_max: This value is copied from input_max.
 )Doc");
 
+REGISTER_OP("FakeQuantWithMinMaxArgs")
+    .Attr("min: float = -6.0")
+    .Attr("max: float = 6.0")
+    .Input("inputs: float")
+    .Output("outputs: float")
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+
+Attributes [min; max] define the clamping range for the 'inputs' data.  Op
+divides this range into 255 steps (total of 256 values), then replaces each
+'inputs' value with the closest of the quantized step values.
+
+Quantization is called fake since the output is still in floating point.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxArgsGradient")
+    .Attr("min: float = -6.0")
+    .Attr("max: float = 6.0")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Output("backprops: float")
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxArgs operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
+backprops: Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
+  `gradients * (inputs >= min && inputs <= max)`.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVars")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("outputs: float")
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+global float scalars `min` and `max` to 'outputs' tensor of same shape as
+`inputs`.
+
+[min; max] is the clamping range for the 'inputs' data.  Op divides this range
+into 255 steps (total of 256 values), then replaces each 'inputs' value with the
+closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsGradient")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("backprops_wrt_input: float")
+    .Output("backprop_wrt_min: float")
+    .Output("backprop_wrt_max: float")
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxVars operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation.
+min, max: Quantization interval, scalar floats.
+backprops_wrt_input: Backpropagated gradients w.r.t. inputs:
+  `gradients * (inputs >= min && inputs <= max)`.
+backprop_wrt_min: Backpropagated gradients w.r.t. min parameter:
+  `sum(gradients * (inputs < min))`.
+backprop_wrt_max: Backpropagated gradients w.r.t. max parameter:
+  `sum(gradients * (inputs > max))`.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsPerChannel")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("outputs: float")
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
+to 'outputs' tensor of same shape as `inputs`.
+
+[min; max] is the clamping range for the 'inputs' data in the corresponding
+depth channel.  Op divides this range into 255 steps (total of 256 values), then
+replaces each 'inputs' value with the closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("backprops_wrt_input: float")
+    .Output("backprop_wrt_min: float")
+    .Output("backprop_wrt_max: float")
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation,
+  shape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
+  same as `gradients`.
+min, max: Quantization interval, floats of shape `[d]`.
+backprops_wrt_input: Backpropagated gradients w.r.t. inputs, shape same as
+  `inputs`:
+    `gradients * (inputs >= min && inputs <= max)`.
+backprop_wrt_min: Backpropagated gradients w.r.t. min parameter, shape `[d]`:
+  `sum_per_d(gradients * (inputs < min))`.
+backprop_wrt_max: Backpropagated gradients w.r.t. max parameter, shape `[d]`:
+  `sum_per_d(gradients * (inputs > max))`.
+)doc");
+
 // Deprecated op registrations:
 
 // The following can be deleted after 10mar2017.
