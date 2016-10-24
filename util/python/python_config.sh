@@ -129,7 +129,7 @@ function setup_python {
     read b || true
     if [ "$b" == "" ]; then
       PYTHON_LIB_PATH="$(default_python_path "${python_lib_path[0]}")"
-      echo PYTHON_LIB_PATH
+      echo $PYTHON_LIB_PATH
     else
       PYTHON_LIB_PATH="$b"
     fi
