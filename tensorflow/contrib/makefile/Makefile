@@ -426,6 +426,8 @@ $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 tensorflow/core/util/version_info.cc
+# Remove duplicates (for version_info.cc)
+CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/core/*/*test.cc) \
 $(wildcard tensorflow/core/*/*testutil*) \
