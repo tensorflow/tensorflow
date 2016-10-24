@@ -182,8 +182,8 @@ def einsum(axes, *inputs):
       idx_in[i] = sorted_idx
 
   reduction_idx = []
-  shapes = [[dim if dim else -1
-             for dim in tensor.get_shape().as_list()]
+  shapes = [[dim if dim is not None else -1
+             for dim in array_ops.unpack(array_ops.shape(tensor))]
             for tensor in inputs]
 
   # validate shapes for broadcasting
