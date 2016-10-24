@@ -90,6 +90,10 @@ class ServerDataProvider implements DataProvider {
   retrieveRuns(callback: (runs: string[]) => void): void {
     let msgId = logging.setModalMessage('Fetching runs...');
     d3.json(`${this.routePrefix}/runs`, (err, runs) => {
+      if (err) {
+        logging.setModalMessage('Error: ' + err.responseText);
+        return;
+      }
       logging.setModalMessage(null, msgId);
       callback(runs);
     });
@@ -104,6 +108,10 @@ class ServerDataProvider implements DataProvider {
 
     let msgId = logging.setModalMessage('Fetching checkpoint info...');
     d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
+      if (err) {
+        logging.setModalMessage('Error: ' + err.responseText);
+        return;
+      }
       logging.setModalMessage(null, msgId);
       this.runCheckpointInfoCache[run] = checkpointInfo;
       callback(checkpointInfo);
@@ -115,9 +123,9 @@ class ServerDataProvider implements DataProvider {
     logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
     d3.text(
         `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
-        (err: Error, tsv: string) => {
+        (err: any, tsv: string) => {
           if (err) {
-            console.error(err);
+            logging.setModalMessage('Error: ' + err.responseText);
             return;
           }
           parseTensors(tsv).then(dataPoints => {
@@ -131,9 +139,9 @@ class ServerDataProvider implements DataProvider {
     logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
     d3.text(
         `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`,
-        (err: Error, rawMetadata: string) => {
+        (err: any, rawMetadata: string) => {
           if (err) {
-            console.error(err);
+            logging.setModalMessage('Error: ' + err.responseText);
             return;
           }
           parseMetadata(rawMetadata).then(result => callback(result));
@@ -526,10 +534,9 @@ class DemoDataProvider implements DataProvider {
     let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.fpath}`;
     logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
-    d3.text(url, (error: Error, dataString: string) => {
+    d3.text(url, (error: any, dataString: string) => {
       if (error) {
-        console.error(error);
-        logging.setModalMessage('Error loading data.');
+        logging.setModalMessage('Error: ' + error.responseText);
         return;
       }
       parseTensors(dataString, separator).then(points => {
@@ -547,9 +554,9 @@ class DemoDataProvider implements DataProvider {
         logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
         d3.text(
             `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.metadata_path}`,
-            (err: Error, rawMetadata: string) => {
+            (err: any, rawMetadata: string) => {
               if (err) {
-                console.error(err);
+                logging.setModalMessage('Error: ' + err.responseText);
                 reject(err);
                 return;
               }

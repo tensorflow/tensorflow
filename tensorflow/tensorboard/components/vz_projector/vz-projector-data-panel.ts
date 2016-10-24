@@ -75,8 +75,8 @@ export class DataPanel extends DataPanelPolymer {
     // Get all the runs.
     this.dataProvider.retrieveRuns(runs => {
       this.runNames = runs;
-      // If there is only 1 run, choose that one by default.
-      if (this.runNames.length === 1) {
+      // Choose the first run by default.
+      if (this.runNames.length > 0) {
         this.selectedRun = runs[0];
       }
     });
@@ -208,7 +208,13 @@ export class DataPanel extends DataPanelPolymer {
           .text(this.checkpointInfo.checkpointFile)
           .attr('title', this.checkpointInfo.checkpointFile);
       this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
-        this.selectedTensor = defaultTensor;
+        if (this.selectedTensor === defaultTensor) {
+          // Explicitly call the observer. Polymer won't call it if the previous
+          // string matches the current string.
+          this._selectedTensorChanged();
+        } else {
+          this.selectedTensor = defaultTensor;
+        }
       });
     });
   }
