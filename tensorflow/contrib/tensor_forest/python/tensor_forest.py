@@ -429,8 +429,8 @@ class RandomForestGraphs(object):
     return math_ops.reduce_mean(math_ops.to_float(array_ops.pack(sizes)))
 
   # pylint: disable=unused-argument
-  def training_loss(self, features, labels):
-    return math_ops.neg(self.average_size())
+  def training_loss(self, features, labels, name='training_loss'):
+    return math_ops.neg(self.average_size(), name=name)
 
   # pylint: disable=unused-argument
   def validation_loss(self, features, labels):

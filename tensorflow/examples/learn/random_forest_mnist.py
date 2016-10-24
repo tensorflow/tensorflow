@@ -23,8 +23,12 @@ import tempfile
 import tensorflow as tf
 
 # pylint: disable=g-backslash-continuation
+from tensorflow.contrib.learn.python.learn\
+        import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators\
         import random_forest
+from tensorflow.contrib.tensor_forest.client\
+        import eval_metrics
 from tensorflow.examples.tutorials.mnist import input_data
 
 FLAGS = None
@@ -35,7 +39,7 @@ def build_estimator(model_dir):
   params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
       num_classes=10, num_features=784,
       num_trees=FLAGS.num_trees, max_nodes=FLAGS.max_nodes)
-  return random_forest.TensorForestEstimator(params, model_dir=model_dir)
+  return random_forest.TensorForestEstimator(params.fill(), model_dir=model_dir)
 
 
 def train_and_eval():
@@ -45,20 +49,24 @@ def train_and_eval():
 
   estimator = build_estimator(model_dir)
 
-  # TensorForest's LossMonitor allows training to terminate early if the
+  # TensorForest's loss hook allows training to terminate early if the
   # forest is no longer growing.
   early_stopping_rounds = 100
-  check_every_n_steps = 100
-  monitor = random_forest.TensorForestLossMonitor(early_stopping_rounds,
-                                                  check_every_n_steps)
+  monitor = random_forest.TensorForestLossHook(early_stopping_rounds)
 
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
 
   estimator.fit(x=mnist.train.images, y=mnist.train.labels,
                 batch_size=FLAGS.batch_size, monitors=[monitor])
 
+  metric = {'accuracy':
+            metric_spec.MetricSpec(
+                eval_metrics.get_metric('accuracy'),
+                prediction_key=random_forest.INFERENCE_NAME)}
+
   results = estimator.evaluate(x=mnist.test.images, y=mnist.test.labels,
-                               batch_size=FLAGS.batch_size)
+                               batch_size=FLAGS.batch_size,
+                               metrics=metric)
   for key in sorted(results):
     print('%s: %s' % (key, results[key]))
 

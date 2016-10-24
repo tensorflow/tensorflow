@@ -20,7 +20,6 @@ from __future__ import print_function
 import math
 import threading
 
-from tensorflow.contrib.learn.python.learn.learn_io import graph_io
 from tensorflow.contrib.tensor_forest.python import constants
 
 from tensorflow.python.framework import common_shapes
@@ -34,8 +33,6 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 DATA_OPS_FILE = '_data_ops.so'
-
-EXAMPLE_WEIGHT_NAME = '__weight__'
 
 _data_ops = None
 _ops_lock = threading.Lock()
@@ -100,14 +97,8 @@ def _ParseSparse(data):
   offset = 0
 
   sparse_tensors = []
-  keys = None
-  weights = None
   for k in sorted(data.keys()):
-    if k == graph_io.KEY_FEATURE_NAME:
-      keys = data[k]
-    elif k == EXAMPLE_WEIGHT_NAME:
-      weights = data[k]
-    elif isinstance(data[k], ops.SparseTensor):
+    if isinstance(data[k], ops.SparseTensor):
       # TODO(gilberth): Support mixed string/float sparse tensors.
       # We currently only support string (categorical) data if we're using
       # sparse tensors.
@@ -129,7 +120,7 @@ def _ParseSparse(data):
       # Convert dense to sparse.
       raise NotImplementedError('Dense to sparse conversion not implemented.')
 
-  return (sparse_ops.sparse_concat(1, sparse_tensors), keys, weights,
+  return (sparse_ops.sparse_concat(1, sparse_tensors),
           [constants.DATA_CATEGORICAL])
 
 
@@ -146,19 +137,12 @@ def _ParseDense(data):
   data_spec = [constants.DATA_CATEGORICAL if data[k].dtype == dtypes.string else
                constants.DATA_FLOAT for k in sorted(data.keys())]
   data_spec = [constants.DATA_FLOAT] + data_spec
-  keys = None
-  weights = None
   features = []
   for k in sorted(data.keys()):
-    if k == graph_io.KEY_FEATURE_NAME:
-      keys = data[k]
-    elif k == EXAMPLE_WEIGHT_NAME:
-      weights = data[k]
-    else:
-      features.append(
-          convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
-          else data[k])
-  return array_ops.concat(1, features), keys, weights, data_spec
+    features.append(
+        convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
+        else data[k])
+  return array_ops.concat(1, features), data_spec
 
 
 def ParseDataTensorOrDict(data):
@@ -187,8 +171,7 @@ def ParseDataTensorOrDict(data):
     else:
       return _ParseDense(data)
   else:
-    return (data, None, None,
-            [constants.DATA_FLOAT] * data.get_shape().as_list()[1])
+    return (data, [constants.DATA_FLOAT] * data.get_shape().as_list()[1])
 
 
 def ParseLabelTensorOrDict(labels):
