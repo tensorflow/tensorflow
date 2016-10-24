@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -89,9 +90,12 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
+    Graph* graph = nullptr;
     Device* device = nullptr;
     Executor* root = nullptr;
     FunctionLibraryRuntime* lib = nullptr;
+    // Build the cost model if this value is strictly positive.
+    int64 build_cost_model = 0;
   };
 
   struct Item : public core::RefCounted {
@@ -117,6 +121,8 @@ class GraphMgr {
   // Not owned.
   const WorkerEnv* worker_env_;
 
+  CostModelManager cost_model_manager_;
+
   // Owned.
   mutex mu_;
   int64 next_id_ GUARDED_BY(mu_) = 0;
@@ -133,6 +139,12 @@ class GraphMgr {
                               StepStatsCollector* collector,
                               CancellationManager* cancellation_manager,
                               StatusCallback done);
+
+  // Don't attempt to process cost models unless explicitely requested for at
+  // least one of the items.
+  bool skip_cost_models_ = true;
+
+  void BuildCostModel(Item* item, StepStatsCollector* collector);
 
   Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
   Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
