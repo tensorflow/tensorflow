@@ -362,7 +362,9 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
   """
   def _initializer(shape, dtype=_assert_float_dtype(dtype), partition_info=None):
     if gain == 'relu':
-      gain = math.sqrt(2)
+      _gain = math.sqrt(2)
+    else:
+      _gain = gain
 
     # Use the default random number generator
     if seed is None:
@@ -379,7 +381,7 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     a = rng.normal(0, 1, flat_shape)
     u, _, v = np.linalg.svd(a, full_matrices=False)
     q = u if u.shape == flat_shape else v
-    q = gain * q.reshape(shape)
+    q = _gain * q.reshape(shape)
     return constant_op.constant(q, dtype=dtype, shape=shape)
 
   return _initializer
