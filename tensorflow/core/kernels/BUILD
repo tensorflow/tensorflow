@@ -2639,6 +2639,7 @@ tf_cc_test(
     name = "quantized_conv_ops_test",
     size = "small",
     srcs = ["quantized_conv_ops_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
@@ -2677,6 +2678,7 @@ tf_cc_test(
     name = "quantized_matmul_op_test",
     size = "small",
     srcs = ["quantized_matmul_op_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
