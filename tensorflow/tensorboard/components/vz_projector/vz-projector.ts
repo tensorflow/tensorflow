@@ -414,11 +414,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setPointAccessors(pointAccessors);
 
-    this.scatterPlot.update();
-    /* tsne needs to do an iteration for the points to look reasonable
-    if (projection !== 'tsne') {
+    if (this.dataSet.hasMeaningfulVisualization(projection)) {
       this.scatterPlot.update();
-    } */
+    }
 
     this.scatterPlot.recreateScene();
     this.scatterPlot.setCameraDefForNextCameraCreation(null);
@@ -442,6 +440,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     state.selectedProjection = this.selectedProjection;
     state.is3d = this.projectionsPanel.is3d;
+    state.tSNEIteration = this.dataSet.tSNEIteration;
     if (this.selectedProjection === 'pca') {
       state.componentDimensions =
           this.projectionsPanel.getPCAComponentUIValues();
@@ -466,6 +465,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (state.selectedProjection === 'tsne') {
       this.dataSet.hasTSNERun = true;
     }
+    this.dataSet.tSNEIteration = state.tSNEIteration;
 
     this.projectionsPanel.disablePolymerChangesTriggerReprojection();
     this.projectionsPanel.is3d = state.is3d;

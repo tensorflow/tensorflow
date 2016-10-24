@@ -115,6 +115,7 @@ export class DataSet implements scatterPlot.DataSet {
   projections = d3.set();
   nearest: knn.NearestEntry[][];
   nearestK: number;
+  tSNEIteration: number = 0;
   tSNEShouldStop = true;
   dim = [0, 0];
   hasTSNERun: boolean = false;
@@ -197,6 +198,13 @@ export class DataSet implements scatterPlot.DataSet {
                this.points[index].projections[prefix + '-' + components[i]]);
     }
     return accessors;
+  }
+
+  hasMeaningfulVisualization(projection: Projection): boolean {
+    if (projection !== 'tsne') {
+      return true;
+    }
+    return this.tSNEIteration > 0;
   }
 
   /**
@@ -295,11 +303,12 @@ export class DataSet implements scatterPlot.DataSet {
     let opt = {epsilon: learningRate, perplexity: perplexity, dim: tsneDim};
     this.tsne = new TSNE(opt);
     this.tSNEShouldStop = false;
-    let iter = 0;
+    this.tSNEIteration = 0;
 
     let step = () => {
       if (this.tSNEShouldStop) {
         stepCallback(null);
+        this.tsne = null;
         return;
       }
       this.tsne.step();
@@ -313,8 +322,8 @@ export class DataSet implements scatterPlot.DataSet {
           dataPoint.projections['tsne-2'] = result[i * tsneDim + 2];
         }
       });
-      iter++;
-      stepCallback(iter);
+      this.tSNEIteration++;
+      stepCallback(this.tSNEIteration);
       requestAnimationFrame(step);
     };
 
@@ -338,7 +347,6 @@ export class DataSet implements scatterPlot.DataSet {
       runAsyncTask('Initializing T-SNE...', () => {
         this.tsne.initDataDist(this.nearest);
       }).then(step);
-
     });
   }
 
@@ -428,6 +436,9 @@ export interface State {
 
   /** The selected projection tab. */
   selectedProjection?: Projection;
+
+  /** The t-SNE iteration of this projection. */
+  tSNEIteration?: number;
 
   /** The projection component dimensions (for PCA) */
   componentDimensions?: number[];
