@@ -1778,17 +1778,17 @@ class IsFiniteInfNanTest(tf.test.TestCase):
 
 class RoundingTest(tf.test.TestCase):
 
-  def _compare_values(self, x, y=None, use_gpu=True):
+  def _compare_values(self, x, y=None):
     y = np.rint(x) if y is None else np.asarray(y)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session() as sess:
       tf_rint = tf.rint(x)
       np_rint = sess.run(tf_rint)
     self.assertAllEqual(y, np_rint)
     self.assertShapeEqual(y, tf_rint)
 
-  def _compare(self, x, use_gpu):
+  def _compare(self, x):
     np_floor, np_ceil = np.floor(x), np.ceil(x)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session() as sess:
       inx = tf.convert_to_tensor(x)
       ofloor, oceil = tf.floor(inx), tf.ceil(inx)
       tf_floor, tf_ceil = sess.run([ofloor, oceil])
@@ -1799,17 +1799,14 @@ class RoundingTest(tf.test.TestCase):
 
   def _testDtype(self, dtype):
     data = (np.arange(-3, 3) / 4.).reshape(1, 3, 2).astype(dtype)
-    self._compare(data, use_gpu=False)
-    self._compare(data, use_gpu=True)
+    self._compare(data)
     # TODO: rint op is not supported for float16
     if dtype is np.float16:
       return
-    self._compare_values(data, use_gpu=False)
-    self._compare_values(data, use_gpu=True)
+    self._compare_values(data)
     x = [0.5, 0.5000001]
     y = [0.0, 1.0]
-    self._compare_values(x, y=y, use_gpu=False)
-    self._compare_values(x, y=y, use_gpu=True)
+    self._compare_values(x, y=y)
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64]:

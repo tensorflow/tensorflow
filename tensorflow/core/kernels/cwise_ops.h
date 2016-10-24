@@ -528,10 +528,12 @@ template<typename Scalar> struct scalar_rint_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE \
     const Scalar operator() (const Scalar& a) const {
-    #ifndef __CUDACC__
-        return std::rint(a);
-    #else
+    #if defined(__CUDACC__)
         return ::rint(a);
+    #elif defined(PLATFORM_POSIX_ANDROID)
+        return rint(a);
+    #else
+        return std::rint(a);
     #endif
   }
 };
