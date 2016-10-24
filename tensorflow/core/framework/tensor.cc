@@ -677,10 +677,10 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
-// Recursive print from left dim to right dim
+// Print recursively from left dim to right dim
 template <typename T>
 void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit, 
-                 int shape_size, T *data, int64 *data_index, string *result) {
+                 int shape_size, T* data, int64* data_index, string* result) {
   if (*data_index >= limit) return;  
   int element_count = shape[dim_index];
   // Reach the rightmost dim of the tensor 
@@ -703,14 +703,14 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
 }
 
 template <typename T>
-string SummarizeArray(int64 limit, int64 num_elts, const TensorShape &tensor_shape, 
+string SummarizeArray(int64 limit, int64 num_elts, const TensorShape* tensor_shape, 
                       const char* data) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
 
   int64 data_index = 0;
-  const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
-  const int shape_size = tensor_shape.dims();
+  const gtl::InlinedVector<int64, 4> shape = (*tensor_shape).dim_sizes();
+  const int shape_size = (*tensor_shape).dims();
   PrintOneDim(0, shape, limit, shape_size, 
               array, &data_index, &ret);  
 
@@ -729,40 +729,40 @@ string Tensor::SummarizeValue(int64 max_entries) const {
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
     case DT_HALF:
-      return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data);
+      return SummarizeArray<Eigen::half>(limit, num_elts, &shape_, data);
       break;
     case DT_FLOAT:
-      return SummarizeArray<float>(limit, num_elts, shape_, data);
+      return SummarizeArray<float>(limit, num_elts, &shape_, data);
       break;
     case DT_DOUBLE:
-      return SummarizeArray<double>(limit, num_elts, shape_, data);
+      return SummarizeArray<double>(limit, num_elts, &shape_, data);
       break;
     case DT_INT32:
-      return SummarizeArray<int32>(limit, num_elts, shape_, data);
+      return SummarizeArray<int32>(limit, num_elts, &shape_, data);
       break;
     case DT_UINT8:
     case DT_QUINT8:
-      return SummarizeArray<uint8>(limit, num_elts, shape_, data);
+      return SummarizeArray<uint8>(limit, num_elts, &shape_, data);
       break;
     case DT_UINT16:
     case DT_QUINT16:
-      return SummarizeArray<uint16>(limit, num_elts, shape_, data);
+      return SummarizeArray<uint16>(limit, num_elts, &shape_, data);
       break;
     case DT_INT16:
     case DT_QINT16:
-      return SummarizeArray<int16>(limit, num_elts, shape_, data);
+      return SummarizeArray<int16>(limit, num_elts, &shape_, data);
       break;
     case DT_INT8:
     case DT_QINT8:
-      return SummarizeArray<int8>(limit, num_elts, shape_, data);
+      return SummarizeArray<int8>(limit, num_elts, &shape_, data);
       break;
     case DT_INT64:
-      return SummarizeArray<int64>(limit, num_elts, shape_, data);
+      return SummarizeArray<int64>(limit, num_elts, &shape_, data);
       break;
     case DT_BOOL:
       // TODO(tucker): Is it better to emit "True False..."?  This
       // will emit "1 0..." which is more compact.
-      return SummarizeArray<bool>(limit, num_elts, shape_, data);
+      return SummarizeArray<bool>(limit, num_elts, &shape_, data);
       break;
     default: {
       // All irregular cases
