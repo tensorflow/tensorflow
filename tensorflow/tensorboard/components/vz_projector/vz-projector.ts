@@ -414,10 +414,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setPointAccessors(pointAccessors);
 
-    /* tsne needs to do an iteration for the points to look reasonable */
+    this.scatterPlot.update();
+    /* tsne needs to do an iteration for the points to look reasonable
     if (projection !== 'tsne') {
       this.scatterPlot.update();
-    }
+    } */
 
     this.scatterPlot.recreateScene();
     this.scatterPlot.setCameraDefForNextCameraCreation(null);
@@ -444,6 +445,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (this.selectedProjection === 'pca') {
       state.componentDimensions =
           this.projectionsPanel.getPCAComponentUIValues();
+    } else {
+      state.componentDimensions = [0, 1, 2];
     }
     state.selectedPoints = this.selectedPointIndices;
     state.cameraDef = this.scatterPlot.getCameraDef();
