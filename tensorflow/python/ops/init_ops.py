@@ -34,6 +34,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -340,3 +341,39 @@ class _RandomWalkInitializer(object):
     """Generate a tensor used to initialize a variable."""
     return random_ops._random_walk(shape, self._nonlinearity, dtype,
                                    seed=self._seed)
+
+
+def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
+  """Returns an initializer that generates an orthogonal rotation matrix.
+
+  Initialize a tensor using an orthogonal matrix.
+
+  Args:
+    gain: multiplicative factor to apply to the orthogonal matrix
+    dtype: The type of the output.
+    seed: None, a python integer to create a numpy random number generator or
+      an object that has a 'normal' member function
+  """
+  def _initializer(shape, dtype=_assert_float_dtype(dtype), partition_info=None):
+    if gain == 'relu':
+      gain = math.sqrt(2)
+
+    # Use the default random number generator
+    if seed is None:
+      rng = np.random
+    # Use a specific seed
+    elif isinstance(seed, int):
+      rng = np.random.RandomState(seed)
+    else:
+      assert hasattr(seed, 'normal'), "rng must be None, an integer seed, or an object with a member function 'normal'"
+      rng = seed
+
+    # Flatten the input shape with the last dimension remaining its original shape so it works for conv2d
+    flat_shape = (np.prod(shape[:-1]), shape[-1])
+    a = rng.normal(0, 1, flat_shape)
+    u, _, v = np.linalg.svd(a, full_matrices=False)
+    q = u if u.shape == flat_shape else v
+    q = gain * q.reshape(shape)
+    return constant_op.constant(q, dtype=dtype, shape=shape)
+
+  return _initializer

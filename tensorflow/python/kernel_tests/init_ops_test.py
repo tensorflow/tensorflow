@@ -444,5 +444,35 @@ class DeviceTest(tf.test.TestCase):
     self.assertDeviceEqual("/job:ps", var.initializer.device)
 
 
+class OrthogonalInitializerTest(tf.test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [tf.float32, tf.float64]:
+      init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      init2 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2))
+
+  def testInitializerDifferent(self):
+    for dtype in [tf.float32, tf.float64]:
+      init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      init2 = tf.orthogonal_initializer(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2))
+
+  def testDuplicatedInitializer(self):
+    init = tf.orthogonal_initializer()
+    self.assertFalse(duplicated_initializer(self, init, 1))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError,
+        tf.orthogonal_initializer(dtype=tf.string))
+
+  def testGain(self):
+    for dtype in [tf.float32, tf.float64]:
+      init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      init2 = tf.orthogonal_initializer(gain=3.14, seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2 / 3.14))
+
+
 if __name__ == "__main__":
   tf.test.main()
