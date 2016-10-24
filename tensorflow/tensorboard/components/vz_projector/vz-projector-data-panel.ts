@@ -260,7 +260,7 @@ export class DataPanel extends DataPanelPolymer {
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
     parseRawMetadata(rawContents, metadata => {
-      this.projector.updateDataSet(this.projector.currentDataSet, metadata);
+      this.projector.updateDataSet(this.projector.dataSet, metadata);
       this.updateMetadataUI(metadata.stats, fileName);
     });
   }

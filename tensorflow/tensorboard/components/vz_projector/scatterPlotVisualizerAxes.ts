@@ -18,67 +18,26 @@ import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 
 /**
- * Maintains and renders 2d and 3d axes for the scatter plot.
+ * Maintains and renders 3d axes for the scatter plot.
  */
 export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
-  private axis3D: THREE.AxisHelper;
-  private axis2D: THREE.LineSegments;
-  private sceneIs3D: boolean = true;
+  private axis: THREE.AxisHelper;
 
   constructor() {
-    this.axis3D = new THREE.AxisHelper();
-  }
-
-  private createAxis2D() {
-    if (this.axis2D) {
-      this.axis2D.material.dispose();
-      this.axis2D.geometry.dispose();
-    }
-
-    let vertices = new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0]);
-
-    const red = new THREE.Color(1, 0, 0);
-    const green = new THREE.Color(0, 1, 0);
-
-    const axisColors = new Float32Array([
-      red.r, red.g, red.b, red.r, red.g, red.b, green.r, green.g, green.b,
-      green.r, green.g, green.b
-    ]);
-
-    const RGB_NUM_BYTES = 3;
-    const XYZ_NUM_BYTES = 3;
-
-    let lineGeometry = new THREE.BufferGeometry();
-    lineGeometry.addAttribute(
-        'position', new THREE.BufferAttribute(vertices, XYZ_NUM_BYTES));
-    lineGeometry.addAttribute(
-        'color', new THREE.BufferAttribute(axisColors, RGB_NUM_BYTES));
-    let material =
-        new THREE.LineBasicMaterial({vertexColors: THREE.VertexColors});
-    this.axis2D = new THREE.LineSegments(lineGeometry, material);
+    this.axis = new THREE.AxisHelper();
   }
 
   onDataSet(dataSet: DataSet) {}
 
   onRecreateScene(
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
-    this.sceneIs3D = sceneIs3D;
     if (sceneIs3D) {
-      scene.add(this.axis3D);
-    } else {
-      this.createAxis2D();
-      scene.add(this.axis2D);
+      scene.add(this.axis);
     }
   }
 
   removeAllFromScene(scene: THREE.Scene) {
-    if (this.sceneIs3D) {
-      scene.remove(this.axis3D);
-    } else {
-      scene.remove(this.axis2D);
-      this.axis2D.material.dispose();
-      this.axis2D.geometry.dispose();
-    }
+    scene.remove(this.axis);
   }
 
   onPickingRender(renderContext: RenderContext) {}

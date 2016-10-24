@@ -52,8 +52,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private currentProjection: Projection;
   private polymerChangesTriggerReprojection: boolean;
 
-  // The working subset of the data source's original data set.
-  private currentDataSet: DataSet;
+  private dataSet: DataSet;
+  private originalDataSet: DataSet;
   private dim: number;
 
   /** T-SNE perplexity. Roughly how many neighbors each point influences. */
@@ -124,9 +124,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.runTsneButton = this.dom.select('.run-tsne');
     this.runTsneButton.on('click', () => this.runTSNE());
     this.stopTsneButton = this.dom.select('.stop-tsne');
-    this.stopTsneButton.on('click', () => {
-      this.projector.currentDataSet.stopTSNE();
-    });
+    this.stopTsneButton.on('click', () => this.dataSet.stopTSNE());
 
     let perplexitySlider = this.$$('#perplexity-slider') as HTMLInputElement;
     let updatePerplexity = () => {
@@ -177,8 +175,9 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     }
   }
 
-  dataSetUpdated(dataSet: DataSet, dim: number) {
-    this.currentDataSet = dataSet;
+  dataSetUpdated(dataSet: DataSet, originalDataSet: DataSet, dim: number) {
+    this.dataSet = dataSet;
+    this.originalDataSet = originalDataSet;
     this.dim = dim;
     this.clearCentroids();
 
@@ -234,12 +233,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private beginProjection(projection: string) {
     if (this.polymerChangesTriggerReprojection) {
       if (projection === 'pca') {
-        this.currentDataSet.stopTSNE();
+        this.dataSet.stopTSNE();
         this.showPCA();
       } else if (projection === 'tsne') {
         this.showTSNE();
       } else if (projection === 'custom') {
-        this.currentDataSet.stopTSNE();
+        this.dataSet.stopTSNE();
         this.computeAllCentroids();
         this.reprojectCustom();
       }
@@ -247,7 +246,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private showTSNE() {
-    const dataSet = this.currentDataSet;
+    const dataSet = this.dataSet;
     if (dataSet == null) {
       return;
     }
@@ -255,7 +254,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         dataSet.getPointAccessors('tsne', [0, 1, this.is3d ? 2 : null]);
     this.projector.setProjection('tsne', this.is3d ? 3 : 2, accessors);
 
-    if (!this.currentDataSet.hasTSNERun) {
+    if (!this.dataSet.hasTSNERun) {
       this.runTSNE();
     } else {
       this.projector.notifyProjectionsUpdated();
@@ -265,7 +264,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private runTSNE() {
     this.runTsneButton.attr('disabled', true);
     this.stopTsneButton.attr('disabled', null);
-    this.currentDataSet.projectTSNE(
+    this.dataSet.projectTSNE(
         this.perplexity, this.learningRate, this.is3d ? 3 : 2,
         (iteration: number) => {
           if (iteration != null) {
@@ -286,12 +285,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private showPCA() {
-    if (this.currentDataSet == null) {
+    if (this.dataSet == null) {
       return;
     }
-    this.currentDataSet.projectPCA().then(() => {
+    this.dataSet.projectPCA().then(() => {
       // Polymer properties are 1-based.
-      const accessors = this.currentDataSet.getPointAccessors(
+      const accessors = this.dataSet.getPointAccessors(
           'pca', [this.pcaX - 1, this.pcaY - 1, this.pcaZ - 1]);
 
       this.projector.setProjection('pca', this.is3d ? 3 : 2, accessors);
@@ -305,13 +304,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return;
     }
     const xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
-    this.currentDataSet.projectLinear(xDir, 'linear-x');
+    this.dataSet.projectLinear(xDir, 'linear-x');
 
     const yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
-    this.currentDataSet.projectLinear(yDir, 'linear-y');
+    this.dataSet.projectLinear(yDir, 'linear-y');
 
-    const accessors =
-        this.currentDataSet.getPointAccessors('custom', ['x', 'y']);
+    const accessors = this.dataSet.getPointAccessors('custom', ['x', 'y']);
 
     this.projector.setProjection('custom', 2, accessors);
   }
@@ -374,8 +372,11 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     if (pattern == null || pattern === '') {
       return {numMatches: 0};
     }
-    let accessor = (i: number) => this.currentDataSet.points[i].vector;
-    let r = this.projector.currentDataSet.query(
+    // Search by the original dataset since we often want to filter and project
+    // only the nearest neighbors of A onto B-C where B and C are not nearest
+    // neighbors of A.
+    let accessor = (i: number) => this.originalDataSet.points[i].vector;
+    let r = this.originalDataSet.query(
         pattern, inRegexMode, this.selectedSearchByMetadataOption);
     return {centroid: vector.centroid(r, accessor), numMatches: r.length};
   }
