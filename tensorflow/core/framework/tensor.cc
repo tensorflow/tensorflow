@@ -677,13 +677,13 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
-// Print recursively from left dim to right dim
+// Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit, 
                  int shape_size, T* data, int64* data_index, string* result) {
   if (*data_index >= limit) return;  
   int element_count = shape[dim_index];
-  // Reach the rightmost dim of the tensor 
+  // Reach the rightmost dim of the tensor.
   if (dim_index == shape_size - 1) {
     for (int i = 0; i < element_count; i++) {
       if (*data_index >= limit) return;
@@ -692,10 +692,10 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
     }
     return;
   }  
-  // Loop every element of one dim
+  // Loop every element of one dim.
   for (int i = 0; i < element_count; i++) {
     strings::StrAppend(result, "[");
-    // As for each element, print the sub-dim
+    // As for each element, print the sub-dim.
     PrintOneDim(dim_index + 1, shape, limit, shape_size,
                 data, data_index, result);
     strings::StrAppend(result, "]");
