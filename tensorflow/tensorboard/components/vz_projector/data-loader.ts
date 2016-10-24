@@ -443,20 +443,20 @@ type DemoDataset = {
 class DemoDataProvider implements DataProvider {
   /** List of demo datasets for showing the capabilities of the tool. */
   private static DEMO_DATASETS: {[name: string]: DemoDataset} = {
-    'Glove Wiki 5K': {
-      shape: [5000, 50],
-      fpath: 'wiki_5000_50d_tensors.ssv',
-      metadata_path: 'wiki_5000_50d_labels.ssv'
+    'Word2Vec 5K': {
+      shape: [5000, 200],
+      fpath: 'word2vec_5000_200d_tensors.tsv',
+      metadata_path: 'word2vec_5000_200d_labels.tsv'
     },
-    'Glove Wiki 10K': {
-      shape: [10000, 100],
-      fpath: 'wiki_10000_100d_tensors.ssv',
-      metadata_path: 'wiki_10000_100d_labels.ssv'
+    'Word2Vec 10K': {
+      shape: [10000, 200],
+      fpath: 'word2vec_10000_200d_tensors.tsv',
+      metadata_path: 'word2vec_10000_200d_labels.tsv'
     },
-    'Glove Wiki 40K': {
-      shape: [40000, 100],
-      fpath: 'wiki_40000_100d_tensors.ssv',
-      metadata_path: 'wiki_40000_100d_labels.ssv'
+    'Word2Vec All': {
+      shape: [71291, 200],
+      fpath: 'word2vec_full_200d_tensors.tsv',
+      metadata_path: 'word2vec_full_200d_labels.tsv'
     },
     'SmartReply 5K': {
       shape: [5000, 256],
