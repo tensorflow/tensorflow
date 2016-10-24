@@ -1380,3 +1380,6 @@ ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)
 __all__ = make_all(__name__)
 # ResizeMethod is not documented, but is documented in functions that use it.
 __all__.append('ResizeMethod')
+# TODO(skye): per_image_whitening() will be removed once all callers switch to
+# per_image_standardization()
+__all__.append('per_image_whitening')
