@@ -8,7 +8,6 @@ global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
 # Creates a session.
 sess = tf.Session()
 # Initializes the variable.
-sess.run(global_step_tensor.initializer)
 print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
 global_step: 10

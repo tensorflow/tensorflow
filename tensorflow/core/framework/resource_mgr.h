@@ -23,6 +23,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -162,6 +165,9 @@ template <typename T>
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name);
 
+// Returns a resource handle from a numbered op input.
+ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
+
 // Create a resource pointed by a given resource handle.
 template <typename T>
 Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
@@ -232,6 +238,47 @@ class ContainerInfo {
 template <typename T>
 Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
                               T** resource);
+
+// Utility op kernel to check if a handle to resource type T is initialized.
+template <typename T>
+class IsResourceInitialized : public OpKernel {
+ public:
+  explicit IsResourceInitialized(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
+// Registers an op which produces just a resource handle to a resource of the
+// specified type. The type will be a part of the generated op name.
+// TODO(apassos): figure out how to get non-cpu-allocated tensors to work
+// through constant folding so this doesn't have to be marked as stateful.
+#define REGISTER_RESOURCE_HANDLE_OP(Type)                   \
+  REGISTER_OP(#Type "HandleOp")                             \
+      .Attr("container: string = ''")                       \
+      .Attr("shared_name: string = ''")                     \
+      .Output("resource: resource")                         \
+      .SetIsStateful()                                      \
+      .SetShapeFn(tensorflow::shape_inference::ScalarShape) \
+      .Doc("Creates a handle to a " #Type)
+
+// Utility op kernel to produce a handle to a resource of type T.
+template <typename T>
+class ResourceHandleOp : public OpKernel {
+ public:
+  explicit ResourceHandleOp(OpKernelConstruction* context);
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  string container_;
+  string name_;
+};
+
+// Registers a kernel for an op which produces a handle to a resource of the
+// specified type.
+#define REGISTER_RESOURCE_HANDLE_KERNEL(Type)                        \
+  REGISTER_KERNEL_BUILDER(Name(#Type "HandleOp").Device(DEVICE_CPU), \
+                          ResourceHandleOp<Type>)
 
 // Implementation details below.
 
@@ -363,6 +410,30 @@ template <typename T>
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
+}
+
+template <typename T>
+void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
+  Tensor* output;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+  T* unused;
+  output->flat<bool>()(0) =
+      LookupResource(ctx, HandleFromInput(ctx, 0), &unused).ok();
+}
+
+template <typename T>
+ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
+    : OpKernel(context) {
+  OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
+  OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+}
+
+template <typename T>
+void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
+  Tensor* output = nullptr;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+  output->flat<ResourceHandle>()(0) =
+      MakeResourceHandle<T>(ctx, container_, name_);
 }
 
 }  //  end namespace tensorflow

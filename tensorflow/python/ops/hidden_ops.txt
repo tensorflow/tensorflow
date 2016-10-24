@@ -3,6 +3,7 @@ BatchToSpace
 BroadcastGradientArgs
 ConcatOffset
 Concat
+ConcatV2
 Const
 EditDistance
 MirrorPad

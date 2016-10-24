@@ -148,6 +148,23 @@ Returns a `types_pb2.DataType` enum value based on this `DType`.
 
 
 
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
+
+
+
 #### Other Methods
 - - -
 

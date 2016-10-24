@@ -29,8 +29,6 @@ variables though will correspond to the saved values from the first meta graph
 added to the SavedModel using `add_meta_graph_and_variables(...)` in
 `builder.py`.
 
-TODO(sukritiramesh): Add support for a single init or main op to run upon load.
-
 Typical usage:
 ```python
 ...
@@ -64,6 +62,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -150,6 +149,30 @@ def _get_asset_tensors(export_dir, meta_graph_def_to_load):
   return asset_tensor_dict
 
 
+def _get_legacy_init_op_tensor(meta_graph_def_to_load):
+  """Gets the legacy init op tensor, if one exists.
+
+  Args:
+    meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+
+  Returns:
+    The legacy init op tensor, if it exists and `None` otherwise.
+
+  Raises:
+    RuntimeError: If the collection def corresponding to the legacy init op key
+        has other than exactly one tensor.
+  """
+  collection_def = meta_graph_def_to_load.collection_def
+  legacy_init_op_tensor = None
+  if constants.LEGACY_INIT_OP_KEY in collection_def:
+    legacy_init_ops = collection_def[
+        constants.LEGACY_INIT_OP_KEY].node_list.value
+    if len(legacy_init_ops) != 1:
+      raise RuntimeError("Expected exactly one legacy serving init op.")
+    legacy_init_op_tensor = tf.get_collection(constants.LEGACY_INIT_OP_KEY)[0]
+  return legacy_init_op_tensor
+
+
 def load(sess, tags, export_dir):
   """Loads the model from a SavedModel as specified by tags.
 
@@ -194,7 +217,15 @@ def load(sess, tags, export_dir):
   saver.restore(sess, variables_path)
 
   # Get asset tensors, if any.
-  _get_asset_tensors(export_dir, meta_graph_def_to_load)
+  asset_tensors_dictionary = _get_asset_tensors(export_dir,
+                                                meta_graph_def_to_load)
 
-  # Return the meta graph def that was loaded into the session.
+  # TODO(sukritiramesh): Add support for a single main op to run upon load,
+  # which will supersede the legacy_init_op.
+  legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
+
+  if legacy_init_op_tensor is not None:
+    sess.run(fetches=[legacy_init_op_tensor],
+             feed_dict=asset_tensors_dictionary)
+
   return meta_graph_def_to_load

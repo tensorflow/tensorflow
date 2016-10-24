@@ -243,6 +243,87 @@ class ReverseTest(test_util.TensorFlowTestCase):
       tf.reverse(data_2d_t, dims_3d_t)
 
 
+class ReverseV2Test(test_util.TensorFlowTestCase):
+
+  def testReverse0DimAuto(self):
+    x_np = 4
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        x_tf = array_ops.reverse_v2(x_np, []).eval()
+        self.assertAllEqual(x_tf, x_np)
+
+  def _reverse1DimAuto(self, np_dtype):
+    x_np = np.array([1, 2, 3, 4, 5], dtype=np_dtype)
+
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        x_tf = array_ops.reverse_v2(x_np, [0]).eval()
+        self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
+
+  def _reverse2DimAuto(self, np_dtype):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np_dtype)
+
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        x_tf_1 = array_ops.reverse_v2(x_np, [0]).eval()
+        x_tf_2 = array_ops.reverse_v2(x_np, [-2]).eval()
+        x_tf_3 = array_ops.reverse_v2(x_np, [1]).eval()
+        x_tf_4 = array_ops.reverse_v2(x_np, [-1]).eval()
+        x_tf_5 = array_ops.reverse_v2(x_np, [1, 0]).eval()
+        self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
+        self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
+        self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
+        self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
+        self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
+
+  # This is the version of reverse that uses axis indices rather than
+  # bool tensors
+  # TODO(b/32254538): Change this test to use array_ops.reverse
+  def testInvalid(self):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    with self.test_session():
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "is out of valid range"):
+        array_ops.reverse_v2(x_np, [-30]).eval()
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "is out of valid range"):
+        array_ops.reverse_v2(x_np, [2]).eval()
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "axis 0 specified more than once"):
+        array_ops.reverse_v2(x_np, [0, -2]).eval()
+
+  def testReverse1DimAuto(self):
+    for dtype in [
+        np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
+        np.float64, np.complex64, np.complex128
+    ]:
+      self._reverse1DimAuto(dtype)
+
+  def testReverse2DimAuto(self):
+    for dtype in [
+        np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
+        np.float64, np.complex64, np.complex128
+    ]:
+      self._reverse2DimAuto(dtype)
+
+  def testUnknownDims(self):
+    reverse_v2 = array_ops.reverse_v2
+    data_t = tf.placeholder(tf.float32)
+    axis_known_t = tf.placeholder(tf.int32, shape=[3])
+    reverse_known_t = reverse_v2(data_t, axis_known_t)
+    # Unlike V1 we cannot know this anymore
+    self.assertEqual(None, reverse_known_t.get_shape().ndims)
+
+    axis_unknown_t = tf.placeholder(tf.int32)
+    reverse_unknown_t = reverse_v2(data_t, axis_unknown_t)
+    self.assertIs(None, reverse_unknown_t.get_shape().ndims)
+
+    data_2d_t = tf.placeholder(tf.float32, shape=[None, None])
+    axis_2d_t = tf.placeholder(tf.int32, shape=[3])
+    reverse_2d_t = reverse_v2(data_2d_t, axis_2d_t)
+    self.assertEqual(2, reverse_2d_t.get_shape().ndims)
+
+
 class MeshgridTest(test_util.TensorFlowTestCase):
 
   def _compareDiff(self, x, y, use_gpu):

@@ -148,15 +148,15 @@ def if_not_windows(a):
   })  
 
 def tf_copts():
-  return (["-fno-exceptions",
-           "-DEIGEN_AVOID_STL_ARRAY",
-           "-Iexternal/gemmlowp",] +
+  return (["-DEIGEN_AVOID_STL_ARRAY",
+           "-Iexternal/gemmlowp",
+           "-Wno-sign-compare",
+           "-fno-exceptions"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",
-                  "-DMIN_LOG_LEVEL=0",
                   "-DTF_LEAN_BINARY",
                   "-O2",
               ],
@@ -165,7 +165,7 @@ def tf_copts():
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
               ],
-              "//tensorflow:ios": ["-std=c++11",],
+              "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
 
 def tf_opts_nortti_if_android():
@@ -461,7 +461,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
   When the library is built with --config=cuda:
 
   - both deps and cuda_deps are used as dependencies
-  - the gcudacc runtime is added as a dependency (if necessary)
+  - the cuda runtime is added as a dependency (if necessary)
   - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts
 
   Args:
@@ -557,33 +557,30 @@ def _py_wrap_cc_impl(ctx):
   if len(srcs) != 1:
     fail("Exactly one SWIG source file label must be specified.", "srcs")
   module_name = ctx.attr.module_name
-  cc_out = ctx.outputs.cc_out
-  py_out = ctx.outputs.py_out
   src = ctx.files.srcs[0]
-  args = ["-c++", "-python"]
-  args += ["-module", module_name]
-  args += ["-l" + f.path for f in ctx.files.swig_includes]
-  cc_include_dirs = set()
-  cc_includes = set()
+  inputs = set([src])
+  inputs += ctx.files.swig_includes
   for dep in ctx.attr.deps:
-    cc_include_dirs += [h.dirname for h in dep.cc.transitive_headers]
-    cc_includes += dep.cc.transitive_headers
-  args += ["-I" + x for x in cc_include_dirs]
-  args += ["-I" + ctx.label.workspace_root]
-  args += ["-o", cc_out.path]
-  args += ["-outdir", py_out.dirname]
+    inputs += dep.cc.transitive_headers
+  inputs += ctx.files._swiglib
+  swig_include_dirs = set(_get_repository_roots(ctx, inputs))
+  swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
+  args = ["-c++",
+          "-python",
+          "-module", module_name,
+          "-o", ctx.outputs.cc_out.path,
+          "-outdir", ctx.outputs.py_out.dirname]
+  args += ["-l" + f.path for f in ctx.files.swig_includes]
+  args += ["-I" + i for i in swig_include_dirs]
   args += [src.path]
-  outputs = [cc_out, py_out]
-  # TODO(pcloudy): Move args to arguments after
-  # https://github.com/bazelbuild/bazel/issues/1926 is fixed
-  ctx.action(command=" ".join(["tensorflow/tools/swig/swig.sh"] + args),
-             arguments=[],
-             mnemonic="PythonSwig",
-             inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
-                         ctx.attr.swig_deps.files),
+  outputs = [ctx.outputs.cc_out,
+             ctx.outputs.py_out]
+  ctx.action(executable=ctx.executable._swig,
+             arguments=args,
+             inputs=list(inputs),
              outputs=outputs,
-             use_default_shell_env=True,
-             progress_message="SWIGing {input}".format(input=src.path))
+             mnemonic="PythonSwig",
+             progress_message="SWIGing " + src.path)
   return struct(files=set(outputs))
 
 _py_wrap_cc = rule(
@@ -600,11 +597,17 @@ _py_wrap_cc = rule(
             allow_files = True,
             providers = ["cc"],
         ),
-        "swig_deps": attr.label(default = Label(
-            "//tensorflow:swig",  # swig_templates
-        )),
         "module_name": attr.string(mandatory = True),
         "py_module_name": attr.string(mandatory = True),
+        "_swig": attr.label(
+            default = Label("@swig//:swig"),
+            executable = True,
+            cfg = "host",
+        ),
+        "_swiglib": attr.label(
+            default = Label("@swig//:templates"),
+            allow_files = True,
+        ),
     },
     outputs = {
         "cc_out": "%{module_name}.cc",
@@ -612,6 +615,35 @@ _py_wrap_cc = rule(
     },
     implementation = _py_wrap_cc_impl,
 )
+
+def _get_repository_roots(ctx, files):
+  """Returns abnormal root directories under which files reside.
+
+  When running a ctx.action, source files within the main repository are all
+  relative to the current directory; however, files that are generated or exist
+  in remote repositories will have their root directory be a subdirectory,
+  e.g. bazel-out/local-fastbuild/genfiles/external/jpeg_archive. This function
+  returns the set of these devious directories, ranked and sorted by popularity
+  in order to hopefully minimize the number of I/O system calls within the
+  compiler, because includes have quadratic complexity.
+  """
+  result = {}
+  for f in files:
+    root = f.root.path
+    if root:
+      if root not in result:
+        result[root] = 0
+      result[root] -= 1
+    work = f.owner.workspace_root
+    if work:
+      if root:
+        root += "/"
+      root += work
+    if root:
+      if root not in result:
+        result[root] = 0
+      result[root] -= 1
+  return [k for v, k in sorted([(v, k) for k, v in result.items()])]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
@@ -782,7 +814,9 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   native.cc_binary(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
-      copts=(copts + ["-Wno-self-assign", "-Wno-write-strings"]
+      copts=(copts + ["-Wno-self-assign",
+                      "-Wno-sign-compare",
+                      "-Wno-write-strings"]
              + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,

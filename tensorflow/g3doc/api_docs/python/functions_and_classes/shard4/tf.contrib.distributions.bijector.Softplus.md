@@ -24,7 +24,7 @@ The softplus `Bijector` has the following two useful properties:
   reduction over the event space.
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.__init__(event_ndims=0, validate_args=False, name='Softplus')` {#Softplus.__init__}
+#### `tf.contrib.distributions.bijector.Softplus.__init__(event_ndims=0, validate_args=False, name='softplus')` {#Softplus.__init__}
 
 
 
@@ -59,6 +59,32 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 *  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softplus.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Softplus.forward_log_det_jacobian}
+
+Returns both the forward_log_det_jacobian.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
 
 
 - - -

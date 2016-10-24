@@ -20,9 +20,9 @@ from __future__ import print_function
 import abc
 
 from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -32,9 +32,8 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
-_lstm_ops_so = load_library.load_op_library(
+_lstm_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_lstm_ops.so"))
-assert _lstm_ops_so, "Could not load _lstm_ops.so."
 
 
 # pylint: disable=invalid-name

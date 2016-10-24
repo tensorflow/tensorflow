@@ -198,4 +198,8 @@ string ContainerInfo::DebugString() const {
                          "]");
 }
 
+ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
+  return ctx->input(input).flat<ResourceHandle>()(0);
+}
+
 }  //  end namespace tensorflow
