@@ -63,14 +63,14 @@ def create_dir_test():
   print("%s directory exists: %s" % (dir_name, dir_exists))
 
   # List contents of just created directory.
-  print("Listing directory %s" % dir_name)
+  print("Listing directory %s." % dir_name)
   starttime = int(round(time.time() * 1000))
   print(file_io.list_directory(dir_name))
   elapsed = int(round(time.time() * 1000)) - starttime
   print("Listed directory %s in %s milliseconds" % (dir_name, elapsed))
 
   # Delete directory.
-  print("Deleting directory %s" % dir_name)
+  print("Deleting directory %s." % dir_name)
   starttime = int(round(time.time() * 1000))
   file_io.delete_recursively(dir_name)
   elapsed = int(round(time.time() * 1000)) - starttime
