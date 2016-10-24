@@ -694,11 +694,18 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
   }  
   // Loop every element of one dim.
   for (int i = 0; i < element_count; i++) {
-    strings::StrAppend(result, "[");
+    bool flag = false;
+    if (*data_index < limit) {
+      strings::StrAppend(result, "[");
+      flag = true;
+    }
     // As for each element, print the sub-dim.
     PrintOneDim(dim_index + 1, shape, limit, shape_size,
                 data, data_index, result);
-    strings::StrAppend(result, "]");
+    if (*data_index < limit || flag) {
+      strings::StrAppend(result, "]");
+      flag = false;
+    }
   }
 }
 
