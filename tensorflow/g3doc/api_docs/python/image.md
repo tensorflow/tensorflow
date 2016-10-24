@@ -1210,7 +1210,7 @@ picked in the interval `[lower, upper]`.
 
 - - -
 
-### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+### `tf.image.per_image_standardization(image)` {#per_image_standardization}
 
 Linearly scales `image` to have zero mean and unit norm.
 
@@ -1221,7 +1221,7 @@ of all values in image, and
 `stddev` is the standard deviation of all values in `image`. It is capped
 away from zero to protect against division by 0 when handling uniform images.
 
-Note that this implementation is limited:
+Note that this op can be used as a limited form of whitening:
 
 *  It only whitens based on the statistics of an individual image.
 *  It does not take into account the covariance structure.
@@ -1233,7 +1233,7 @@ Note that this implementation is limited:
 
 ##### Returns:
 
-  The whitened image with same shape as `image`.
+  The standardized image with same shape as `image`.
 
 ##### Raises:
 
