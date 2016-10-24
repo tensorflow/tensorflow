@@ -69,6 +69,7 @@ create variables contingent on certain conditions.
 @@uniform_unit_scaling_initializer
 @@zeros_initializer
 @@ones_initializer
+@@orthogonal_initializer
 
 ## Variable Partitioners for Sharding
 

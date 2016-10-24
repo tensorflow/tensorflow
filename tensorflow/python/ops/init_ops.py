@@ -353,6 +353,12 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     dtype: The type of the output.
     seed: None, a python integer to create a numpy random number generator or
       an object that has a 'normal' member function
+
+  Returns:
+    An initializer that generates orthogonal tensors
+
+  Raises:
+    ValueError: if `dtype` is not a floating point type.
   """
   def _initializer(shape, dtype=_assert_float_dtype(dtype), partition_info=None):
     if gain == 'relu':
