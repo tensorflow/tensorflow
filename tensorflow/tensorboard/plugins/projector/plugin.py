@@ -38,7 +38,7 @@ RUNS_ROUTE = '/runs'
 BOOKMARKS_ROUTE = '/bookmarks'
 
 # Limit for the number of points we send to the browser.
-LIMIT_NUM_POINTS = 50000
+LIMIT_NUM_POINTS = 100000
 
 
 class ProjectorPlugin(TBPlugin):
