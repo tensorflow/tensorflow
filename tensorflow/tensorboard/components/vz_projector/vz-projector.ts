@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataProto, DataSet, MetadataInfo, PointAccessor, Projection, State} from './data';
+import {ColorOption, DataProto, DataSet, MetadataInfo, PointAccessor, Projection, State, PointMetadata, DataPoint} from './data';
 import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
@@ -48,6 +48,8 @@ export let ProjectorPolymer = PolymerElement({
     servingMode: String
   }
 });
+
+const INDEX_METADATA_FIELD = '__index__';
 
 export class Projector extends ProjectorPolymer implements SelectionContext,
                                                            HoverContext {
@@ -125,23 +127,22 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setCurrentDataSet(this.originalDataSet.getSubset());
   }
 
-  updateDataSet(ds: DataSet, metadata: MetadataInfo) {
+  updateDataSet(ds: DataSet, metadata?: MetadataInfo, metadataFile?: string) {
     this.originalDataSet = ds;
     if (this.scatterPlot == null || this.originalDataSet == null) {
       // We are not ready yet.
       return;
     }
     this.normalizeData = this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
-    if (metadata != null) {
-      ds.mergeMetadata(metadata);
-    }
+    metadata = metadata || this.makeDefaultMetadata(ds.points);
+    ds.mergeMetadata(metadata);
     this.dataPanel.setNormalizeData(this.normalizeData);
     this.setCurrentDataSet(this.originalDataSet.getSubset());
     this.inspectorPanel.datasetChanged();
-    if (metadata != null) {
-      this.inspectorPanel.metadataChanged(metadata);
-      this.projectionsPanel.metadataChanged(metadata);
-    }
+
+    this.inspectorPanel.metadataChanged(metadata);
+    this.projectionsPanel.metadataChanged(metadata);
+    this.dataPanel.metadataChanged(metadata, metadataFile);
     // Set the container to a fixed height, otherwise in Colab the
     // height can grow indefinitely.
     let container = this.dom.select('#container');
@@ -213,6 +214,24 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.initializeDataProvider(dataProto);
   }
 
+  private makeDefaultMetadata(points: DataPoint[]): MetadataInfo {
+    let pointsInfo: PointMetadata[] = [];
+    points.forEach(p => {
+      let pointInfo: PointMetadata = {};
+      pointInfo[INDEX_METADATA_FIELD] = p.index;
+      pointsInfo.push(pointInfo);
+    });
+    return {
+      stats: [{
+        name: INDEX_METADATA_FIELD,
+        isNumeric: false,
+        tooManyUniqueValues: true,
+        min: 0,
+        max: pointsInfo.length - 1
+      }],
+      pointsInfo: pointsInfo
+    };
+  }
   private initializeDataProvider(dataProto?: DataProto) {
     getDataProvider(this.servingMode, dataProto, this.routePrefix,
         dataProvider => {

@@ -132,7 +132,7 @@ export class ScatterPlot {
   private light: THREE.PointLight;
   private selectionSphere: THREE.Mesh;
 
-  private cameraDef: CameraDef|null = null;
+  private cameraDef: CameraDef = null;
   private camera: THREE.Camera;
   private orbitCameraControls: any;
   private orbitAnimationId: number;

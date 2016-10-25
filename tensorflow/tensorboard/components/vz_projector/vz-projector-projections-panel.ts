@@ -33,7 +33,6 @@ export let ProjectionsPanelPolymer = PolymerElement({
     // Custom projection.
     selectedSearchByMetadataOption: {
       type: String,
-      value: 'label',
       observer: '_searchByMetadataOptionChanged'
     },
   }
@@ -103,7 +102,6 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   ready() {
     this.dom = d3.select(this);
     this.zDropdown = this.dom.select('#z-dropdown');
-    this.searchByMetadataOptions = ['label'];
   }
 
   disablePolymerChangesTriggerReprojection() {
@@ -201,17 +199,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   metadataChanged(metadata: MetadataInfo) {
     // Project by options for custom projections.
     let searchByMetadataIndex = -1;
-    if (metadata.stats.length > 1) {
-      this.searchByMetadataOptions = metadata.stats.map((stats, i) => {
-        // Make the default label by the first non-numeric column.
-        if (!stats.isNumeric && searchByMetadataIndex === -1) {
-          searchByMetadataIndex = i;
-        }
-        return stats.name;
-      });
-    } else {
-      this.searchByMetadataOptions = ['label'];
-    }
+    this.searchByMetadataOptions = metadata.stats.map((stats, i) => {
+      // Make the default label by the first non-numeric column.
+      if (!stats.isNumeric && searchByMetadataIndex === -1) {
+        searchByMetadataIndex = i;
+      }
+      return stats.name;
+    });
     this.selectedSearchByMetadataOption =
         this.searchByMetadataOptions[Math.max(0, searchByMetadataIndex)];
   }

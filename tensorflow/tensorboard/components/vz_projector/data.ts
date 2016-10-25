@@ -124,26 +124,19 @@ export class DataSet implements scatterPlot.DataSet {
 
   private tsne: TSNE;
 
-  /**
-   * Creates a new Dataset by copying out data from an array of datapoints.
-   * We make a copy because we have to modify the vectors by normalizing them.
-   */
+  /** Creates a new Dataset */
   constructor(points: DataPoint[]) {
-    // Keep a list of indices seen so we don't compute traces for a given
-    // point twice.
-    let indicesSeen: boolean[] = [];
     this.points = points;
-    this.points.forEach(dp => {
-      indicesSeen.push(false);
-    });
-
     this.sampledDataIndices =
         shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
-    this.traces = this.computeTraces(points, indicesSeen);
+    this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
   }
 
-  private computeTraces(points: DataPoint[], indicesSeen: boolean[]) {
+  private computeTraces(points: DataPoint[]) {
+    // Keep a list of indices seen so we don't compute traces for a given
+    // point twice.
+    let indicesSeen = new Int8Array(points.length);
     // Compute traces.
     let indexToTrace: {[index: number]: scatterPlot.DataTrace} = {};
     let traces: scatterPlot.DataTrace[] = [];
@@ -151,7 +144,7 @@ export class DataSet implements scatterPlot.DataSet {
       if (indicesSeen[i]) {
         continue;
       }
-      indicesSeen[i] = true;
+      indicesSeen[i] = 1;
 
       // Ignore points without a trace attribute.
       let next = points[i].metadata[TRACE_METADATA_ATTR];
@@ -174,7 +167,7 @@ export class DataSet implements scatterPlot.DataSet {
         newTrace.pointIndices.push(currentIndex);
         let next = points[currentIndex].metadata[TRACE_METADATA_ATTR];
         if (next != null && next !== '') {
-          indicesSeen[+next] = true;
+          indicesSeen[+next] = 1;
           currentIndex = +next;
         } else {
           currentIndex = -1;
