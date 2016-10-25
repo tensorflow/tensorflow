@@ -499,25 +499,22 @@ TEST_F(SessionDebugOutputSlotWithoutOngoingEdgeTest,
 
   Notification callbacks_done;
 
-  debug_gateway.SetNodeCompletionCallback(
-      [&mu, &callbacks_done](const string& node_name, const bool any_output) {
-        mutex_lock l(mu);
-        if (node_name == "_SINK" && !callbacks_done.HasBeenNotified()) {
-          callbacks_done.Notify();
-        }
-      });
-
   std::vector<Tensor> debug_identity_tensor_vals;
-  debug_gateway.SetNodeValueCallback(
-      [this, &mu, &debug_identity_node_name, &debug_identity_tensor_vals](
-          const string& node_name, const int output_slot,
-          const Tensor& tensor_value, const bool is_ref) {
-        mutex_lock l(mu);
+  debug_gateway.SetNodeValueCallback([this, &mu, &callbacks_done,
+                                      &debug_identity_node_name,
+                                      &debug_identity_tensor_vals](
+      const string& node_name, const int output_slot,
+      const Tensor& tensor_value, const bool is_ref) {
+    mutex_lock l(mu);
 
-        if (node_name == debug_identity_node_name && output_slot == 0) {
-          debug_identity_tensor_vals.push_back(tensor_value);
-        }
-      });
+    if (node_name == debug_identity_node_name && output_slot == 0) {
+      debug_identity_tensor_vals.push_back(tensor_value);
+
+      if (!callbacks_done.HasBeenNotified()) {
+        callbacks_done.Notify();
+      }
+    }
+  });
 
   // Add DebugIdentity watch on c:0, which does not have an outgoing edge.
   RunOptions run_opts;
