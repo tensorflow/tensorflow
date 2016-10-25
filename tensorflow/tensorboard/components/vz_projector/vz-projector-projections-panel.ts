@@ -26,10 +26,10 @@ export let ProjectionsPanelPolymer = PolymerElement({
   properties: {
     is3d: {type: Boolean, observer: '_dimensionsObserver'},
     // PCA projection.
-    pcaComponents: {type: Array, value: d3.range(1, 11)},
-    pcaX: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
-    pcaY: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
-    pcaZ: {type: Number, value: 3, observer: 'showPCAIfEnabled'},
+    pcaComponents: {type: Array, value: d3.range(0, 10)},
+    pcaX: {type: Number, value: 0, observer: 'showPCAIfEnabled'},
+    pcaY: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
+    pcaZ: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
     // Custom projection.
     selectedSearchByMetadataOption: {
       type: String,
@@ -70,9 +70,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private allCentroid: number[];
 
   /** Polymer properties. */
-  private pcaX: number;
-  private pcaY: number;
-  private pcaZ: number;
+  // TODO(nsthorat): Move these to a separate view controller.
+  public pcaX: number;
+  public pcaY: number;
+  public pcaZ: number;
 
   /** Polymer elements. */
   private runTsneButton: d3.Selection<HTMLButtonElement>;
@@ -169,7 +170,11 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     return componentDimensions;
   }
 
-  private setZDropdownEnabled(enabled: boolean) {
+  // This method is marked as public as it is used as the view method that
+  // abstracts DOM manipulation so we can stub it in a test.
+  // TODO(nsthorat): Move this to its own class as the glue between this class
+  // and the DOM.
+  public setZDropdownEnabled(enabled: boolean) {
     if (this.zDropdown) {
       this.zDropdown.attr('disabled', enabled ? null : true);
     }
@@ -291,7 +296,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet.projectPCA().then(() => {
       // Polymer properties are 1-based.
       const accessors = this.dataSet.getPointAccessors(
-          'pca', [this.pcaX - 1, this.pcaY - 1, this.pcaZ - 1]);
+          'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
       this.projector.setProjection('pca', this.is3d ? 3 : 2, accessors);
     });
@@ -387,6 +392,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   getTsneSampleSize() {
     return SAMPLE_SIZE.toLocaleString();
+  }
+
+  _addOne(value: number) {
+    return value + 1;
   }
 }
 
