@@ -202,6 +202,12 @@ Step-by-step Windows build
    ```
    D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
    ```
+   
+   After installing through PIP using the '.whl' file generated set LD_LIBRARY_PATH variable as:
+   
+   '''
+   set LD_LIBRARY_PATH=D:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\lib\Win32
+   '''
 
 
 Linux Continuous Integration build
