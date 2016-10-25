@@ -365,10 +365,14 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     const labels =
         this.projectorScatterPlotAdapter.generateVisibleLabelRenderParams(
             dataSet, selectedSet, neighbors, hoverIndex);
+    const traceColors =
+        this.projectorScatterPlotAdapter.generateLineSegmentColorMap(
+            dataSet, pointColorer);
 
     this.scatterPlot.setPointColors(pointColors);
     this.scatterPlot.setPointScaleFactors(pointScaleFactors);
     this.scatterPlot.setLabels(labels);
+    this.scatterPlot.setTraceColors(traceColors);
     this.scatterPlot.render();
   }
 
