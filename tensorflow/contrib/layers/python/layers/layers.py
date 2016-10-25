@@ -942,6 +942,7 @@ def convolution2d_transpose(
     kernel_size,
     stride=1,
     padding='SAME',
+    data_format=DATA_FORMAT_NHWC,
     activation_fn=nn.relu,
     normalizer_fn=None,
     normalizer_params=None,
@@ -961,7 +962,9 @@ def convolution2d_transpose(
   second variable called 'biases' is added to the result of the operation.
 
   Args:
-    inputs: a tensor of size [batch_size, height, width, channels].
+    inputs: A 4-D `Tensor` of type `float` and shape
+      `[batch, height, width, in_channels]` for `NHWC` data format or
+      `[batch, in_channels, height, width]` for `NCHW` data format.
     num_outputs: integer, the number of output filters.
     kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
       of the filters. Can be an int if both values are the same.
@@ -969,6 +972,7 @@ def convolution2d_transpose(
       Can be an int if both strides are the same.  Note that presently
       both strides must have the same value.
     padding: one of 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
@@ -993,14 +997,23 @@ def convolution2d_transpose(
 
   Raises:
     ValueError: if 'kernel_size' is not a list of length 2.
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: if `C` dimension of `inputs` is None.
   """
   with variable_scope.variable_scope(
       scope, 'Conv2d_transpose', [inputs], reuse=reuse) as sc:
+    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+      raise ValueError('data_format has to be either NCHW or NHWC.')
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
-    num_filters_in = utils.last_dimension(
-        inputs.get_shape(), min_rank=4)
+    if data_format == DATA_FORMAT_NCHW:
+      c_axis, h_axis, w_axis = 1, 2, 3
+    else:
+      h_axis, w_axis, c_axis = 1, 2, 3
+    num_filters_in = inputs.get_shape()[c_axis].value
+    if num_filters_in is None:
+      raise ValueError('`C` dimension of `inputs` must be known but is None.')
     weights_shape = [kernel_h, kernel_w, num_outputs, num_filters_in]
     weights_collections = utils.get_variable_collections(
         variables_collections, 'weights')
@@ -1015,7 +1028,7 @@ def convolution2d_transpose(
 
     inputs_shape = array_ops.shape(inputs)
     batch_size = inputs_shape[0]
-    height, width = inputs_shape[1], inputs_shape[2]
+    height, width = inputs_shape[h_axis], inputs_shape[w_axis]
 
     def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
       if isinstance(dim_size, ops.Tensor):
@@ -1031,17 +1044,25 @@ def convolution2d_transpose(
     out_height = get_deconv_dim(height, stride_h, kernel_h, padding)
     out_width = get_deconv_dim(width, stride_w, kernel_w, padding)
 
-    output_shape = array_ops.pack(
-        [batch_size, out_height, out_width, num_outputs])
+    if data_format == DATA_FORMAT_NHWC:
+      output_shape = [batch_size, out_height, out_width, num_outputs]
+      strides = [1, stride_h, stride_w, 1]
+    else:
+      output_shape = [batch_size, num_outputs, out_height, out_width]
+      strides = [1, 1, stride_h, stride_w]
+
+
+    output_shape = array_ops.pack(output_shape)
     outputs = nn.conv2d_transpose(inputs, weights, output_shape,
-                                  [1, stride_h, stride_w, 1],
-                                  padding=padding)
+                                  strides,
+                                  padding=padding,
+                                  data_format=data_format)
 
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
-    out_shape[-1] = num_outputs
-    out_shape[1] = get_deconv_dim(out_shape[1], stride_h, kernel_h, padding)
-    out_shape[2] = get_deconv_dim(out_shape[2], stride_w, kernel_w, padding)
+    out_shape[c_axis] = num_outputs
+    out_shape[h_axis] = get_deconv_dim(out_shape[h_axis], stride_h, kernel_h, padding)
+    out_shape[w_axis] = get_deconv_dim(out_shape[w_axis], stride_w, kernel_w, padding)
     outputs.set_shape(out_shape)
 
     if normalizer_fn is not None:
@@ -1057,7 +1078,7 @@ def convolution2d_transpose(
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
                                           collections=biases_collections)
-        outputs = nn.bias_add(outputs, biases)
+        outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)

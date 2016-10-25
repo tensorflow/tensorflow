@@ -75,8 +75,6 @@ include(farmhash)
 include(highwayhash)
 include(protobuf)
 
-find_package(ZLIB REQUIRED)
-
 set(tensorflow_EXTERNAL_LIBRARIES
     ${zlib_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}

@@ -711,6 +711,14 @@ struct SelectFunctor {
 };
 
 template <typename Device, typename T>
+struct SelectScalarFunctor {
+  void operator()(const Device& d, typename TTypes<T>::Flat out,
+                  typename TTypes<bool>::ConstScalar cond,
+                  typename TTypes<T>::ConstFlat then_flat,
+                  typename TTypes<T>::ConstFlat else_flat);
+};
+
+template <typename Device, typename T>
 struct BatchSelectFunctor {
   void operator()(const Device& d,
                   typename TTypes<T>::Matrix output_flat_outer_dims,

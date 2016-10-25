@@ -913,7 +913,8 @@ REGISTER_OP("Select")
     .SetShapeFn([](InferenceContext* c) {
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
-      TF_RETURN_IF_ERROR(c->Merge(data, c->input(2), &data));
+      ShapeHandle other = c->input(2);
+      TF_RETURN_IF_ERROR(c->Merge(data, other, &data));
 
       // The input 'cond' must either have the same shape as 'then' and
       // 'else', or be a vector if 'then' and 'else' are at least vectors.
@@ -929,30 +930,49 @@ REGISTER_OP("Select")
       const int32 cond_rank = c->Rank(cond);
       const int32 data_rank = c->Rank(data);
 
-      if (cond_rank != 1) {
-        // If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
-        TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+      if (cond_rank == 0){
+        // The rank of 'cond' is a scalar.
+        // t and e can have any shape.
+        c->set_output(0, data);
+        return Status::OK();
       }
-      if (data_rank != 0) {
-        // If then and else are not scalars, then cond must be at least
-        // a vector, and its first value must match that of 'else'
-        TF_RETURN_IF_ERROR(c->WithRankAtLeast(cond, 1, &cond));
-        if (cond_rank == 1) {
-          TF_RETURN_IF_ERROR(c->Merge(cond, c->Vector(c->Dim(data, 0)), &cond));
-        }
+
+      if (cond_rank != 1) {
+        // If 'cond' is not a vector, and not a scalar,
+        // then shape must match 'then' and 'else'
+        TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+        c->set_output(0, data);
+        return Status::OK();
+      }
+
+      if (data_rank == 0) {
+        // if 'then' and 'else' are scalar also the cond must be
+        TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+        c->set_output(0, data);
+        return Status::OK();
+      }
+
+      if (cond_rank == 1) {
+        // if the cond is a vector and the 'then' is not a scalar,
+        // the first dimension of 'then' and 'else'
+        TF_RETURN_IF_ERROR(c->Merge(cond, c->Vector(c->Dim(data, 0)), &cond));
+        c->set_output(0, data);
+        return Status::OK();
       }
 
       c->set_output(0, data);
       return Status::OK();
-    })
+   })
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 
-The `t`, and `e` tensors must all have the same shape,
-and the output will also have that shape.  The `condition` tensor
-must be a scalar if `t` and `e` are scalars.  If `t` and `e` are vectors
-or higher rank, then `condition` must be either a vector with size
-matching the first dimension of `t`, or must have the same shape as `t`.
+The `t`, and `e` tensors must all have the same shape, and the
+output will also have that shape.
+
+The `condition` tensor must be a scalar if `t` and `e` are scalars.
+If `t` and `e` are vectors or higher rank, then `condition` must be either a
+scalar, a vector with size matching the first dimension of `t`, or must have
+the same shape as `t`.
 
 The `condition` tensor acts as a mask that chooses, based on the value at each
 element, whether the corresponding element / row in the output should be

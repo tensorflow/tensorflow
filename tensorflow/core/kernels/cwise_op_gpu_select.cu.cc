@@ -16,6 +16,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -28,6 +29,24 @@ struct SelectFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat else_flat) {
     To32Bit(out).device(d) =
         To32Bit(cond_flat).select(To32Bit(then_flat), To32Bit(else_flat));
+  }
+};
+
+template <typename T>
+struct SelectScalarFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<bool>::ConstScalar cond,
+                  typename TTypes<T>::ConstFlat then_flat,
+                  typename TTypes<T>::ConstFlat else_flat) {
+
+  Eigen::IndexList<Eigen::type2index<1>> rank1;
+  const int size  = then_flat.dimension(0);
+  Eigen::array<int, 1> broadcast_dims{size};
+
+  To32Bit(out).device(d) = cond.reshape(rank1)
+                               .broadcast(broadcast_dims)
+                               .select(then_flat, else_flat);
+
   }
 };
 
@@ -68,6 +87,7 @@ struct BatchSelectFunctor<GPUDevice, T> {
 
 #define SELECT_FUNCTOR(T)                      \
   template struct SelectFunctor<GPUDevice, T>; \
+  template struct SelectScalarFunctor<GPUDevice, T>; \
   template struct BatchSelectFunctor<GPUDevice, T>;
 
 SELECT_FUNCTOR(Eigen::half);

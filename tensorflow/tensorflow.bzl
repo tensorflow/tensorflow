@@ -563,7 +563,7 @@ def _py_wrap_cc_impl(ctx):
   for dep in ctx.attr.deps:
     inputs += dep.cc.transitive_headers
   inputs += ctx.files._swiglib
-  swig_include_dirs = set([f.root.path for f in inputs if f.root.path])
+  swig_include_dirs = set(_get_repository_roots(ctx, inputs))
   swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
   args = ["-c++",
           "-python",
@@ -615,6 +615,35 @@ _py_wrap_cc = rule(
     },
     implementation = _py_wrap_cc_impl,
 )
+
+def _get_repository_roots(ctx, files):
+  """Returns abnormal root directories under which files reside.
+
+  When running a ctx.action, source files within the main repository are all
+  relative to the current directory; however, files that are generated or exist
+  in remote repositories will have their root directory be a subdirectory,
+  e.g. bazel-out/local-fastbuild/genfiles/external/jpeg_archive. This function
+  returns the set of these devious directories, ranked and sorted by popularity
+  in order to hopefully minimize the number of I/O system calls within the
+  compiler, because includes have quadratic complexity.
+  """
+  result = {}
+  for f in files:
+    root = f.root.path
+    if root:
+      if root not in result:
+        result[root] = 0
+      result[root] -= 1
+    work = f.owner.workspace_root
+    if work:
+      if root:
+        root += "/"
+      root += work
+    if root:
+      if root not in result:
+        result[root] = 0
+      result[root] -= 1
+  return [k for v, k in sorted([(v, k) for k, v in result.items()])]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
