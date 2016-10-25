@@ -252,6 +252,15 @@ class ControlFlowTest(tf.test.TestCase):
       result = exit_i.eval()
     self.assertAllEqual(10, result)
 
+  def testDifferentFrame(self):
+    with self.test_session():
+      data = tf.placeholder(tf.float32, shape=[])
+      enter_1 = control_flow_ops.enter(data, "foo_1", False)
+      enter_2 = control_flow_ops.enter(data, "foo_2", False)
+      res = tf.add(enter_1, enter_2)
+      with self.assertRaisesOpError("has inputs from different frames"):
+        res.eval(feed_dict={data: 1.0})
+
   def testCondBool(self):
     values = tf.constant(10)
     fn1 = lambda: tf.add(values, 1)

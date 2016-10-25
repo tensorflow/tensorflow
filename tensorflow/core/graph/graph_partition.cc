@@ -77,7 +77,6 @@ struct ControlFlowInfo {
   const Node* frame = nullptr;         // frame of a node
   const Node* parent_frame = nullptr;  // parent frame of a node
   string frame_name;                   // frame name of a node
-  int iter_level = -1;                 // level of a node
 };
 
 struct PairIntHash {
@@ -365,11 +364,13 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
   info->clear();
   info->resize(g->num_node_ids());
 
+  std::vector<const Node*> parent_nodes;
+  parent_nodes.resize(g->num_node_ids());
+
   Node* src_node = g->source_node();
   ControlFlowInfo& src_info = (*info)[src_node->id()];
   src_info.frame = src_node;
   src_info.parent_frame = src_node;
-  src_info.iter_level = 0;
 
   string frame_name;
   std::deque<Node*> ready;
@@ -381,7 +382,6 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
     const Node* frame = curr_info.frame;
     const Node* parent = curr_info.parent_frame;
     frame_name = curr_info.frame_name;
-    int iter_level = curr_info.iter_level;
 
     if (IsExit(curr_node)) {
       // Exit to the parent frame.
@@ -389,7 +389,6 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
       frame = parent_info.frame;
       parent = parent_info.parent_frame;
       frame_name = parent_info.frame_name;
-      iter_level = parent_info.iter_level;
     }
 
     // Optimize colocation for control flow nodes.
@@ -400,23 +399,29 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
       int out_id = out->id();
       ControlFlowInfo* out_info = &(*info)[out_id];
       const Node* out_parent = out_info->parent_frame;
-      bool is_visited = (out_info->iter_level != -1);
+      bool is_visited = (parent_nodes[out_id] != nullptr);
 
       // Skip Sink/Source nodes.
       if (!out->IsOp()) continue;
 
       // Add to ready queue if not seen.
       if (!is_visited) {
+        parent_nodes[out->id()] = curr_node;
         ready.push_back(out);
       }
 
       // Process the node 'out'.
       if (IsEnter(out)) {
         if (is_visited) {
-          const string& parent_name = (*info)[out_parent->id()].frame_name;
-          if (parent_name != frame_name || iter_level != out_info->iter_level) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
+          const string& parent_frame = (*info)[out_parent->id()].frame_name;
+          if (parent_frame != frame_name) {
+            return errors::InvalidArgument(
+                "The node '", out->name(),
+                "' has inputs from different "
+                "frames. The input '",
+                curr_node->name(), "' is in frame '", frame_name,
+                "'. The input '", parent_nodes[out->id()]->name(),
+                "' is in frame '", parent_frame, "'.");
           }
         } else {
           out_info->frame = out;
@@ -427,36 +432,26 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
             return errors::InvalidArgument("The Enter node ", out->name(),
                                            " must have a frame name.");
           }
-          out_info->iter_level = 0;
-        }
-      } else if (IsNextIteration(out)) {
-        if (is_visited) {
-          if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
-          }
-        } else {
-          out_info->frame = frame;
-          out_info->parent_frame = parent;
-          out_info->frame_name = frame_name;
-          out_info->iter_level = iter_level + 1;
         }
       } else {
         if (is_visited) {
           if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
+            return errors::InvalidArgument(
+                "The node '", out->name(),
+                "' has inputs from different "
+                "frames. The input '",
+                curr_node->name(), "' is in frame '", frame_name,
+                "'. The input '", parent_nodes[out->id()]->name(),
+                "' is in frame '", out_info->frame_name, "'.");
           }
         } else {
           out_info->frame = frame;
           out_info->parent_frame = parent;
           out_info->frame_name = frame_name;
-          out_info->iter_level = iter_level;
         }
       }
     }
   }
-
   return Status::OK();
 }
 
@@ -559,7 +554,6 @@ void AddControlFlowInfo(const Node* node, const Node* src,
   info->frame = src_info.frame;
   info->parent_frame = src_info.parent_frame;
   info->frame_name = src_info.frame_name;
-  info->iter_level = src_info.iter_level;
 }
 
 // Constructs a control loop. Returns a struct containing the newly created
