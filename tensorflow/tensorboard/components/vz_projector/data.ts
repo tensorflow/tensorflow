@@ -186,6 +186,9 @@ export class DataSet implements scatterPlot.DataSet {
         [null, null, null];
     const prefix = (projection === 'custom') ? 'linear' : projection;
     for (let i = 0; i < components.length; ++i) {
+      if (components[i] == null) {
+        continue;
+      }
       accessors[i] =
           (index =>
                this.points[index].projections[prefix + '-' + components[i]]);
