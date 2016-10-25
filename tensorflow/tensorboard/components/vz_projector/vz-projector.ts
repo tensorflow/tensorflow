@@ -430,12 +430,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
    * Gets the current view of the embedding and saves it as a State object.
    */
   getCurrentState(): State {
-    let state: State = {};
+    const state: State = {};
 
     // Save the individual datapoint projections.
     state.projections = [];
     for (let i = 0; i < this.dataSet.points.length; i++) {
-      state.projections.push(this.dataSet.points[i].projections);
+      const point = this.dataSet.points[i];
+      const projections: {[key: string]: number} = {};
+      const keys = Object.keys(point.projections);
+      for (let j = 0; j < keys.length; ++j) {
+        projections[keys[j]] = point.projections[keys[j]];
+      }
+      state.projections.push(projections);
     }
 
     state.selectedProjection = this.selectedProjection;
@@ -460,7 +466,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   /** Loads a State object into the world. */
   loadState(state: State) {
     for (let i = 0; i < state.projections.length; i++) {
-      this.dataSet.points[i].projections = state.projections[i];
+      const point = this.dataSet.points[i];
+      const projection = state.projections[i];
+      const keys = Object.keys(projection);
+      for (let j = 0; j < keys.length; ++j) {
+        point.projections[keys[j]] = projection[keys[j]];
+      }
     }
     if (state.selectedProjection === 'tsne') {
       this.dataSet.hasTSNERun = true;
