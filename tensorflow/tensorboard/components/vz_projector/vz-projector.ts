@@ -453,7 +453,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
    * Gets the current view of the embedding and saves it as a State object.
    */
   getCurrentState(): State {
-    const state: State = {};
+    const state = new State();
 
     // Save the individual datapoint projections.
     state.projections = [];
@@ -468,21 +468,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     state.selectedProjection = this.selectedProjection;
-    state.is3d = this.projectionsPanel.is3d;
     state.tSNEIteration = this.dataSet.tSNEIteration;
-    if (this.selectedProjection === 'pca') {
-      state.componentDimensions =
-          this.projectionsPanel.getPCAComponentUIValues();
-    } else {
-      state.componentDimensions = [0, 1, 2];
-    }
     state.selectedPoints = this.selectedPointIndices;
     state.cameraDef = this.scatterPlot.getCameraDef();
-
-    // Save the color and label by options.
     state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
     state.selectedLabelOption = this.selectedLabelOption;
-
+    this.projectionsPanel.populateBookmarkFromUI(state);
     return state;
   }
 
@@ -496,28 +487,19 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         point.projections[keys[j]] = projection[keys[j]];
       }
     }
-    if (state.selectedProjection === 'tsne') {
-      this.dataSet.hasTSNERun = true;
-    }
+    this.dataSet.hasTSNERun = (state.selectedProjection === 'tsne');
     this.dataSet.tSNEIteration = state.tSNEIteration;
-
-    this.projectionsPanel.disablePolymerChangesTriggerReprojection();
-    this.projectionsPanel.is3d = state.is3d;
-    if (state.selectedProjection === 'pca') {
-      this.projectionsPanel.setPCAComponentUIValues(state.componentDimensions);
-    }
-    this.projectionsPanel.showTab(state.selectedProjection);
-    this.projectionsPanel.enablePolymerChangesTriggerReprojection();
-
-    // Load the color and label by options.
+    this.projectionsPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
     this.selectedLabelOption = state.selectedLabelOption;
-
     this.scatterPlot.setCameraDefForNextCameraCreation(state.cameraDef);
 
     {
-      const accessors = this.dataSet.getPointAccessors(
-          state.selectedProjection, state.componentDimensions);
+      const dimensions = (state.selectedProjection === 'tsne') ?
+          [0, 1, 2] :
+          state.componentDimensions;
+      const accessors =
+          this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
       this.setProjection(
           state.selectedProjection, state.is3d ? 3 : 2, accessors);
     }

@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+import {State} from './data';
 import {ProjectionsPanel} from './vz-projector-projections-panel';
 
 const assert = chai.assert;
@@ -23,7 +24,9 @@ describe('setPCAComponentUIValues', () => {
 
     spyOn(projectionsPanel, 'setZDropdownEnabled');
 
-    projectionsPanel.setPCAComponentUIValues([0, 1]);
+    const s = new State();
+    s.componentDimensions = [0, 1];
+    projectionsPanel.restoreUIFromBookmark(s);
 
     assert.equal(0, projectionsPanel.pcaX);
     assert.equal(1, projectionsPanel.pcaY);
@@ -37,7 +40,9 @@ describe('setPCAComponentUIValues', () => {
 
     spyOn(projectionsPanel, 'setZDropdownEnabled');
 
-    projectionsPanel.setPCAComponentUIValues([0, 1, 2]);
+    const s = new State();
+    s.componentDimensions = [0, 1, 2];
+    projectionsPanel.restoreUIFromBookmark(s);
 
     assert.equal(0, projectionsPanel.pcaX);
     assert.equal(1, projectionsPanel.pcaY);
@@ -56,7 +61,9 @@ describe('getPCAComponentUIValues', () => {
     projectionsPanel.pcaY = 1;
     projectionsPanel.is3d = false;
 
-    assert.deepEqual([0, 1], projectionsPanel.getPCAComponentUIValues());
+    const s = new State();
+    projectionsPanel.populateBookmarkFromUI(s);
+    assert.deepEqual([0, 1], s.componentDimensions);
   });
 
   it('gets the PCA component UI values from a 3D PCA projection', () => {
@@ -68,6 +75,8 @@ describe('getPCAComponentUIValues', () => {
     projectionsPanel.pcaZ = 2;
     projectionsPanel.is3d = true;
 
-    assert.deepEqual([0, 1, 2], projectionsPanel.getPCAComponentUIValues());
+    const s = new State();
+    projectionsPanel.populateBookmarkFromUI(s);
+    assert.deepEqual([0, 1, 2], s.componentDimensions);
   });
 });

@@ -423,37 +423,43 @@ export interface ColorOption {
  * An interface that holds all the data for serializing the current state of
  * the world.
  */
-export interface State {
+export class State {
   /** A label identifying this state. */
-  label?: string;
+  label: string = '';
 
   /** Whether this State is selected in the bookmarks pane. */
-  isSelected?: boolean;
+  isSelected: boolean = false;
 
   /** The selected projection tab. */
-  selectedProjection?: Projection;
+  selectedProjection: Projection;
 
   /** The t-SNE iteration of this projection. */
-  tSNEIteration?: number;
+  tSNEIteration: number = 0;
+
+  /** The t-SNE perplexity parameter. */
+  tSNEPerplexity: number = 0;
+
+  /** The t-SNE learning rate. */
+  tSNELearningRate: number = 0;
 
   /** The projection component dimensions (for PCA) */
-  componentDimensions?: number[];
+  componentDimensions: number[] = [];
 
   /** The computed projections of the tensors. */
-  projections?: Array<{[key: string]: number}>;
+  projections: Array<{[key: string]: number}> = [];
 
   /** The indices of selected points. */
-  selectedPoints?: number[];
+  selectedPoints: number[] = [];
 
   /** Camera state (2d/3d, position, target, zoom, etc). */
-  cameraDef?: scatterPlot.CameraDef;
+  cameraDef: scatterPlot.CameraDef;
 
   /** Color by option. */
-  selectedColorOptionName?: string;
+  selectedColorOptionName: string;
 
   /** Label by option. */
-  selectedLabelOption?: string;
+  selectedLabelOption: string;
 
   /** Whether the state is a 3d view. If false, the state is a 2d view. */
-  is3d?: boolean;
+  is3d: boolean;
 }

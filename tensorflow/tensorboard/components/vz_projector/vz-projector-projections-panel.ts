@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE} from './data';
+import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -39,6 +39,15 @@ export let ProjectionsPanelPolymer = PolymerElement({
 });
 
 type InputControlName = 'xLeft' | 'xRight' | 'yUp' | 'yDown';
+
+type CentroidResult = {
+  centroid?: number[]; numMatches?: number;
+};
+
+type Centroids = {
+  [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
+  yDown: number[];
+};
 
 /**
  * A polymer component which handles the projection tabs in the projector.
@@ -75,12 +84,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   public pcaZ: number;
 
   /** Polymer elements. */
+  private dom: d3.Selection<any>;
   private runTsneButton: d3.Selection<HTMLButtonElement>;
   private stopTsneButton: d3.Selection<HTMLButtonElement>;
-
-  private dom: d3.Selection<any>;
-
+  private perplexitySlider: HTMLInputElement;
+  private learningRateInput: HTMLInputElement;
   private zDropdown: d3.Selection<HTMLElement>;
+  private iterationLabel: d3.Selection<HTMLElement>;
 
   initialize(projector: Projector) {
     this.polymerChangesTriggerReprojection = true;
@@ -102,6 +112,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   ready() {
     this.dom = d3.select(this);
     this.zDropdown = this.dom.select('#z-dropdown');
+    this.runTsneButton = this.dom.select('.run-tsne');
+    this.stopTsneButton = this.dom.select('.stop-tsne');
+    this.perplexitySlider = this.$$('#perplexity-slider') as HTMLInputElement;
+    this.learningRateInput =
+        this.$$('#learning-rate-slider') as HTMLInputElement;
+    this.iterationLabel = this.dom.select('.run-tsne-iter');
   }
 
   disablePolymerChangesTriggerReprojection() {
@@ -112,36 +128,41 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.polymerChangesTriggerReprojection = true;
   }
 
-  private setupUIControls() {
-    // Tabs
-    const self = this;
-    this.dom.selectAll('.ink-tab').on('click', function() {
-      let id = this.getAttribute('data-tab');
-      self.showTab(id);
-    });
+  private updatePerplexityFromUIChange() {
+    if (this.perplexitySlider) {
+      this.perplexity = +this.perplexitySlider.value;
+    }
+    this.dom.select('.tsne-perplexity span').text(this.perplexity);
+  }
 
-    this.runTsneButton = this.dom.select('.run-tsne');
+  private updateLearningRateFromUIChange() {
+    if (this.learningRateInput) {
+      this.learningRate = Math.pow(10, +this.learningRateInput.value);
+    }
+    this.dom.select('.tsne-learning-rate span').text(this.learningRate);
+  }
+
+  private setupUIControls() {
+    {
+      const self = this;
+      this.dom.selectAll('.ink-tab').on('click', function() {
+        let id = this.getAttribute('data-tab');
+        self.showTab(id);
+      });
+    }
+
     this.runTsneButton.on('click', () => this.runTSNE());
-    this.stopTsneButton = this.dom.select('.stop-tsne');
     this.stopTsneButton.on('click', () => this.dataSet.stopTSNE());
 
-    let perplexitySlider = this.$$('#perplexity-slider') as HTMLInputElement;
-    let updatePerplexity = () => {
-      this.perplexity = +perplexitySlider.value;
-      this.dom.select('.tsne-perplexity span').text(this.perplexity);
-    };
-    perplexitySlider.value = this.perplexity.toString();
-    perplexitySlider.addEventListener('change', updatePerplexity);
-    updatePerplexity();
+    this.perplexitySlider.value = this.perplexity.toString();
+    this.perplexitySlider.addEventListener(
+        'change', () => this.updatePerplexityFromUIChange());
+    this.updatePerplexityFromUIChange();
 
-    let learningRateInput =
-        this.$$('#learning-rate-slider') as HTMLInputElement;
-    let updateLearningRate = () => {
-      this.learningRate = Math.pow(10, +learningRateInput.value);
-      this.dom.select('.tsne-learning-rate span').text(this.learningRate);
-    };
-    learningRateInput.addEventListener('change', updateLearningRate);
-    updateLearningRate();
+    this.learningRateInput.addEventListener(
+        'change', () => this.updateLearningRateFromUIChange());
+    this.updateLearningRateFromUIChange();
+
     this.setupAllInputsInCustomTab();
     // TODO: figure out why `--paper-input-container-input` css mixin didn't
     // work.
@@ -149,23 +170,47 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       .style('font-size', '14px');
   }
 
-  setPCAComponentUIValues(componentDimensions: number[]) {
-    this.pcaX = componentDimensions[0];
-    this.pcaY = componentDimensions[1];
+  restoreUIFromBookmark(bookmark: State) {
+    this.disablePolymerChangesTriggerReprojection();
 
-    if (componentDimensions.length === 3) {
-      this.pcaZ = componentDimensions[2];
+    this.pcaX = bookmark.componentDimensions[0];
+    this.pcaY = bookmark.componentDimensions[1];
+    if (bookmark.componentDimensions.length === 3) {
+      this.pcaZ = bookmark.componentDimensions[2];
     }
+    if (this.perplexitySlider) {
+      this.perplexitySlider.value = bookmark.tSNEPerplexity.toString();
+    }
+    if (this.learningRateInput) {
+      this.learningRateInput.value = bookmark.tSNELearningRate.toString();
+    }
+    this.is3d = bookmark.is3d;
 
-    this.setZDropdownEnabled(componentDimensions.length === 3);
+    this.setZDropdownEnabled(bookmark.componentDimensions.length === 3);
+    this.updatePerplexityFromUIChange();
+    this.updateLearningRateFromUIChange();
+    if (this.iterationLabel) {
+      this.iterationLabel.text(bookmark.tSNEIteration.toString());
+    }
+    this.showTab(bookmark.selectedProjection);
+
+    this.enablePolymerChangesTriggerReprojection();
   }
 
-  getPCAComponentUIValues(): number[] {
-    const componentDimensions = [this.pcaX, this.pcaY];
+  populateBookmarkFromUI(bookmark: State) {
+    this.disablePolymerChangesTriggerReprojection();
+    bookmark.componentDimensions = [this.pcaX, this.pcaY];
     if (this.is3d) {
-      componentDimensions.push(this.pcaZ);
+      bookmark.componentDimensions.push(this.pcaZ);
     }
-    return componentDimensions;
+    bookmark.is3d = this.is3d;
+    if (this.perplexitySlider) {
+      bookmark.tSNEPerplexity = +this.perplexitySlider.value;
+    }
+    if (this.learningRateInput) {
+      bookmark.tSNELearningRate = +this.learningRateInput.value;
+    }
+    this.enablePolymerChangesTriggerReprojection();
   }
 
   // This method is marked as public as it is used as the view method that
@@ -267,7 +312,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         this.perplexity, this.learningRate, this.is3d ? 3 : 2,
         (iteration: number) => {
           if (iteration != null) {
-            this.dom.select('.run-tsne-iter').text(iteration);
+            this.iterationLabel.text(iteration);
             this.projector.notifyProjectionsUpdated();
           } else {
             this.runTsneButton.attr('disabled', null);
@@ -392,14 +437,5 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     return value + 1;
   }
 }
-
-type CentroidResult = {
-  centroid?: number[]; numMatches?: number;
-};
-
-type Centroids = {
-  [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
-  yDown: number[];
-};
 
 document.registerElement(ProjectionsPanel.prototype.is, ProjectionsPanel);
