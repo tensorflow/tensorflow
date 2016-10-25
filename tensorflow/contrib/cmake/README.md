@@ -105,6 +105,17 @@ Step-by-step Windows build
      D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvarsall.bat"
      ```
 
+   * When building with GPU support after installing the CUDNN zip file from NVidia, append its 
+     bin directory to your PATH environment variable.
+     In case TensorFlow fails to find the CUDA dll's during initialization, check your PATH environment variable. 
+     It should contain the directory of the CUDA dlls and the directory of the CUDNN dll.
+     For example:
+     
+     ```
+     D:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\bin
+     D:\local\cuda\bin
+     ```
+
    * We assume that `cmake` and `git` are installed and in your `%PATH%`. If
      for example `cmake` is not in your path and it is installed in
      `C:\Program Files (x86)\CMake\bin\cmake.exe`, you can add this directory
@@ -202,13 +213,6 @@ Step-by-step Windows build
    ```
    D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
    ```
-   
-   After installing through PIP using the `.whl` file generated set LD_LIBRARY_PATH variable as:
-   
-   ```
-   set LD_LIBRARY_PATH=D:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\lib\Win32
-   ```
-
 
 Linux Continuous Integration build
 ==================================
