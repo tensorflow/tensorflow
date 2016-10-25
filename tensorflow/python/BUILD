@@ -2130,7 +2130,6 @@ py_tests(
         "summary/event_multiplexer_test.py",
         "summary/impl/directory_watcher_test.py",
         "summary/impl/event_file_loader_test.py",
-        "summary/impl/gcs_file_loader_test.py",
         "summary/impl/reservoir_test.py",
         "summary/summary_test.py",
         "summary/writer/writer_test.py",
