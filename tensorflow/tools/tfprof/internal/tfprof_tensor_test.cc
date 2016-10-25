@@ -14,34 +14,33 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_options.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_stats.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_utils.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_log.pb.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_output.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
+#include "tensorflow/tools/tfprof/tfprof_log.pb.h"
+#include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
 class TFProfTensorTest : public ::testing::Test {
  protected:
   TFProfTensorTest() {
-    string graph_path = io::JoinPath(
-        testing::TensorFlowSrcRoot(),
-        "contrib/tfprof/tools/tfprof/internal/testdata/graph.pbtxt");
+    string graph_path =
+        io::JoinPath(testing::TensorFlowSrcRoot(),
+                     "tools/tfprof/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
     TF_CHECK_OK(ReadGraphDefText(Env::Default(), graph_path, graph_pb.get()));
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb;
     std::unique_ptr<OpLog> op_log_pb;
 
-    string ckpt_path =
-        io::JoinPath(testing::TensorFlowSrcRoot(),
-                     "contrib/tfprof/tools/tfprof/internal/testdata/ckpt");
+    string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
+                                    "tools/tfprof/internal/testdata/ckpt");
     TF_Status* status = TF_NewStatus();
     std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader(
         new checkpoint::CheckpointReader(ckpt_path, status));

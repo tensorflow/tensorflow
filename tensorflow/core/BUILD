@@ -1317,7 +1317,7 @@ cc_library(
         "platform/regexp.h",
     ],
     visibility = [
-        "//tensorflow/contrib/tfprof:__subpackages__",
+        "//tensorflow/tools/tfprof:__subpackages__",
     ],
     deps = [":lib_internal"],
 )

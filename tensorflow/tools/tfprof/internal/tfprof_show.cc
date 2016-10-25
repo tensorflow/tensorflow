@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_show.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_show.h"
 
 #include <memory>
 #include <set>

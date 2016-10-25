@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_graph.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_graph.h"
 
 #include <stdio.h>
 #include <utility>
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_constants.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_tensor.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_constants.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
 
 namespace tensorflow {
 namespace tfprof {

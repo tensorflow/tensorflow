@@ -15,23 +15,23 @@ limitations under the License.
 
 // Parent class and utilities for tfprof_graph and tfprof_scope.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
 
 #include <algorithm>
 #include <string>
 #include <vector>
 
 #include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_constants.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_node.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_options.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_tensor.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_utils.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_output.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_constants.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_node.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
+#include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -124,4 +124,4 @@ class TFShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_

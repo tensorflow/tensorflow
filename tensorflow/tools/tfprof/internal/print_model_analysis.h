@@ -13,22 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_PRINT_MODEL_ANALYSIS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_PRINT_MODEL_ANALYSIS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_PRINT_MODEL_ANALYSIS_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_PRINT_MODEL_ANALYSIS_H_
 
 #include <string>
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_options.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_log.pb.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_output.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace tfprof {
-
-// ***This API is only for swig.***
+class Options;
+// ***This API is only for swig. Don't user it directory!***
 //
 // Interface defined for Python API swig. Calls the tfprof core API.
 // 'graph', 'run_meta', 'op_log' are serialized GraphDef, RunMetadata,
@@ -37,9 +32,9 @@ namespace tfprof {
 // if not available.
 string PrintModelAnalysis(const string* graph, const string* run_meta,
                           const string* op_log, const string* command,
-                          const Options* options);
+                          const string* options);
 
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_PRINT_MODEL_ANALYSIS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_PRINT_MODEL_ANALYSIS_H_

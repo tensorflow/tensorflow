@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_OPTIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_OPTIONS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_OPTIONS_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_OPTIONS_H_
 
 #include <set>
 #include <string>
@@ -22,8 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -62,6 +60,8 @@ static const char* const kCmds[] = {
 
 struct Options {
  public:
+  static Options FromProtoStr(const string& opts_proto_str);
+
   virtual ~Options() {}
   Options(int max_depth, tensorflow::int64 min_bytes,
           tensorflow::int64 min_micros, tensorflow::int64 min_params,
@@ -116,4 +116,4 @@ struct Options {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_OPTIONS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_OPTIONS_H_

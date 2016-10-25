@@ -24,10 +24,6 @@ limitations under the License.
 #include "linenoise.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_options.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_stats.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_utils.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_log.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -36,6 +32,10 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
+#include "tensorflow/tools/tfprof/tfprof_log.pb.h"
 
 using tensorflow::str_util::Split;
 

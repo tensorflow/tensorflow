@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_tensor.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
 
 namespace tensorflow {
 namespace tfprof {

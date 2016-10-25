@@ -20,8 +20,8 @@ limitations under the License.
 // 3. Accept command and options to selectively aggregate stats for analysis
 //    and print out the results.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_STATS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_STATS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_STATS_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_STATS_H_
 
 #include <map>
 #include <memory>
@@ -29,20 +29,20 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_graph.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_node.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_options.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_scope.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_show.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_utils.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_log.pb.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/tfprof_output.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_graph.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_node.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_scope.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_show.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
+#include "tensorflow/tools/tfprof/tfprof_log.pb.h"
+#include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -79,4 +79,4 @@ class TFStats {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TFPROF_TOOLS_TFPROF_INTERNAL_TFPROF_STATS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_STATS_H_

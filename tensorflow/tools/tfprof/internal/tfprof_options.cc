@@ -13,12 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/tools/tfprof/tfprof_options.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
+
+Options Options::FromProtoStr(const string& opts_proto_str) {
+  OptionsProto opts_pb;
+  CHECK(opts_pb.ParseFromString(opts_proto_str));
+  Options opts(
+      opts_pb.max_depth(), opts_pb.min_bytes(), opts_pb.min_micros(),
+      opts_pb.min_params(), opts_pb.min_float_ops(),
+      std::vector<string>(opts_pb.device_regexes().begin(),
+                          opts_pb.device_regexes().end()),
+      opts_pb.order_by(),
+      std::vector<string>(opts_pb.account_type_regexes().begin(),
+                          opts_pb.account_type_regexes().end()),
+      std::vector<string>(opts_pb.start_name_regexes().begin(),
+                          opts_pb.start_name_regexes().end()),
+      std::vector<string>(opts_pb.trim_name_regexes().begin(),
+                          opts_pb.trim_name_regexes().end()),
+      std::vector<string>(opts_pb.show_name_regexes().begin(),
+                          opts_pb.show_name_regexes().end()),
+      std::vector<string>(opts_pb.hide_name_regexes().begin(),
+                          opts_pb.hide_name_regexes().end()),
+      opts_pb.account_displayed_op_only(),
+      std::vector<string>(opts_pb.select().begin(), opts_pb.select().end()),
+      opts_pb.viz(), opts_pb.dump_to_file());
+  return opts;
+}
 
 string Options::ToString() const {
   const string s = strings::Printf(

@@ -13,20 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/print_model_analysis.h"
+#include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
 
 #include <stdio.h>
 #include <memory>
 #include <utility>
 
 #include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/contrib/tfprof/tools/tfprof/internal/tfprof_stats.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
+#include "tensorflow/tools/tfprof/tfprof_log.pb.h"
+#include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
 string PrintModelAnalysis(const string* graph, const string* run_meta,
                           const string* op_log, const string* command,
-                          const Options* options) {
+                          const string* options) {
   CHECK(graph) << "graph mustn't be null";
   CHECK(command) << "command mustn't be null";
   CHECK(options) << "options mustn't be null";
@@ -50,16 +56,18 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
   TFStats tf_stats(std::move(graph_ptr), std::move(run_meta_ptr),
                    std::move(op_log_ptr), std::move(ckpt_reader));
 
-  if (options->dump_to_file.empty()) {
+  Options opts = Options::FromProtoStr(*options);
+
+  if (opts.dump_to_file.empty()) {
     printf("\n=========================Options=============================\n");
-    printf("%s", options->ToString().c_str());
+    printf("%s", opts.ToString().c_str());
     printf("\n==================Model Analysis Report======================\n");
-    TFProfNode root(tf_stats.PrintGraph(*command, *options));
+    TFProfNode root(tf_stats.PrintGraph(*command, opts));
     printf("\n======================End of Report==========================\n");
     fflush(stdout);
     return root.SerializeAsString();
   }
-  return tf_stats.PrintGraph(*command, *options).SerializeAsString();
+  return tf_stats.PrintGraph(*command, opts).SerializeAsString();
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -1,5 +1,9 @@
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -18,10 +22,10 @@ cc_library(
         ":tfprof_show",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -49,11 +53,11 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -69,10 +73,10 @@ cc_library(
         ":tfprof_tensor",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -87,10 +91,10 @@ cc_library(
         ":tfprof_tensor",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -109,12 +113,12 @@ tf_cc_test(
         ":tfprof_stats",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -138,6 +142,18 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/tools/tfprof:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "print_model_analysis_hdr",
+    hdrs = [
+        "print_model_analysis.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -149,10 +165,11 @@ cc_library(
         ":tfprof_options",
         ":tfprof_stats",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -170,12 +187,12 @@ tf_cc_test(
         ":tfprof_stats",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -185,9 +202,9 @@ cc_library(
     hdrs = ["tfprof_tensor.h"],
     copts = ["-Wno-sign-compare"],
     deps = [
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -203,12 +220,12 @@ tf_cc_test(
         ":tfprof_stats",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
