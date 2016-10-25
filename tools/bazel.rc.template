@@ -31,3 +31,5 @@ run --genrule_strategy=standalone
 build -c opt
 test -c opt
 run -c opt
+
+test --sandbox_tmpfs_path=/run/shm
