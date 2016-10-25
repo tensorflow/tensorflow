@@ -238,12 +238,14 @@ def decode():
       # Get token-ids for the input sentence.
       token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
       # Which bucket does it belong to?
+      bucket_id = len(_buckets) - 1
       for i, bucket in enumerate(_buckets):
-        if bucket[0]>=len(token_ids):
+        if bucket[0] >= len(token_ids):
           bucket_id = i
           break
-        else:
-          bucket_id = len(_buckets)-1
+      else:
+        logging.warning("Sentence truncated: %s", sentence) 
+
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           {bucket_id: [(token_ids, [])]}, bucket_id)
