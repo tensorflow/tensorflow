@@ -181,7 +181,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   is the blank label) becomes
 
     * `A B B B` if `merge_repeated=True`.
-    * `A B B B B B` if `merge_repeated=False`.
+    * `A B B B B` if `merge_repeated=False`.
 
   Args:
     inputs: 3-D `float` `Tensor` sized
