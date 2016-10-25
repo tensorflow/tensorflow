@@ -17,11 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/meta_support.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace {
@@ -124,9 +125,15 @@ class QuantizeV2Op : public OpKernel {
                 .template cast<T>();
       }
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      FloatTensorToQuantizedInPlaceUsingEigen<T>(
-          ctx->template eigen_device<Device>(), input, min_range, max_range,
-          output);
+      if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
+        auto input_array = input.flat<float>();
+        meta::Quantize(ctx, input_array.data(), input_array.size(), min_range,
+                       max_range, output->flat<quint8>().data());
+      } else {
+        FloatTensorToQuantizedInPlaceUsingEigen<T>(
+            ctx->template eigen_device<Device>(), input, min_range, max_range,
+            output);
+      }
     }
 
     Tensor* output_min_tensor = nullptr;
