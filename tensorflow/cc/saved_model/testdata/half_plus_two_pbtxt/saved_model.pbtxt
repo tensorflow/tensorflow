@@ -103,6 +103,24 @@ meta_graphs {
         }
       }
       op {
+        name: "MergeV2Checkpoints"
+        input_arg {
+          name: "checkpoint_prefixes"
+          type: DT_STRING
+        }
+        input_arg {
+          name: "destination_prefix"
+          type: DT_STRING
+        }
+        attr {
+          name: "delete_old_dirs"
+          type: "bool"
+          default_value {
+            b: true
+          }
+        }
+      }
+      op {
         name: "Mul"
         input_arg {
           name: "x"
@@ -139,6 +157,35 @@ meta_graphs {
       }
       op {
         name: "NoOp"
+      }
+      op {
+        name: "Pack"
+        input_arg {
+          name: "values"
+          type_attr: "T"
+          number_attr: "N"
+        }
+        output_arg {
+          name: "output"
+          type_attr: "T"
+        }
+        attr {
+          name: "N"
+          type: "int"
+          has_minimum: true
+          minimum: 1
+        }
+        attr {
+          name: "T"
+          type: "type"
+        }
+        attr {
+          name: "axis"
+          type: "int"
+          default_value {
+            i: 0
+          }
+        }
       }
       op {
         name: "ParseExample"
@@ -267,9 +314,9 @@ meta_graphs {
         }
       }
       op {
-        name: "SaveSlices"
+        name: "SaveV2"
         input_arg {
-          name: "filename"
+          name: "prefix"
           type: DT_STRING
         }
         input_arg {
@@ -277,15 +324,15 @@ meta_graphs {
           type: DT_STRING
         }
         input_arg {
-          name: "shapes_and_slices"
+          name: "shape_and_slices"
           type: DT_STRING
         }
         input_arg {
-          name: "data"
-          type_list_attr: "T"
+          name: "tensors"
+          type_list_attr: "dtypes"
         }
         attr {
-          name: "T"
+          name: "dtypes"
           type: "list(type)"
           has_minimum: true
           minimum: 1
@@ -311,18 +358,28 @@ meta_graphs {
         }
       }
       op {
-        name: "ShardedFilespec"
+        name: "StringJoin"
         input_arg {
-          name: "basename"
+          name: "inputs"
           type: DT_STRING
-        }
-        input_arg {
-          name: "num_shards"
-          type: DT_INT32
+          number_attr: "N"
         }
         output_arg {
-          name: "filename"
+          name: "output"
           type: DT_STRING
+        }
+        attr {
+          name: "N"
+          type: "int"
+          has_minimum: true
+          minimum: 1
+        }
+        attr {
+          name: "separator"
+          type: "string"
+          default_value {
+            s: ""
+          }
         }
       }
       op {
@@ -900,6 +957,244 @@ meta_graphs {
       }
     }
     node {
+      name: "Const"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "/tmp/original/export/assets/foo.txt"
+          }
+        }
+      }
+    }
+    node {
+      name: "filename_tensor/initial_value"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "foo.txt"
+          }
+        }
+      }
+    }
+    node {
+      name: "filename_tensor"
+      op: "Variable"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "container"
+        value {
+          s: ""
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "shape"
+        value {
+          shape {
+          }
+        }
+      }
+      attr {
+        key: "shared_name"
+        value {
+          s: ""
+        }
+      }
+    }
+    node {
+      name: "filename_tensor/Assign"
+      op: "Assign"
+      input: "filename_tensor"
+      input: "filename_tensor/initial_value"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_class"
+        value {
+          list {
+            s: "loc:@filename_tensor"
+          }
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "use_locking"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "validate_shape"
+        value {
+          b: true
+        }
+      }
+    }
+    node {
+      name: "filename_tensor/read"
+      op: "Identity"
+      input: "filename_tensor"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_class"
+        value {
+          list {
+            s: "loc:@filename_tensor"
+          }
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "Assign/value"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "foo.txt"
+          }
+        }
+      }
+    }
+    node {
+      name: "Assign"
+      op: "Assign"
+      input: "filename_tensor"
+      input: "Assign/value"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_class"
+        value {
+          list {
+            s: "loc:@filename_tensor"
+          }
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "use_locking"
+        value {
+          b: false
+        }
+      }
+      attr {
+        key: "validate_shape"
+        value {
+          b: true
+        }
+      }
+    }
+    node {
       name: "Identity"
       op: "Identity"
       input: "y"
@@ -932,6 +1227,11 @@ meta_graphs {
       input: "^b/Assign"
     }
     node {
+      name: "group_deps"
+      op: "NoOp"
+      input: "^Assign"
+    }
+    node {
       name: "save/Const"
       op: "Const"
       attr {
@@ -958,6 +1258,63 @@ meta_graphs {
             }
             string_val: "model"
           }
+        }
+      }
+    }
+    node {
+      name: "save/StringJoin/inputs_1"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "_temp_ff2bd25218b646ea9ed224eecdce5e79/part"
+          }
+        }
+      }
+    }
+    node {
+      name: "save/StringJoin"
+      op: "StringJoin"
+      input: "save/Const"
+      input: "save/StringJoin/inputs_1"
+      attr {
+        key: "N"
+        value {
+          i: 2
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "separator"
+        value {
+          s: ""
         }
       }
     }
@@ -1024,7 +1381,7 @@ meta_graphs {
     node {
       name: "save/ShardedFilename"
       op: "ShardedFilename"
-      input: "save/Const"
+      input: "save/StringJoin"
       input: "save/ShardedFilename/shard"
       input: "save/num_shards"
       attr {
@@ -1038,7 +1395,7 @@ meta_graphs {
       }
     }
     node {
-      name: "save/save/tensor_names"
+      name: "save/SaveV2/tensor_names"
       op: "Const"
       attr {
         key: "_output_shapes"
@@ -1075,7 +1432,7 @@ meta_graphs {
       }
     }
     node {
-      name: "save/save/shapes_and_slices"
+      name: "save/SaveV2/shape_and_slices"
       op: "Const"
       attr {
         key: "_output_shapes"
@@ -1112,15 +1469,15 @@ meta_graphs {
       }
     }
     node {
-      name: "save/save"
-      op: "SaveSlices"
+      name: "save/SaveV2"
+      op: "SaveV2"
       input: "save/ShardedFilename"
-      input: "save/save/tensor_names"
-      input: "save/save/shapes_and_slices"
+      input: "save/SaveV2/tensor_names"
+      input: "save/SaveV2/shape_and_slices"
       input: "a"
       input: "b"
       attr {
-        key: "T"
+        key: "dtypes"
         value {
           list {
             type: DT_FLOAT
@@ -1133,7 +1490,7 @@ meta_graphs {
       name: "save/control_dependency"
       op: "Identity"
       input: "save/ShardedFilename"
-      input: "^save/save"
+      input: "^save/SaveV2"
       attr {
         key: "T"
         value {
@@ -1159,11 +1516,65 @@ meta_graphs {
       }
     }
     node {
-      name: "save/ShardedFilespec"
-      op: "ShardedFilespec"
-      input: "save/Const"
-      input: "save/num_shards"
+      name: "save/MergeV2Checkpoints/checkpoint_prefixes"
+      op: "Pack"
+      input: "save/ShardedFilename"
       input: "^save/control_dependency"
+      attr {
+        key: "N"
+        value {
+          i: 1
+        }
+      }
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "axis"
+        value {
+          i: 0
+        }
+      }
+    }
+    node {
+      name: "save/MergeV2Checkpoints"
+      op: "MergeV2Checkpoints"
+      input: "save/MergeV2Checkpoints/checkpoint_prefixes"
+      input: "save/Const"
+      attr {
+        key: "delete_old_dirs"
+        value {
+          b: true
+        }
+      }
+    }
+    node {
+      name: "save/Identity"
+      op: "Identity"
+      input: "save/Const"
+      input: "^save/control_dependency"
+      input: "^save/MergeV2Checkpoints"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
       attr {
         key: "_output_shapes"
         value {
@@ -1467,12 +1878,39 @@ meta_graphs {
   }
   saver_def {
     filename_tensor_name: "save/Const:0"
-    save_tensor_name: "save/ShardedFilespec:0"
+    save_tensor_name: "save/Identity:0"
     restore_op_name: "save/restore_all"
     max_to_keep: 5
     sharded: true
     keep_checkpoint_every_n_hours: 10000.0
-    version: V1
+    version: V2
+  }
+  collection_def {
+    key: "asset_filepaths"
+    value {
+      node_list {
+        value: "Const:0"
+      }
+    }
+  }
+  collection_def {
+    key: "legacy_init_op"
+    value {
+      node_list {
+        value: "group_deps"
+      }
+    }
+  }
+  collection_def {
+    key: "saved_model_assets"
+    value {
+      any_list {
+        value {
+          type_url: "type.googleapis.com/tensorflow.AssetFileDef"
+          value: "\n\t\n\007Const:0\022\007foo.txt"
+        }
+      }
+    }
   }
   collection_def {
     key: "trainable_variables"

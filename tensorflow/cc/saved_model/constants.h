@@ -30,6 +30,9 @@ constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 // SavedModel text format proto filename.
 constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 
+// SavedModel legacy init op key.
+constexpr char kSavedModelLegacyInitOpKey[] = "legacy_init_op";
+
 // Directory in which to save the SavedModel variables.
 constexpr char kSavedModelVariablesDirectory[] = "variables";
 
