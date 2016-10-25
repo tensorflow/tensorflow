@@ -493,7 +493,7 @@ class DemoDataProvider implements DataProvider {
     'Unit Cube': {
       shape: [8, 3],
       fpath: 'cube_tensors.tsv',
-      metadata_path: 'cube_labels.tsv'
+      metadata_path: 'cube_metadata.tsv'
     }
   };
   /** Name of the folder where the demo datasets are stored. */
