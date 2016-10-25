@@ -75,6 +75,9 @@ namespace dynload {
   const char *DynLoadShim__##__name::kName = #__name;
 
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxCreate_v2);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuDevicePrimaryCtxRetain);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuDevicePrimaryCtxRelease);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuDevicePrimaryCtxSetFlags);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxDestroy);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxEnablePeerAccess);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxGetCurrent);
@@ -584,7 +587,8 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
     // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
     // context creation: see http://b/13248943
 
-    res = dynload::cuCtxCreate_v2(&new_context, flags, device);
+    res = dynload::cuDevicePrimaryCtxSetFlags(device, flags);
+    res = dynload::cuDevicePrimaryCtxRetain(&new_context, device);
   }
   CHECK_EQ(CUDA_SUCCESS, dynload::cuCtxSetCurrent(former_context));
 
@@ -596,7 +600,7 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
     return port::Status::OK();
   }
 
-  string message = "failed call to cuCtxCreate: " + ToString(res);
+  string message = "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
@@ -613,10 +617,15 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
   if (context == nullptr) {
     return;
   }
+  CUcontext former_context = CurrentContext();
+  CUresult res = dynload::cuCtxSetCurrent(context->context());
+  CUdevice device;
+  dynload::cuCtxGetDevice(&device);
+  dynload::cuCtxSetCurrent(former_context);
 
-  CUresult res = dynload::cuCtxDestroy_v2(context->context());
+  res = dynload::cuDevicePrimaryCtxRelease(device);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to destroy CUDA context; leaking: " << ToString(res);
+    LOG(ERROR) << "failed to release primary CUDA context; leaking: " << ToString(res);
   }
 
   CreatedContexts::Remove(context->context());
