@@ -2478,11 +2478,10 @@ REGISTER_OP("Placeholder")
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
 
-      // Placeholder has a legacy bug where we cannot tell
-      // the difference between a scalar shape attribute and
-      // 'unknown shape'.  So if the shape is a scalar, we return
-      // an unknown shape.
-      if (shape.dims() == 0) {
+      // Placeholder has legacy behavior where we cannot tell the difference
+      // between a scalar shape attribute and 'unknown shape'.  So if the shape
+      // is a scalar, we return an unknown shape.
+      if (shape.dims() <= 0) {
         return shape_inference::UnknownShape(c);
       }
 
