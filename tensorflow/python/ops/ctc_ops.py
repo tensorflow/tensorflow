@@ -180,7 +180,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
   is the blank label) becomes
 
-    * `A B` if `merge_repeated=True`.
+    * `A B B B` if `merge_repeated=True`.
     * `A B B B B B` if `merge_repeated=False`.
 
   Args:
