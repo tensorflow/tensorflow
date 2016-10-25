@@ -123,6 +123,18 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // TODO(zhifengc): Asks math expert to say the comment again.
 FunctionBody* SymbolicGradient(const FunctionBody& f);
 
+// Registers a customizable kernel creator for a function call.
+//
+// If 'cb()' returns a non-OK, we still fall back to an executor-based
+// interpreter op kernel to execute a function. If 'cb()' returns OK,
+// takes ownership of the returned OpKernel.
+//
+// TODO(zhifengc/phawkins): b/32379046
+typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
+                             std::unique_ptr<OpKernel>*)>
+    CustomKernelCreator;
+void RegisterCustomKernelCreator(CustomKernelCreator cb);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_
