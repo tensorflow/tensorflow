@@ -59,8 +59,8 @@ def _softmax_entropy(probabilities, targets):
       probabilities, math_ops.to_int32(targets)))
 
 
-def _predictions(probabilities, unused_targets):
-  return math_ops.argmax(probabilities, 1)
+def _predictions(predictions, unused_targets):
+  return predictions
 
 
 def _class_log_loss(probabilities, targets):
