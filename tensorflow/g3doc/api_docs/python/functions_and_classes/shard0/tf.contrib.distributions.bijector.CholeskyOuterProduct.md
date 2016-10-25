@@ -1,49 +1,50 @@
-Bijector constructed from callables implementing forward, inverse, and inverse_log_det_jacobian.
+Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
 
-Example Use:
+`event_ndims` must be 0 or 2, i.e., scalar or matrix.
+
+Note: the upper-triangular part of X is ignored (whether or not its zero).
+
+Examples:
 
 ```python
-exp = Inline(
-  forward_fn=tf.exp,
-  inverse_fn=tf.log,
-  inverse_log_det_jacobian_fn=(
-    lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
-  name="exp")
-```
+bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
+# Result: [[1, 1], [1, 5]], i.e., x x^T
 
-The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
+bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
+# Result: [[1, 0], [2, 1]], i.e., chol(y).
+```
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.__init__(forward_fn=None, inverse_fn=None, inverse_log_det_jacobian_fn=None, forward_log_det_jacobian_fn=None, is_constant_jacobian=False, validate_args=False, name='inline')` {#Inline.__init__}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.__init__(event_ndims=2, validate_args=False, name='cholesky_outer_product')` {#CholeskyOuterProduct.__init__}
 
-Creates a `Bijector` from callables.
+Instantiates the `CholeskyOuterProduct` bijector.
 
 ##### Args:
 
 
-*  <b>`forward_fn`</b>: Python callable implementing the forward transformation.
-*  <b>`inverse_fn`</b>: Python callable implementing the inverse transformation.
-*  <b>`inverse_log_det_jacobian_fn`</b>: Python callable implementing the
-    log o det o jacobian of the inverse transformation.
-*  <b>`forward_log_det_jacobian_fn`</b>: Python callable implementing the
-    log o det o jacobian of the forward transformation.
-*  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is constant
-    for all input arguments.
+*  <b>`event_ndims`</b>: `constant` `int32` scalar `Tensor` indicating the number of
+    dimensions associated with a particular draw from the distribution. Must
+    be 0 or 2.
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
     for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object.
+*  <b>`name`</b>: `String` name given to ops managed by this object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if event_ndims is neither 0 or 2.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.dtype` {#Inline.dtype}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.dtype` {#CholeskyOuterProduct.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.forward(x, name='forward', **condition_kwargs)` {#Inline.forward}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.forward(x, name='forward', **condition_kwargs)` {#CholeskyOuterProduct.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -68,7 +69,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Inline.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#CholeskyOuterProduct.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -94,7 +95,7 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse(y, name='inverse', **condition_kwargs)` {#Inline.inverse}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse(y, name='inverse', **condition_kwargs)` {#CholeskyOuterProduct.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -120,7 +121,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Inline.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#CholeskyOuterProduct.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -151,7 +152,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Inline.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#CholeskyOuterProduct.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -181,7 +182,7 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.is_constant_jacobian` {#Inline.is_constant_jacobian}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.is_constant_jacobian` {#CholeskyOuterProduct.is_constant_jacobian}
 
 Returns true iff the Jacobian is not a function of x.
 
@@ -194,28 +195,28 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.name` {#Inline.name}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
 
 Returns the string name of this `Bijector`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.parameters` {#Inline.parameters}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.parameters` {#CholeskyOuterProduct.parameters}
 
 Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.shaper` {#Inline.shaper}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.shaper` {#CholeskyOuterProduct.shaper}
 
 Returns shape object used to manage shape constraints.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.validate_args` {#Inline.validate_args}
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.validate_args` {#CholeskyOuterProduct.validate_args}
 
 Returns True if Tensor arguments will be validated.
 

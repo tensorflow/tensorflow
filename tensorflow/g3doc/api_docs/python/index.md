@@ -776,6 +776,7 @@
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
   * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
+  * [`CholeskyOuterProduct`](../../api_docs/python/contrib.distributions.bijector.md#CholeskyOuterProduct)
   * [`Exp`](../../api_docs/python/contrib.distributions.bijector.md#Exp)
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
