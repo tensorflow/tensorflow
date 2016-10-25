@@ -105,7 +105,7 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 # Add extra params for cuda devices and libraries for GPU container.
 if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   # GPU pip tests-on-install concurrency is limited to the number of GPUs.
-  GPU_EXTRA_PARAMS="${GPU_EXTRA_PARAMS} -e TF_BUILD_SERIAL_INSTALL_TESTS=1"
+  GPU_EXTRA_PARAMS="${GPU_EXTRA_PARAMS} -e TF_BUILD_USE_GPU=1"
 else
   GPU_EXTRA_PARAMS=""
 fi
