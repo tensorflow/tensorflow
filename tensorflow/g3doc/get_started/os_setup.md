@@ -402,7 +402,7 @@ With Docker the installation is as follows:
 
 *  Install Docker on your machine.
 *  Create a [Docker
-group](http://docs.docker.com/engine/installation/ubuntulinux/#create-a-docker-group)
+group](https://docs.docker.com/engine/installation/linux/ubuntulinux/#/create-a-docker-group)
 to allow launching containers without `sudo`.
 *  Launch a Docker container with the TensorFlow image.  The image
    gets downloaded automatically on first launch.
