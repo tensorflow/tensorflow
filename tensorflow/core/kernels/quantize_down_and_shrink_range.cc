@@ -20,12 +20,11 @@ limitations under the License.
 #include <math.h>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/meta_support.h"
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -80,17 +79,9 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 #endif
 
     if (input_array.size() > 0) {
-      if (meta::IsSupportedAndEnabled() && std::is_same<T1, qint32>() &&
-          std::is_same<T2, quint8>()) {
-        auto input_i32_array = input.flat<qint32>();
-        meta::Requantize(ctx, input_i32_array.data(), input_i32_array.size(),
-                         input_min_float, input_max_float, actual_min_float,
-                         actual_max_float, output->flat<quint8>().data());
-      } else {
-        RequantizeManyInNewRangeUsingEigen<T1, T2>(
-            ctx->eigen_device<CPUDevice>(), input, input_min_float,
-            input_max_float, actual_min_float, actual_max_float, output);
-      }
+      RequantizeManyInNewRangeUsingEigen<T1, T2>(
+          ctx->eigen_device<CPUDevice>(), input, input_min_float,
+          input_max_float, actual_min_float, actual_max_float, output);
     }
 
     output_min->flat<float>().setConstant(actual_min_float);

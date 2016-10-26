@@ -2427,8 +2427,6 @@ filegroup(
     name = "android_quantized_ops",
     srcs = [
         "dequantize_op.cc",
-        "meta_support.cc",
-        "meta_support.h",
         "quantization_utils.cc",
         "quantization_utils.h",
         "quantize_down_and_shrink_range.cc",
@@ -2530,7 +2528,6 @@ tf_kernel_library(
     name = "quantized_ops",
     srcs = [
         "dequantize_op.cc",
-        "meta_support.cc",
         "quantization_utils.cc",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
@@ -2547,7 +2544,6 @@ tf_kernel_library(
         "reshape_op.h",
     ],
     hdrs = [
-        "meta_support.h",
         "quantization_utils.h",
         "reference_gemm.h",
     ],
