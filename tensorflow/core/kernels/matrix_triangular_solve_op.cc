@@ -27,7 +27,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -270,6 +270,6 @@ REGISTER_KERNEL_BUILDER(
         .Device(DEVICE_GPU)
         .TypeConstraint<double>("T"),
     MatrixTriangularSolveOpGPU<double>);
-#endif //GOOGLE_CUDA
+#endif  //GOOGLE_CUDA
 
 }  // namespace tensorflow
