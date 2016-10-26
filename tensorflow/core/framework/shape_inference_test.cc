@@ -929,11 +929,14 @@ TEST_F(ShapeInferenceTest, GetAttr) {
 
 TEST_F(ShapeInferenceTest, Divide) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {S({6, -1})}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({6, -1, 1, 2, 0})}, {});
 
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
   auto d_unknown = c.Dim(s, 1);
+  auto d_1 = c.Dim(s, 2);
+  auto d_2 = c.Dim(s, 3);
+  auto d_0 = c.Dim(s, 4);
   bool evenly_divisible = true;
 
   // Dividing unknown by non-1 gives new unknown.
@@ -947,8 +950,14 @@ TEST_F(ShapeInferenceTest, Divide) {
   EXPECT_TRUE(SameHandle(out, d_unknown));
   EXPECT_TRUE(c.Divide(d_6, 1, evenly_divisible, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
+  EXPECT_TRUE(c.Divide(d_unknown, d_1, evenly_divisible, &out).ok());
+  EXPECT_TRUE(SameHandle(out, d_unknown));
+  EXPECT_TRUE(c.Divide(d_6, d_1, evenly_divisible, &out).ok());
+  EXPECT_TRUE(SameHandle(out, d_6));
 
   EXPECT_TRUE(c.Divide(d_6, 2, evenly_divisible, &out).ok());
+  EXPECT_EQ("3", c.DebugString(out));
+  EXPECT_TRUE(c.Divide(d_6, d_2, evenly_divisible, &out).ok());
   EXPECT_EQ("3", c.DebugString(out));
 
   EXPECT_TRUE(
@@ -957,6 +966,9 @@ TEST_F(ShapeInferenceTest, Divide) {
 
   EXPECT_TRUE(
       StringPiece(c.Divide(d_6, 0, evenly_divisible, &out).error_message())
+          .contains("Divisor must be positive but is 0"));
+  EXPECT_TRUE(
+      StringPiece(c.Divide(d_6, d_0, evenly_divisible, &out).error_message())
           .contains("Divisor must be positive but is 0"));
 
   EXPECT_TRUE(

@@ -336,8 +336,8 @@ class InferenceContext {
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or if <evenly_divisible>
   // and <divisor> does not evenly divide <dividend>.
-  Status Divide(DimensionHandle dividend, int64 divisor, bool evenly_divisible,
-                DimensionHandle* out);
+  Status Divide(DimensionHandle dividend, DimensionOrConstant divisor,
+                bool evenly_divisible, DimensionHandle* out);
 
   // Returns in <out> the sum of <first> and <second>.
   Status Add(DimensionHandle first, DimensionOrConstant second,
