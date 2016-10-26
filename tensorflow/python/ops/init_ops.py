@@ -34,13 +34,13 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import linalg_ops
 
 
 def _assert_float_dtype(dtype):
@@ -351,8 +351,9 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     dtype: The type of the output.
-    seed: None, a python integer to create a numpy random number generator or
-      an object that has a 'normal' member function
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     An initializer that generates orthogonal tensors
@@ -361,27 +362,24 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     ValueError: if `dtype` is not a floating point type.
   """
   def _initializer(shape, dtype=_assert_float_dtype(dtype), partition_info=None):
+    # Flatten the input shape with the last dimension remaining its original shape so it works for conv2d
+    num_rows = 1
+    for dim in shape[:-1]:
+      num_rows *= dim
+    num_cols = shape[-1]
+    flat_shape = (num_rows, num_cols)
+
     if gain == 'relu':
       _gain = math.sqrt(2)
     else:
       _gain = gain
 
-    # Use the default random number generator
-    if seed is None:
-      rng = np.random
-    # Use a specific seed
-    elif isinstance(seed, int):
-      rng = np.random.RandomState(seed)
-    else:
-      assert hasattr(seed, 'normal'), "rng must be None, an integer seed, or an object with a member function 'normal'"
-      rng = seed
-
-    # Flatten the input shape with the last dimension remaining its original shape so it works for conv2d
-    flat_shape = (np.prod(shape[:-1]), shape[-1])
-    a = rng.normal(0, 1, flat_shape)
-    u, _, v = np.linalg.svd(a, full_matrices=False)
-    q = u if u.shape == flat_shape else v
-    q = _gain * q.reshape(shape)
-    return constant_op.constant(q, dtype=dtype, shape=shape)
+    # Generate a random matrix
+    a = random_ops.random_normal(flat_shape, dtype=dtype, seed=seed)
+    # Compute the svd
+    _, u, v = linalg_ops.svd(a, full_matrices=False)
+    # Pick the right singular value decomposition
+    q = u if num_cols < num_rows else v
+    return _gain * array_ops.reshape(q, shape)
 
   return _initializer

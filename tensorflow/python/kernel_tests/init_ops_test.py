@@ -464,8 +464,8 @@ class OrthogonalInitializerTest(tf.test.TestCase):
 
   def testInvalidDataType(self):
     self.assertRaises(
-        ValueError,
-        tf.orthogonal_initializer, dtype=tf.string)
+      ValueError,
+      tf.orthogonal_initializer, dtype=tf.string)
 
   def testGain(self):
     num = 100
@@ -478,6 +478,13 @@ class OrthogonalInitializerTest(tf.test.TestCase):
         t2 = init2([num]).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
 
+  def testShapes(self):
+    for dtype in [tf.float32, tf.float64]:
+      for shape in [(10, 10), (10, 9, 8), (100, 5, 5)]:
+        init = tf.orthogonal_initializer(dtype=dtype)
+        with self.test_session(graph=tf.Graph()):
+          t = init(shape).eval()
+          self.assertAllEqual(shape, t.shape)
 
 if __name__ == "__main__":
   tf.test.main()
