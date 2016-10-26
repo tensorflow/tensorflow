@@ -83,7 +83,7 @@ class PrintModelAnalysisTest(tf.test.TestCase):
       opts.select.append(p)
     opts.viz = TEST_OPTIONS['viz']
 
-    with tf.Session() as sess:
+    with tf.Session() as sess, tf.device('/cpu:0'):
       _ = self._BuildSmallModel()
       tfprof_pb = tfprof_output_pb2.TFProfNode()
       tfprof_pb.ParseFromString(
@@ -92,134 +92,145 @@ class PrintModelAnalysisTest(tf.test.TestCase):
 
       expected_pb = tfprof_output_pb2.TFProfNode()
       text_format.Merge(r"""name: "_TFProfRoot"
+          exec_micros: 0
+          requested_bytes: 0
+          total_exec_micros: 0
+          total_requested_bytes: 0
+          total_parameters: 648
+          children {
+            name: "Conv2D"
+            exec_micros: 0
+            requested_bytes: 0
+            total_exec_micros: 0
+            total_requested_bytes: 0
+            total_parameters: 0
+            device: "/device:CPU:0"
+            float_ops: 0
+            total_float_ops: 0
+          }
+          children {
+            name: "DW"
+            exec_micros: 0
+            requested_bytes: 0
+            parameters: 648
+            total_exec_micros: 0
+            total_requested_bytes: 0
+            total_parameters: 648
+            device: "/device:CPU:0"
+            children {
+              name: "DW/Assign"
               exec_micros: 0
               requested_bytes: 0
               total_exec_micros: 0
               total_requested_bytes: 0
-              total_parameters: 648
+              total_parameters: 0
+              device: "/device:CPU:0"
+              float_ops: 0
+              total_float_ops: 0
+            }
+            children {
+              name: "DW/Initializer"
+              exec_micros: 0
+              requested_bytes: 0
+              total_exec_micros: 0
+              total_requested_bytes: 0
+              total_parameters: 0
               children {
-                name: "Conv2D"
+                name: "DW/Initializer/random_normal"
                 exec_micros: 0
                 requested_bytes: 0
                 total_exec_micros: 0
                 total_requested_bytes: 0
                 total_parameters: 0
-                float_ops: 0
-                total_float_ops: 0
-              }
-              children {
-                name: "DW"
-                exec_micros: 0
-                requested_bytes: 0
-                parameters: 648
-                total_exec_micros: 0
-                total_requested_bytes: 0
-                total_parameters: 648
+                device: "/device:CPU:0"
                 children {
-                  name: "DW/Assign"
+                  name: "DW/Initializer/random_normal/RandomStandardNormal"
                   exec_micros: 0
                   requested_bytes: 0
                   total_exec_micros: 0
                   total_requested_bytes: 0
                   total_parameters: 0
+                  device: "/device:CPU:0"
                   float_ops: 0
                   total_float_ops: 0
                 }
                 children {
-                  name: "DW/Initializer"
+                  name: "DW/Initializer/random_normal/mean"
                   exec_micros: 0
                   requested_bytes: 0
                   total_exec_micros: 0
                   total_requested_bytes: 0
                   total_parameters: 0
-                  children {
-                    name: "DW/Initializer/random_normal"
-                    exec_micros: 0
-                    requested_bytes: 0
-                    total_exec_micros: 0
-                    total_requested_bytes: 0
-                    total_parameters: 0
-                    children {
-                      name: "DW/Initializer/random_normal/RandomStandardNormal"
-                      exec_micros: 0
-                      requested_bytes: 0
-                      total_exec_micros: 0
-                      total_requested_bytes: 0
-                      total_parameters: 0
-                      float_ops: 0
-                      total_float_ops: 0
-                    }
-                    children {
-                      name: "DW/Initializer/random_normal/mean"
-                      exec_micros: 0
-                      requested_bytes: 0
-                      total_exec_micros: 0
-                      total_requested_bytes: 0
-                      total_parameters: 0
-                      float_ops: 0
-                      total_float_ops: 0
-                    }
-                    children {
-                      name: "DW/Initializer/random_normal/mul"
-                      exec_micros: 0
-                      requested_bytes: 0
-                      total_exec_micros: 0
-                      total_requested_bytes: 0
-                      total_parameters: 0
-                      float_ops: 0
-                      total_float_ops: 0
-                    }
-                    children {
-                      name: "DW/Initializer/random_normal/shape"
-                      exec_micros: 0
-                      requested_bytes: 0
-                      total_exec_micros: 0
-                      total_requested_bytes: 0
-                      total_parameters: 0
-                      float_ops: 0
-                      total_float_ops: 0
-                    }
-                    children {
-                      name: "DW/Initializer/random_normal/stddev"
-                      exec_micros: 0
-                      requested_bytes: 0
-                      total_exec_micros: 0
-                      total_requested_bytes: 0
-                      total_parameters: 0
-                      float_ops: 0
-                      total_float_ops: 0
-                    }
-                    float_ops: 0
-                    total_float_ops: 0
-                  }
+                  device: "/device:CPU:0"
                   float_ops: 0
                   total_float_ops: 0
                 }
                 children {
-                  name: "DW/read"
+                  name: "DW/Initializer/random_normal/mul"
                   exec_micros: 0
                   requested_bytes: 0
                   total_exec_micros: 0
                   total_requested_bytes: 0
                   total_parameters: 0
+                  device: "/device:CPU:0"
                   float_ops: 0
                   total_float_ops: 0
                 }
-                float_ops: 0
-                total_float_ops: 0
-              }
-              children {
-                name: "zeros"
-                exec_micros: 0
-                requested_bytes: 0
-                total_exec_micros: 0
-                total_requested_bytes: 0
-                total_parameters: 0
+                children {
+                  name: "DW/Initializer/random_normal/shape"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  device: "/device:CPU:0"
+                  float_ops: 0
+                  total_float_ops: 0
+                }
+                children {
+                  name: "DW/Initializer/random_normal/stddev"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  device: "/device:CPU:0"
+                  float_ops: 0
+                  total_float_ops: 0
+                }
                 float_ops: 0
                 total_float_ops: 0
               }
               float_ops: 0
-              total_float_ops: 0""", expected_pb)
+              total_float_ops: 0
+            }
+            children {
+              name: "DW/read"
+              exec_micros: 0
+              requested_bytes: 0
+              total_exec_micros: 0
+              total_requested_bytes: 0
+              total_parameters: 0
+              device: "/device:CPU:0"
+              float_ops: 0
+              total_float_ops: 0
+            }
+            float_ops: 0
+            total_float_ops: 0
+          }
+          children {
+            name: "zeros"
+            exec_micros: 0
+            requested_bytes: 0
+            total_exec_micros: 0
+            total_requested_bytes: 0
+            total_parameters: 0
+            device: "/device:CPU:0"
+            float_ops: 0
+            total_float_ops: 0
+          }
+          float_ops: 0
+          total_float_ops: 0""", expected_pb)
       self.assertEqual(expected_pb, tfprof_pb)
 
 
