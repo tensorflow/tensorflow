@@ -482,17 +482,6 @@ class RunManyGraphs {
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
 };
 
-int64 CostFrequency(int64 x) {
-  if (x < 10) {
-    return 1;  // 100%
-  } else if (x < 100) {
-    return 10;  // 10%
-  } else if (x < 1000) {
-    return 100;  // 1%
-  } else {
-    return 1000;  // 0.1%
-  }
-}
 
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
@@ -1068,7 +1057,17 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   std::unique_ptr<ProfileHandler> ph;
   pss.collect_timeline = req->options().trace_level() == RunOptions::FULL_TRACE;
-  pss.collect_costs = (0 == (count % CostFrequency(count)));
+
+  // Build the cost model every 'build_cost_model_every' steps after skipping an
+  // initial 'build_cost_model_after' steps.
+  const int64 build_cost_model_after =
+      session_opts_.config.graph_options().build_cost_model_after();
+  const int64 build_cost_model_every =
+      session_opts_.config.graph_options().build_cost_model();
+  pss.collect_costs =
+      build_cost_model_every > 0 &&
+      ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
+
   ph = rcg->GetProfileHandler(step_id, count, req->options());
   if (ph) {
     pss.collect_timeline = true;
