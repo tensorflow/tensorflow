@@ -185,3 +185,4 @@ def print_model_analysis(graph,
       print_mdl.PrintModelAnalysis(
           graph.as_graph_def().SerializeToString(), run_meta_str, op_log_str,
           tfprof_cmd.encode('utf-8'), opts.SerializeToString()))
+  return tfprof_node
