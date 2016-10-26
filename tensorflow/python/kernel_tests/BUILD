@@ -213,7 +213,7 @@ tf_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     srcs = ["matrix_triangular_solve_op_test.py"],
