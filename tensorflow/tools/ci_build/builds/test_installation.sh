@@ -47,9 +47,6 @@
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
 #
-# TF_BUILD_USE_GPU, if set to 1, limits the number of concurrent tests to
-# the number stored in TF_GPU_COUNT and assigns each test to a different GPU.
-#
 # TF_GPU_COUNT, Set the number of GPUs in the system. We run only this many
 # concurrent tests when running GPU tests.
 #
@@ -410,7 +407,7 @@ SKIP_COUNTER=0
 FAILED_TESTS=""
 FAILED_TEST_LOGS=""
 
-if [[ "${TF_BUILD_USE_GPU}" == "1" ]]; then
+if [[ "${IS_GPU}" == "1" ]]; then
   N_JOBS=$TF_GPU_COUNT
 else
   N_JOBS=$(grep -c ^processor /proc/cpuinfo)
@@ -484,7 +481,7 @@ while true; do
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
 
     # Launch test asynchronously
-    if [[ "${TF_BUILD_USE_GPU}" == "1" ]]; then
+    if [[ "${IS_GPU}" == "1" ]]; then
       "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
         "${SCRIPT_DIR}/py_test_delegate.sh" \
         "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
