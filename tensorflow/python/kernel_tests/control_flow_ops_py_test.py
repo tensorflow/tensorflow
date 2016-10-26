@@ -516,7 +516,7 @@ class ControlFlowTest(tf.test.TestCase):
                  ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
-  # Microbenchmark: 250,000 iterations/s.
+  # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
     with self.test_session():
       n = tf.constant(0)
