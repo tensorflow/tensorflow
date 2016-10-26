@@ -122,7 +122,7 @@ The images are processed as follows:
 
 *  They are cropped to 24 x 24 pixels, centrally for evaluation or
    [randomly](../../api_docs/python/constant_op.md#random_crop) for training.
-*  They are [approximately whitened](../../api_docs/python/image.md#per_image_whitening)
+*  They are [approximately whitened](../../api_docs/python/image.md#per_image_standardization)
    to make the model insensitive to dynamic range.
 
 For training, we additionally apply a series of random distortions to

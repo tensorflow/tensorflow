@@ -114,6 +114,13 @@ export function findKNNGPUCosine<T>(
         bigMatrix.delete();
         resolve(nearest);
       }
+    }, error => {
+      // GPU failed. Reverting back to CPU.
+      logging.setModalMessage(null, KNN_GPU_MSG_ID);
+      let distFunc = (a, b, limit) => vector.cosDistNorm(a, b);
+      findKNN(dataPoints, k, accessor, distFunc).then(nearest => {
+        resolve(nearest);
+      });
     });
   }
   return new Promise<NearestEntry[][]>(resolve => step(resolve));

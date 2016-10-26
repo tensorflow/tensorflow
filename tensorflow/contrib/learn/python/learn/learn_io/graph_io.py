@@ -253,6 +253,18 @@ def _get_shared_file_name_queue(file_names, shuffle, num_epochs, name):
 
 
 def _get_file_names(file_pattern, randomize_input):
+  """Parse list of file names from pattern, optionally shuffled.
+
+  Args:
+    file_pattern: File glob pattern, or list of strings.
+    randomize_input: Whether to shuffle the order of file names.
+
+  Returns:
+    List of file names matching `file_pattern`.
+
+  Raises:
+    ValueError: If `file_pattern` is empty, or pattern matches no files.
+  """
   if isinstance(file_pattern, list):
     file_names = file_pattern
     if not file_names:
@@ -304,6 +316,36 @@ def _read_keyed_batch_examples_helper(file_pattern,
                                       parse_fn=None,
                                       setup_shared_queue=False,
                                       name=None):
+  """Adds operations to read, queue, batch `Example` protos.
+
+  Args:
+    file_pattern: List of files or pattern of file paths containing
+        `Example` records. See `tf.gfile.Glob` for pattern rules.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
+    reader: A function or class that returns an object with
+      `read` method, (filename tensor) -> (example tensor).
+    randomize_input: Whether the input should be randomized.
+    num_epochs: Integer specifying the number of times to read through the
+      dataset. If `None`, cycles through the dataset forever.
+      NOTE - If specified, creates a variable that must be initialized, so call
+      `tf.initialize_all_variables()` as shown in the tests.
+    queue_capacity: Capacity for input queue.
+    num_threads: The number of threads enqueuing examples.
+    read_batch_size: An int or scalar `Tensor` specifying the number of
+      records to read at once
+    parse_fn: Parsing function, takes `Example` Tensor returns parsed
+      representation. If `None`, no parsing is done.
+    setup_shared_queue: Whether to set up a shared queue for file names.
+    name: Name of resulting op.
+
+  Returns:
+    Returns tuple of:
+    - `Tensor` of string keys.
+    - String `Tensor` of batched `Example` proto.
+
+  Raises:
+    ValueError: for invalid inputs.
+  """
   # Retrieve files to read.
   file_names = _get_file_names(file_pattern, randomize_input)
 
@@ -348,10 +390,10 @@ def _read_keyed_batch_examples_helper(file_pattern,
 
     enqueue_many = read_batch_size > 1
 
-    if num_epochs is not None:
-      allow_smaller_final_batch = True
-    else:
+    if num_epochs is None:
       allow_smaller_final_batch = False
+    else:
+      allow_smaller_final_batch = True
 
     # Setup batching queue given list of read example tensors.
     if randomize_input:
@@ -505,7 +547,6 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
       Adding multiple queue runners for the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
       parsing.
-    parser_num_threads: (Deprecated) The number of threads to parse examples.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.

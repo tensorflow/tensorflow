@@ -327,12 +327,13 @@ class Distribution(_BaseDistribution):
     for i, t in enumerate(graph_parents):
       if t is None or not contrib_framework.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    parameters = parameters or {}
     self._dtype = dtype
     self._is_continuous = is_continuous
     self._is_reparameterized = is_reparameterized
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    self._parameters = parameters or {}
+    self._parameters = parameters
     self._graph_parents = graph_parents
     self._name = name or type(self).__name__
 
@@ -433,6 +434,27 @@ class Distribution(_BaseDistribution):
   def validate_args(self):
     """Python boolean indicated possibly expensive checks are enabled."""
     return self._validate_args
+
+  def copy(self, **override_parameters_kwargs):
+    """Creates a deep copy of the distribution.
+
+    Note: the copy distribution may continue to depend on the original
+    intialization arguments.
+
+    Args:
+      **override_parameters_kwargs: String/value dictionary of initialization
+        arguments to override with new values.
+
+    Returns:
+      distribution: A new instance of `type(self)` intitialized from the union
+        of self.parameters and override_parameters_kwargs, i.e.,
+        `dict(self.parameters, **override_parameters_kwargs)`.
+    """
+    parameters = dict(self.parameters, **override_parameters_kwargs)
+    # Python3 leaks "__class__" into `locals()` so we remove if present.
+    # TODO(b/32376812): Remove this pop.
+    parameters.pop("__class__", None)
+    return type(self)(**parameters)
 
   def _batch_shape(self):
     raise NotImplementedError("batch_shape is not implemented")

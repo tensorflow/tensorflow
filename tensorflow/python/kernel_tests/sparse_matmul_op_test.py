@@ -64,6 +64,20 @@ class SparseMatMulTest(tf.test.TestCase):
       for y_dtype in (tf.float32, tf.bfloat16):
         self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
 
+  def testZeroDim(self):
+    x = np.ones((4, 0)).astype(np.float32)
+    y = np.ones((0, 3)).astype(np.float32)
+    for x_dtype in (tf.float32, tf.bfloat16):
+      for y_dtype in (tf.float32, tf.bfloat16):
+        self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
+
+  def testEmpty(self):
+    x = np.ones((0, 0)).astype(np.float32)
+    y = np.ones((0, 0)).astype(np.float32)
+    for x_dtype in (tf.float32, tf.bfloat16):
+      for y_dtype in (tf.float32, tf.bfloat16):
+        self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
+
   # Tests setting one dimension to be a high value.
   def testLarge(self):
     r1 = np.random.randint(6000, 20000)

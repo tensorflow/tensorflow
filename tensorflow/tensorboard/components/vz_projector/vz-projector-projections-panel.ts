@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE} from './data';
+import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -26,20 +26,28 @@ export let ProjectionsPanelPolymer = PolymerElement({
   properties: {
     is3d: {type: Boolean, observer: '_dimensionsObserver'},
     // PCA projection.
-    pcaComponents: {type: Array, value: d3.range(1, 11)},
-    pcaX: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
-    pcaY: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
-    pcaZ: {type: Number, value: 3, observer: 'showPCAIfEnabled'},
+    pcaComponents: {type: Array, value: d3.range(0, 10)},
+    pcaX: {type: Number, value: 0, observer: 'showPCAIfEnabled'},
+    pcaY: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
+    pcaZ: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
     // Custom projection.
     selectedSearchByMetadataOption: {
       type: String,
-      value: 'label',
       observer: '_searchByMetadataOptionChanged'
     },
   }
 });
 
 type InputControlName = 'xLeft' | 'xRight' | 'yUp' | 'yDown';
+
+type CentroidResult = {
+  centroid?: number[]; numMatches?: number;
+};
+
+type Centroids = {
+  [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
+  yDown: number[];
+};
 
 /**
  * A polymer component which handles the projection tabs in the projector.
@@ -52,8 +60,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private currentProjection: Projection;
   private polymerChangesTriggerReprojection: boolean;
 
-  // The working subset of the data source's original data set.
-  private currentDataSet: DataSet;
+  private dataSet: DataSet;
+  private originalDataSet: DataSet;
   private dim: number;
 
   /** T-SNE perplexity. Roughly how many neighbors each point influences. */
@@ -70,17 +78,19 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private allCentroid: number[];
 
   /** Polymer properties. */
-  private pcaX: number;
-  private pcaY: number;
-  private pcaZ: number;
+  // TODO(nsthorat): Move these to a separate view controller.
+  public pcaX: number;
+  public pcaY: number;
+  public pcaZ: number;
 
   /** Polymer elements. */
+  private dom: d3.Selection<any>;
   private runTsneButton: d3.Selection<HTMLButtonElement>;
   private stopTsneButton: d3.Selection<HTMLButtonElement>;
-
-  private dom: d3.Selection<any>;
-
+  private perplexitySlider: HTMLInputElement;
+  private learningRateInput: HTMLInputElement;
   private zDropdown: d3.Selection<HTMLElement>;
+  private iterationLabel: d3.Selection<HTMLElement>;
 
   initialize(projector: Projector) {
     this.polymerChangesTriggerReprojection = true;
@@ -102,7 +112,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   ready() {
     this.dom = d3.select(this);
     this.zDropdown = this.dom.select('#z-dropdown');
-    this.searchByMetadataOptions = ['label'];
+    this.runTsneButton = this.dom.select('.run-tsne');
+    this.stopTsneButton = this.dom.select('.stop-tsne');
+    this.perplexitySlider = this.$$('#perplexity-slider') as HTMLInputElement;
+    this.learningRateInput =
+        this.$$('#learning-rate-slider') as HTMLInputElement;
+    this.iterationLabel = this.dom.select('.run-tsne-iter');
   }
 
   disablePolymerChangesTriggerReprojection() {
@@ -113,38 +128,41 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.polymerChangesTriggerReprojection = true;
   }
 
+  private updatePerplexityFromUIChange() {
+    if (this.perplexitySlider) {
+      this.perplexity = +this.perplexitySlider.value;
+    }
+    this.dom.select('.tsne-perplexity span').text(this.perplexity);
+  }
+
+  private updateLearningRateFromUIChange() {
+    if (this.learningRateInput) {
+      this.learningRate = Math.pow(10, +this.learningRateInput.value);
+    }
+    this.dom.select('.tsne-learning-rate span').text(this.learningRate);
+  }
+
   private setupUIControls() {
-    // Tabs
-    const self = this;
-    this.dom.selectAll('.ink-tab').on('click', function() {
-      let id = this.getAttribute('data-tab');
-      self.showTab(id);
-    });
+    {
+      const self = this;
+      this.dom.selectAll('.ink-tab').on('click', function() {
+        let id = this.getAttribute('data-tab');
+        self.showTab(id);
+      });
+    }
 
-    this.runTsneButton = this.dom.select('.run-tsne');
     this.runTsneButton.on('click', () => this.runTSNE());
-    this.stopTsneButton = this.dom.select('.stop-tsne');
-    this.stopTsneButton.on('click', () => {
-      this.projector.currentDataSet.stopTSNE();
-    });
+    this.stopTsneButton.on('click', () => this.dataSet.stopTSNE());
 
-    let perplexitySlider = this.$$('#perplexity-slider') as HTMLInputElement;
-    let updatePerplexity = () => {
-      this.perplexity = +perplexitySlider.value;
-      this.dom.select('.tsne-perplexity span').text(this.perplexity);
-    };
-    perplexitySlider.value = this.perplexity.toString();
-    perplexitySlider.addEventListener('change', updatePerplexity);
-    updatePerplexity();
+    this.perplexitySlider.value = this.perplexity.toString();
+    this.perplexitySlider.addEventListener(
+        'change', () => this.updatePerplexityFromUIChange());
+    this.updatePerplexityFromUIChange();
 
-    let learningRateInput =
-        this.$$('#learning-rate-slider') as HTMLInputElement;
-    let updateLearningRate = () => {
-      this.learningRate = Math.pow(10, +learningRateInput.value);
-      this.dom.select('.tsne-learning-rate span').text(this.learningRate);
-    };
-    learningRateInput.addEventListener('change', updateLearningRate);
-    updateLearningRate();
+    this.learningRateInput.addEventListener(
+        'change', () => this.updateLearningRateFromUIChange());
+    this.updateLearningRateFromUIChange();
+
     this.setupAllInputsInCustomTab();
     // TODO: figure out why `--paper-input-container-input` css mixin didn't
     // work.
@@ -152,33 +170,62 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       .style('font-size', '14px');
   }
 
-  setPCAComponentUIValues(componentDimensions: number[]) {
-    this.pcaX = componentDimensions[0];
-    this.pcaY = componentDimensions[1];
+  restoreUIFromBookmark(bookmark: State) {
+    this.disablePolymerChangesTriggerReprojection();
 
-    if (componentDimensions.length === 3) {
-      this.pcaZ = componentDimensions[2];
+    this.pcaX = bookmark.componentDimensions[0];
+    this.pcaY = bookmark.componentDimensions[1];
+    if (bookmark.componentDimensions.length === 3) {
+      this.pcaZ = bookmark.componentDimensions[2];
     }
+    if (this.perplexitySlider) {
+      this.perplexitySlider.value = bookmark.tSNEPerplexity.toString();
+    }
+    if (this.learningRateInput) {
+      this.learningRateInput.value = bookmark.tSNELearningRate.toString();
+    }
+    this.is3d = bookmark.is3d;
 
-    this.setZDropdownEnabled(componentDimensions.length === 3);
+    this.setZDropdownEnabled(bookmark.componentDimensions.length === 3);
+    this.updatePerplexityFromUIChange();
+    this.updateLearningRateFromUIChange();
+    if (this.iterationLabel) {
+      this.iterationLabel.text(bookmark.tSNEIteration.toString());
+    }
+    this.showTab(bookmark.selectedProjection);
+
+    this.enablePolymerChangesTriggerReprojection();
   }
 
-  getPCAComponentUIValues(): number[] {
-    const componentDimensions = [this.pcaX, this.pcaY];
+  populateBookmarkFromUI(bookmark: State) {
+    this.disablePolymerChangesTriggerReprojection();
+    bookmark.componentDimensions = [this.pcaX, this.pcaY];
     if (this.is3d) {
-      componentDimensions.push(this.pcaZ);
+      bookmark.componentDimensions.push(this.pcaZ);
     }
-    return componentDimensions;
+    bookmark.is3d = this.is3d;
+    if (this.perplexitySlider) {
+      bookmark.tSNEPerplexity = +this.perplexitySlider.value;
+    }
+    if (this.learningRateInput) {
+      bookmark.tSNELearningRate = +this.learningRateInput.value;
+    }
+    this.enablePolymerChangesTriggerReprojection();
   }
 
-  private setZDropdownEnabled(enabled: boolean) {
+  // This method is marked as public as it is used as the view method that
+  // abstracts DOM manipulation so we can stub it in a test.
+  // TODO(nsthorat): Move this to its own class as the glue between this class
+  // and the DOM.
+  public setZDropdownEnabled(enabled: boolean) {
     if (this.zDropdown) {
       this.zDropdown.attr('disabled', enabled ? null : true);
     }
   }
 
-  dataSetUpdated(dataSet: DataSet, dim: number) {
-    this.currentDataSet = dataSet;
+  dataSetUpdated(dataSet: DataSet, originalDataSet: DataSet, dim: number) {
+    this.dataSet = dataSet;
+    this.originalDataSet = originalDataSet;
     this.dim = dim;
     this.clearCentroids();
 
@@ -197,17 +244,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   metadataChanged(metadata: MetadataInfo) {
     // Project by options for custom projections.
     let searchByMetadataIndex = -1;
-    if (metadata.stats.length > 1) {
-      this.searchByMetadataOptions = metadata.stats.map((stats, i) => {
-        // Make the default label by the first non-numeric column.
-        if (!stats.isNumeric && searchByMetadataIndex === -1) {
-          searchByMetadataIndex = i;
-        }
-        return stats.name;
-      });
-    } else {
-      this.searchByMetadataOptions = ['label'];
-    }
+    this.searchByMetadataOptions = metadata.stats.map((stats, i) => {
+      // Make the default label by the first non-numeric column.
+      if (!stats.isNumeric && searchByMetadataIndex === -1) {
+        searchByMetadataIndex = i;
+      }
+      return stats.name;
+    });
     this.selectedSearchByMetadataOption =
         this.searchByMetadataOptions[Math.max(0, searchByMetadataIndex)];
   }
@@ -234,12 +277,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private beginProjection(projection: string) {
     if (this.polymerChangesTriggerReprojection) {
       if (projection === 'pca') {
-        this.currentDataSet.stopTSNE();
+        this.dataSet.stopTSNE();
         this.showPCA();
       } else if (projection === 'tsne') {
         this.showTSNE();
       } else if (projection === 'custom') {
-        this.currentDataSet.stopTSNE();
+        this.dataSet.stopTSNE();
         this.computeAllCentroids();
         this.reprojectCustom();
       }
@@ -247,7 +290,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private showTSNE() {
-    const dataSet = this.currentDataSet;
+    const dataSet = this.dataSet;
     if (dataSet == null) {
       return;
     }
@@ -255,7 +298,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         dataSet.getPointAccessors('tsne', [0, 1, this.is3d ? 2 : null]);
     this.projector.setProjection('tsne', this.is3d ? 3 : 2, accessors);
 
-    if (!this.currentDataSet.hasTSNERun) {
+    if (!this.dataSet.hasTSNERun) {
       this.runTSNE();
     } else {
       this.projector.notifyProjectionsUpdated();
@@ -265,11 +308,11 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private runTSNE() {
     this.runTsneButton.attr('disabled', true);
     this.stopTsneButton.attr('disabled', null);
-    this.currentDataSet.projectTSNE(
+    this.dataSet.projectTSNE(
         this.perplexity, this.learningRate, this.is3d ? 3 : 2,
         (iteration: number) => {
           if (iteration != null) {
-            this.dom.select('.run-tsne-iter').text(iteration);
+            this.iterationLabel.text(iteration);
             this.projector.notifyProjectionsUpdated();
           } else {
             this.runTsneButton.attr('disabled', null);
@@ -286,13 +329,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private showPCA() {
-    if (this.currentDataSet == null) {
+    if (this.dataSet == null) {
       return;
     }
-    this.currentDataSet.projectPCA().then(() => {
+    this.dataSet.projectPCA().then(() => {
       // Polymer properties are 1-based.
-      const accessors = this.currentDataSet.getPointAccessors(
-          'pca', [this.pcaX - 1, this.pcaY - 1, this.pcaZ - 1]);
+      const accessors = this.dataSet.getPointAccessors(
+          'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
       this.projector.setProjection('pca', this.is3d ? 3 : 2, accessors);
     });
@@ -305,13 +348,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return;
     }
     const xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
-    this.currentDataSet.projectLinear(xDir, 'linear-x');
+    this.dataSet.projectLinear(xDir, 'linear-x');
 
     const yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
-    this.currentDataSet.projectLinear(yDir, 'linear-y');
+    this.dataSet.projectLinear(yDir, 'linear-y');
 
-    const accessors =
-        this.currentDataSet.getPointAccessors('custom', ['x', 'y']);
+    const accessors = this.dataSet.getPointAccessors('custom', ['x', 'y']);
 
     this.projector.setProjection('custom', 2, accessors);
   }
@@ -374,8 +416,11 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     if (pattern == null || pattern === '') {
       return {numMatches: 0};
     }
-    let accessor = (i: number) => this.currentDataSet.points[i].vector;
-    let r = this.projector.currentDataSet.query(
+    // Search by the original dataset since we often want to filter and project
+    // only the nearest neighbors of A onto B-C where B and C are not nearest
+    // neighbors of A.
+    let accessor = (i: number) => this.originalDataSet.points[i].vector;
+    let r = this.originalDataSet.query(
         pattern, inRegexMode, this.selectedSearchByMetadataOption);
     return {centroid: vector.centroid(r, accessor), numMatches: r.length};
   }
@@ -387,15 +432,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   getTsneSampleSize() {
     return SAMPLE_SIZE.toLocaleString();
   }
+
+  _addOne(value: number) {
+    return value + 1;
+  }
 }
-
-type CentroidResult = {
-  centroid?: number[]; numMatches?: number;
-};
-
-type Centroids = {
-  [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
-  yDown: number[];
-};
 
 document.registerElement(ProjectionsPanel.prototype.is, ProjectionsPanel);

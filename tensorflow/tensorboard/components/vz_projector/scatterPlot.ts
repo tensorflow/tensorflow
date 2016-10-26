@@ -132,7 +132,7 @@ export class ScatterPlot {
   private light: THREE.PointLight;
   private selectionSphere: THREE.Mesh;
 
-  private cameraDef: CameraDef|null = null;
+  private cameraDef: CameraDef = null;
   private camera: THREE.Camera;
   private orbitCameraControls: any;
   private orbitAnimationId: number;
@@ -140,6 +140,8 @@ export class ScatterPlot {
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
   private labels: LabelRenderParams;
+
+  private traceColors: {[trace: number]: Float32Array};
 
   private selecting = false;
   private nearestPoint: number;
@@ -698,7 +700,7 @@ export class ScatterPlot {
         this.camera, this.orbitCameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
         this.pointColors, this.pointScaleFactors, this.labelAccessor,
-        this.labels);
+        this.labels, this.traceColors);
 
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
@@ -754,6 +756,11 @@ export class ScatterPlot {
   /** Set the labels to rendered */
   setLabels(labels: LabelRenderParams) {
     this.labels = labels;
+  }
+
+  /** Set the colors for every data trace. (RGB triplets) */
+  setTraceColors(colors: {[trace: number]: Float32Array}) {
+    this.traceColors = colors;
   }
 
   getMode(): Mode { return this.mode; }

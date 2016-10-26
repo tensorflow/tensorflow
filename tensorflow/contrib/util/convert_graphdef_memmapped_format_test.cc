@@ -26,6 +26,15 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+bool GraphHasImmutableConstNodes(const GraphDef& graph_def) {
+  for (const auto& node : graph_def.node()) {
+    if (node.op() == "ImmutableConst") {
+      return true;
+    }
+  }
+  return false;
+}
+
 TEST(ConvertGraphdefMemmappedFormatTest, ConvertModel) {
   const string dir = testing::TmpDir();
   const string filename_pb = io::JoinPath(dir, "graphdef.pb");
@@ -69,6 +78,7 @@ TEST(ConvertGraphdefMemmappedFormatTest, ConvertModel) {
   TF_ASSERT_OK(ReadBinaryProto(
       &memmapped_env, MemmappedFileSystem::kMemmappedPackageDefaultGraphDef,
       &loaded_graph_def));
+  ASSERT_TRUE(GraphHasImmutableConstNodes(loaded_graph_def));
 
   TF_ASSERT_OK(session->Create(loaded_graph_def)) << "Can't create test graph";
   std::vector<Tensor> outputs;
@@ -77,6 +87,49 @@ TEST(ConvertGraphdefMemmappedFormatTest, ConvertModel) {
   EXPECT_EQ(outputs.front().flat<float>()(0), 2.0f * 3.0f * kTensorHeight);
   EXPECT_EQ(outputs.front().flat<float>()(1), 2.0f * 3.0f * kTensorHeight);
   EXPECT_EQ(outputs.front().flat<float>()(2), 2.0f * 3.0f * kTensorHeight);
+}
+
+TEST(ConvertGraphdefMemmappedFormatTest, NotSupportedTypesConvert) {
+  // Create a graph with strings.
+  const string dir = testing::TmpDir();
+  const string filename_pb = io::JoinPath(dir, "string_graphdef.pb");
+
+  constexpr int kTensorWidth = 4000;
+  constexpr int kTensorHeight = 100;
+  const TensorShape kTestTensorShape({kTensorWidth, kTensorHeight});
+  Tensor test_tensor1(DT_STRING, kTestTensorShape);
+  test::FillFn<string>(&test_tensor1, [](int) -> string { return "ABC"; });
+
+  Tensor test_tensor2(DT_STRING, kTestTensorShape);
+  test::FillFn<string>(&test_tensor2, [](int) -> string { return "XYZ"; });
+  auto root = Scope::NewRootScope().ExitOnError();
+  ops::Output m = ops::Add(root, test_tensor1, test_tensor2);
+  const string result_name = m.node()->name();
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+  string graph_def_serialized;
+  graph_def.SerializeToString(&graph_def_serialized);
+  TF_ASSERT_OK(
+      WriteStringToFile(Env::Default(), filename_pb, graph_def_serialized));
+
+  const string filename_mmap = io::JoinPath(dir, "string_graphdef.mmap");
+  TF_ASSERT_OK(ConvertConstantsToImmutable(filename_pb, filename_mmap, 1000));
+
+  // Create and initialize MemmappedEnv from the converted file.
+  MemmappedEnv memmapped_env(Env::Default());
+  TF_ASSERT_OK(memmapped_env.InitializeFromFile(filename_mmap));
+
+  // Load the graph and run calculations.
+  SessionOptions session_options;
+  session_options.env = &memmapped_env;
+  std::unique_ptr<Session> session(NewSession(session_options));
+  ASSERT_TRUE(session != nullptr) << "Failed to create session";
+  GraphDef loaded_graph_def;
+  TF_ASSERT_OK(ReadBinaryProto(
+      &memmapped_env, MemmappedFileSystem::kMemmappedPackageDefaultGraphDef,
+      &loaded_graph_def));
+  ASSERT_FALSE(GraphHasImmutableConstNodes(loaded_graph_def));
 }
 
 }  // namespace

@@ -429,7 +429,7 @@ class SingleValueRNNEstimatorTest(tf.test.TestCase):
     cell_type = 'basic_rnn'
     cell_size = 8
     optimizer_type = 'Momentum'
-    learning_rate = 0.5
+    learning_rate = 0.1
     momentum = 0.9
     loss_threshold = 0.1
 

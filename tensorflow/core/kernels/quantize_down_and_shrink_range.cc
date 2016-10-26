@@ -48,6 +48,7 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
     Tensor* output_max = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({}), &output_max));
 
+    // See QuantizationRangeOp as well, which has a copy of this logic.
     auto input_array = input.flat<T1>();
     const int32 input_lowest_quantized =
         static_cast<int32>(Eigen::NumTraits<T1>::lowest());

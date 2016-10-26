@@ -157,7 +157,6 @@ export function runAsyncTask<T>(message: string, task: () => T,
         }
         resolve(result);
       } catch (ex) {
-        logging.setModalMessage('Error: ' + ex.message);
         reject(ex);
       }
       return true;

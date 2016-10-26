@@ -671,18 +671,6 @@ class StreamingPrecisionTest(tf.test.TestCase):
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, precision.eval())
 
-  def testMasked(self):
-    predictions = tf.constant([1, 0, 1, 0, 1], shape=(1, 5))
-    labels = tf.constant([0, 1, 1, 0, 1], shape=(1, 5))
-    mask = tf.constant([False, False, False, False, True], shape=(1, 5))
-    precision, update_op = metrics.streaming_precision(
-        predictions, labels, ignore_mask=mask)
-
-    with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
-      self.assertAlmostEqual(0.5, update_op.eval())
-      self.assertAlmostEqual(0.5, precision.eval())
-
   def testWeighted1d(self):
     predictions = tf.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
     labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
@@ -832,18 +820,6 @@ class StreamingRecallTest(tf.test.TestCase):
     predictions = tf.constant([1, 0, 1, 0], shape=(1, 4))
     labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
     recall, update_op = metrics.streaming_recall(predictions, labels)
-
-    with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
-      self.assertAlmostEqual(0.5, update_op.eval())
-      self.assertAlmostEqual(0.5, recall.eval())
-
-  def testMasked(self):
-    predictions = tf.constant([1, 0, 1, 0, 1], shape=(1, 5))
-    labels = tf.constant([0, 1, 1, 0, 1], shape=(1, 5))
-    mask = tf.constant([False, False, False, False, True], shape=(1, 5))
-    recall, update_op = metrics.streaming_recall(
-        predictions, labels, ignore_mask=mask)
 
     with self.test_session() as sess:
       sess.run(tf.initialize_local_variables())
@@ -1737,15 +1713,13 @@ class StreamingRecallAtKTest(tf.test.TestCase):
                               dtype=tf.float32)
     labels = tf.constant(
         self._np_labels, shape=(self._batch_size,), dtype=tf.int64)
-    weights = tf.constant([0, 1, 1, 1], shape=(self._batch_size,),
+    weights = tf.constant([0, 1, 0, 1], shape=(self._batch_size,),
                           dtype=tf.float32)
-    mask = tf.constant([False, False, True, False], shape=(self._batch_size,),
-                       dtype=tf.bool)
     recall, update_op = metrics.streaming_recall_at_k(
-        predictions, labels, k=2, ignore_mask=mask, weights=weights)
+        predictions, labels, k=2, weights=weights)
     sp_recall, sp_update_op = metrics.streaming_sparse_recall_at_k(
         predictions, tf.reshape(labels, (self._batch_size, 1)), k=2,
-        ignore_mask=mask, weights=weights)
+        weights=weights)
 
     with self.test_session() as sess:
       sess.run(tf.initialize_local_variables())
@@ -1763,16 +1737,13 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
                                             k,
                                             expected,
                                             class_id=None,
-                                            ignore_mask=None,
                                             weights=None):
     with tf.Graph().as_default() as g, self.test_session(g):
-      if ignore_mask is not None:
-        ignore_mask = tf.constant(ignore_mask, tf.bool)
       if weights is not None:
         weights = tf.constant(weights, tf.float32)
       metric, update = metrics.streaming_sparse_precision_at_k(
           predictions=tf.constant(predictions, tf.float32), labels=labels,
-          k=k, class_id=class_id, ignore_mask=ignore_mask, weights=weights)
+          k=k, class_id=class_id, weights=weights)
 
       # Fails without initialized vars.
       self.assertRaises(tf.OpError, metric.eval)
@@ -1792,17 +1763,13 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
                                                 labels,
                                                 expected,
                                                 class_id=None,
-                                                ignore_mask=None,
                                                 weights=None):
     with tf.Graph().as_default() as g, self.test_session(g):
-      if ignore_mask is not None:
-        ignore_mask = tf.constant(ignore_mask, tf.bool)
       if weights is not None:
         weights = tf.constant(weights, tf.float32)
       metric, update = metrics.streaming_sparse_precision_at_top_k(
           top_k_predictions=tf.constant(top_k_predictions, tf.int32),
-          labels=labels, class_id=class_id, ignore_mask=ignore_mask,
-          weights=weights)
+          labels=labels, class_id=class_id, weights=weights)
 
       # Fails without initialized vars.
       self.assertRaises(tf.OpError, metric.eval)
@@ -1821,11 +1788,8 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
                                           predictions,
                                           labels,
                                           k,
-                                          expected,
-                                          ignore_mask=None):
+                                          expected):
     with tf.Graph().as_default() as g, self.test_session(g):
-      if ignore_mask is not None:
-        ignore_mask = tf.constant(ignore_mask, tf.bool)
       predictions = tf.constant(predictions, tf.float32)
       metric = metric_ops.sparse_average_precision_at_k(
           predictions, labels, k)
@@ -2305,11 +2269,9 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
           top_k_predictions, labels, expected=NAN, class_id=class_id,
           weights=[[0, 0], [0, 0]])
     self._test_streaming_sparse_precision_at_k(
-        predictions, labels, k=5, expected=NAN, ignore_mask=[[False], [True]],
-        weights=[[0], [1]])
+        predictions, labels, k=5, expected=NAN, weights=[[0], [0]])
     self._test_streaming_sparse_precision_at_top_k(
-        top_k_predictions, labels, expected=NAN,
-        ignore_mask=[[False], [True]], weights=[[0], [1]])
+        top_k_predictions, labels, expected=NAN, weights=[[0], [0]])
     self._test_streaming_sparse_precision_at_k(
         predictions, labels, k=5, expected=NAN, weights=[[0, 0], [0, 0]])
     self._test_streaming_sparse_precision_at_top_k(
@@ -2342,34 +2304,34 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
     # Class 2: 2 predictions, both correct.
     self._test_streaming_sparse_precision_at_k(
         predictions, labels, k=5, expected=2.0 / 2.0, class_id=2,
-        ignore_mask=[[False], [False]], weights=[[1], [0]])
+        weights=[[1], [0]])
     self._test_streaming_sparse_precision_at_top_k(
         top_k_predictions, labels, expected=2.0 / 2.0, class_id=2,
-        ignore_mask=[[False], [False]], weights=[[1], [0]])
+        weights=[[1], [0]])
 
     # Class 2: 2 predictions, both correct.
     self._test_streaming_sparse_precision_at_k(
         predictions, labels, k=5, expected=2.0 / 2.0, class_id=2,
-        ignore_mask=[[False], [False]], weights=[[0], [1]])
+        weights=[[0], [1]])
     self._test_streaming_sparse_precision_at_top_k(
         top_k_predictions, labels, expected=2.0 / 2.0, class_id=2,
-        ignore_mask=[[False], [False]], weights=[[0], [1]])
+        weights=[[0], [1]])
 
     # Class 7: 1 incorrect prediction.
     self._test_streaming_sparse_precision_at_k(
         predictions, labels, k=5, expected=0.0 / 1.0, class_id=7,
-        ignore_mask=[[False], [True]], weights=[[1], [1]])
+        weights=[[1], [0]])
     self._test_streaming_sparse_precision_at_top_k(
         top_k_predictions, labels, expected=0.0 / 1.0, class_id=7,
-        ignore_mask=[[False], [True]], weights=[[1], [1]])
+        weights=[[1], [0]])
 
     # Class 7: 1 correct prediction.
     self._test_streaming_sparse_precision_at_k(
         predictions, labels, k=5, expected=1.0 / 1.0, class_id=7,
-        ignore_mask=[[True], [False]], weights=[[1], [1]])
+        weights=[[0], [1]])
     self._test_streaming_sparse_precision_at_top_k(
         top_k_predictions, labels, expected=1.0 / 1.0, class_id=7,
-        ignore_mask=[[True], [False]], weights=[[1], [1]])
+        weights=[[0], [1]])
 
     # Class 7: no predictions.
     self._test_streaming_sparse_precision_at_k(
@@ -2409,17 +2371,13 @@ class StreamingSparseRecallTest(tf.test.TestCase):
                                          k,
                                          expected,
                                          class_id=None,
-                                         ignore_mask=None,
                                          weights=None):
     with tf.Graph().as_default() as g, self.test_session(g):
-      if ignore_mask is not None:
-        ignore_mask = tf.constant(ignore_mask, tf.bool)
       if weights is not None:
         weights = tf.constant(weights, tf.float32)
       metric, update = metrics.streaming_sparse_recall_at_k(
           predictions=tf.constant(predictions, tf.float32),
-          labels=labels, k=k, class_id=class_id, ignore_mask=ignore_mask,
-          weights=weights)
+          labels=labels, k=k, class_id=class_id, weights=weights)
 
       # Fails without initialized vars.
       self.assertRaises(tf.OpError, metric.eval)
@@ -2740,8 +2698,7 @@ class StreamingSparseRecallTest(tf.test.TestCase):
           predictions, labels, k=5, expected=NAN, class_id=class_id,
           weights=[[0, 0], [0, 0]])
     self._test_streaming_sparse_recall_at_k(
-        predictions, labels, k=5, expected=NAN, ignore_mask=[[False], [True]],
-        weights=[[0], [1]])
+        predictions, labels, k=5, expected=NAN, weights=[[0], [0]])
     self._test_streaming_sparse_recall_at_k(
         predictions, labels, k=5, expected=NAN, weights=[[0, 0], [0, 0]])
 
@@ -2764,22 +2721,22 @@ class StreamingSparseRecallTest(tf.test.TestCase):
     # Class 2: 2 labels, both correct.
     self._test_streaming_sparse_recall_at_k(
         predictions, labels, k=5, expected=2.0 / 2.0, class_id=2,
-        ignore_mask=[[False], [False]], weights=[[1], [0]])
+        weights=[[1], [0]])
 
     # Class 2: 2 labels, both correct.
     self._test_streaming_sparse_recall_at_k(
         predictions, labels, k=5, expected=2.0 / 2.0, class_id=2,
-        ignore_mask=[[False], [False]], weights=[[0], [1]])
+        weights=[[0], [1]])
 
     # Class 7: 1 label, correct.
     self._test_streaming_sparse_recall_at_k(
         predictions, labels, k=5, expected=1.0 / 1.0, class_id=7,
-        ignore_mask=[[True], [False]], weights=[[1], [1]])
+        weights=[[0], [1]])
 
     # Class 7: 1 label, incorrect.
     self._test_streaming_sparse_recall_at_k(
         predictions, labels, k=5, expected=0.0 / 1.0, class_id=7,
-        ignore_mask=[[False], [True]], weights=[[1], [1]])
+        weights=[[1], [0]])
 
     # Class 7: 2 labels, 1 correct.
     self._test_streaming_sparse_recall_at_k(
@@ -3660,16 +3617,14 @@ class PcntBelowThreshTest(tf.test.TestCase):
   def testSomePresentOneUpdate(self):
     with self.test_session() as sess:
       values = tf.constant([2, 4, 6, 8], shape=(1, 4), dtype=tf.float32)
-      mask = tf.constant([False, True, False, False], shape=(1, 4),
-                         dtype=tf.bool)
-      weights = tf.constant([1, 1, 0, 1], shape=(1, 4), dtype=tf.float32)
+      weights = tf.constant([1, 0, 0, 1], shape=(1, 4), dtype=tf.float32)
 
       pcnt0, update_op0 = metrics.streaming_percentage_less(
-          values, 100, ignore_mask=mask, weights=weights, name='high')
+          values, 100, weights=weights, name='high')
       pcnt1, update_op1 = metrics.streaming_percentage_less(
-          values, 7, ignore_mask=mask, weights=weights, name='medium')
+          values, 7, weights=weights, name='medium')
       pcnt2, update_op2 = metrics.streaming_percentage_less(
-          values, 1, ignore_mask=mask, weights=weights, name='low')
+          values, 1, weights=weights, name='low')
 
       sess.run(tf.initialize_local_variables())
       self.assertListEqual([1.0, 0.5, 0.0],
@@ -3711,22 +3666,6 @@ class StreamingMeanIOUTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       metrics.streaming_mean_iou(
           predictions, labels, num_classes=2)
-
-  def testLabelsAndIgnoreMaskOfDifferentSizeRaisesValueError(self):
-    predictions = tf.ones([10])
-    labels = tf.ones([10])
-    ignore_mask = tf.cast(tf.ones([9]), tf.bool)
-    with self.assertRaises(ValueError):
-      metrics.streaming_mean_iou(
-          predictions, labels, num_classes=2, ignore_mask=ignore_mask)
-
-  def testIgnoreMaskIsNotBooleanRaisesTypeError(self):
-    predictions = tf.ones([10])
-    labels = tf.ones([10])
-    ignore_mask = tf.ones([10])
-    with self.assertRaises(TypeError):
-      metrics.streaming_mean_iou(
-          predictions, labels, num_classes=2, ignore_mask=ignore_mask)
 
   def testLabelsAndWeightsOfDifferentSizeRaisesValueError(self):
     predictions = tf.ones([10])
@@ -3810,29 +3749,18 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       _enqueue_vector(sess, labels_queue, [1])
       labels = labels_queue.dequeue()
 
-      # Create the queue that populates the ignore_masks.
-      ignore_masks_queue = tf.FIFOQueue(6, dtypes=tf.bool, shapes=(1, 1))
-      _enqueue_vector(sess, ignore_masks_queue, [False])
-      _enqueue_vector(sess, ignore_masks_queue, [False])
-      _enqueue_vector(sess, ignore_masks_queue, [False])
-      _enqueue_vector(sess, ignore_masks_queue, [True])
-      _enqueue_vector(sess, ignore_masks_queue, [False])
-      _enqueue_vector(sess, ignore_masks_queue, [False])
-      ignore_mask = ignore_masks_queue.dequeue()
-
       # Create the queue that populates the weights.
       weights_queue = tf.FIFOQueue(6, dtypes=tf.float32, shapes=(1, 1))
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [1.0])
-      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [0.0])
       _enqueue_vector(sess, weights_queue, [1.0])
       _enqueue_vector(sess, weights_queue, [0.0])
       weights = weights_queue.dequeue()
 
       miou, update_op = metrics.streaming_mean_iou(
-          predictions, labels, num_classes, ignore_mask=ignore_mask,
-          weights=weights)
+          predictions, labels, num_classes, weights=weights)
 
       sess.run(tf.initialize_local_variables())
       for _ in range(6):
@@ -3920,13 +3848,12 @@ class StreamingMeanIOUTest(tf.test.TestCase):
     labels = tf.concat(0, [tf.constant(0, shape=[3]),
                            tf.constant(1, shape=[7])])
     num_classes = 2
-    mask = tf.concat(0, [tf.constant(False, shape=[9]),
-                         tf.constant(True, shape=[1])])
     weights = tf.concat(0, [tf.constant(0, shape=[1]),
-                            tf.constant(1, shape=[9])])
+                            tf.constant(1, shape=[8]),
+                            tf.constant(0, shape=[1])])
     with self.test_session() as sess:
       miou, update_op = metrics.streaming_mean_iou(
-          predictions, labels, num_classes, ignore_mask=mask, weights=weights)
+          predictions, labels, num_classes, weights=weights)
       sess.run(tf.initialize_local_variables())
       self.assertAllEqual([[2, 2], [0, 4]], update_op.eval())
       desired_miou = np.mean([2./4., 4./6.])

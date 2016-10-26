@@ -163,8 +163,12 @@ class SavedModelBuilder(object):
       asset_destination_filepath = os.path.join(
           compat.as_bytes(assets_destination_dir),
           compat.as_bytes(asset_source_filename))
-      file_io.copy(
-          asset_source_filepath, asset_destination_filepath, overwrite=True)
+
+      # Only copy the asset file to the destination if it does not already
+      # exist. This is to ensure that an asset with the same name defined as
+      # part of multiple graphs is only copied the first time.
+      if not file_io.file_exists(asset_destination_filepath):
+        file_io.copy(asset_source_filepath, asset_destination_filepath)
 
     tf_logging.info("Assets written to: %s", assets_destination_dir)
 
@@ -271,8 +275,8 @@ class SavedModelBuilder(object):
           "Variables and assets have not been saved yet. "
           "Please invoke `add_meta_graph_and_variables()` first.")
 
-    # Save asset files, if any.
-    self._maybe_save_assets(assets_collection)
+    # Save asset files and write them to disk, if any.
+    self._save_and_write_assets(assets_collection)
 
     # Add legacy init op to the SavedModel.
     self._maybe_add_legacy_init_op(legacy_init_op)

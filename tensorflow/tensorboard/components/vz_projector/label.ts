@@ -82,8 +82,8 @@ export class CollisionGrid {
    */
   insert(bound: BoundingBox, justTest = false): boolean {
     // Reject if the label is out of bounds.
-    if (bound.loX < this.bound.loX || bound.hiX > this.bound.hiX ||
-        bound.loY < this.bound.loY || bound.hiY > this.bound.hiY) {
+    if ((bound.hiX < this.bound.loX) || (bound.loX > this.bound.hiX) ||
+        (bound.hiY < this.bound.loY) || (bound.loY > this.bound.hiY)) {
       return false;
     }
 

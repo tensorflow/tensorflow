@@ -18,18 +18,14 @@ import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {SelectionContext} from './selectionContext';
 
-const TRACE_START_HUE = 60;
-const TRACE_END_HUE = 360;
-const TRACE_SATURATION = 1;
-const TRACE_LIGHTNESS = .3;
 const TRACE_DEFAULT_OPACITY = .2;
 const TRACE_DEFAULT_LINEWIDTH = 2;
 const TRACE_SELECTED_OPACITY = .9;
 const TRACE_SELECTED_LINEWIDTH = 3;
 const TRACE_DESELECTED_OPACITY = .05;
 
-const RGB_NUM_BYTES = 3;
-const XYZ_NUM_BYTES = 3;
+const RGB_NUM_ELEMENTS = 3;
+const XYZ_NUM_ELEMENTS = 3;
 
 /**
  * Renders 'traces' (polylines) that connect multiple points in the dataset
@@ -38,6 +34,7 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
   private dataSet: DataSet;
   private traces: THREE.Line[];
   private tracePositionBuffer: {[trace: number]: THREE.BufferAttribute} = {};
+  private traceColorBuffer: {[trace: number]: THREE.BufferAttribute} = {};
 
   constructor(selectionContext: SelectionContext) {
     selectionContext.registerSelectionChangedListener(
@@ -57,29 +54,18 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
     for (let i = 0; i < this.dataSet.traces.length; i++) {
       let dataTrace = this.dataSet.traces[i];
 
-      let geometry = new THREE.BufferGeometry();
-      let colors: number[] = [];
-
       for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
         this.dataSet.points[dataTrace.pointIndices[j]].traceIndex = i;
         this.dataSet.points[dataTrace.pointIndices[j + 1]].traceIndex = i;
-
-        let color1 =
-            this.getPointInTraceColor(j, dataTrace.pointIndices.length);
-        let color2 =
-            this.getPointInTraceColor(j + 1, dataTrace.pointIndices.length);
-
-        colors.push(
-            color1.r / 255, color1.g / 255, color1.b / 255, color2.r / 255,
-            color2.g / 255, color2.b / 255);
       }
+
+      let geometry = new THREE.BufferGeometry();
 
       geometry.addAttribute('position', this.tracePositionBuffer[i]);
       this.tracePositionBuffer[i].needsUpdate = true;
 
-      geometry.addAttribute(
-          'color',
-          new THREE.BufferAttribute(new Float32Array(colors), RGB_NUM_BYTES));
+      geometry.addAttribute('color', this.traceColorBuffer[i]);
+      this.traceColorBuffer[i].needsUpdate = true;
 
       // We use the same material for every line.
       let material = new THREE.LineBasicMaterial({
@@ -93,13 +79,6 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
       this.traces.push(trace);
       scene.add(trace);
     }
-  }
-
-  private getPointInTraceColor(index: number, totalPoints: number) {
-    let hue = TRACE_START_HUE +
-        (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
-
-    return d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
   }
 
   private resetTraces() {
@@ -130,10 +109,15 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
       // Set up the position buffer arrays for each trace.
       for (let i = 0; i < this.dataSet.traces.length; i++) {
         let dataTrace = this.dataSet.traces[i];
-        let traces = new Float32Array(
-            2 * (dataTrace.pointIndices.length - 1) * XYZ_NUM_BYTES);
+        const vertexCount = 2 * (dataTrace.pointIndices.length - 1);
+
+        let traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
         this.tracePositionBuffer[i] =
-            new THREE.BufferAttribute(traces, XYZ_NUM_BYTES);
+            new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
+
+        let colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
+        this.traceColorBuffer[i] =
+            new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
       }
     }
   }
@@ -188,8 +172,14 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
     }
   }
 
+  onRender(renderContext: RenderContext) {
+    for (let i = 0; i < this.dataSet.traces.length; i++) {
+      this.traceColorBuffer[i].array = renderContext.traceColors[i];
+      this.traceColorBuffer[i].needsUpdate = true;
+    }
+  }
+
   onPickingRender(renderContext: RenderContext) {}
-  onRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }
