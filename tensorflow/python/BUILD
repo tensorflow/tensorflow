@@ -1931,7 +1931,6 @@ py_library(
 # Just used by tests.
 tf_cuda_library(
     name = "construction_fails_op",
-    testonly = 1,
     srcs = ["client/test_construction_fails_op.cc"],
     deps = [
         "//tensorflow/core",
