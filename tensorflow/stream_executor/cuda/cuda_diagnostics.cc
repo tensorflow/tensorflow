@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 
+#if !defined(PLATFORM_WINDOWS)
+#include <dirent.h>
+#endif
+
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -25,7 +29,6 @@ limitations under the License.
 #include <mach-o/dyld.h>
 #else
 #if !defined(PLATFORM_WINDOWS)
-#include <dirent.h>
 #include <link.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
