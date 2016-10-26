@@ -86,8 +86,12 @@ class SavedModelBuilder(object):
         constants.SAVED_MODEL_SCHEMA_VERSION)
 
     self._export_dir = export_dir
-    if not file_io.file_exists(export_dir):
-      file_io.recursive_create_dir(self._export_dir)
+    if file_io.file_exists(export_dir):
+      raise AssertionError(
+          "Export directory already exists. Please specify a different export "
+          "directory.")
+
+    file_io.recursive_create_dir(self._export_dir)
 
     # Boolean to track whether variables and assets corresponding to the
     # SavedModel have been saved. Specifically, the first meta graph to be added

@@ -198,6 +198,29 @@ class SavedModelTest(tf.test.TestCase):
       self.assertRaises(errors.NotFoundError, loader.load, sess, ["baz"],
                         export_dir)
 
+  def testNoOverwrite(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_no_overwrite")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Graph with a single variable. SavedModel invoked to:
+    # - add with weights.
+    with self.test_session(graph=tf.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk in text format.
+    builder.save(as_text=True)
+
+    # Restore the graph with tag "foo", whose variables were saved.
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+
+    # An attempt to create another builder with the same export directory should
+    # result in an assertion error.
+    self.assertRaises(AssertionError, saved_model_builder.SavedModelBuilder,
+                      export_dir)
+
   def testSaveAsText(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_astext")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
