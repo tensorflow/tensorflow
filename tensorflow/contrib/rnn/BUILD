@@ -182,6 +182,24 @@ tf_gen_op_libs(
 )
 
 tf_kernel_library(
+    name = "gru_ops_kernels",
+    srcs = [
+        "kernels/blas_gemm.cc",
+        "kernels/blas_gemm.h",
+    ],
+    gpu_srcs = [
+        "kernels/blas_gemm.h",
+    ],
+    prefix = "kernels/gru_ops",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "lstm_ops_kernels",
     srcs = [
         "kernels/blas_gemm.cc",
