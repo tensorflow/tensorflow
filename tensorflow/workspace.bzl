@@ -136,9 +136,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "swig",
-    sha256 = "a2669657cabcedc371f63c0457407a183e0b6b2ef4e7e303c1ec9a3964cc7813",
-    url = "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.2/swig-3.0.2.tar.gz",
-    strip_prefix = "swig-3.0.2",
+    sha256 = "58a475dbbd4a4d7075e5fe86d4e54c9edde39847cdb96a3053d87cb64a23a453",
+    url = "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
+    strip_prefix = "swig-3.0.8",
     build_file = str(Label("//third_party:swig.BUILD")),
   )
 
