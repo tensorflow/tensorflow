@@ -234,6 +234,22 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   the `dtype` parameter is not optional: `dtype` must be a type or (possibly
   nested) tuple of types matching the output of `fn`.
 
+  To apply a functional operation to the nonzero elements of a SparseTensor
+  one of the following methods is recommended. First, if the function is
+  expressible as TensorFlow ops, use
+
+  ```python
+    result = SparseTensor(input.indices, fn(input.values), input.shape)
+  ```
+
+  If, however, the function is not expressible as a TensorFlow op, then use
+
+  ```python
+  result = SparseTensor(input.indices, map_fn(fn, input.values), input.shape)
+  ```
+
+  instead.
+
   Args:
     fn: The callable to be performed.  It accepts one argument, which will
       have the same (possibly nested) structure as `elems`.  Its output
@@ -259,7 +275,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   Raises:
     TypeError: if `fn` is not callable or the structure of the output of
-      `fn` and `dtype` do not match.
+      `fn` and `dtype` do not match, or if elems is a SparseTensor.
     ValueError: if the lengths of the output of `fn` and `dtype` do not match.
 
   Examples:
@@ -284,6 +300,12 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   """
   if not callable(fn):
     raise TypeError("fn must be callable.")
+
+  if isinstance(elems, ops.SparseTensor):
+    raise TypeError(
+        "To perform a map on the values of a sparse tensor use either "
+        " SparseTensor(input.indices, fn(input.values), input.shape) or "
+        " SparseTensor(input.indices, map_fn(fn, input.values), input.shape)")
 
   input_is_sequence = nest.is_sequence(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]

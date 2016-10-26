@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -852,6 +853,15 @@ class SparseMatMulOp : public OpKernel {
                                         b.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
+
+    if (k == 0) {
+      // If the inner dimension k in the matrix multiplication is zero, we fill
+      // the output with zeros.
+      functor::SetZeroFunctor<CPUDevice, float> f;
+      f(ctx->eigen_device<CPUDevice>(), output->flat<float>());
+      return;
+    }
+
     auto out = output->matrix<float>();
 
     std::unique_ptr<Tensor> a_float;

@@ -35,6 +35,6 @@ from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassi
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor
 from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestEstimator
-from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossMonitor
+from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossHook
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
 from tensorflow.contrib.learn.python.learn.estimators.svm import SVM

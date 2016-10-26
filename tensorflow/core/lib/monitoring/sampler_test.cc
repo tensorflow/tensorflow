@@ -23,10 +23,10 @@ namespace {
 
 using histogram::Histogram;
 
-static void EqHistograms(const histogram::Histogram& expected,
-                         const HistogramProto& actual_proto) {
-  histogram::Histogram actual;
-  EXPECT_TRUE(actual.DecodeFromProto(actual_proto));
+void EqHistograms(const Histogram& expected,
+                  const HistogramProto& actual_proto) {
+  Histogram actual;
+  ASSERT_TRUE(actual.DecodeFromProto(actual_proto));
 
   EXPECT_EQ(expected.ToString(), actual.ToString());
 }

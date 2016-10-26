@@ -1000,6 +1000,7 @@ class Saver(object):
       self.build()
     if self.saver_def:
       self._check_saver_def()
+      self._write_version = self.saver_def.version
 
   def build(self):
     """Builds saver_def."""
@@ -1461,8 +1462,8 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
-def import_meta_graph(meta_graph_or_file, import_scope=None,
-                      **kwargs):
+def import_meta_graph(meta_graph_or_file, clear_devices=False,
+                      import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
@@ -1516,6 +1517,8 @@ def import_meta_graph(meta_graph_or_file, import_scope=None,
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during import.
     import_scope: Optional `string`. Name scope to add. Only used when
       initializing from protocol buffer.
     **kwargs: Optional keyed arguments.
@@ -1532,6 +1535,7 @@ def import_meta_graph(meta_graph_or_file, import_scope=None,
     meta_graph_def = meta_graph_or_file
 
   meta_graph.import_scoped_meta_graph(meta_graph_def,
+                                      clear_devices=clear_devices,
                                       import_scope=import_scope,
                                       **kwargs)
   if meta_graph_def.HasField("saver_def"):

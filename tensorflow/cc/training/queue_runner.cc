@@ -80,7 +80,7 @@ Status QueueRunner::Join() {
 
 void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   bool decremented = false;
-  while (!should_stop_) {
+  while (!should_stop_.load()) {
     std::vector<Tensor> outputs;
     auto status = sess->Run({}, {}, {enqueue_op}, &outputs);
     if (status.ok()) {

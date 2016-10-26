@@ -629,6 +629,10 @@ REGISTER_OP("SparseConditionalAccumulator")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    })
     .Doc(R"doc(
 A conditional accumulator for aggregating sparse gradients. The accumulator
 accepts gradients marked with local_step greater or equal to the most recent
@@ -654,6 +658,11 @@ REGISTER_OP("SparseAccumulatorApplyGradient")
     .Input("gradient_shape: int64")
     .Attr("dtype: numbertype")
     .Attr("has_known_shape: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies a sparse gradient to a given accumulator. Does not add if local_step is
 lesser than the accumulator's global_step.
@@ -679,6 +688,14 @@ REGISTER_OP("SparseAccumulatorTakeGradient")
     .Output("values: dtype")
     .Output("shape: int64")
     .Attr("dtype: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // Shape of output is the shape of the accumulator referenced
+      // by 'handle', but which is not available here, so we lose
+      // shape information.
+      return shape_inference::UnknownShape(c);
+    })
     .Doc(R"doc(
 Extracts the average sparse gradient in the given SparseConditionalAccumulator,
 provided that sufficient (i.e., more than num_required) gradients have been

@@ -196,8 +196,8 @@ limitations under the License.
           <paper-dropdown-menu style="width: 100%" vertical-align="bottom" no-animations label="X">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaX}}">
               <template is="dom-repeat" items="[[pcaComponents]]">
-                <paper-item class="dropdown-item" value="[[item]]" label="Component #[[item]]">
-                  Component #[[item]]
+                <paper-item class="dropdown-item" value="[[item]]" label="Component #[[_addOne(item)]]">
+                  Component #[[_addOne(item)]]
                 </paper-item>
               </template>
             </paper-listbox>
@@ -205,8 +205,8 @@ limitations under the License.
           <paper-dropdown-menu no-animations vertical-align="bottom" label="Z" disabled="[[!hasPcaZ]]" id="z-dropdown">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaZ}}">
               <template is="dom-repeat" items="[[pcaComponents]]">
-                <paper-item class="dropdown-item" value="[[item]]" label="Component #[[item]]">
-                  Component #[[item]]
+                <paper-item class="dropdown-item" value="[[item]]" label="Component #[[_addOne(item)]]">
+                  Component #[[_addOne(item)]]
                 </paper-item>
               </template>
             </paper-listbox>
@@ -216,8 +216,8 @@ limitations under the License.
           <paper-dropdown-menu style="width: 100%" vertical-align="bottom" no-animations label="Y">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaY}}">
               <template is="dom-repeat" items="[[pcaComponents]]">
-                <paper-item class="dropdown-item" value="[[item]]" label="Component #[[item]]">
-                  Component #[[item]]
+                <paper-item class="dropdown-item" value="[[item]]" label="Component #[[_addOne(item)]]">
+                  Component #[[_addOne(item)]]
                 </paper-item>
               </template>
             </paper-listbox>

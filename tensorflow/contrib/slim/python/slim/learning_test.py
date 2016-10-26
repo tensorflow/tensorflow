@@ -301,6 +301,22 @@ class CreateTrainOpTest(tf.test.TestCase):
         self.assertAllClose(mean, [0] * 4)
         self.assertAllClose(variance, [1] * 4)
 
+  def testRecordTrainOpInCollection(self):
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      tf_predictions = LogisticClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+      train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+      # Make sure the training op was recorded in the proper collection
+      self.assertTrue(train_op in tf.get_collection(tf.GraphKeys.TRAIN_OP))
+
 
 class TrainTest(tf.test.TestCase):
 

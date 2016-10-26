@@ -41,11 +41,34 @@ class DistributionTest(tf.test.TestCase):
       for cls in classes:
         for sample_shape in sample_shapes:
           param_shapes = cls.param_shapes(sample_shape)
-          print(param_shapes)
           params = dict([(name, tf.random_normal(shape))
                          for name, shape in param_shapes.items()])
           dist = cls(**params)
           self.assertAllEqual(sample_shape, tf.shape(dist.sample()).eval())
+          dist_copy = dist.copy()
+          self.assertAllEqual(sample_shape,
+                              tf.shape(dist_copy.sample()).eval())
+          self.assertEqual(dist.parameters, dist_copy.parameters)
+
+  def testCopyExtraArgs(self):
+    with self.test_session():
+      # Note: we cannot easily test all distributions since each requires
+      # different initialization arguments. We therefore spot test a few.
+      normal = dists.Normal(mu=1., sigma=2., validate_args=True)
+      self.assertEqual(normal.parameters, normal.copy().parameters)
+      wishart = dists.WishartFull(df=2, scale=[[1., 2], [2, 5]],
+                                  validate_args=True)
+      self.assertEqual(wishart.parameters, wishart.copy().parameters)
+
+  def testCopyOverride(self):
+    with self.test_session():
+      normal = dists.Normal(mu=1., sigma=2., validate_args=True)
+      normal_copy = normal.copy(validate_args=False)
+      base_params = normal.parameters.copy()
+      copy_params = normal.copy(validate_args=False).parameters.copy()
+      self.assertNotEqual(base_params.pop("validate_args"),
+                          copy_params.pop("validate_args"))
+      self.assertEqual(base_params, copy_params)
 
 
 if __name__ == '__main__':
