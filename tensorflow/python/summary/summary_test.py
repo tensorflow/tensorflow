@@ -85,6 +85,9 @@ class ScalarSummaryTest(tf.test.TestCase):
     s = tf.summary.scalar('name with spaces', c)
     self.assertEqual(s.op.name, 'name_with_spaces')
 
+    s2 = tf.summary.scalar('name with many $#illegal^: characters!', c)
+    self.assertEqual(s2.op.name, 'name_with_many___illegal___characters_')
+
 
 if __name__ == '__main__':
   tf.test.main()

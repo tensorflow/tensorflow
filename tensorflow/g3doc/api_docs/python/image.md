@@ -1210,7 +1210,7 @@ picked in the interval `[lower, upper]`.
 
 - - -
 
-### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+### `tf.image.per_image_standardization(image)` {#per_image_standardization}
 
 Linearly scales `image` to have zero mean and unit norm.
 
@@ -1221,11 +1221,6 @@ of all values in image, and
 `stddev` is the standard deviation of all values in `image`. It is capped
 away from zero to protect against division by 0 when handling uniform images.
 
-Note that this implementation is limited:
-
-*  It only whitens based on the statistics of an individual image.
-*  It does not take into account the covariance structure.
-
 ##### Args:
 
 
@@ -1233,7 +1228,7 @@ Note that this implementation is limited:
 
 ##### Returns:
 
-  The whitened image with same shape as `image`.
+  The standardized image with same shape as `image`.
 
 ##### Raises:
 
@@ -1415,5 +1410,14 @@ false and no bounding boxes are supplied, an error is raised.
     `tf.slice`.
 *  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+
+
 
 

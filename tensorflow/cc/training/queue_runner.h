@@ -66,7 +66,7 @@ class QueueRunner {
   std::unordered_set<int> queue_closed_exception_types_;
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  bool should_stop_;
+  std::atomic<bool> should_stop_;
   std::atomic<bool> started_;
   mutex mu_;
   // TODO(yuefengz): implement c++ coordinator.

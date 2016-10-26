@@ -21,6 +21,7 @@ tensorflow/core/kernels/strided_slice_op_inst_4.cc
 tensorflow/core/kernels/strided_slice_op_inst_3.cc
 tensorflow/core/kernels/strided_slice_op_inst_2.cc
 tensorflow/core/kernels/strided_slice_op_inst_1.cc
+tensorflow/core/kernels/strided_slice_op_inst_0.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/stack_ops.cc
 tensorflow/core/kernels/split_op.cc
@@ -153,6 +154,7 @@ tensorflow/core/kernels/quantized_conv_ops.cc
 tensorflow/core/kernels/quantized_matmul_op.cc
 tensorflow/core/kernels/quantized_pooling_ops.cc
 tensorflow/core/kernels/quantized_reshape_op.cc
+tensorflow/core/kernels/requantization_range_op.cc
 tensorflow/core/kernels/requantize.cc
 tensorflow/core/ops/training_ops.cc
 tensorflow/core/ops/string_ops.cc

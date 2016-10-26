@@ -19,9 +19,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -73,6 +75,7 @@ class GraphMgr {
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64 step_id,
                     const ExecutorOpts& opts, StepStatsCollector* collector,
+                    CostGraphDef* cost_graph,
                     CancellationManager* cancellation_manager,
                     const NamedTensors& in, StatusCallback done);
 
@@ -89,9 +92,12 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
+    Graph* graph = nullptr;
     Device* device = nullptr;
     Executor* root = nullptr;
     FunctionLibraryRuntime* lib = nullptr;
+    // Build the cost model if this value is strictly positive.
+    int64 build_cost_model = 0;
   };
 
   struct Item : public core::RefCounted {
@@ -117,6 +123,8 @@ class GraphMgr {
   // Not owned.
   const WorkerEnv* worker_env_;
 
+  CostModelManager cost_model_manager_;
+
   // Owned.
   mutex mu_;
   int64 next_id_ GUARDED_BY(mu_) = 0;
@@ -131,8 +139,16 @@ class GraphMgr {
   void StartParallelExecutors(const string& handle, Item* item,
                               Rendezvous* rendezvous,
                               StepStatsCollector* collector,
+                              CostGraphDef* cost_graph,
                               CancellationManager* cancellation_manager,
                               StatusCallback done);
+
+  // Don't attempt to process cost models unless explicitely requested for at
+  // least one of the items.
+  bool skip_cost_models_ = true;
+
+  void BuildCostModel(Item* item, StepStatsCollector* collector,
+                      CostGraphDef* cost_graph);
 
   Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
   Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);

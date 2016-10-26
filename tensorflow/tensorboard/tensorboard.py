@@ -17,26 +17,73 @@
 This is a simple web server to proxy data from the event_loader to the web, and
 serve static web files.
 """
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import os
 import socket
 
 from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
-from tensorflow.python.platform import (
-    tf_logging as logging)
-from tensorflow.python.summary import (
-    event_file_inspector as efi)
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
-FLAGS = None
+flags.DEFINE_string('logdir', '', """logdir specifies the directory where
+TensorBoard will look to find TensorFlow event files that it can display.
+TensorBoard will recursively walk the directory structure rooted at logdir,
+looking for .*tfevents.* files.
+
+You may also pass a comma separated list of log directories, and TensorBoard
+will watch each directory. You can also assign names to individual log
+directories by putting a colon between the name and the path, as in
+
+tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
+""")
+
+flags.DEFINE_boolean('debug', False, 'Whether to run the app in debug mode. '
+                     'This increases log verbosity to DEBUG.')
+
+flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
+                    'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
+                    'disable remote access (also quiets security warnings).')
+
+flags.DEFINE_boolean('inspect', False, """Use this flag to print out a digest
+of your event files to the command line, when no data is shown on TensorBoard or
+the data shown looks weird.
+
+Example usages:
+tensorboard --inspect --event_file=myevents.out
+tensorboard --inspect --event_file=myevents.out --tag=loss
+tensorboard --inspect --logdir=mylogdir
+tensorboard --inspect --logdir=mylogdir --tag=loss
+
+See tensorflow/python/summary/event_file_inspector.py for more info and
+detailed usage.
+""")
+flags.DEFINE_string(
+    'tag', '',
+    'The particular tag to query for. Only used if --inspect is present')
+flags.DEFINE_string(
+    'event_file', '',
+    'The particular event file to query for. Only used if --inspect is present '
+    'and --logdir is not specified.')
+
+flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
+
+flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
+                     'may have been orphaned due to TensorBoard restarts. '
+                     'Disabling purge_orphaned_data can be used to debug data '
+                     'disappearance.')
+
+flags.DEFINE_integer('reload_interval', 60, 'How often the backend should load '
+                     'more data.')
+
+FLAGS = flags.FLAGS
 
 
 def main(unused_argv=None):
@@ -105,100 +152,4 @@ def main(unused_argv=None):
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--logdir',
-      type=str,
-      default='',
-      help="""\
-      logdir specifies the directory where TensorBoard will look to find
-      TensorFlow event files that it can display. TensorBoard will recursively
-      walk the directory structure rooted at logdir, looking for .*tfevents.*
-      files.
-
-      You may also pass a comma separated list of log directories, and
-      TensorBoard will watch each directory. You can also assign names to
-      individual log directories by putting a colon between the name and the
-      path, as in
-
-      tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2\
-      """
-  )
-  parser.add_argument(
-      '--debug',
-      default=False,
-      help="""\
-      Whether to run the app in debug mode. This increases log verbosity to
-      DEBUG.\
-      """,
-      action='store_true'
-  )
-  parser.add_argument(
-      '--host',
-      type=str,
-      default='0.0.0.0',
-      help="""\
-      What host to listen to. Defaults to serving on 0.0.0.0, set to 127.0.0.1
-      (localhost) todisable remote access (also quiets security warnings).\
-      """
-  )
-  parser.add_argument(
-      '--inspect',
-      default=False,
-      help="""\
-      Use this flag to print out a digest of your event files to the command
-      line, when no data is shown on TensorBoard or the data shown looks weird.
-
-      Example usages:
-      tensorboard --inspect --event_file=myevents.out
-      tensorboard --inspect --event_file=myevents.out --tag=loss
-      tensorboard --inspect --logdir=mylogdir
-      tensorboard --inspect --logdir=mylogdir --tag=loss
-
-      See tensorflow/python/summary/event_file_inspector.py for
-      more info and detailed usage.\
-      """,
-      action='store_true'
-  )
-  parser.add_argument(
-      '--tag',
-      type=str,
-      default='',
-      help="""\
-      The particular tag to query for. Only used if --inspect is present\
-      """
-  )
-  parser.add_argument(
-      '--event_file',
-      type=str,
-      default='',
-      help="""\
-      The particular event file to query for. Only used if --inspect is present
-      and --logdir is not specified.\
-      """
-  )
-  parser.add_argument(
-      '--port',
-      type=int,
-      default=6006,
-      help='What port to serve TensorBoard on.'
-  )
-  parser.add_argument(
-      '--purge_orphaned_data',
-      type=bool,
-      default=True,
-      help="""\
-      Whether to purge data that may have been orphaned due to TensorBoard
-      restarts. Disabling purge_orphaned_data can be used to debug data
-      disappearance.\
-      """
-  )
-  parser.add_argument(
-      '--reload_interval',
-      type=int,
-      default=60,
-      help='How often the backend should load more data.'
-  )
-  FLAGS = parser.parse_args()
-
   app.run()

@@ -121,7 +121,8 @@ class GraphIOTest(tf.test.TestCase):
     batch_size = 17
     queue_capacity = 1234
     name = "my_batch"
-    features = {"feature": tf.FixedLenFeature(shape=[0], dtype=tf.float32)}
+    shape = (0,)
+    features = {"feature": tf.FixedLenFeature(shape=shape, dtype=tf.float32)}
 
     with tf.Graph().as_default() as g, self.test_session(graph=g) as sess:
       features = tf.contrib.learn.io.read_batch_record_features(
@@ -132,8 +133,11 @@ class GraphIOTest(tf.test.TestCase):
           queue_capacity=queue_capacity,
           reader_num_threads=2,
           name=name)
-      self.assertEqual("%s/fifo_queue_1_Dequeue:0" % name,
-                       features["feature"].name)
+      self.assertTrue(
+          "feature" in features, "'feature' missing from %s." % features.keys())
+      feature = features["feature"]
+      self.assertEqual("%s/fifo_queue_1_Dequeue:0" % name, feature.name)
+      self.assertAllEqual((batch_size,) + shape, feature.get_shape().as_list())
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
       example_queue_name = "%s/fifo_queue" % name
@@ -161,6 +165,7 @@ class GraphIOTest(tf.test.TestCase):
           reader=tf.TFRecordReader, randomize_input=True,
           num_epochs=1,
           queue_capacity=queue_capacity, name=name)
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       self.assertEqual("%s:1" % name, inputs.name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_name_queue_limit_name = (
@@ -190,6 +195,7 @@ class GraphIOTest(tf.test.TestCase):
           _VALID_FILE_PATTERN, batch_size,
           reader=tf.TFRecordReader, randomize_input=True,
           queue_capacity=queue_capacity, name=name)
+      self.assertAllEqual((batch_size,), inputs.get_shape().as_list())
       self.assertEqual("%s:1" % name, inputs.name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
@@ -234,6 +240,7 @@ class GraphIOTest(tf.test.TestCase):
           filename, batch_size, reader=tf.TextLineReader,
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           name=name)
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()
@@ -279,10 +286,13 @@ class GraphIOTest(tf.test.TestCase):
     features = {"sequence": tf.FixedLenFeature([], tf.string)}
 
     with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
-      _, result = tf.contrib.learn.read_keyed_batch_features(
+      keys, result = tf.contrib.learn.read_keyed_batch_features(
           filename, batch_size, features, tf.TextLineReader,
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           num_enqueue_threads=2, parse_fn=tf.decode_json_example, name=name)
+      self.assertAllEqual((None,), keys.get_shape().as_list())
+      self.assertEqual(1, len(result))
+      self.assertAllEqual((None,), result["sequence"].get_shape().as_list())
       session.run(tf.initialize_local_variables())
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
@@ -317,6 +327,7 @@ class GraphIOTest(tf.test.TestCase):
           filenames, batch_size, reader=tf.TextLineReader,
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           name=name)
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()
@@ -351,7 +362,7 @@ class GraphIOTest(tf.test.TestCase):
     name = "my_batch"
 
     with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
-      _, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = _read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=tf.TextLineReader,
@@ -359,6 +370,8 @@ class GraphIOTest(tf.test.TestCase):
           num_epochs=1,
           queue_capacity=queue_capacity,
           name=name)
+      self.assertAllEqual((None,), keys.get_shape().as_list())
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()
@@ -414,7 +427,7 @@ class GraphIOTest(tf.test.TestCase):
 
     with tf.Graph().as_default() as g1, tf.Session(
         server.target, graph=g1) as session:
-      _, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = _read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=tf.TextLineReader,
@@ -422,6 +435,8 @@ class GraphIOTest(tf.test.TestCase):
           num_epochs=1,
           queue_capacity=queue_capacity,
           name=name)
+      self.assertAllEqual((None,), keys.get_shape().as_list())
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       # Run the three queues once manually.
@@ -439,7 +454,7 @@ class GraphIOTest(tf.test.TestCase):
 
     with tf.Graph().as_default() as g2, tf.Session(
         server.target, graph=g2) as session:
-      _, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = _read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=tf.TextLineReader,
@@ -447,6 +462,8 @@ class GraphIOTest(tf.test.TestCase):
           num_epochs=1,
           queue_capacity=queue_capacity,
           name=name)
+      self.assertAllEqual((None,), keys.get_shape().as_list())
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
 
       # Run the worker and the example queue.
       self._run_queue(worker_file_name_queue_name, session)
@@ -469,6 +486,7 @@ class GraphIOTest(tf.test.TestCase):
           [filename], batch_size, reader=tf.TextLineReader,
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           read_batch_size=10, name=name)
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()
@@ -494,6 +512,8 @@ class GraphIOTest(tf.test.TestCase):
           filename, batch_size,
           reader=tf.TextLineReader, randomize_input=False,
           num_epochs=1, queue_capacity=queue_capacity, name=name)
+      self.assertAllEqual((None,), keys.get_shape().as_list())
+      self.assertAllEqual((None,), inputs.get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()
@@ -531,6 +551,9 @@ class GraphIOTest(tf.test.TestCase):
           reader=tf.TextLineReader, randomize_input=False,
           num_epochs=1, queue_capacity=queue_capacity,
           parse_fn=parse_fn, name=name)
+      self.assertAllEqual((None,), keys.get_shape().as_list())
+      self.assertEqual(1, len(inputs))
+      self.assertAllEqual((None, 1), inputs["age"].get_shape().as_list())
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()

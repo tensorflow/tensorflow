@@ -840,10 +840,11 @@ Status DirectSession::GetOrCreateExecutors(
   std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
   std::sort(tn_sorted.begin(), tn_sorted.end());
 
-  const string key = strings::StrCat(str_util::Join(inputs_sorted, ","), "->",
-                                     str_util::Join(outputs_sorted, ","), "/",
-                                     str_util::Join(tn_sorted, ","), "/",
-                                     run_state_args->is_partial_run);
+  const string key = strings::StrCat(
+      str_util::Join(inputs_sorted, ","), "->",
+      str_util::Join(outputs_sorted, ","), "/", str_util::Join(tn_sorted, ","),
+      "/", run_state_args->is_partial_run, "/",
+      SummarizeDebugTensorWatches(run_state_args->debug_tensor_watches));
 
   // Set the handle.
   run_state_args->handle =
@@ -938,7 +939,7 @@ Status DirectSession::GetOrCreateExecutors(
     partition_graph = iter->second.release();
     optimizer.Optimize(lib, options_.env, device, &partition_graph);
 
-    // EXPERIMENTAL: tfdb inserts debug nodes (i.e., probes) to the graph
+    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
     if (!run_state_args->debug_tensor_watches.empty()) {
       TF_RETURN_IF_ERROR(
           DebugNodeInserter::InsertNodes(run_state_args->debug_tensor_watches,

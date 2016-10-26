@@ -51,8 +51,8 @@ Instantiates the `Exp` bijector.
 *  <b>`scale`</b>: `Tensor` used to scale input, i.e., `Y = g(X) = scale * X + shift`.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution.
-*  <b>`validate_args`</b>: `Boolean` indicated whether arguments should be checked for
-    correctness.
+*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
+    for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
 
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -58,6 +59,7 @@ struct PerStepState {
   Microseconds end_micros = Microseconds(0);
   std::vector<StepStats> step_stats;  // per partition
   StepStats rpc_stats;                // for RPC layer
+  CostGraphDef cost_graph;
 };
 
 // MasterSession wraps SimpleClientGraph in a reference counted object.
@@ -480,17 +482,6 @@ class RunManyGraphs {
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
 };
 
-int64 CostFrequency(int64 x) {
-  if (x < 10) {
-    return 1;  // 100%
-  } else if (x < 100) {
-    return 10;  // 10%
-  } else if (x < 1000) {
-    return 100;  // 1%
-  } else {
-    return 1000;  // 0.1%
-  }
-}
 
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
@@ -604,6 +595,12 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       if (pss->collect_timeline && calls.get(i)->resp.has_step_stats()) {
         pss->step_stats[i].Swap(calls.get(i)->resp.mutable_step_stats());
       }
+      if (pss->collect_costs && calls.get(i)->resp.has_cost_graph()) {
+        for (int j = 0; j < calls.get(i)->resp.cost_graph().node_size(); ++j) {
+          resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
+              calls.get(i)->resp.mutable_cost_graph()->mutable_node(j));
+        }
+      }
     }
   }
   return status;
@@ -689,9 +686,6 @@ void MasterSession::ReffedClientGraph::ProcessStats(
   }
   for (size_t i = 0; i < partitions_.size(); ++i) {
     const StepStats& ss = pss->step_stats[i];
-    if (pss->collect_costs) {
-      execution_state->UpdateCostsFromStats(ss);
-    }
     if (ph) {
       for (const auto& ds : ss.dev_stats()) {
         ProcessDeviceStats(ph, execution_state, ds, false /*is_rpc*/);
@@ -1063,7 +1057,17 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   std::unique_ptr<ProfileHandler> ph;
   pss.collect_timeline = req->options().trace_level() == RunOptions::FULL_TRACE;
-  pss.collect_costs = (0 == (count % CostFrequency(count)));
+
+  // Build the cost model every 'build_cost_model_every' steps after skipping an
+  // initial 'build_cost_model_after' steps.
+  const int64 build_cost_model_after =
+      session_opts_.config.graph_options().build_cost_model_after();
+  const int64 build_cost_model_every =
+      session_opts_.config.graph_options().build_cost_model();
+  pss.collect_costs =
+      build_cost_model_every > 0 &&
+      ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
+
   ph = rcg->GetProfileHandler(step_id, count, req->options());
   if (ph) {
     pss.collect_timeline = true;

@@ -4053,6 +4053,7 @@ class GraphKeys(object):
   READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
+  TRAIN_OP = "train_op"
 
   # Key for control flow context.
   COND_CONTEXT = "cond_context"
