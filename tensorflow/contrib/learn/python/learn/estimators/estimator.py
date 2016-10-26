@@ -36,6 +36,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.learn.python.learn import evaluable
@@ -88,8 +89,11 @@ class ModelFnOps(
     collections.namedtuple('ModelFnOps', ['predictions', 'loss', 'training_op',
                                           'default_metrics', 'signature_fn'])):
 
-  def __new__(cls, predictions, loss, training_op, default_metrics,
-              signature_fn, mode):
+  def __new__(cls, mode, predictions=None, loss=None, training_op=None,
+              default_metrics=None, signature_fn=None):
+    # Assert all ops are from the same graph.
+    get_graph_from_inputs((predictions, loss, training_op))
+
     # Validate training_op.
     if training_op is None:
       if mode == ModeKeys.TRAIN:
@@ -1042,13 +1046,16 @@ class Estimator(BaseEstimator):
 
     if isinstance(model_fn_results, ModelFnOps):
       return model_fn_results
-    else:
-      # Here model_fn_ops should be a tuple with 3 elements.
-      if len(model_fn_results) != 3:
-        raise ValueError('Unrecognized value returned by model_fn, '
-                         'please return ModelFnOps.')
-      return ModelFnOps(model_fn_results[0], model_fn_results[1],
-                        model_fn_results[2], None, None, mode)
+
+    # Here model_fn_ops should be a tuple with 3 elements.
+    if len(model_fn_results) != 3:
+      raise ValueError('Unrecognized value returned by model_fn, '
+                       'please return ModelFnOps.')
+    return ModelFnOps(
+        mode=mode,
+        predictions=model_fn_results[0],
+        loss=model_fn_results[1],
+        training_op=model_fn_results[2])
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.

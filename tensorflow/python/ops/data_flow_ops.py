@@ -1455,14 +1455,14 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         dense_shape=return_val.shape)
 
 
-ops.RegisterShape("AccumulatorNumAccumulated")(common_shapes.scalar_shape)
-ops.RegisterShape("AccumulatorSetGlobalStep")(common_shapes.no_outputs)
-
-ops.RegisterShape("ConditionalAccumulator")(common_shapes.scalar_shape)
-
-ops.RegisterShape("AccumulatorApplyGradient")(common_shapes.no_outputs)
-ops.RegisterShape("AccumulatorTakeGradient")(common_shapes.unknown_shape)
-
-ops.RegisterShape("SparseConditionalAccumulator")(common_shapes.scalar_shape)
-ops.RegisterShape("SparseAccumulatorApplyGradient")(common_shapes.no_outputs)
-ops.RegisterShape("SparseAccumulatorTakeGradient")(common_shapes.unknown_shape)
+ops.RegisterShape("AccumulatorNumAccumulated")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AccumulatorSetGlobalStep")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ConditionalAccumulator")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AccumulatorApplyGradient")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AccumulatorTakeGradient")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseConditionalAccumulator")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseAccumulatorApplyGradient")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseAccumulatorTakeGradient")(
+    common_shapes.call_cpp_shape_fn)

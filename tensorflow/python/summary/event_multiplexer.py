@@ -23,6 +23,7 @@ import threading
 
 import six
 
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import directory_watcher
@@ -386,7 +387,7 @@ class EventMultiplexer(object):
 
 def GetLogdirSubdirectories(path):
   """Returns subdirectories with event files on path."""
-  if io_wrapper.Exists(path) and not io_wrapper.IsDirectory(path):
+  if gfile.Exists(path) and not gfile.IsDirectory(path):
     raise ValueError('GetLogdirSubdirectories: path exists and is not a '
                      'directory, %s' % path)
 

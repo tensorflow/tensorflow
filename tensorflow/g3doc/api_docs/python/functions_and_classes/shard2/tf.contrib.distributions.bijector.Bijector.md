@@ -1,8 +1,10 @@
-Interface for transforming a `Distribution` via `TransformedDistribution`.
+Interface for transforming a `Distribution` sample.
 
-A `Bijector` implements a bijective, differentiable function by transforming
-an input `Tensor`. The output `Tensor` shape is constrained by the input
-`sample`, `batch`, and `event` shape.  A `Bijector` is characterized by three
+A `Bijector` implements a
+[diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
+bijective, differentiable function. A `Bijector` is used by
+`TransformedDistribution` but can be generally used for transforming a
+`Distribution` generated `Tensor`.  A `Bijector` is characterized by three
 operations:
 
 1. Forward Evaluation
@@ -143,7 +145,8 @@ Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
 - The inverse `log o det o Jacobian` can be implemented as the negative of the
   forward `log o det o Jacobian`.  This is useful if the `inverse` is
   implemented as a cache or the inverse Jacobian is computationally more
-  expensive. The following demonstrates the suggested implementation.
+  expensive (e.g., `CholeskyOuterProduct` `Bijector`). The following
+  demonstrates the suggested implementation.
 
   ```python
   def _inverse_and_log_det_jacobian(self, y):

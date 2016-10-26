@@ -67,6 +67,10 @@ gradients.
 
 ## Decaying the learning rate
 @@exponential_decay
+@@inverse_time_decay
+@@natural_exp_decay
+@@piecewise_constant
+@@polynomial_decay
 
 ## Moving Averages
 

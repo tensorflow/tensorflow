@@ -462,4 +462,15 @@ TEST(MathOpsTest, Requantize_ShapeFn) {
   INFER_ERROR("must be rank 0", op, "?;?;?;?;[4]");
 }
 
+TEST(MathOpstest, RequantizationRange_ShapeFn) {
+  ShapeInferenceTestOp op("RequantizationRange");
+
+  INFER_OK(op, "?;?;?", "[];[]");
+  INFER_OK(op, "?;[];[]", "[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2]");
+}
+
 }  // end namespace tensorflow

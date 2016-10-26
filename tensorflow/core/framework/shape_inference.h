@@ -136,17 +136,33 @@ class InferenceContext {
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
+  // Elements of <input_tensors_as_shapes> are used for when a shape function
+  // makes a call to MakeShapeFromShapeTensor; in particular, when the
+  // input_tensors[i] is nullptr but the shape represented by it is partially
+  // known from analysis of the graph.
+  // <input_tensors_as_shapes> can have fewer elements than <input_shapes>.
+  // Values of <input_tensors_as_shapes> do not need to outlive the context.
+  //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
-                   const std::vector<const Tensor*>& input_tensors);
+                   const std::vector<const Tensor*>& input_tensors,
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
+  //
+  // Elements of <input_tensors_as_shapes> are used for when a shape function
+  // makes a call to MakeShapeFromShapeTensor; in particular, when the
+  // input_tensors[i] is nullptr but the shape represented by it is partially
+  // known from analysis of the graph.
+  // <input_tensors_as_shapes> can have fewer elements than <input_shapes>.
+  // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
-                   const std::vector<const Tensor*>& input_tensors);
+                   const std::vector<const Tensor*>& input_tensors,
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
 
   ~InferenceContext();
 
@@ -180,8 +196,19 @@ class InferenceContext {
     return requested_input_tensor_[idx];
   }
 
+  // Returns true if MakeShapeFromInputTensor was called but the constant
+  // input_tensor was not present.
+  bool requested_input_tensor_as_partial_shape(int idx) const {
+    return requested_input_tensor_as_partial_shape_[idx];
+  }
+
   void set_input_tensors(const std::vector<const Tensor*>& input_tensors) {
     input_tensors_ = input_tensors;
+  }
+
+  void set_input_tensors_as_shapes(
+      const std::vector<ShapeHandle>& input_tensors_as_shapes) {
+    input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
@@ -336,8 +363,8 @@ class InferenceContext {
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or if <evenly_divisible>
   // and <divisor> does not evenly divide <dividend>.
-  Status Divide(DimensionHandle dividend, int64 divisor, bool evenly_divisible,
-                DimensionHandle* out);
+  Status Divide(DimensionHandle dividend, DimensionOrConstant divisor,
+                bool evenly_divisible, DimensionHandle* out);
 
   // Returns in <out> the sum of <first> and <second>.
   Status Add(DimensionHandle first, DimensionOrConstant second,
@@ -408,6 +435,15 @@ class InferenceContext {
     return Status::OK();
   }
 
+  // Note that shape functions should usually call MakeShapeFromShapeTensor,
+  // as it does more analysis to provide partial shapes.
+  //
+  // Returns in <out> a new shape whose dimension sizes come from tensor <t>.
+  // The tensor must be a 1-dimensional int32 or int64 tensor.  If <t> is NULL,
+  // then an unknown shape is returned.
+  Status MakeShapeFromTensor(const Tensor* t, ShapeHandle tensor_shape,
+                             ShapeHandle* out);
+
  private:
   // Creates and stores shapes for use in InferenceContext.
   class ShapeManager {
@@ -443,7 +479,8 @@ class InferenceContext {
   // Shared initialization across the two constructors.  Remove
   // once we get rid of one of them.
   void PreInputInit(const OpDef& op_def,
-                    const std::vector<const Tensor*>& input_tensors);
+                    const std::vector<const Tensor*>& input_tensors,
+                    const std::vector<ShapeHandle>& input_tensors_as_shapes);
   void PostInputInit();
 
   DimensionHandle GetDimension(const DimensionOrConstant& d);
@@ -463,11 +500,15 @@ class InferenceContext {
 
   ShapeManager shape_manager_;
 
-  // inputs_ and outputs_ refer to values from `shape_manager_`.
+  // inputs_, outputs_, and input_tensors_as_shapes_ refer to values from
+  // `shape_manager_`.
   std::vector<ShapeHandle> inputs_;
   std::vector<const Tensor*> input_tensors_;
   std::vector<bool> requested_input_tensor_;
   std::vector<ShapeHandle> outputs_;
+  // Can have fewer elements than inputs_.
+  std::vector<ShapeHandle> input_tensors_as_shapes_;
+  std::vector<bool> requested_input_tensor_as_partial_shape_;
 
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;

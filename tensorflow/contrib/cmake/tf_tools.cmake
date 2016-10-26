@@ -13,7 +13,10 @@ add_executable(${proto_text}
     $<TARGET_OBJECTS:tf_core_lib>
 )
 
-target_link_libraries(${proto_text} PUBLIC ${tensorflow_EXTERNAL_LIBRARIES})
+target_link_libraries(${proto_text} PUBLIC
+  ${tensorflow_EXTERNAL_LIBRARIES}
+  tf_protos_cc
+)
 
 add_dependencies(${proto_text}
     tf_core_lib

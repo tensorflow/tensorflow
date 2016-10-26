@@ -1005,7 +1005,7 @@ _linear = rnn_cell._linear
 class AttentionCellWrapper(rnn_cell.RNNCell):
   """Basic attention cell wrapper.
 
-  Implementation based on https://arxiv.org/pdf/1601.06733.pdf.
+  Implementation based on https://arxiv.org/abs/1409.0473.
   """
 
   def __init__(self, cell, attn_length, attn_size=None, attn_vec_size=None,

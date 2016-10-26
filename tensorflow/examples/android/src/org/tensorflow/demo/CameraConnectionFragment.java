@@ -69,7 +69,7 @@ public class CameraConnectionFragment extends Fragment {
    */
   private static final int MINIMUM_PREVIEW_SIZE = 320;
 
-  private RecognitionScoreView scoreView;
+  private ResultsView resultsView;
 
   /**
    * Conversion from screen rotation to JPEG orientation.
@@ -132,10 +132,10 @@ public class CameraConnectionFragment extends Fragment {
   private CameraDevice cameraDevice;
 
   /**
-   * The rotation in degrees of the camera sensor from the display. 
+   * The rotation in degrees of the camera sensor from the display.
    */
   private Integer sensorOrientation;
-  
+
   /**
    * The {@link android.util.Size} of camera preview.
    */
@@ -215,6 +215,27 @@ public class CameraConnectionFragment extends Fragment {
   private final Semaphore cameraOpenCloseLock = new Semaphore(1);
 
   /**
+   * A {@link Classifier} object wrapping TensorFlow to pass frames to.
+   */
+  private final Classifier classifier;
+  /**
+   * The input size in pixels desired by TensorFlow (width and height of a square bitmap).
+   */
+  private final int inputSize;
+
+  /**
+   * The layout identifier to inflate for this Fragment.
+   */
+  private final int layout;
+
+  private CameraConnectionFragment(
+      final Classifier classifier, final int layout, final int inputSize) {
+    this.classifier = classifier;
+    this.layout = layout;
+    this.inputSize = inputSize;
+  }
+
+  /**
    * Shows a {@link Toast} on the UI thread.
    *
    * @param text The message to show
@@ -267,20 +288,21 @@ public class CameraConnectionFragment extends Fragment {
     }
   }
 
-  public static CameraConnectionFragment newInstance() {
-    return new CameraConnectionFragment();
+  public static CameraConnectionFragment newInstance(
+      final Classifier classifier, final int layout, final int inputSize) {
+    return new CameraConnectionFragment(classifier, layout, inputSize);
   }
 
   @Override
   public View onCreateView(
       final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
-    return inflater.inflate(R.layout.camera_connection_fragment, container, false);
+    return inflater.inflate(layout, container, false);
   }
 
   @Override
   public void onViewCreated(final View view, final Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
-    scoreView = (RecognitionScoreView) view.findViewById(R.id.results);
+    resultsView = (ResultsView) view.findViewById(R.id.results);
   }
 
   @Override
@@ -344,7 +366,7 @@ public class CameraConnectionFragment extends Fragment {
                 new CompareSizesByArea());
 
         sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        
+
         // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
         // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
         // garbage capture data.
@@ -538,7 +560,7 @@ public class CameraConnectionFragment extends Fragment {
 
     LOGGER.i("Getting assets.");
     tfPreviewListener.initialize(
-        getActivity().getAssets(), scoreView, inferenceHandler, sensorOrientation);
+        classifier, resultsView, inputSize, inferenceHandler, sensorOrientation);
     LOGGER.i("TensorFlow initialized.");
   }
 

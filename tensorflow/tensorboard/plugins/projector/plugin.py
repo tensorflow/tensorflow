@@ -38,7 +38,7 @@ RUNS_ROUTE = '/runs'
 BOOKMARKS_ROUTE = '/bookmarks'
 
 # Limit for the number of points we send to the browser.
-LIMIT_NUM_POINTS = 50000
+LIMIT_NUM_POINTS = 100000
 
 
 class ProjectorPlugin(TBPlugin):
@@ -190,11 +190,16 @@ class ProjectorPlugin(TBPlugin):
       self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
       return
 
+    num_header_rows = 0
     with file_io.FileIO(fpath, 'r') as f:
       lines = []
+      # Stream reading the file with early break in case the file doesn't fit in
+      # memory.
       for line in f:
         lines.append(line)
-        if len(lines) >= LIMIT_NUM_POINTS:
+        if len(lines) == 1 and '\t' in lines[0]:
+          num_header_rows = 1
+        if len(lines) >= LIMIT_NUM_POINTS + num_header_rows:
           break
     self.handler.respond(''.join(lines), 'text/plain')
 

@@ -95,11 +95,6 @@ Certain metrics, such as streaming_mean or streaming_accuracy, can be weighted
 via a `weights` argument. The `weights` tensor must be the same size as the
 labels and predictions tensors and results in a weighted average of the metric.
 
-Other metrics, such as streaming_recall, streaming_precision, and streaming_auc,
-are not well defined with regard to weighted samples. However, a binary
-`ignore_mask` argument can be used to ignore certain values at graph executation
-time.
-
 ## Metric `Ops`
 
 @@streaming_accuracy
