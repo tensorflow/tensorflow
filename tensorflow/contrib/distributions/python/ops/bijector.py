@@ -47,6 +47,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import contextlib
 import math
 import re
@@ -65,6 +66,96 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+
+__all__ = [
+    "Bijector",
+    "Chain",
+    "CholeskyOuterProduct",
+    "Exp",
+    "Identity",
+    "Inline",
+    "Invert",
+    "ScaleAndShift",
+    "SigmoidCentered",
+    "SoftmaxCentered",
+    "Softplus",
+]
+
+
+class _Mapping(collections.namedtuple("_Mapping",
+                                      ["x", "y", "ildj", "condition_kwargs"])):
+  """Helper class to make it easier to manage caching in `Bijector`."""
+
+  def __new__(cls, x=None, y=None, ildj=None, condition_kwargs=None):
+    """Custom __new__ so namedtuple items have defaults.
+
+    Args:
+      x: `Tensor`. Forward.
+      y: `Tensor`. Inverse.
+      ildj: `Tensor`. Inverse log det Jacobian.
+      condition_kwargs: Python dictionary. Extra args supplied to
+        forward/inverse/etc functions.
+
+    Returns:
+      mapping: New instance of _Mapping.
+    """
+    return super(_Mapping, cls).__new__(cls, x, y, ildj, condition_kwargs)
+
+  @property
+  def x_key(self):
+    """Returns key used for caching Y=g(X)."""
+    return (self.x,) + self._deep_tuple(tuple(sorted(
+        self.condition_kwargs.items())))
+
+  @property
+  def y_key(self):
+    """Returns key used for caching X=g^{-1}(Y)."""
+    return (self.y,) + self._deep_tuple(tuple(sorted(
+        self.condition_kwargs.items())))
+
+  def merge(self, x=None, y=None, ildj=None,
+            condition_kwargs=None, mapping=None):
+    """Returns new _Mapping with args merged with self.
+
+    Args:
+      x: `Tensor`. Forward.
+      y: `Tensor`. Inverse.
+      ildj: `Tensor`. Inverse log det Jacobian.
+      condition_kwargs: Python dictionary. Extra args supplied to
+        forward/inverse/etc functions.
+      mapping: Instance of _Mapping to merge. Can only be specified if no other
+        arg is specified.
+
+    Returns:
+      mapping: New instance of `_Mapping` which has inputs merged with self.
+
+    Raises:
+      ValueError: if mapping and any other arg is not `None`.
+    """
+    if mapping is None:
+      mapping = _Mapping(x=x, y=y, ildj=ildj,
+                         condition_kwargs=condition_kwargs)
+    elif not all([arg is None for arg in [x, y, ildj, condition_kwargs]]):
+      raise ValueError("Cannot specify mapping and individual args.")
+    return _Mapping(
+        x=self._merge(self.x, mapping.x),
+        y=self._merge(self.y, mapping.y),
+        ildj=self._merge(self.ildj, mapping.ildj),
+        condition_kwargs=self._merge(self.condition_kwargs,
+                                     mapping.condition_kwargs))
+
+  def _merge(self, old, new):
+    """Helper to merge which handles merging one value."""
+    if old is None:
+      return new
+    elif new is not None and old != new:
+      raise ValueError("Incompatible values: %s != %s" % (old, new))
+    return old
+
+  def _deep_tuple(self, x):
+    """Converts lists of lists to tuples of tuples."""
+    return (tuple(map(self._deep_tuple, x))
+            if isinstance(x, (list, tuple)) else x)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -307,6 +398,11 @@ class Bijector(object):
     self._is_constant_jacobian = is_constant_jacobian
     self._validate_args = validate_args
     self._dtype = dtype
+    self._from_y = {}
+    self._from_x = {}
+    # Using abbreviation ildj for "inverse log det Jacobian."
+    # This variable is not `None` iff is_constant_jacobian is `True`.
+    self._constant_ildj = None
     if name:
       self._name = name
     else:
@@ -375,7 +471,12 @@ class Bijector(object):
     with self._name_scope(name, [x]):
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
-      return self._forward(x, **condition_kwargs)
+      mapping = self._lookup(x=x, condition_kwargs=condition_kwargs)
+      if mapping.y is not None:
+        return mapping.y
+      mapping = mapping.merge(y=self._forward(x, **condition_kwargs))
+      self._cache(mapping)
+      return mapping.y
 
   def _inverse(self, y):
     raise NotImplementedError("inverse is not implemented")
@@ -400,16 +501,28 @@ class Bijector(object):
     with self._name_scope(name, [y]):
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      mapping = self._lookup(y=y, condition_kwargs=condition_kwargs)
+      if mapping.x is not None:
+        return mapping.x
+      ildj = None
       try:
-        return self._inverse(y, **condition_kwargs)
+        x = self._inverse(y, **condition_kwargs)
       except NotImplementedError as original_error:
         # Since _inverse was not implemented, try to see if it's implemented
         # by the _inverse_and_inverse_log_det_jacobian member.
         try:
-          return self._inverse_and_inverse_log_det_jacobian(
-              y, **condition_kwargs)[0]
+          x, ildj = self._inverse_and_inverse_log_det_jacobian(
+              y, **condition_kwargs)
+          if self._constant_ildj is not None:
+            ildj = self._constant_ildj  # Use the "global" result.
+          elif self.is_constant_jacobian:
+            self._constant_ildj = ildj
         except NotImplementedError:
           raise original_error
+      x = x if mapping.x is None else mapping.x
+      mapping = mapping.merge(x=x, ildj=ildj)
+      self._cache(mapping)
+      return mapping.x
 
   def _inverse_log_det_jacobian(self, y):
     raise NotImplementedError("inverse_log_det_jacobian is not implemented.")
@@ -437,18 +550,32 @@ class Bijector(object):
         `_inverse_and_inverse_log_det_jacobian` are implemented.
     """
     with self._name_scope(name, [y]):
+      if self._constant_ildj is not None:
+        return self._constant_ildj
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      mapping = self._lookup(y=y, condition_kwargs=condition_kwargs)
+      if mapping.ildj is not None:
+        return mapping.ildj
       try:
-        return self._inverse_log_det_jacobian(y, **condition_kwargs)
+        x = mapping.x
+        ildj = self._inverse_log_det_jacobian(y, **condition_kwargs)
       except NotImplementedError as original_error:
         # Since _inverse_log_det_jacobian was not implemented, try to see if
         # it's implemented by the _inverse_and_inverse_log_det_jacobian member.
         try:
-          return self._inverse_and_inverse_log_det_jacobian(
-              y, **condition_kwargs)[1]
+          x, ildj = self._inverse_and_inverse_log_det_jacobian(
+              y, **condition_kwargs)
+          if mapping.x is not None:
+            x = mapping.x
         except NotImplementedError:
           raise original_error
+      if self.is_constant_jacobian:
+        self._constant_ildj = ildj
+      x = x if mapping.x is None else mapping.x
+      mapping = mapping.merge(x=x, ildj=ildj)
+      self._cache(mapping)
+      return mapping.ildj
 
   def _inverse_and_inverse_log_det_jacobian(self, y):
     raise NotImplementedError(
@@ -480,18 +607,30 @@ class Bijector(object):
     with self._name_scope(name, [y]):
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      mapping = self._lookup(y=y, condition_kwargs=condition_kwargs)
+      if mapping.x is not None and mapping.ildj is not None:
+        return mapping.x, mapping.ildj
       try:
-        return self._inverse_and_inverse_log_det_jacobian(
+        x, ildj = self._inverse_and_inverse_log_det_jacobian(
             y, **condition_kwargs)
       except NotImplementedError as original_error:
         # Since _inverse_and_inverse_log_det_jacobian was not implemented, try
         # to see if we can separately use _inverse and
         # _inverse_log_det_jacobian members.
         try:
-          return (self._inverse(y, **condition_kwargs),
-                  self._inverse_log_det_jacobian(y, **condition_kwargs))
+          x = self._inverse(y, **condition_kwargs)
+          if self._constant_ildj is None:
+            ildj = self._inverse_log_det_jacobian(y, **condition_kwargs)
         except NotImplementedError:
           raise original_error
+      if self._constant_ildj is not None:
+        ildj = self._constant_ildj  # Ignore any ildj we may/not have.
+      elif self.is_constant_jacobian:
+        self._constant_ildj = ildj
+      x = x if mapping.x is None else mapping.x
+      mapping = mapping.merge(x=x, ildj=ildj)
+      self._cache(mapping)
+      return mapping.x, mapping.ildj
 
   def _forward_log_det_jacobian(self, x):
     raise NotImplementedError(
@@ -516,16 +655,29 @@ class Bijector(object):
         nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
     """
     with self._name_scope(name, [x]):
+      if self._constant_ildj is not None:
+        # Need "-1. *" to avoid invalid-unary-operand-type linter warning.
+        return -1. * self._constant_ildj
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
+      mapping = self._lookup(x=x, condition_kwargs=condition_kwargs)
+      if mapping.ildj is not None:
+        return -mapping.ildj
+      y = None
       try:
-        return self._forward_log_det_jacobian(x, **condition_kwargs)
+        ildj = -self._forward_log_det_jacobian(x, **condition_kwargs)
       except NotImplementedError as original_error:
         try:
-          y = self.inverse(x, **condition_kwargs)
-          return -self.inverse_log_det_jacobian(y, **condition_kwargs)
+          y = self.inverse(x, **condition_kwargs) if y is None else y
+          ildj = self.inverse_log_det_jacobian(y, **condition_kwargs)
         except NotImplementedError:
           raise original_error
+      if self.is_constant_jacobian:
+        self._constant_ildj = ildj
+      y = y if mapping.y is None else mapping.y
+      mapping = mapping.merge(y=y, ildj=ildj)
+      self._cache(mapping)
+      return -mapping.ildj
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
@@ -540,6 +692,31 @@ class Bijector(object):
     if self.dtype is not None and self.dtype.base_dtype != x.dtype.base_dtype:
       raise TypeError("Input had dtype %s but expected %s." %
                       (self.dtype, x.dtype))
+
+  def _cache(self, mapping):
+    """Helper which stores mapping info in forward/inverse dicts."""
+    if self._constant_ildj is not None:
+      # Fold in ildj if known constant Jacobian.
+      mapping = mapping.merge(ildj=self._constant_ildj)
+    # Merging from lookup is an added check that we're not overwriting anything
+    # which is not None.
+    mapping = mapping.merge(mapping=self._lookup(
+        mapping.x, mapping.y, mapping.condition_kwargs))
+    if mapping.x is None or mapping.y is None:
+      ValueError("Caching expects both (x,y) to be known, i.e., not None.")
+    self._from_x[mapping.x_key] = mapping
+    self._from_y[mapping.y_key] = mapping
+
+  def _lookup(self, x=None, y=None, condition_kwargs=None):
+    """Helper which retrieves mapping info from forward/inverse dicts."""
+    mapping = _Mapping(x=x, y=y, condition_kwargs=condition_kwargs)
+    # Since _cache requires both x,y to be set, we only need to do one cache
+    # lookup since the mapping is always in both or neither.
+    if mapping.x is not None:
+      return self._from_x.get(mapping.x_key, mapping)
+    if mapping.y is not None:
+      return self._from_y.get(mapping.y_key, mapping)
+    return mapping
 
 
 class Inline(Bijector):
