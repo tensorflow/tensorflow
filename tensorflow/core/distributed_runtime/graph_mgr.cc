@@ -405,7 +405,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
 
 void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
                               CostGraphDef* cost_graph) {
-  if (collector && cost_graph && !skip_cost_models_) {
+  if (collector && !skip_cost_models_) {
     // Build the cost model
     std::unordered_map<string, const Graph*> device_to_graph;
     for (const auto& unit : item->units) {
@@ -414,9 +414,11 @@ void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
       }
     }
     collector->BuildCostModel(&cost_model_manager_, device_to_graph);
-    for (const auto& device_and_graph : device_to_graph) {
-      cost_model_manager_.AddToCostGraphDef(device_and_graph.second,
-                                            cost_graph);
+
+    if (cost_graph != nullptr) {
+      for (const auto& unit : item->units) {
+        cost_model_manager_.AddToCostGraphDef(unit.graph, cost_graph);
+      }
     }
   }
 }

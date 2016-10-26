@@ -607,7 +607,10 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
         pss->step_stats[i].Swap(calls.get(i)->resp.mutable_step_stats());
       }
       if (pss->collect_costs && calls.get(i)->resp.has_cost_graph()) {
-        pss->cost_graph.MergeFrom(calls.get(i)->resp.cost_graph());
+        for (int j = 0; j < calls.get(i)->resp.cost_graph().node_size(); ++j) {
+          resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
+              calls.get(i)->resp.mutable_cost_graph()->mutable_node(j));
+        }
       }
     }
   }
@@ -722,9 +725,6 @@ void MasterSession::ReffedClientGraph::ProcessStats(
     if (session_opts_.config.graph_options().timeline_step() <= 0) {
       resp->mutable_metadata()->mutable_step_stats()->Swap(&step_stats_proto);
     }
-  }
-  if (pss->collect_costs) {
-    resp->mutable_metadata()->mutable_cost_graph()->Swap(&pss->cost_graph);
   }
 }
 
