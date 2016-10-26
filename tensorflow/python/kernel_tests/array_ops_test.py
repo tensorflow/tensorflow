@@ -775,22 +775,23 @@ class StridedSliceBenchmark(tf.test.Benchmark):
 
 class StridedSliceAssignChecker(object):
 
-  def __init__(self, test, x, tensor_type=tf.int32):
+  def __init__(self, test, x, tensor_type=tf.float32):
     self.tensor_type = tensor_type
     self.test = test
     self.x = tf.cast(tf.constant(x, dtype=tf.float32), dtype=tensor_type)
     self.x_np = np.array(x)
 
   def __setitem__(self, index, value):
-    with self.test.test_session() as sess:
-      var = tf.Variable(self.x)
-      sess.run(tf.initialize_variables([var]))
-      val = sess.run(var[index].assign(
-          tf.constant(
-              value, dtype=self.tensor_type)))
-      valnp = np.copy(self.x_np)
-      valnp[index] = np.array(value)
-      self.test.assertAllEqual(val, valnp)
+    for use_gpu in [False, True]:
+      with self.test.test_session(use_gpu=use_gpu) as sess:
+        var = tf.Variable(self.x)
+        sess.run(tf.initialize_variables([var]))
+        val = sess.run(var[index].assign(
+            tf.constant(
+                value, dtype=self.tensor_type)))
+        valnp = np.copy(self.x_np)
+        valnp[index] = np.array(value)
+        self.test.assertAllEqual(val, valnp)
 
 
 class SliceAssignTest(test_util.TensorFlowTestCase):

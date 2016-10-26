@@ -57,6 +57,7 @@ tf_kernel_library(
     name = "strided_slice_op",
     srcs = [
         "strided_slice_op.cc",
+        "strided_slice_op_inst_0.cc",
         "strided_slice_op_inst_1.cc",
         "strided_slice_op_inst_2.cc",
         "strided_slice_op_inst_3.cc",
@@ -2261,6 +2262,7 @@ filegroup(
         "strided_slice_op.cc",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
+        "strided_slice_op_inst_0.cc",
         "strided_slice_op_inst_1.cc",
         "strided_slice_op_inst_2.cc",
         "strided_slice_op_inst_3.cc",
