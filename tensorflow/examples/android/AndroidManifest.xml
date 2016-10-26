@@ -30,7 +30,7 @@
     <application android:allowBackup="true"
         android:debuggable="true"
         android:label="@string/app_name"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@drawable/ic_launcher_this"
         android:theme="@style/MaterialTheme">
 
         <activity android:name="org.tensorflow.demo.CameraActivity"
