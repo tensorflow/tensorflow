@@ -178,7 +178,6 @@ cc_library(
         "lib/io/table.h",
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
-        "lib/jpeg/jpeg_mem.h",
         "lib/math/math_util.h",
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
@@ -218,6 +217,13 @@ cc_library(
     deps = [
         ":lib_internal",
     ],
+)
+
+cc_library(
+    name = "jpeg",
+    hdrs = ["lib/jpeg/jpeg_mem.h"],
+    visibility = ["//visibility:public"],
+    deps = [":jpeg_internal"],
 )
 
 # Test support library needed for all tests
@@ -971,6 +977,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/jpeg/**/*",
                 "platform/**/cuda.h",
                 "platform/**/stream_executor.h",
                 "platform/load_library.cc",
@@ -987,6 +994,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/jpeg/**/*",
                 "platform/**/cuda.h",
                 "platform/**/stream_executor.h",
             ],
@@ -1020,7 +1028,6 @@ cc_library(
         "lib/io/zlib_compression_options.h",
         "lib/io/zlib_inputstream.h",
         "lib/io/zlib_outputbuffer.h",
-        "lib/jpeg/jpeg_handle.h",
         "lib/png/png_io.h",
         "lib/random/random.h",
         "lib/random/random_distributions.h",
@@ -1046,6 +1053,26 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
         "@zlib_archive//:zlib",
+    ],
+)
+
+cc_library(
+    name = "jpeg_internal",
+    srcs = glob(
+        [
+            "lib/jpeg/*h",
+            "lib/jpeg/*.cc",
+        ],
+        exclude = [
+            "**/*test*",
+        ],
+    ),
+    hdrs = ["lib/jpeg/jpeg_handle.h"],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        ":lib",
+        "//tensorflow/core/platform/default/build_config:jpeg",
     ],
 )
 
@@ -1506,6 +1533,8 @@ cc_test(
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
     deps = [
+        ":jpeg",
+        ":jpeg_internal",
         ":lib",
         ":lib_internal",
         ":test",

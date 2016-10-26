@@ -1076,6 +1076,7 @@ tf_kernel_libraries(
         ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
+        "//tensorflow/core:jpeg",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

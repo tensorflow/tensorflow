@@ -87,6 +87,14 @@ cc_library(
 )
 
 cc_library(
+    name = "jpeg",
+    copts = tf_copts(),
+    deps = [
+        "@jpeg_archive//:jpeg",
+    ],
+)
+
+cc_library(
     name = "protos_cc",
     copts = tf_copts(),
     deps = [
