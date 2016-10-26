@@ -694,9 +694,6 @@ void MasterSession::ReffedClientGraph::ProcessStats(
   }
   for (size_t i = 0; i < partitions_.size(); ++i) {
     const StepStats& ss = pss->step_stats[i];
-    if (pss->collect_costs) {
-      execution_state->UpdateCostsFromStats(ss);
-    }
     if (ph) {
       for (const auto& ds : ss.dev_stats()) {
         ProcessDeviceStats(ph, execution_state, ds, false /*is_rpc*/);
