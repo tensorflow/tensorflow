@@ -16,5 +16,5 @@
 -->
 
 <resources>
-    <string name="app_name">TensorFlow Demo</string>
+    <string name="app_name">深度视觉神经网络</string>
 </resources>
