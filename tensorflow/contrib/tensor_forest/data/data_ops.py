@@ -99,14 +99,19 @@ def _ParseDense(data):
     A tuple of (single dense float Tensor, keys tensor (if exists), data spec).
   """
   convert_ops = Load()
-  data_spec = [constants.DATA_CATEGORICAL if data[k].dtype == dtypes.string else
-               constants.DATA_FLOAT for k in sorted(data.keys())]
+  data_spec = [constants.DATA_CATEGORICAL if (data[k].dtype == dtypes.string or
+                                              data[k].dtype == dtypes.int32 or
+                                              data[k].dtype == dtypes.int64)
+               else constants.DATA_FLOAT for k in sorted(data.keys())]
   data_spec = [constants.DATA_FLOAT] + data_spec
   features = []
   for k in sorted(data.keys()):
-    features.append(
-        convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
-        else data[k])
+    if data[k].dtype == dtypes.string:
+      features.append(convert_ops.string_to_float(data[k]))
+    elif data[k].dtype == dtypes.int64 or data[k].dtype == dtypes.int32:
+      features.append(math_ops.to_float(data[k]))
+    else:
+      features.append(data[k])
   return array_ops.concat(1, features), data_spec
 
 
