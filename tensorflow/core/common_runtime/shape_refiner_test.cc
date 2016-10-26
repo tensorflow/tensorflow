@@ -398,5 +398,347 @@ TEST(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
   EXPECT_EQ("[1,4,7]", ctx->DebugString(ctx->output(0)));
 }
 
+namespace {
+
+Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0 /* input_idx */, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+// Register ops used by the ConstantValueAsShape* tests.
+
+REGISTER_OP("TensorAsShapeInt32")
+    .Input("a: int32")
+    .Output("o: int32")
+    .SetShapeFn(TensorAsShapeShapeFn);
+
+REGISTER_OP("TensorAsShapeInt64")
+    .Input("a: int64")
+    .Output("o: int64")
+    .SetShapeFn(TensorAsShapeShapeFn);
+
+REGISTER_OP("NonConstScalarInt32")
+    .Output("o: int32")
+    .SetIsStateful()  // prevents constant folding
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("NonConstScalarInt64")
+    .Output("o: int64")
+    .SetIsStateful()  // prevents constant folding
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("WithEmptyVectorShape")
+    .Output("o: int32")
+    .SetIsStateful()  // prevents constant folding
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Vector(0));
+      return Status::OK();
+    });
+
+REGISTER_OP("WithPartialShape")
+    .Output("o: int32")
+    .SetIsStateful()  // prevents constant folding
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(
+          0, c->MakeShape({1, shape_inference::InferenceContext::kUnknownDim, 3,
+                           shape_inference::InferenceContext::kUnknownDim, 5}));
+      return Status::OK();
+    });
+
+REGISTER_OP("WithPartialShape2")
+    .Output("o: int32")
+    .SetIsStateful()  // prevents constant folding
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(
+          0,
+          c->MakeShape({6, shape_inference::InferenceContext::kUnknownDim, 8}));
+      return Status::OK();
+    });
+
+REGISTER_OP("WithUnknownShape")
+    .Output("o: int32")
+    .SetIsStateful()  // prevents constant folding
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    });
+
+}  // namespace
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_EmptyVector) {
+  Scope root = Scope::NewRootScope();
+  Node* input;
+  TF_ASSERT_OK(
+      NodeBuilder("in", "WithEmptyVectorShape").Finalize(root.graph(), &input));
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                   .Input(input)
+                   .Finalize(root.graph(), &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(input));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ("[]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_Shape) {
+  for (int pass = 0; pass < 2; ++pass) {
+    Scope root = Scope::NewRootScope();
+    Node* input;
+    TF_ASSERT_OK(
+        NodeBuilder("in", pass == 0 ? "WithPartialShape" : "WithUnknownShape")
+            .Finalize(root.graph(), &input));
+    auto shape = ops::Shape(root, ops::Output(input));
+    Node* result;
+    TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                     .Input(shape.node())
+                     .Finalize(root.graph(), &result));
+
+    ShapeRefiner m(OpRegistry::Global());
+    TF_ASSERT_OK(m.AddNode(input));
+    TF_ASSERT_OK(m.AddNode(shape.node()));
+    TF_ASSERT_OK(m.AddNode(result));
+
+    shape_inference::InferenceContext* ctx = m.GetContext(result);
+    if (pass == 0) {
+      EXPECT_EQ("[1,?,3,?,5]", ctx->DebugString(ctx->output(0)));
+    } else {
+      EXPECT_EQ("?", ctx->DebugString(ctx->output(0)));
+    }
+  }
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
+  Scope root = Scope::NewRootScope();
+  Node* scalar_non_const;
+  TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
+                   .Finalize(root.graph(), &scalar_non_const));
+
+  ops::InputList inputs{
+      ops::Input(ops::Const<int32>(root, 10)),
+      ops::Input(ops::Const<int32>(root, 20)),
+      ops::Input(ops::Output(scalar_non_const)),
+      ops::Input(ops::Const<int32>(root, 40)),
+  };
+  auto pack = ops::Pack(root, inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                   .Input(pack.node())
+                   .Finalize(root.graph(), &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  for (auto input : inputs) {
+    TF_ASSERT_OK(m.AddNode(input.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(pack.node()));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ("[10,20,?,40]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
+  Scope root = Scope::NewRootScope();
+  Node* scalar_non_const;
+  TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt64")
+                   .Finalize(root.graph(), &scalar_non_const));
+
+  ops::InputList inputs{
+      ops::Input(ops::Const<int64>(root, 10LL)),
+      ops::Input(ops::Const<int64>(root, 20LL)),
+      ops::Input(ops::Output(scalar_non_const)),
+      ops::Input(ops::Const<int64>(root, 1LL << 40)),
+  };
+  auto pack = ops::Pack(root, inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt64")
+                   .Input(pack.node())
+                   .Finalize(root.graph(), &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  for (const auto& input : inputs) {
+    TF_ASSERT_OK(m.AddNode(input.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(pack.node()));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ("[10,20,?,1099511627776]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
+  Scope root = Scope::NewRootScope();
+
+  ops::InputList inputs{
+      ops::Input(ops::Const<int64>(root, 10LL)),
+      ops::Input(ops::Const<int64>(root, -1LL)),
+  };
+  auto pack = ops::Pack(root, inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt64")
+                   .Input(pack.node())
+                   .Finalize(root.graph(), &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  for (const auto& input : inputs) {
+    TF_ASSERT_OK(m.AddNode(input.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(pack.node()));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ("[10,?]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
+  Scope root = Scope::NewRootScope();
+
+  // Inputs are length 2 vectors instead of scalars.
+  ops::InputList inputs{
+      ops::Input(ops::Const<int64>(root, {10LL, 20LL})),
+      ops::Input(ops::Const<int64>(root, {10LL, 21LL})),
+  };
+  auto pack = ops::Pack(root, inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt64")
+                   .Input(pack.node())
+                   .Finalize(root.graph(), &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  for (const auto& input : inputs) {
+    TF_ASSERT_OK(m.AddNode(input.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(pack.node()));
+  EXPECT_TRUE(
+      StringPiece(m.AddNode(result).error_message()).contains("but is rank 2"));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+  Node* partial_1;
+  Node* partial_2;
+  TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape").Finalize(g, &partial_1));
+  TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape2").Finalize(g, &partial_2));
+  auto const_input = ops::Const(root, {9, 10, 11});
+  ops::OutputList concat_inputs{
+      ops::Shape(root, ops::Output(partial_1)),
+      ops::Shape(root, ops::Output(partial_2)), const_input,
+  };
+  auto concat_dim = ops::Const(root, 0);
+  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                   .Input(concat.node())
+                   .Finalize(g, &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(partial_1));
+  TF_ASSERT_OK(m.AddNode(partial_2));
+  for (const auto& o : concat_inputs) {
+    TF_ASSERT_OK(m.AddNode(o.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(concat_dim.node()));
+  TF_ASSERT_OK(m.AddNode(concat.node()));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ("[1,?,3,?,5,6,?,8,9,10,11]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+  Node* scalar_non_const;
+  TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
+                   .Finalize(root.graph(), &scalar_non_const));
+
+  Node* partial_1;
+  Node* partial_2;
+  Node* unknown;
+  TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape").Finalize(g, &partial_1));
+  TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape2").Finalize(g, &partial_2));
+  TF_ASSERT_OK(NodeBuilder("in", "WithUnknownShape").Finalize(g, &unknown));
+  ops::OutputList concat_inputs{
+      ops::Shape(root, ops::Output(partial_1)),
+      ops::Shape(root, ops::Output(partial_2)),
+      ops::Shape(root, ops::Output(unknown)),
+  };
+  auto concat_dim = ops::Const(root, 0);
+  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                   .Input(concat.node())
+                   .Finalize(g, &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(partial_1));
+  TF_ASSERT_OK(m.AddNode(partial_2));
+  TF_ASSERT_OK(m.AddNode(unknown));
+  for (const auto& o : concat_inputs) {
+    TF_ASSERT_OK(m.AddNode(o.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(concat_dim.node()));
+  TF_ASSERT_OK(m.AddNode(concat.node()));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ("?", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+  Node* scalar_non_const;
+  TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
+                   .Finalize(root.graph(), &scalar_non_const));
+
+  Node* partial_1;
+  Node* partial_2;
+  TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape").Finalize(g, &partial_1));
+  TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape2").Finalize(g, &partial_2));
+  auto const_input = ops::Const(root, {9, -2, 11});
+  ops::OutputList concat_inputs{
+      ops::Shape(root, ops::Output(partial_1)),
+      ops::Shape(root, ops::Output(partial_2)),  //
+      const_input,
+  };
+  auto concat_dim = ops::Const(root, 0);
+  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  TF_ASSERT_OK(root.status());
+
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                   .Input(concat.node())
+                   .Finalize(g, &result));
+
+  ShapeRefiner m(OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(partial_1));
+  TF_ASSERT_OK(m.AddNode(partial_2));
+  for (const auto& o : concat_inputs) {
+    TF_ASSERT_OK(m.AddNode(o.node()));
+  }
+  TF_ASSERT_OK(m.AddNode(concat_dim.node()));
+  TF_ASSERT_OK(m.AddNode(concat.node()));
+  EXPECT_EQ("Invalid value in tensor used for shape: -2",
+            m.AddNode(result).error_message());
+}
+
 }  // namespace
 }  // namespace tensorflow
