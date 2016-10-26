@@ -80,7 +80,7 @@ module.exports = function(includeDeps) {
     // Compile components that are using global namespaces producing 1 js file
     // for each ts file.
     var isComponent = filter([
-      'components/tf-*/**/*.ts', 'components/vz-*/**/*.ts', 'typings/**/*.ts',
+      'components/tf_*/**/*.ts', 'components/vz_*/**/*.ts', 'typings/**/*.ts',
       'components/plottable/plottable.d.ts'
       // Ignore components that use es6 modules.
     ].concat(ES6_COMPONENTS.map(function(component) {
