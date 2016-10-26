@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -58,6 +59,7 @@ struct PerStepState {
   Microseconds end_micros = Microseconds(0);
   std::vector<StepStats> step_stats;  // per partition
   StepStats rpc_stats;                // for RPC layer
+  CostGraphDef cost_graph;
 };
 
 // MasterSession wraps SimpleClientGraph in a reference counted object.
@@ -604,6 +606,9 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       if (pss->collect_timeline && calls.get(i)->resp.has_step_stats()) {
         pss->step_stats[i].Swap(calls.get(i)->resp.mutable_step_stats());
       }
+      if (pss->collect_costs && calls.get(i)->resp.has_cost_graph()) {
+        pss->cost_graph.MergeFrom(calls.get(i)->resp.cost_graph());
+      }
     }
   }
   return status;
@@ -720,6 +725,9 @@ void MasterSession::ReffedClientGraph::ProcessStats(
     if (session_opts_.config.graph_options().timeline_step() <= 0) {
       resp->mutable_metadata()->mutable_step_stats()->Swap(&step_stats_proto);
     }
+  }
+  if (pss->collect_costs) {
+    resp->mutable_metadata()->mutable_cost_graph()->Swap(&pss->cost_graph);
   }
 }
 

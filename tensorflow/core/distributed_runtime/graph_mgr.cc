@@ -325,6 +325,7 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             const ExecutorOpts& opts,
                             StepStatsCollector* collector,
+                            CostGraphDef* cost_graph,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
@@ -354,7 +355,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  StartParallelExecutors(handle, item, rendezvous, collector,
+  StartParallelExecutors(handle, item, rendezvous, collector, cost_graph,
                          cancellation_manager,
                          [this, item, rendezvous, done](const Status& s) {
                            done(s);
@@ -366,6 +367,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
                                       Rendezvous* rendezvous,
                                       StepStatsCollector* collector,
+                                      CostGraphDef* cost_graph,
                                       CancellationManager* cancellation_manager,
                                       StatusCallback done) {
   const int num_units = item->units.size();
@@ -373,9 +375,9 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
   ResourceMgr* step_resource_manager = new ResourceMgr;
   // NOTE: Transfer one ref of rendezvous and item.
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous,
-      [this, item, collector, step_resource_manager, done](const Status& s) {
-        BuildCostModel(item, collector);
+      num_units, rendezvous, [this, item, collector, cost_graph,
+                              step_resource_manager, done](const Status& s) {
+        BuildCostModel(item, collector, cost_graph);
         done(s);
         delete step_resource_manager;
       });
@@ -401,8 +403,9 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
   }
 }
 
-void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector) {
-  if (collector && !skip_cost_models_) {
+void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
+                              CostGraphDef* cost_graph) {
+  if (collector && cost_graph && !skip_cost_models_) {
     // Build the cost model
     std::unordered_map<string, const Graph*> device_to_graph;
     for (const auto& unit : item->units) {
@@ -411,6 +414,10 @@ void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector) {
       }
     }
     collector->BuildCostModel(&cost_model_manager_, device_to_graph);
+    for (const auto& device_and_graph : device_to_graph) {
+      cost_model_manager_.AddToCostGraphDef(device_and_graph.second,
+                                            cost_graph);
+    }
   }
 }
 

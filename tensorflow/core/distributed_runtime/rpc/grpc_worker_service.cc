@@ -347,7 +347,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     }
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in,
+        collector, call->response.mutable_cost_graph(), cm, in,
         [this, step_id, call, cm, out, token, collector](Status s) {
           if (s.ok()) {
             env_->graph_mgr->RecvOutputs(step_id, out);
