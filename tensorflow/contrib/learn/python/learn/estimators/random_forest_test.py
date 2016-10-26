@@ -39,6 +39,22 @@ class TensorForestTrainerTests(tf.test.TestCase):
     classifier.fit(x=data, y=target, steps=100, batch_size=50)
     classifier.evaluate(x=data, y=target, steps=10)
 
+  def testClassificationTrainingLoss(self):
+    """Tests multi-class classification using matrix data as input."""
+    hparams = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
+        num_trees=3, max_nodes=1000, num_classes=3, num_features=4)
+    classifier = tf.contrib.learn.TensorForestEstimator(
+        hparams, graph_builder_class=(
+            tf.contrib.tensor_forest.python.tensor_forest.TrainingLossForest))
+
+    iris = tf.contrib.learn.datasets.load_iris()
+    data = iris.data.astype(np.float32)
+    target = iris.target.astype(np.float32)
+
+    monitors = [tf.contrib.learn.TensorForestLossHook(10)]
+    classifier.fit(x=data, y=target, steps=100, monitors=monitors)
+    classifier.evaluate(x=data, y=target, steps=10)
+
   def testRegression(self):
     """Tests multi-class classification using matrix data as input."""
 

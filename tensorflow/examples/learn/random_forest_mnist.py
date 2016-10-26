@@ -29,6 +29,8 @@ from tensorflow.contrib.learn.python.learn.estimators\
         import random_forest
 from tensorflow.contrib.tensor_forest.client\
         import eval_metrics
+from tensorflow.contrib.tensor_forest.python\
+        import tensor_forest
 from tensorflow.examples.tutorials.mnist import input_data
 
 FLAGS = None
@@ -39,7 +41,12 @@ def build_estimator(model_dir):
   params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
       num_classes=10, num_features=784,
       num_trees=FLAGS.num_trees, max_nodes=FLAGS.max_nodes)
-  return random_forest.TensorForestEstimator(params.fill(), model_dir=model_dir)
+  graph_builder_class = tensor_forest.RandomForestGraphs
+  if FLAGS.use_training_loss:
+    graph_builder_class = tensor_forest.TrainingLossForest
+  return random_forest.TensorForestEstimator(
+      params, graph_builder_class=graph_builder_class,
+      model_dir=model_dir)
 
 
 def train_and_eval():
@@ -59,10 +66,11 @@ def train_and_eval():
   estimator.fit(x=mnist.train.images, y=mnist.train.labels,
                 batch_size=FLAGS.batch_size, monitors=[monitor])
 
-  metric = {'accuracy':
+  metric_name = 'accuracy'
+  metric = {metric_name:
             metric_spec.MetricSpec(
-                eval_metrics.get_metric('accuracy'),
-                prediction_key=random_forest.INFERENCE_NAME)}
+                eval_metrics.get_metric(metric_name),
+                prediction_key=eval_metrics.get_prediction_key(metric_name))}
 
   results = estimator.evaluate(x=mnist.test.images, y=mnist.test.labels,
                                batch_size=FLAGS.batch_size,
@@ -112,6 +120,12 @@ if __name__ == '__main__':
       type=int,
       default=1000,
       help='Max total nodes in a single tree.'
+  )
+  parser.add_argument(
+      '--use_training_loss',
+      type=bool,
+      default=False,
+      help='If true, use training loss as termination criteria.'
   )
   FLAGS = parser.parse_args()
 

@@ -128,6 +128,7 @@ def get_model_fn(params, graph_builder_class, device_assigner,
     training_graph = None
     if targets is not None:
       training_loss = graph_builder.training_loss(features, targets,
+                                                  data_spec=spec,
                                                   name=LOSS_NAME)
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
@@ -144,7 +145,7 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
                graph_builder_class=tensor_forest.RandomForestGraphs,
                config=None, weights_name=None, keys_name=None,
                feature_engineering_fn=None, early_stopping_rounds=100):
-    self.params = params
+    self.params = params.fill()
     self.graph_builder_class = graph_builder_class
     self.early_stopping_rounds = early_stopping_rounds
     self._estimator = estimator.Estimator(
