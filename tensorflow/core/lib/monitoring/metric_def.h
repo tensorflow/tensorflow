@@ -109,8 +109,8 @@ class AbstractMetricDef {
         value_type_(value_type),
         name_(name),
         description_(description),
-        label_descriptions_(
-            {label_descriptions.begin(), label_descriptions.end()}) {}
+        label_descriptions_(std::vector<StringPiece>(
+            label_descriptions.begin(), label_descriptions.end())) {}
 
   const MetricKind kind_;
   const ValueType value_type_;
