@@ -65,10 +65,10 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
     StatusCallback done) {
   // Do a quick copy (sharing the underlying buffer) if both tensors
   // are on host memory.
-  const bool src_host =
-      (send_args.alloc_attrs.on_host() || parsed.src.type == "CPU");
-  const bool dst_host =
-      (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
+  const bool src_host = (send_args.alloc_attrs.on_host() ||
+                         parsed.src.type == "CPU" || parsed.src.type == "SYCL");
+  const bool dst_host = (recv_args.alloc_attrs.on_host() ||
+                         parsed.dst.type == "CPU" || parsed.dst.type == "SYCL");
   if (src_host && dst_host) {
     *out = in;
     done(Status::OK());
