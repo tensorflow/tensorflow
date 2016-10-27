@@ -27,11 +27,11 @@ INFERENCE_PROB_NAME = 'inference'
 INFERENCE_PRED_NAME = 'predictions'
 
 
-def _accuracy(predictions, targets):
-  return metric_ops.streaming_accuracy(predictions, targets)
+def _accuracy(predictions, targets, weights=None):
+  return metric_ops.streaming_accuracy(predictions, targets, weights=weights)
 
 
-def _r2(probabilities, targets):
+def _r2(probabilities, targets, weights=None):
   if targets.get_shape().ndims == 1:
     targets = array_ops.expand_dims(targets, -1)
   targets = math_ops.to_float(targets)
@@ -40,7 +40,7 @@ def _r2(probabilities, targets):
   squares_residuals = math_ops.reduce_sum(math_ops.square(
       targets - probabilities), 0)
   score = 1 - math_ops.reduce_sum(squares_residuals / squares_total)
-  return metric_ops.streaming_mean(score)
+  return metric_ops.streaming_mean(score, weights=weights)
 
 
 def _squeeze_and_onehot(targets, depth):
@@ -48,26 +48,29 @@ def _squeeze_and_onehot(targets, depth):
   return array_ops.one_hot(math_ops.to_int32(targets), depth)
 
 
-def _sigmoid_entropy(probabilities, targets):
+def _sigmoid_entropy(probabilities, targets, weights=None):
   return metric_ops.streaming_mean(losses.sigmoid_cross_entropy(
       probabilities, _squeeze_and_onehot(targets,
-                                         array_ops.shape(probabilities)[1])))
+                                         array_ops.shape(probabilities)[1])),
+                                   weights=weights)
 
 
-def _softmax_entropy(probabilities, targets):
+def _softmax_entropy(probabilities, targets, weights=None):
   return metric_ops.streaming_mean(losses.sparse_softmax_cross_entropy(
-      probabilities, math_ops.to_int32(targets)))
+      probabilities, math_ops.to_int32(targets)),
+                                   weights=weights)
 
 
-def _predictions(predictions, unused_targets):
+def _predictions(predictions, unused_targets, **unused_kwargs):
   return predictions
 
 
-def _class_log_loss(probabilities, targets):
+def _class_log_loss(probabilities, targets, weights=None):
   return metric_ops.streaming_mean(
       losses.log_loss(probabilities,
                       _squeeze_and_onehot(targets,
-                                          array_ops.shape(probabilities)[1])))
+                                          array_ops.shape(probabilities)[1])),
+      weights=weights)
 
 
 _EVAL_METRICS = {'sigmoid_entropy': _sigmoid_entropy,

@@ -107,15 +107,16 @@ def get_model_fn(params, graph_builder_class, device_assigner,
       weights = features.pop(weights_name)
     if keys_name and keys_name in features:
       keys = features.pop(keys_name)
-    features, spec = data_ops.ParseDataTensorOrDict(features)
-    _assert_float32(features)
+    processed_features, spec = data_ops.ParseDataTensorOrDict(features)
+    _assert_float32(processed_features)
     if targets is not None:
       targets = data_ops.ParseLabelTensorOrDict(targets)
       _assert_float32(targets)
 
     graph_builder = graph_builder_class(params, device_assigner=device_assigner)
     inference = {eval_metrics.INFERENCE_PROB_NAME:
-                 graph_builder.inference_graph(features, data_spec=spec)}
+                 graph_builder.inference_graph(processed_features,
+                                               data_spec=spec)}
     if not params.regression:
       inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
           inference[eval_metrics.INFERENCE_PROB_NAME], 1)
@@ -127,13 +128,17 @@ def get_model_fn(params, graph_builder_class, device_assigner,
     training_loss = None
     training_graph = None
     if targets is not None:
-      training_loss = graph_builder.training_loss(features, targets,
+      training_loss = graph_builder.training_loss(processed_features, targets,
                                                   data_spec=spec,
                                                   name=LOSS_NAME)
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
-              features, targets, data_spec=spec, input_weights=weights),
+              processed_features, targets, data_spec=spec,
+              input_weights=weights),
           state_ops.assign_add(contrib_framework.get_global_step(), 1))
+    # Put weights back in
+    if weights is not None:
+      features[weights_name] = weights
     return (inference, training_loss, training_graph)
   return _model_fn
 
@@ -284,9 +289,7 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
                        if self.params.regression else
                        export.classification_signature_fn_with_prob)),
         default_batch_size=default_batch_size,
-        prediction_key=(
-            eval_metrics.INFERENCE_PROB_NAME if self.params.regression else
-            eval_metrics.INFERENCE_PRED_NAME))
+        prediction_key=eval_metrics.INFERENCE_PROB_NAME)
     self._estimator._model_fn = orig_model_fn
     # pylint: enable=protected-access
     return result
