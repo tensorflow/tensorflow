@@ -252,7 +252,8 @@ EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
                      "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
                      "tf.contrib.framework.assert_global_step",
                      "tf.contrib.framework.get_global_step",
-                     "tf.contrib.learn.NanLossDuringTrainingError"])
+                     "tf.contrib.learn.NanLossDuringTrainingError",
+                     "tf.contrib.layers.stack"])
 
 
 def main(unused_argv):

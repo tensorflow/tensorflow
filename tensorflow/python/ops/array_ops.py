@@ -53,7 +53,9 @@ or join multiple tensors together.
 @@tile
 @@pad
 @@concat
+@@stack
 @@pack
+@@unstack
 @@unpack
 @@reverse_sequence
 @@reverse
@@ -365,8 +367,8 @@ def _SliceHelper(tensor, slice_spec, var=None):
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
     if begin:
-      packed_begin, packed_end, packed_strides = pack(begin), pack(end), pack(
-          strides)
+      packed_begin, packed_end, packed_strides = (
+          stack(begin), stack(end), stack(strides))
     else:
       empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = empty
@@ -609,8 +611,64 @@ def _SliceHelperVar(var, slice_spec):
 ops.Tensor._override_operator("__getitem__", _SliceHelper)
 
 
+def stack(values, axis=0, name="stack"):
+  """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+
+  Packs the list of tensors in `values` into a tensor with rank one higher than
+  each tensor in `values`, by packing them along the `axis` dimension.
+  Given a list of length `N` of tensors of shape `(A, B, C)`;
+
+  if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+  if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+  Etc.
+
+  For example:
+
+  ```prettyprint
+  # 'x' is [1, 4]
+  # 'y' is [2, 5]
+  # 'z' is [3, 6]
+  stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+  stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+  ```
+
+  This is the opposite of unstack.  The numpy equivalent is
+
+      tf.stack([x, y, z]) = np.asarray([x, y, z])
+
+  Args:
+    values: A list of `Tensor` objects with the same shape and type.
+    axis: An `int`. The axis to stack along. Defaults to the first dimension.
+      Supports negative indexes.
+    name: A name for this operation (optional).
+
+  Returns:
+    output: A stacked `Tensor` with the same type as `values`.
+
+  Raises:
+    ValueError: If `axis` is out of the range [-(R+1), R+1).
+  """
+  if axis == 0:
+    try:
+      # If the input is a constant list, it can be converted to a constant op
+      return ops.convert_to_tensor(values, name=name)
+    except (TypeError, ValueError):
+      pass  # Input list contains non-constant tensors
+
+  value_shape = ops.convert_to_tensor(values[0], name=name).get_shape()
+  if value_shape.ndims is not None:
+    expanded_num_dims = value_shape.ndims + 1
+    if axis < -expanded_num_dims or axis >= expanded_num_dims:
+      raise ValueError("axis = %d not in [%d, %d)" %
+                       (axis, -expanded_num_dims, expanded_num_dims))
+
+  return gen_array_ops._pack(values, axis=axis, name=name)
+
+
 def pack(values, axis=0, name="pack"):
-  """Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+  """DEPRECATED: Use stack.
+
+  Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
   Packs the list of tensors in `values` into a tensor with rank one higher than
   each tensor in `values`, by packing them along the `axis` dimension.
@@ -646,21 +704,7 @@ def pack(values, axis=0, name="pack"):
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
-  if axis == 0:
-    try:
-      # If the input is a constant list, it can be converted to a constant op
-      return ops.convert_to_tensor(values, name=name)
-    except (TypeError, ValueError):
-      pass  # Input list contains non-constant tensors
-
-  value_shape = ops.convert_to_tensor(values[0], name=name).get_shape()
-  if value_shape.ndims is not None:
-    expanded_num_dims = value_shape.ndims + 1
-    if axis < -expanded_num_dims or axis >= expanded_num_dims:
-      raise ValueError("axis = %d not in [%d, %d)" %
-                       (axis, -expanded_num_dims, expanded_num_dims))
-
-  return gen_array_ops._pack(values, axis=axis, name=name)
+  return stack(values, axis, name)
 
 
 # pylint: disable=invalid-name
@@ -751,8 +795,59 @@ ops.register_tensor_conversion_function(
     (list, tuple), _autopacking_conversion_function, 99)
 
 
-def unpack(value, num=None, axis=0, name="unpack"):
+def unstack(value, num=None, axis=0, name="unstack"):
   """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+
+  Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
+  If `num` is not specified (the default), it is inferred from `value`'s shape.
+  If `value.shape[axis]` is not known, `ValueError` is raised.
+
+  For example, given a tensor of shape `(A, B, C, D)`;
+
+  If `axis == 0` then the i'th tensor in `output` is the slice
+    `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
+    (Note that the dimension unpacked along is gone, unlike `split`).
+
+  If `axis == 1` then the i'th tensor in `output` is the slice
+    `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
+  Etc.
+
+  This is the opposite of pack.  The numpy equivalent is
+
+      tf.unstack(x, n) = list(x)
+
+  Args:
+    value: A rank `R > 0` `Tensor` to be unstacked.
+    num: An `int`. The length of the dimension `axis`. Automatically inferred
+      if `None` (the default).
+    axis: An `int`. The axis to unstack along. Defaults to the first
+      dimension. Supports negative indexes.
+    name: A name for the operation (optional).
+
+  Returns:
+    The list of `Tensor` objects unstacked from `value`.
+
+  Raises:
+    ValueError: If `num` is unspecified and cannot be inferred.
+    ValueError: If `axis` is out of the range [-R, R).
+  """
+  if num is None:
+    value = ops.convert_to_tensor(value)
+    value_shape = value.get_shape()
+    if value_shape.ndims is not None:
+      if axis < -value_shape.ndims or axis >= value_shape.ndims:
+        raise ValueError("axis = %d not in [%d, %d)" %
+                         (axis, -value_shape.ndims, value_shape.ndims))
+      num = value_shape[axis].value
+  if num is None:
+    raise ValueError("Cannot infer num from shape %s" % value_shape)
+  return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
+
+
+def unpack(value, num=None, axis=0, name="unpack"):
+  """DEPRECATED: Use unstack.
+
+  Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
   Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
   If `num` is not specified (the default), it is inferred from `value`'s shape.
@@ -787,17 +882,7 @@ def unpack(value, num=None, axis=0, name="unpack"):
     ValueError: If `num` is unspecified and cannot be inferred.
     ValueError: If `axis` is out of the range [-R, R).
   """
-  if num is None:
-    value = ops.convert_to_tensor(value)
-    value_shape = value.get_shape()
-    if value_shape.ndims is not None:
-      if axis < -value_shape.ndims or axis >= value_shape.ndims:
-        raise ValueError("axis = %d not in [%d, %d)" %
-                         (axis, -value_shape.ndims, value_shape.ndims))
-      num = value_shape[axis].value
-  if num is None:
-    raise ValueError("Cannot infer num from shape %s" % value_shape)
-  return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
+  return unstack(value, num, axis, name)
 
 
 def concat(concat_dim, values, name="concat"):
@@ -871,7 +956,6 @@ def concat(concat_dim, values, name="concat"):
   return gen_array_ops._concat(concat_dim=concat_dim,
                                values=values,
                                name=name)
-
 
 ops.RegisterShape("Pack")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Unpack")(common_shapes.call_cpp_shape_fn)
@@ -1524,7 +1608,7 @@ def meshgrid(*args, **kwargs):
     # Prepare reshape by inserting dimensions with size 1 where needed
     output = []
     for i, x in enumerate(args):
-      output.append(reshape(pack(x), (s0[:i] + (-1,) + s0[i + 1::])) )
+      output.append(reshape(stack(x), (s0[:i] + (-1,) + s0[i + 1::])) )
     # Create parameters for broadcasting each tensor to the full size
     shapes = [size(x) for x in args]
 
@@ -2028,10 +2112,10 @@ def required_space_to_batch_paddings(input_shape,
     pad_end_extra = (block_shape - full_input_shape % block_shape) % block_shape
     pad_end = orig_pad_end + pad_end_extra
 
-    result_paddings = pack(
+    result_paddings = stack(
         [[pad_start[i], pad_end[i]] for i in range(num_block_dims)],
         name="paddings")
-    result_crops = pack(
+    result_crops = stack(
         [[0, pad_end_extra[i]] for i in range(num_block_dims)], name="crops")
     return result_paddings, result_crops
 
