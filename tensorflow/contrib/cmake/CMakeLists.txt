@@ -95,6 +95,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     highwayhash_copy_headers_to_destination
     protobuf
     eigen
+    gemmlowp
 )
 
 include_directories(
