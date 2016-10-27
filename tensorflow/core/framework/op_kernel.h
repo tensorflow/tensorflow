@@ -53,6 +53,7 @@ limitations under the License.
 namespace Eigen {
 struct ThreadPoolDevice;
 struct GpuDevice;
+struct SyclDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -890,6 +891,9 @@ class OpKernelContext {
   }
   const Eigen::GpuDevice& eigen_gpu_device() const {
     return params_->eigen_gpu_device->device();
+  }
+  const Eigen::SyclDevice& eigen_sycl_device() const {
+    return *device()->eigen_sycl_device();
   }
   template <typename EigenDeviceType>
   const EigenDeviceType& eigen_device() const;

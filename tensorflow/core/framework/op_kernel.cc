@@ -949,6 +949,11 @@ const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
 
+template <>
+const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
+  return eigen_sycl_device();
+}
+
 void OpKernelConstruction::CtxFailure(Status s) {
   VLOG(1) << s;
   SetStatus(s);
