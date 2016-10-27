@@ -49,6 +49,7 @@ __all__ = ['avg_pool2d',
            'conv2d',
            'conv2d_in_plane',
            'conv2d_transpose',
+           'convolution',
            'convolution2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
@@ -57,6 +58,7 @@ __all__ = ['avg_pool2d',
            'fully_connected',
            'layer_norm',
            'linear',
+           'pool',
            'max_pool2d',
            'one_hot_encoding',
            'relu',
@@ -672,54 +674,69 @@ def bias_add(inputs,
                                        sc.original_name_scope, outputs)
 
 
+# TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
+# underlying op.
 @add_arg_scope
-def convolution2d(inputs,
-                  num_outputs,
-                  kernel_size,
-                  stride=1,
-                  padding='SAME',
-                  data_format=DATA_FORMAT_NHWC,
-                  rate=1,
-                  activation_fn=nn.relu,
-                  normalizer_fn=None,
-                  normalizer_params=None,
-                  weights_initializer=initializers.xavier_initializer(),
-                  weights_regularizer=None,
-                  biases_initializer=init_ops.zeros_initializer,
-                  biases_regularizer=None,
-                  reuse=None,
-                  variables_collections=None,
-                  outputs_collections=None,
-                  trainable=True,
-                  scope=None):
-  """Adds a 2D convolution followed by an optional batch_norm layer.
+def convolution(inputs,
+                num_outputs,
+                kernel_size,
+                stride=1,
+                padding='SAME',
+                data_format=None,
+                rate=1,
+                activation_fn=nn.relu,
+                normalizer_fn=None,
+                normalizer_params=None,
+                weights_initializer=initializers.xavier_initializer(),
+                weights_regularizer=None,
+                biases_initializer=init_ops.zeros_initializer,
+                biases_regularizer=None,
+                reuse=None,
+                variables_collections=None,
+                outputs_collections=None,
+                trainable=True,
+                scope=None):
+  """Adds an N-D convolution followed by an optional batch_norm layer.
 
-  `convolution2d` creates a variable called `weights`, representing the
-  convolutional kernel, that is convolved with the `inputs` to produce a
-  `Tensor` of activations. If a `normalizer_fn` is provided (such as
-  `batch_norm`), it is then applied. Otherwise, if `normalizer_fn` is
-  None and a `biases_initializer` is provided then a `biases` variable would be
-  created and added the activations. Finally, if `activation_fn` is not `None`,
-  it is applied to the activations as well.
+  It is required that 1 <= N <= 3.
 
-  Performs a'trous convolution with input stride equal to rate if rate is
-  greater than one.
+  `convolution` creates a variable called `weights`, representing the
+  convolutional kernel, that is convolved (actually cross-correlated) with the
+  `inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
+  provided (such as `batch_norm`), it is then applied. Otherwise, if
+  `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
+  variable would be created and added the activations. Finally, if
+  `activation_fn` is not `None`, it is applied to the activations as well.
+
+  Performs a'trous convolution with input stride/dilation rate equal to `rate`
+  if a value > 1 for any dimension of `rate` is specified.  In this case
+  `stride` values != 1 are not supported.
 
   Args:
-    inputs: a 4-D tensor of shape `[batch_size, height, width, channels]` if
-      `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
-      `data_format` is `NCHW`.
+    inputs: a Tensor of rank N+2 of shape
+      `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
+      not start with "NC" (default), or
+      `[batch_size, in_channels] + input_spatial_shape` if data_format starts
+      with "NC".
     num_outputs: integer, the number of output filters.
-    kernel_size: a list of length 2 `[kernel_height, kernel_width]` of
-      of the filters. Can be an int if both values are the same.
-    stride: a list of length 2 `[stride_height, stride_width]`.
-      Can be an int if both strides are the same. Note that presently
-      both strides must have the same value.
-    padding: one of `VALID` or `SAME`.
-    data_format: A string. `NHWC` (default) and `NCHW` are supported.
-    rate: integer. If less than or equal to 1, a standard convolution is used.
-      If greater than 1, than the a'trous convolution is applied and `stride`
-      must be set to 1, `data_format` must be set to `NHWC`.
+    kernel_size: a sequence of N positive integers specifying the spatial
+      dimensions of of the filters.  Can be a single integer to specify the same
+      value for all spatial dimensions.
+    stride: a sequence of N positive integers specifying the stride at which to
+      compute output.  Can be a single integer to specify the same value for all
+      spatial dimensions.  Specifying any `stride` value != 1 is incompatible
+      with specifying any `rate` value != 1.
+    padding: one of `"VALID"` or `"SAME"`.
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+      N=3, currently the only valid value is "NDHWC".
+    rate: a sequence of N positive integers specifying the dilation rate to use
+      for a'trous convolution.  Can be a single integer to specify the same
+      value for all spatial dimensions.  Specifying any `rate` value != 1 is
+      incompatible with specifying any `stride` value != 1.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
@@ -744,30 +761,40 @@ def convolution2d(inputs,
     a tensor representing the output of the operation.
 
   Raises:
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if `rate` is larger than one and `data_format` is `NCHW`.
-    ValueError: if both `rate` and `stride` are larger than one.
+    ValueError: if `data_format` is invalid.
+    ValueError: both 'rate' and `stride` are not uniformly 1.
   """
+  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
+    raise ValueError('Invalid data_format: %r' % (data_format,))
   with variable_scope.variable_scope(scope, 'Conv', [inputs],
                                      reuse=reuse) as sc:
-    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
-      raise ValueError('data_format has to be either NCHW or NHWC.')
-    if rate > 1 and data_format == DATA_FORMAT_NCHW:
-      raise ValueError('If rate > 1, data_format must be NHWC')
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
-    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
-    stride_h, stride_w = utils.two_element_tuple(stride)
-    if rate > 1 and (stride_h > 1 or stride_w > 1):
-      raise ValueError('Only one of rate or stride can be larger than one')
-    if data_format == DATA_FORMAT_NHWC:
-      num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+    input_rank = inputs.get_shape().ndims
+    if input_rank is None:
+      raise ValueError('Rank of inputs must be known')
+    if input_rank < 3 or input_rank > 5:
+      raise ValueError('Rank of inputs is %d, which is not >= 3 and <= 5' %
+                       input_rank)
+    conv_dims = input_rank - 2
+    kernel_size = utils.n_positive_integers(conv_dims, kernel_size)
+    stride = utils.n_positive_integers(conv_dims, stride)
+    rate = utils.n_positive_integers(conv_dims, rate)
+
+    if data_format is None or data_format.endswith('C'):
+      num_input_channels = inputs.get_shape()[input_rank - 1].value
+    elif data_format.startswith('NC'):
+      num_input_channels = inputs.get_shape()[1].value
     else:
-      num_filters_in = inputs.get_shape().dims[1]
-    weights_shape = [kernel_h, kernel_w,
-                     num_filters_in, num_outputs]
-    weights_collections = utils.get_variable_collections(
-        variables_collections, 'weights')
+      raise ValueError('Invalid data_format')
+
+    if num_input_channels is None:
+      raise ValueError('Number of in_channels must be known.')
+
+    weights_shape = (
+        list(kernel_size) + [num_input_channels, num_outputs])
+    weights_collections = utils.get_variable_collections(variables_collections,
+                                                         'weights')
     weights = variables.model_variable('weights',
                                        shape=weights_shape,
                                        dtype=dtype,
@@ -775,15 +802,12 @@ def convolution2d(inputs,
                                        regularizer=weights_regularizer,
                                        collections=weights_collections,
                                        trainable=trainable)
-    if rate > 1:
-      outputs = nn.atrous_conv2d(inputs, weights, rate, padding=padding)
-    else:
-      if data_format == DATA_FORMAT_NHWC:
-        strides = [1, stride_h, stride_w, 1]
-      else:
-        strides = [1, 1, stride_h, stride_w]
-      outputs = nn.conv2d(
-          inputs, weights, strides, padding=padding, data_format=data_format)
+    outputs = nn.convolution(input=inputs,
+                             filter=weights,
+                             dilation_rate=rate,
+                             strides=stride,
+                             padding=padding,
+                             data_format=data_format)
     if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
@@ -792,7 +816,7 @@ def convolution2d(inputs,
         biases_collections = utils.get_variable_collections(
             variables_collections, 'biases')
         biases = variables.model_variable('biases',
-                                          shape=[num_outputs,],
+                                          shape=[num_outputs],
                                           dtype=dtype,
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
@@ -803,6 +827,9 @@ def convolution2d(inputs,
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
                                        sc.original_name_scope, outputs)
+
+
+convolution2d = convolution
 
 
 @add_arg_scope
@@ -915,6 +942,7 @@ def convolution2d_transpose(
     kernel_size,
     stride=1,
     padding='SAME',
+    data_format=DATA_FORMAT_NHWC,
     activation_fn=nn.relu,
     normalizer_fn=None,
     normalizer_params=None,
@@ -934,7 +962,9 @@ def convolution2d_transpose(
   second variable called 'biases' is added to the result of the operation.
 
   Args:
-    inputs: a tensor of size [batch_size, height, width, channels].
+    inputs: A 4-D `Tensor` of type `float` and shape
+      `[batch, height, width, in_channels]` for `NHWC` data format or
+      `[batch, in_channels, height, width]` for `NCHW` data format.
     num_outputs: integer, the number of output filters.
     kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
       of the filters. Can be an int if both values are the same.
@@ -942,6 +972,7 @@ def convolution2d_transpose(
       Can be an int if both strides are the same.  Note that presently
       both strides must have the same value.
     padding: one of 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
@@ -966,14 +997,23 @@ def convolution2d_transpose(
 
   Raises:
     ValueError: if 'kernel_size' is not a list of length 2.
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: if `C` dimension of `inputs` is None.
   """
   with variable_scope.variable_scope(
       scope, 'Conv2d_transpose', [inputs], reuse=reuse) as sc:
+    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+      raise ValueError('data_format has to be either NCHW or NHWC.')
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
-    num_filters_in = utils.last_dimension(
-        inputs.get_shape(), min_rank=4)
+    if data_format == DATA_FORMAT_NCHW:
+      c_axis, h_axis, w_axis = 1, 2, 3
+    else:
+      h_axis, w_axis, c_axis = 1, 2, 3
+    num_filters_in = inputs.get_shape()[c_axis].value
+    if num_filters_in is None:
+      raise ValueError('`C` dimension of `inputs` must be known but is None.')
     weights_shape = [kernel_h, kernel_w, num_outputs, num_filters_in]
     weights_collections = utils.get_variable_collections(
         variables_collections, 'weights')
@@ -988,7 +1028,7 @@ def convolution2d_transpose(
 
     inputs_shape = array_ops.shape(inputs)
     batch_size = inputs_shape[0]
-    height, width = inputs_shape[1], inputs_shape[2]
+    height, width = inputs_shape[h_axis], inputs_shape[w_axis]
 
     def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
       if isinstance(dim_size, ops.Tensor):
@@ -1004,17 +1044,25 @@ def convolution2d_transpose(
     out_height = get_deconv_dim(height, stride_h, kernel_h, padding)
     out_width = get_deconv_dim(width, stride_w, kernel_w, padding)
 
-    output_shape = array_ops.pack(
-        [batch_size, out_height, out_width, num_outputs])
+    if data_format == DATA_FORMAT_NHWC:
+      output_shape = [batch_size, out_height, out_width, num_outputs]
+      strides = [1, stride_h, stride_w, 1]
+    else:
+      output_shape = [batch_size, num_outputs, out_height, out_width]
+      strides = [1, 1, stride_h, stride_w]
+
+
+    output_shape = array_ops.pack(output_shape)
     outputs = nn.conv2d_transpose(inputs, weights, output_shape,
-                                  [1, stride_h, stride_w, 1],
-                                  padding=padding)
+                                  strides,
+                                  padding=padding,
+                                  data_format=data_format)
 
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
-    out_shape[-1] = num_outputs
-    out_shape[1] = get_deconv_dim(out_shape[1], stride_h, kernel_h, padding)
-    out_shape[2] = get_deconv_dim(out_shape[2], stride_w, kernel_w, padding)
+    out_shape[c_axis] = num_outputs
+    out_shape[h_axis] = get_deconv_dim(out_shape[h_axis], stride_h, kernel_h, padding)
+    out_shape[w_axis] = get_deconv_dim(out_shape[w_axis], stride_w, kernel_w, padding)
     outputs.set_shape(out_shape)
 
     if normalizer_fn is not None:
@@ -1030,7 +1078,7 @@ def convolution2d_transpose(
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
                                           collections=biases_collections)
-        outputs = nn.bias_add(outputs, biases)
+        outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
@@ -1429,6 +1477,76 @@ def max_pool2d(inputs,
                           padding=padding,
                           data_format=data_format)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
+def pool(inputs,
+         kernel_size,
+         pooling_type,
+         padding='VALID',
+         data_format=None,
+         dilation_rate=1,
+         stride=1,
+         outputs_collections=None,
+         scope=None):
+  # pylint: disable=line-too-long
+  """Adds a pooling op.
+
+
+  Args:
+    inputs: Tensor of rank N+2, of shape
+      `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
+      not start with "NC" (default), or
+      `[batch_size, num_channels] + input_spatial_shape` if data_format starts
+      with "NC".  Pooling happens over the spatial dimensions only.
+    kernel_size: Sequence of N ints >= 1.  Can also be a single integer to
+      specify the same value for all spatial dimensions.
+    pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
+    padding: The padding algorithm, must be "SAME" or "VALID".
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+      N=3, currently the only valid value is "NDHWC".
+    dilation_rate: Optional.  Dilation rate.  Sequence of N ints >= 1.  Defaults
+      to [1]*N.  Can also be a single integer to specify the same value for all
+      spatial dimensions.  If any value of dilation_rate is > 1, then all values
+      of stride must be 1.
+    stride: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.  Can also be
+      a single integer to specify the same value for all spatial dimensions.  If
+      any value of stride is > 1, then all values of dilation_rate must be 1.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if arguments are invalid.
+
+  """
+  # pylint: enable=line-too-long
+  with ops.name_scope(scope, '%s_pool' %
+                      (pooling_type.lower()), [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    input_rank = inputs.get_shape().ndims
+    if input_rank is None:
+      raise ValueError('Rank of inputs must be known')
+    if input_rank < 3:
+      raise ValueError('Rank of inputs must be >= 3')
+    num_spatial_dims = input_rank - 2
+    output = nn.pool(
+        input=inputs,
+        window_shape=utils.n_positive_integers(num_spatial_dims, kernel_size),
+        pooling_type=pooling_type,
+        padding=padding,
+        data_format=data_format,
+        dilation_rate=utils.n_positive_integers(num_spatial_dims,
+                                                dilation_rate),
+        strides=utils.n_positive_integers(num_spatial_dims, stride),
+        name=sc)
+    return utils.collect_named_outputs(outputs_collections, sc, output)
 
 
 @add_arg_scope

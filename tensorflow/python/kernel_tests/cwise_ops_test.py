@@ -1356,6 +1356,18 @@ class SelectOpTest(tf.test.TestCase):
     elif x.dtype == np.float64:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
+  def testScalar(self):
+    c = True
+    x = np.random.rand(1, 3, 2) * 100
+    y = np.random.rand(1, 3, 2) * 100
+    for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
+              np.complex64, np.complex128]:
+      xt = x.astype(t)
+      yt = y.astype(t)
+      self._compare(c, xt, yt, use_gpu=False)
+      if t in [np.float16, np.float32, np.float64]:
+        self._compare(c, xt, yt, use_gpu=True)
+
   def testBasic(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100

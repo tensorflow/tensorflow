@@ -208,5 +208,60 @@ class CollectNamedOutputsTest(tf.test.TestCase):
     self.assertListEqual(aliases, ['a1', 'a2', 't3'])
 
 
+class NPositiveIntegersTest(tf.test.TestCase):
+
+  def test_invalid_input(self):
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers('3', [1])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(3.3, [1])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(-1, [1])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(0, [1])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(1, [1, 2])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(1, [-1])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(1, [0])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(1, [0])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(2, [1])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(2, [1, 2, 3])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(2, ['hello', 2])
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(2, tf.TensorShape([2, 3, 1]))
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(3, tf.TensorShape([2, None, 1]))
+
+    with self.assertRaises(ValueError):
+      utils.n_positive_integers(3, tf.TensorShape(None))
+
+  def test_valid_input(self):
+    self.assertEqual(utils.n_positive_integers(1, 2), (2,))
+    self.assertEqual(utils.n_positive_integers(2, 2), (2, 2))
+    self.assertEqual(utils.n_positive_integers(2, (2, 3)), (2, 3))
+    self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
+    self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
+    self.assertEqual(
+        utils.n_positive_integers(3, tf.TensorShape([2, 3, 1])), (2, 3, 1))
+
+
 if __name__ == '__main__':
   tf.test.main()
