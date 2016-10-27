@@ -247,7 +247,7 @@ limitations under the License.
     <!-- Custom Controls -->
     <div data-panel="custom" class="ink-panel-content">
       <paper-dropdown-menu style="width: 100%" no-animations label="Search by">
-        <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedSearchByMetadataOption}}">
+        <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{customSelectedSearchByMetadataOption}}">
           <template is="dom-repeat" items="[[searchByMetadataOptions]]">
             <paper-item class="dropdown-item" value="[[item]]" label="[[item]]">
               [[item]]

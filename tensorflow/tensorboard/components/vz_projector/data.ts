@@ -442,7 +442,8 @@ export class State {
   /** PCA projection component dimensions */
   pcaComponentDimensions: number[] = [];
 
-  /** Custom projection axis text + regex flags */
+  /** Custom projection parameters */
+  customSelectedSearchByMetadataOption: string;
   customXLeftText: string;
   customXLeftRegex: boolean;
   customXRightText: string;

@@ -34,8 +34,10 @@ export let ProjectionsPanelPolymer = PolymerElement({
     pcaY: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
     pcaZ: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
     // Custom projection.
-    selectedSearchByMetadataOption:
-        {type: String, observer: '_searchByMetadataOptionChanged'},
+    customSelectedSearchByMetadataOption: {
+      type: String,
+      observer: '_customSelectedSearchByMetadataOptionChanged'
+    },
   }
 });
 
@@ -54,12 +56,9 @@ type Centroids = {
  * A polymer component which handles the projection tabs in the projector.
  */
 export class ProjectionsPanel extends ProjectionsPanelPolymer {
-  selectedSearchByMetadataOption: string;
-
   private projector: Projector;
   private currentProjection: Projection;
   private polymerChangesTriggerReprojection: boolean;
-
   private dataSet: DataSet;
   private originalDataSet: DataSet;
   private dim: number;
@@ -79,11 +78,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   /** Polymer properties. */
   // TODO(nsthorat): Move these to a separate view controller.
-  public pcaIs3d: boolean;
   public tSNEis3d: boolean;
+  public pcaIs3d: boolean;
   public pcaX: number;
   public pcaY: number;
   public pcaZ: number;
+  public customSelectedSearchByMetadataOption: string;
 
   /** Polymer elements. */
   private dom: d3.Selection<any>;
@@ -196,6 +196,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.tSNEis3d = bookmark.tSNEis3d;
 
     // custom
+    this.customSelectedSearchByMetadataOption =
+        bookmark.customSelectedSearchByMetadataOption;
     if (this.customProjectionXLeftInput) {
       this.customProjectionXLeftInput.set(
           bookmark.customXLeftText, bookmark.customXLeftRegex);
@@ -226,10 +228,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   populateBookmarkFromUI(bookmark: State) {
     this.disablePolymerChangesTriggerReprojection();
+
+    // PCA
     bookmark.pcaComponentDimensions = [this.pcaX, this.pcaY];
     if (this.pcaIs3d) {
       bookmark.pcaComponentDimensions.push(this.pcaZ);
     }
+
+    // t-SNE
     if (this.perplexitySlider != null) {
       bookmark.tSNEPerplexity = +this.perplexitySlider.value;
     }
@@ -237,6 +243,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       bookmark.tSNELearningRate = +this.learningRateInput.value;
     }
     bookmark.tSNEis3d = this.tSNEis3d;
+
+    // custom
+    bookmark.customSelectedSearchByMetadataOption =
+        this.customSelectedSearchByMetadataOption;
     if (this.customProjectionXLeftInput != null) {
       bookmark.customXLeftText = this.customProjectionXLeftInput.getValue();
       bookmark.customXLeftRegex =
@@ -256,6 +266,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       bookmark.customYDownRegex =
           this.customProjectionYDownInput.getInRegexMode();
     }
+
     this.enablePolymerChangesTriggerReprojection();
   }
 
@@ -301,7 +312,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       }
       return stats.name;
     });
-    this.selectedSearchByMetadataOption =
+    this.customSelectedSearchByMetadataOption =
         this.searchByMetadataOptions[Math.max(0, searchByMetadataIndex)];
   }
 
@@ -409,7 +420,6 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet.projectLinear(yDir, 'linear-y');
 
     const accessors = this.dataSet.getPointAccessors('custom', ['x', 'y']);
-
     this.projector.setProjection('custom', 2, accessors);
   }
 
@@ -418,7 +428,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.allCentroid = null;
   }
 
-  _searchByMetadataOptionChanged(newVal: string, oldVal: string) {
+  _customSelectedSearchByMetadataOptionChanged(newVal: string, oldVal: string) {
+    if (this.polymerChangesTriggerReprojection === false) {
+      return;
+    }
     if (this.currentProjection === 'custom') {
       this.computeAllCentroids();
       this.reprojectCustom();
@@ -484,7 +497,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     // neighbors of A.
     let accessor = (i: number) => this.originalDataSet.points[i].vector;
     let r = this.originalDataSet.query(
-        pattern, inRegexMode, this.selectedSearchByMetadataOption);
+        pattern, inRegexMode, this.customSelectedSearchByMetadataOption);
     return {centroid: vector.centroid(r, accessor), numMatches: r.length};
   }
 
