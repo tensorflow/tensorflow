@@ -818,6 +818,8 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
+REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_SYCL), BlockingOp);
+
 static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   FunctionDefLibrary library_graph_def;
   if (use_function_lib) {
