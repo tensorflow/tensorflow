@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 import tempfile
 
 import tensorflow as tf
@@ -127,6 +128,5 @@ if __name__ == '__main__':
       default=False,
       help='If true, use training loss as termination criteria.'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

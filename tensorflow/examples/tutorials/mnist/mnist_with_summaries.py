@@ -25,6 +25,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
 import tensorflow as tf
 
@@ -200,5 +201,6 @@ if __name__ == '__main__':
                       help='Directory for storing data')
   parser.add_argument('--summaries_dir', type=str, default='/tmp/mnist_logs',
                       help='Summaries directory')
-  FLAGS = parser.parse_args()
-  tf.app.run()
+
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
