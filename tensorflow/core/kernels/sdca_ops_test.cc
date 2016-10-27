@@ -232,6 +232,17 @@ void BM_SDCA(const int iters, const int num_examples) {
   test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
 }
 
+void BM_SDCA_LARGE_DENSE(const int iters, const int num_examples) {
+  testing::StopTiming();
+  Graph* init = nullptr;
+  Graph* train = nullptr;
+  GetGraphs(num_examples, 0 /* sparse feature groups */,
+            0 /* sparse features per group */, 5 /* dense feature groups*/,
+            200000 /* dense features per group */, &init, &train);
+  testing::StartTiming();
+  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
+}
+
 void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
   testing::StopTiming();
   Graph* init = nullptr;
@@ -242,10 +253,10 @@ void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
   testing::StartTiming();
   test::Benchmark("cpu", train, GetMultiThreadedOptions(), init).Run(iters);
 }
-
 }  // namespace
 
 BENCHMARK(BM_SDCA)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
+BENCHMARK(BM_SDCA_LARGE_DENSE)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
 BENCHMARK(BM_SDCA_LARGE_SPARSE)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
 
 }  // namespace tensorflow
