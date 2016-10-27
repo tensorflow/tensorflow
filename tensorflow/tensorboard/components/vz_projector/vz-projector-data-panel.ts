@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, ColumnStats, MetadataInfo} from './data';
-import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
+import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-provider';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable

@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, DataPoint, DataProto, DataSet, MetadataInfo, PointAccessor, PointMetadata, Projection, State, stateGetAccessorDimensions} from './data';
-import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
+import {DataProvider, ServingMode, TensorInfo} from './data-provider';
+import {DemoDataProvider} from './data-provider-demo';
+import {ProtoDataProvider} from './data-provider-proto';
+import {ServerDataProvider} from './data-provider-server';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import * as logging from './logging';
@@ -236,13 +239,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       pointsInfo: pointsInfo
     };
   }
+
   private initializeDataProvider(dataProto?: DataProto) {
-    getDataProvider(this.servingMode, dataProto, this.routePrefix,
-        dataProvider => {
-      this.dataProvider = dataProvider;
-      this.dataPanel.initialize(this, dataProvider);
-      this.bookmarkPanel.initialize(this, dataProvider);
-    });
+    if (this.servingMode === 'demo') {
+      this.dataProvider = new DemoDataProvider();
+    } else if (this.servingMode === 'server') {
+      if (!this.routePrefix) {
+        throw 'route-prefix is a required parameter';
+      }
+      this.dataProvider = new ServerDataProvider(this.routePrefix);
+    } else if (this.servingMode === 'proto' && dataProto != null) {
+      this.dataProvider = new ProtoDataProvider(dataProto);
+    }
+
+    this.dataPanel.initialize(this, this.dataProvider);
+    this.bookmarkPanel.initialize(this, this.dataProvider);
   }
 
   private getLegendPointColorer(colorOption: ColorOption):
