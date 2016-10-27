@@ -50,6 +50,7 @@ void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
 ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
+REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_SYCL), ConstantOp);
 
 #if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                                      \
