@@ -124,7 +124,6 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 //     multiple reads of that index in the forward phase.
 //
 class TensorArray : public ResourceBase {
-  mutex mu_;
  public:
   static std::atomic<int64> tensor_array_counter;
 
@@ -339,6 +338,8 @@ class TensorArray : public ResourceBase {
 
   const DataType dtype_;
   Tensor handle_;
+
+  mutex mu_;
 
   // Marks that the tensor_array_ has been cleared.
   bool closed_ GUARDED_BY(mu_);

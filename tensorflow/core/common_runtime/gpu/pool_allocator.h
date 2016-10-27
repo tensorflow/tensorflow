@@ -45,7 +45,6 @@ class RoundUpInterface {
 // Size-limited pool of memory buffers obtained from a SubAllocator
 // instance.  Pool eviction policy is LRU.
 class PoolAllocator : public VisitableAllocator {
-  mutex mutex_;
  public:
   // "pool_size_limit" is the maximum number of returned, re-usable
   // memory buffers to keep in the pool.  If pool_size_limit == 0, the
@@ -137,6 +136,7 @@ class PoolAllocator : public VisitableAllocator {
   size_t pool_size_limit_;
   std::unique_ptr<SubAllocator> allocator_;
   std::unique_ptr<RoundUpInterface> size_rounder_;
+  mutex mutex_;
   std::multimap<const size_t, PtrRecord*> pool_ GUARDED_BY(mutex_);
   PtrRecord* lru_head_ GUARDED_BY(mutex_) = nullptr;
   PtrRecord* lru_tail_ GUARDED_BY(mutex_) = nullptr;

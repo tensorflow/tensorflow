@@ -28,7 +28,6 @@ namespace tensorflow {
 namespace {
 
 class FakeAllocator {
-  mutex mu_;
  public:
   FakeAllocator(size_t cap, int millis_to_wait)
       : memory_capacity_(cap), millis_to_wait_(millis_to_wait) {}
@@ -58,6 +57,7 @@ class FakeAllocator {
  private:
   AllocatorRetry retry_;
   void* good_ptr_ = reinterpret_cast<void*>(0xdeadbeef);
+  mutex mu_;
   size_t memory_capacity_ GUARDED_BY(mu_);
   int millis_to_wait_;
 };
@@ -72,7 +72,6 @@ class FakeAllocator {
 // interesting part of their interaction with the allocator.  This
 // class is the mechanism that imposes turn taking.
 class AlternatingBarrier {
-  mutex mu_;
  public:
   explicit AlternatingBarrier(int num_users)
       : num_users_(num_users), next_turn_(0), done_(num_users, false) {}
@@ -110,6 +109,7 @@ class AlternatingBarrier {
     }
   }
 
+  mutex mu_;
   condition_variable cv_;
   int num_users_;
   int next_turn_ GUARDED_BY(mu_);
@@ -118,7 +118,6 @@ class AlternatingBarrier {
 
 class GPUAllocatorRetryTest : public ::testing::Test {
  protected:
-  mutex mu_;
   GPUAllocatorRetryTest() {}
 
   void LaunchConsumerThreads(int num_consumers, int cap_needed) {
@@ -174,6 +173,7 @@ class GPUAllocatorRetryTest : public ::testing::Test {
   std::vector<Thread*> consumers_;
   std::vector<int> consumer_count_;
   Notification notifier_;
+  mutex mu_;
   bool has_failed_ GUARDED_BY(mu_) = false;
   int count_ GUARDED_BY(mu_) = 0;
 };

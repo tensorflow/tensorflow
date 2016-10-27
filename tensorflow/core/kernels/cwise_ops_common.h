@@ -89,13 +89,8 @@ class BinaryOp : public BinaryOpShared {
     if (!ctx->status().ok()) return;
     Tensor* out = state.out;
     BCast* bcast = &state.bcast;
-#if TENSORFLOW_USE_SYCL
-    decltype(state.in0) in0 = state.in0;
-    decltype(state.in1) in1 = state.in1;
-#else
     auto& in0 = state.in0;
     auto& in1 = state.in1;
-#endif
     if (state.out_num_elements == 0) {
       return;
     }

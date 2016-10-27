@@ -83,7 +83,6 @@ class QueueBase : public QueueInterface {
                                    int64 index);
 
  protected:
-  mutex mu_;
   enum Action { kEnqueue, kDequeue };
   enum RunResult { kNoProgress, kProgress, kComplete };
 
@@ -144,6 +143,7 @@ class QueueBase : public QueueInterface {
   const DataTypeVector component_dtypes_;
   const std::vector<TensorShape> component_shapes_;
   const string name_;
+  mutex mu_;
   bool closed_ GUARDED_BY(mu_);
 
   struct Attempt;

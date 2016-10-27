@@ -45,9 +45,7 @@ void Collector::CollectMetricDescriptor(
   metric_descriptor->name = metric_def->name().ToString();
   metric_descriptor->description = metric_def->description().ToString();
 
-  for (auto it  = metric_def->label_descriptions().begin(),
-            end = metric_def->label_descriptions().end() ; it!=end ;it++  ) {
-    const StringPiece label_name = *it;
+  for (const StringPiece label_name : metric_def->label_descriptions()) {
     metric_descriptor->label_names.push_back(label_name.ToString());
   }
 

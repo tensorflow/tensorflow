@@ -34,7 +34,6 @@ namespace tensorflow {
 
 // Defines a QueueOp, an abstract class for Queue construction ops.
 class QueueOp : public OpKernel {
-  mutex mu_;
  public:
   QueueOp(OpKernelConstruction* context)
       : OpKernel(context), queue_handle_set_(false) {
@@ -95,6 +94,7 @@ class QueueOp : public OpKernel {
     return Status::OK();
   }
 
+  mutex mu_;
   PersistentTensor queue_handle_ GUARDED_BY(mu_);
   bool queue_handle_set_ GUARDED_BY(mu_);
 };
