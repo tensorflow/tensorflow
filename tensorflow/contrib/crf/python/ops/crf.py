@@ -280,32 +280,38 @@ class CrfForwardRnnCell(rnn_cell.RNNCell):
 
 
 def viterbi_decode(score, transition_params):
-  """Decode the highest scoring sequence of tags outside of TensorFlow.
-
-  This should only be used at test time.
+  """Decode the highest scoring sequence of tags inside of TensorFlow.
 
   Args:
-    score: A [seq_len, num_tags] matrix of unary potentials.
+    score: A [batch_size, seq_len, num_tags] matrix of unary potentials.
     transition_params: A [num_tags, num_tags] matrix of binary potentials.
 
   Returns:
-    viterbi: A [seq_len] list of integers containing the highest scoring tag
-        indicies.
-    viterbi_score: A float containing the score for the Viterbi sequence.
+    viterbi: A [batch_size, seq_len] int64 Tensor containing the highest 
+        scoring tag indicies.
+    viterbi_score: A [batch_size] vector of float containing the score for
+        the Viterbi sequence.
   """
-  trellis = np.zeros_like(score)
-  backpointers = np.zeros_like(score, dtype=np.int32)
-  trellis[0] = score[0]
+  batch_size = tf.shape(scores)[0]
+  backtracks = []
+  if isinstance(scores, tf.Tensor):
+    scores = tf.unpack(scores, axis=1)
 
-  for t in range(1, score.shape[0]):
-    v = np.expand_dims(trellis[t - 1], 1) + transition_params
-    trellis[t] = score[t] + np.max(v, 0)
-    backpointers[t] = np.argmax(v, 0)
+  prev = scores[0]
+  for i, s in enumerate(scores[1:]):
+    # s of shape (batch_size, num_state)
+    v = tf.expand_dims(prev, -1) + tf.expand_dims(transition_params, 0)
+    prev = s + tf.reduce_max(v, reduction_indices=1)
+    backtracks.append(tf.argmax(v, 1))
 
-  viterbi = [np.argmax(trellis[-1])]
-  for bp in reversed(backpointers[1:]):
-    viterbi.append(bp[viterbi[-1]])
+  last = tf.argmax(prev, 1)
+  viterbi = [last]
+  ranges = tf.range(batch_size)
+  for b in reversed(backtracks):
+    indices = tf.pack([ranges, tf.to_int32(last)], axis=1)
+    last = tf.gather_nd(b, indices)
+    viterbi.append(last)
   viterbi.reverse()
 
-  viterbi_score = np.max(trellis[-1])
-  return viterbi, viterbi_score
+  viterbi_score = tf.reduce_max(prev, reduction_indices=1)
+    return tf.pack(viterbi, axis=1), viterbi_score
