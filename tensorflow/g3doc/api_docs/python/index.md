@@ -158,6 +158,7 @@
   * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
+  * [`stack`](../../api_docs/python/array_ops.md#stack)
   * [`strided_slice`](../../api_docs/python/array_ops.md#strided_slice)
   * [`string_to_number`](../../api_docs/python/array_ops.md#string_to_number)
   * [`tile`](../../api_docs/python/array_ops.md#tile)
@@ -169,6 +170,7 @@
   * [`transpose`](../../api_docs/python/array_ops.md#transpose)
   * [`unique_with_counts`](../../api_docs/python/array_ops.md#unique_with_counts)
   * [`unpack`](../../api_docs/python/array_ops.md#unpack)
+  * [`unstack`](../../api_docs/python/array_ops.md#unstack)
 
 * **[Math](../../api_docs/python/math_ops.md)**:
   * [`abs`](../../api_docs/python/math_ops.md#abs)

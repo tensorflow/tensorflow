@@ -1,6 +1,4 @@
-### `tf.unpack(value, num=None, axis=0, name='unpack')` {#unpack}
-
-DEPRECATED: Use unstack.
+### `tf.unstack(value, num=None, axis=0, name='unstack')` {#unstack}
 
 Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
@@ -20,21 +18,21 @@ Etc.
 
 This is the opposite of pack.  The numpy equivalent is
 
-    tf.unpack(x, n) = list(x)
+    tf.unstack(x, n) = list(x)
 
 ##### Args:
 
 
-*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unpacked.
+*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unstacked.
 *  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
     if `None` (the default).
-*  <b>`axis`</b>: An `int`. The axis to unpack along. Defaults to the first
+*  <b>`axis`</b>: An `int`. The axis to unstack along. Defaults to the first
     dimension. Supports negative indexes.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  The list of `Tensor` objects unpacked from `value`.
+  The list of `Tensor` objects unstacked from `value`.
 
 ##### Raises:
 

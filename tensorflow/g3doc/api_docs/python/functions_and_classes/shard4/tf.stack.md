@@ -1,8 +1,6 @@
-### `tf.pack(values, axis=0, name='pack')` {#pack}
+### `tf.stack(values, axis=0, name='stack')` {#stack}
 
-DEPRECATED: Use stack.
-
-Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
 Packs the list of tensors in `values` into a tensor with rank one higher than
 each tensor in `values`, by packing them along the `axis` dimension.
@@ -18,26 +16,26 @@ For example:
 # 'x' is [1, 4]
 # 'y' is [2, 5]
 # 'z' is [3, 6]
-pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
 ```
 
-This is the opposite of unpack.  The numpy equivalent is
+This is the opposite of unstack.  The numpy equivalent is
 
-    tf.pack([x, y, z]) = np.asarray([x, y, z])
+    tf.stack([x, y, z]) = np.asarray([x, y, z])
 
 ##### Args:
 
 
 *  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
-*  <b>`axis`</b>: An `int`. The axis to pack along. Defaults to the first dimension.
+*  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
     Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 
 
-*  <b>`output`</b>: A packed `Tensor` with the same type as `values`.
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
 
 ##### Raises:
 
