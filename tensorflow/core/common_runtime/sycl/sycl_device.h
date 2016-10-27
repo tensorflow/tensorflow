@@ -31,8 +31,8 @@ namespace tensorflow {
 class SYCLDevice : public LocalDevice {
  public:
   SYCLDevice(const SessionOptions& options, const string& name,
-             Bytes memory_limit, BusAdjacency bus_adjacency,
-             Allocator* allocator);
+             Bytes memory_limit, const DeviceLocality& locality,
+             const string& physical_device_desc, Allocator* allocator);
   ~SYCLDevice() override;
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
@@ -42,6 +42,12 @@ class SYCLDevice : public LocalDevice {
                              Tensor* tensor) override;
 
   Status Sync() override { return Status::OK(); }
+  static string GetShortDeviceDescription(/*int device_id,
+                                          const DeviceDescription& desc*/) {
+    return strings::StrCat("device: 0, name SYCL, pci bus id: 0");
+    // return strings::StrCat("device: ", device_id, ", name: ", desc.name(),
+    //                       ", pci bus id: ", desc.pci_bus_id());
+  }
 
  private:
   Allocator* allocator_;  // Not owned

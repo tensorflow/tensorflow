@@ -27,10 +27,11 @@ cl::sycl::gpu_selector s;
 cl::sycl::queue q(s);
 
 SYCLDevice::SYCLDevice(const SessionOptions& options, const string& name,
-                       Bytes memory_limit, BusAdjacency bus_adjacency,
-                       Allocator* allocator)
-    : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_SYCL, memory_limit, bus_adjacency),
+                       Bytes memory_limit, const DeviceLocality& locality,
+                       const string& physical_device_desc, Allocator* allocator)
+    : LocalDevice(options,
+                  Device::BuildDeviceAttributes(name, DEVICE_SYCL, memory_limit,
+                                                locality, physical_device_desc),
                   allocator),
       allocator_(allocator),
       device_(q) {
