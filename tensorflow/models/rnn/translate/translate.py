@@ -36,6 +36,7 @@ import os
 import random
 import sys
 import time
+import logging
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
