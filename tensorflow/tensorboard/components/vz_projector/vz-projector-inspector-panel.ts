@@ -278,7 +278,7 @@ export class InspectorPanel extends PolymerClass {
     });
 
     this.clearSelectionButton.on('click', () => {
-      this.projector.clearSelectionAndHover();
+      this.projector.adjustSelectionAndHover([]);
     });
     this.resetFilterButton.attr('disabled', true);
   }

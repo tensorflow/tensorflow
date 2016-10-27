@@ -163,14 +163,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   filterDataset() {
     let indices = this.selectedPointIndices.concat(
         this.neighborsOfFirstPoint.map(n => n.index));
+    let selectionSize = this.selectedPointIndices.length;
     this.setCurrentDataSet(this.dataSet.getSubset(indices));
-    this.clearSelectionAndHover();
+    this.adjustSelectionAndHover(d3.range(selectionSize));
     this.scatterPlot.recreateScene();
   }
 
   resetFilterDataset() {
-    this.setCurrentDataSet(this.originalDataSet.getSubset(null));
-    this.selectedPointIndices = [];
+    let originalPointIndices = this.selectedPointIndices.map(localIndex => {
+      return this.dataSet.points[localIndex].index;
+    });
+    this.setCurrentDataSet(this.originalDataSet.getSubset());
+    this.adjustSelectionAndHover(originalPointIndices);
   }
 
   /**
@@ -266,9 +270,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return (label3DModeButton as any).active;
   }
 
-  clearSelectionAndHover() {
-    this.notifySelectionChanged([]);
-    this.notifyHoverOverPoint(null);
+  adjustSelectionAndHover(selectedPointIndices: number[], hoverIndex?: number) {
+    this.notifySelectionChanged(selectedPointIndices);
+    this.notifyHoverOverPoint(hoverIndex);
     this.scatterPlot.setMode(Mode.HOVER);
   }
 
@@ -277,7 +281,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   private setCurrentDataSet(ds: DataSet) {
-    this.clearSelectionAndHover();
+    this.adjustSelectionAndHover([]);
     if (this.dataSet != null) {
       this.unsetCurrentDataSet();
     }

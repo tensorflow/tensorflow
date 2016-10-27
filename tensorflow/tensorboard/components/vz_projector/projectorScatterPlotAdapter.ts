@@ -19,7 +19,7 @@ import {LabelRenderParams} from './renderContext';
 
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
-const LABEL_SCALE_LARGE = 1.7;
+const LABEL_SCALE_LARGE = 2;
 const LABEL_FILL_COLOR = 0x000000;
 const LABEL_STROKE_COLOR = 0xFFFFFF;
 

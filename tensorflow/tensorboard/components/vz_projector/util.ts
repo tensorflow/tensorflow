@@ -23,7 +23,7 @@ import * as logging from './logging';
  * The duration was empirically found so that it leaves enough time for the
  * browser to update its UI state before starting an expensive UI-blocking task.
  */
-const TASK_DELAY_MS = 25;
+const TASK_DELAY_MS = 200;
 
 /** Shuffles the array in-place in O(n) time using Fisher-Yates algorithm. */
 export function shuffle<T>(array: T[]): T[] {
