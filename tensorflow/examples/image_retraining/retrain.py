@@ -470,16 +470,16 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
 
 
 def read_image2RGBbytes(image_path):
-  """Read the image into bytes stream.
+  """Reads the image into a byte stream.
 
-   For jpg/jpeg, gfile.FastGFile is enough.
-   For others like gif, png, use PIL to open them and convert them into RGB arrays. Then save them into bytes stream.
+  For jpg/jpeg, gfile.FastGFile is enough.
+  For others like gif, png, use PIL to open them and convert them into RGB arrays. Then save them into bytes stream.
 
   Args:
     image_path: relative or absolute path of the image.
 
   Returns:
-    Bytes stream for RGB arrays of the image which can be fed directly into image_data_tensor in tensorflow.session.
+    A byte stream for RGB arrays of the image which can be fed directly into image_data_tensor in tensorflow.session.
   """
   jpgext = ['.jpg', '.jpeg', '.JPG', '.JPEG']
   if (os.path.splitext(image_path)[1] in jpgext):
