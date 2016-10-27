@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
@@ -56,6 +55,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -453,12 +456,14 @@ Status DirectSession::Run(const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
+#if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
     tracer.reset(CreateGPUTracer());
     // tracer will be NULL on non-GPU platforms.
     if (tracer) tracer->Start();
   }
+#endif  // GOOGLE_CUDA
 
   for (const auto& item : executors_and_keys->items) {
     item.executor->RunAsync(args, barrier->Get());
@@ -468,10 +473,12 @@ Status DirectSession::Run(const RunOptions& run_options,
                                       ? run_options.timeout_in_ms()
                                       : operation_timeout_in_ms_);
 
+#if GOOGLE_CUDA
   if (tracer) {
     tracer->Stop();
     tracer->Collect(args.stats_collector);
   }
+#endif  // GOOGLE_CUDA
 
   {
     mutex_lock l(run_state.mu_);

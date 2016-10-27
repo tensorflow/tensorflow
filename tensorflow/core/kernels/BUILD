@@ -405,7 +405,6 @@ ARRAY_DEPS = [
     "//tensorflow/core:array_ops_op_lib",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
-    "//tensorflow/core:gpu_runtime",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:proto_text",
@@ -420,7 +419,9 @@ tf_kernel_libraries(
         "debug_ops",
         "immutable_constant_op",
     ],
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core:gpu_runtime",
+    ],
 )
 
 tf_kernel_libraries(

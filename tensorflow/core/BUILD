@@ -1279,11 +1279,13 @@ tf_cuda_library(
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = ["common_runtime/direct_session.h"],
     copts = tf_copts(),
+    cuda_deps = [
+        ":gpu_tracer",
+    ],
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
         ":framework",
-        ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":proto_text",
