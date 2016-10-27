@@ -34,9 +34,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.http_archive(
     name = "gemmlowp",
-    url = "http://github.com/google/gemmlowp/archive/c0bacf11fb509a2cbe15a97362a2df067ffd57a2.tar.gz",
-    sha256 = "dc64a38f9927db18748d9024987c9b102115e25bc2be4b76aa8e422b8f83d882",
-    strip_prefix = "gemmlowp-c0bacf11fb509a2cbe15a97362a2df067ffd57a2",
+    url = "http://github.com/google/gemmlowp/archive/a6f29d8ac48d63293f845f2253eccbf86bc28321.tar.gz",
+    sha256 = "75d40ea8e68b0d1644f052fffe8f14a410b2a73d40ccb859a95c0578d194ec26",
+    strip_prefix = "gemmlowp-a6f29d8ac48d63293f845f2253eccbf86bc28321",
   )
 
   native.new_http_archive(

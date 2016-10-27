@@ -16,10 +16,11 @@ limitations under the License.
 // Implements a quantized version of the Relu6 operation.
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/meta_support.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -37,8 +38,16 @@ class QuantizedReluOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     const T min_as_quantized = FloatToQuantized<T>(0.0f, min_input, max_input);
-    output->flat<T>().device(context->eigen_cpu_device()) =
-        input.flat<T>().cwiseMax(min_as_quantized).template cast<T>();
+
+    if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
+      auto input_ui8_array = input.flat<quint8>();
+      meta::Clamp(context, input_ui8_array.data(), input_ui8_array.size(),
+                  min_as_quantized, 255, output->flat<quint8>().data());
+    } else {
+      output->flat<T>().device(context->eigen_cpu_device()) =
+          input.flat<T>().cwiseMax(min_as_quantized).template cast<T>();
+    }
+
     Tensor* output_min = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));
     output_min->flat<float>()(0) = min_input;
@@ -63,11 +72,20 @@ class QuantizedRelu6Op : public OpKernel {
                    context->allocate_output(0, input.shape(), &output));
     const T min_as_quantized = FloatToQuantized<T>(0.0f, min_input, max_input);
     const T max_as_quantized = FloatToQuantized<T>(6.0f, min_input, max_input);
-    output->flat<T>().device(context->eigen_cpu_device()) =
-        input.flat<T>()
-            .cwiseMax(min_as_quantized)
-            .cwiseMin(max_as_quantized)
-            .template cast<T>();
+
+    if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
+      auto input_ui8_array = input.flat<quint8>();
+      meta::Clamp(context, input_ui8_array.data(), input_ui8_array.size(),
+                  min_as_quantized, max_as_quantized,
+                  output->flat<quint8>().data());
+    } else {
+      output->flat<T>().device(context->eigen_cpu_device()) =
+          input.flat<T>()
+              .cwiseMax(min_as_quantized)
+              .cwiseMin(max_as_quantized)
+              .template cast<T>();
+    }
+
     Tensor* output_min = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));
     output_min->flat<float>()(0) = min_input;
