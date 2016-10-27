@@ -3536,7 +3536,7 @@ op {
     description: "If True, merge repeated classes in output."
   }
   summary: "Performs greedy decoding on the logits given in inputs."
-  description: "A note about the attribute merge_repeated: if enabled, when\nconsecutive logits\' maximum indices are the same, only the first of\nthese is emitted.  Labeling the blank \'*\', the sequence \"A B B * B B\"\nbecomes \"A B\" if merge_repeated = True and \"A B B B B\" if\nmerge_repeated = False.\n\nRegardless of the value of merge_repeated, if the maximum index of a given\ntime and batch corresponds to the blank, index `(num_classes - 1)`, no new\nelement is emitted."
+  description: "A note about the attribute merge_repeated: if enabled, when\nconsecutive logits\' maximum indices are the same, only the first of\nthese is emitted.  Labeling the blank \'*\', the sequence \"A B B * B B\"\nbecomes \"A B B\" if merge_repeated = True and \"A B B B B\" if\nmerge_repeated = False.\n\nRegardless of the value of merge_repeated, if the maximum index of a given\ntime and batch corresponds to the blank, index `(num_classes - 1)`, no new\nelement is emitted."
 }
 op {
   name: "CTCLoss"
