@@ -976,13 +976,8 @@ class PartitionedVariable(object):
     Returns:
       `Tensor` containing the concatenated value.
     """
-    if self._as_tensor is None:
-      # Be sure to cache the concatenated tensor to not do extraneous
-      # computations.
-      with ops.control_dependencies(None):
-        self._as_tensor = self._concat()
-
-    return self._as_tensor
+    with ops.control_dependencies(None):
+      return self._concat()
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
