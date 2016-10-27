@@ -314,4 +314,4 @@ def viterbi_decode(score, transition_params):
   viterbi.reverse()
 
   viterbi_score = tf.reduce_max(prev, reduction_indices=1)
-    return tf.pack(viterbi, axis=1), viterbi_score
+  return tf.pack(viterbi, axis=1), viterbi_score
