@@ -219,17 +219,6 @@ func constructGraphToNormalizeImage() (graph *tf.Graph, input, output tf.Output,
 		Mean  = float32(117)
 		Scale = float32(1)
 	)
-	scope := op.NewScope()
-	// Shorthand: op.Const can return an error, typically if an invalid
-	// type is provided as an argument. Knowing that only valid types will be provided,
-	// make a shorthand.
-	Const := func(name string, value interface{}) tf.Output {
-		out, err := op.Const(scope.SubScope(name), value)
-		if err != nil {
-			panic(err)
-		}
-		return out
-	}
 	// - input is a 3D tensor of shape [Height, Width, Colors=3], where
 	//   each pixel is represented as a triplet of 1-byte colors
 	// - ResizeBilinear (and the inception model) takes a 4D tensor of shape
@@ -237,26 +226,19 @@ func constructGraphToNormalizeImage() (graph *tf.Graph, input, output tf.Output,
 	//   represented as a triplet of floats
 	// - Apply normalization on each pixel and use ExpandDims to make
 	//   this single image be a "batch" of size 1 for ResizeBilinear.
-	if input, err = op.Placeholder(scope, tf.Uint8); err != nil {
-		return
-	}
-	if output, err = op.Cast(scope, input, tf.Float); err != nil {
-		return
-	}
-	if output, err = op.ExpandDims(scope, output, Const("make_batch", int32(0))); err != nil {
-		return
-	}
-	if output, err = op.ResizeBilinear(scope, output, Const("size", []int32{H, W})); err != nil {
-		return
-	}
-	// Subtract the Mean and divide by Scale
-	if output, err = op.Sub(scope, output, Const("mean", Mean)); err != nil {
-		return
-	}
-	if output, err = op.Div(scope, output, Const("scale", Scale)); err != nil {
-		return
-	}
-	return scope.Graph(), input, output, nil
+	s := op.NewScope()
+	input = op.Placeholder(s, tf.Uint8)
+	output = op.Div(s,
+		op.Sub(s,
+			op.ResizeBilinear(s,
+				op.ExpandDims(s,
+					op.Cast(s, input, tf.Float),
+					op.Const(s.SubScope("make_batch"), int32(0))),
+				op.Const(s.SubScope("size"), []int32{H, W})),
+			op.Const(s.SubScope("mean"), Mean)),
+		op.Const(s.SubScope("scale"), Scale))
+	graph, err = s.Finalize()
+	return graph, input, output, err
 }
 
 func modelFiles(dir string) (modelfile, labelsfile string, err error) {

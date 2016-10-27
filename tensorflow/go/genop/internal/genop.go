@@ -244,10 +244,14 @@ func {{.Op.Name}}
 {{if .OptionalAttrs}}, optional ...{{.Op.Name}}Attr{{end -}}
 )
 
-{{- /* Construct outputs: len(OpDef.OutputArg) + 1 (for error) */ -}}
+{{- /* Construct outputs: len(OpDef.OutputArg) */ -}}
 
-({{range $i,$a := .Op.OutputArg}}{{if $i}}, {{end}}{{Identifier $a.Name}} {{if IsListArg $a}}[]{{end}}tf.Output{{end -}}
-{{if .Op.OutputArg}}, {{end}}err error) {
+{{if .Op.OutputArg -}}
+({{range $i,$a := .Op.OutputArg}}{{if $i}}, {{end}}{{Identifier $a.Name}} {{if IsListArg $a}}[]{{end}}tf.Output{{end -}})
+{{- end }} {
+	if scope.Err() != nil {
+		return
+	}
 	{{if .HasAttrs -}}
 	attrs := map[string]interface{}{ {{- range .RequiredAttrs}}{{printf "%q" .Name}}: {{Identifier .Name}},{{end}}}
 	{{if .OptionalAttrs -}}
@@ -262,25 +266,37 @@ func {{.Op.Name}}
 		Input: []tf.Input{
 			{{range .Op.InputArg}}{{if IsListArg .}}tf.OutputList({{Identifier .Name}}){{else}}{{Identifier .Name}}{{end}}, {{end}}
 		},
-		{{end}}
-		{{- if .HasAttrs}}Attrs: attrs,{{end}}
+		{{- end}}
+		{{- if .HasAttrs}}
+		Attrs: attrs,
+		{{- end}}
 	}
-	{{if .Op.OutputArg}}op, err :={{else}}_, err ={{end}} scope.Graph().AddOperation(opspec)
+	{{- if .Op.OutputArg}}
 	{{- if .HasListOutput}}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
 	var idx int
+	var err error
 	{{- range $i, $a := .Op.OutputArg}}
 	{{- if IsListArg $a}}
 	if {{Identifier .Name}}, idx, err = makeOutputList(op, idx, {{printf "%q" .Name}}); err != nil {
-		return {{range $.Op.OutputArg}}{{Identifier .Name}}, {{end}}err
+		scope.UpdateErr({{printf "%q" $.Op.Name}}, err)
+		return
 	}
 	{{- else }}
 	{{Identifier .Name}} = op.Output(idx)
-	{{- end }}
-	{{- end }}
-	return {{range .Op.OutputArg}}{{Identifier .Name}}, {{end}}err
+	{{- end }}{{- /* if IsListArg */}}
+	{{- end }}{{- /* range .Op.OutputArg */}}
+	return {{range $i, $a := .Op.OutputArg}}{{if $i}}, {{end}}{{Identifier .Name}}{{end}}
 	{{- else }}
-	return {{range $i, $a := .Op.OutputArg}}op.Output({{$i}}), {{end}}err
-	{{- end }}
+	op := scope.AddOperation(opspec)
+	return {{range $i, $a := .Op.OutputArg}}{{if $i}}, {{end}}op.Output({{$i}}){{end}}
+	{{- end }}{{- /* if .HasListOutput */}}
+	{{- else }}
+	scope.AddOperation(opspec)
+	{{- end }}{{- /* if .Op.OutputArg */}}
 }
 `))
 )
