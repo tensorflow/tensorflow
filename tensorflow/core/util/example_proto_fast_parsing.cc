@@ -184,7 +184,7 @@ class Feature {
         while (!stream.ExpectAtEnd()) {
           protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
-          int64_list->push_back(n);
+          int64_list->push_back(static_cast<int64>(n));
         }
 
         stream.PopLimit(packed_limit);
@@ -193,7 +193,7 @@ class Feature {
           if (!stream.ExpectTag(kVarintTag(1))) return false;
           protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
-          int64_list->push_back(n);
+          int64_list->push_back(static_cast<int64>(n));
         }
       }
     }
