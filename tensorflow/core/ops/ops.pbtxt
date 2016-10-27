@@ -3908,6 +3908,49 @@ op {
   description: "For example:\n\n```prettyprint\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
 }
 op {
+  name: "ConcatV2"
+  input_arg {
+    name: "values"
+    description: "List of `N` Tensors to concatenate. Their ranks and types must match,\nand their sizes must match in all dimensions except `concat_dim`."
+    type_attr: "T"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "axis"
+    description: "0-D.  The dimension along which to concatenate.  Must be in the\nrange [0, rank(values))."
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "output"
+    description: "A `Tensor` with the concatenation of values stacked along the\n`concat_dim` dimension.  This tensor\'s shape matches that of `values` except\nin `concat_dim` where it has the sum of the sizes."
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Concatenates tensors along one dimension."
+}
+op {
   name: "ConditionalAccumulator"
   output_arg {
     name: "handle"
@@ -5266,6 +5309,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -5461,6 +5505,55 @@ op {
     }
   }
   summary: "Computes the gradients of depthwise convolution with respect to the input."
+}
+op {
+  name: "Dequantize"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "min_range"
+    description: "The minimum scalar value possibly produced for the input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_range"
+    description: "The maximum scalar value possibly produced for the input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    default_value {
+      s: "MIN_COMBINED"
+    }
+    allowed_values {
+      list {
+        s: "MIN_COMBINED"
+        s: "MIN_FIRST"
+      }
+    }
+  }
+  summary: "Dequantize the \'input\' tensor into a float Tensor."
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / number_of_steps\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```"
 }
 op {
   name: "DeserializeManySparse"
@@ -6828,6 +6921,71 @@ op {
   summary: "Returns element-wise largest integer not greater than x."
 }
 op {
+  name: "FloorDiv"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns x // y element-wise."
+  description: "*NOTE*: `FloorDiv` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+}
+op {
+  name: "FloorMod"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns element-wise remainder of division. When `x < 0` xor `y < 0` is"
+  description: "true, this follows Python semantics in that the result here is consistent\nwith a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.\n\n*NOTE*: `FloorMod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+}
+op {
   name: "FractionalAvgPool"
   input_arg {
     name: "value"
@@ -7292,6 +7450,14 @@ op {
     }
     description: "The data format for y_backprop, x, x_backprop.\nEither \"NHWC\" (default) or \"NCHW\"."
   }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "A bool value to indicate the operation is for training (default)\nor inference."
+  }
   summary: "Gradient for batch normalization."
   description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
 }
@@ -7472,17 +7638,17 @@ op {
   name: "GatherNd"
   input_arg {
     name: "params"
-    description: "`M-D`.  The tensor from which to gather values."
+    description: "`P-D`.  The tensor from which to gather values."
     type_attr: "Tparams"
   }
   input_arg {
     name: "indices"
-    description: "`(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`."
+    description: "`Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`."
     type_attr: "Tindices"
   }
   output_arg {
     name: "output"
-    description: "`(N+M-R)-D`.  Values from `params` gathered from indices given by\n`indices`."
+    description: "`(P+Q-K-1)-D`.  Values from `params` gathered from indices given by\n`indices`."
     type_attr: "Tparams"
   }
   attr {
@@ -7500,7 +7666,7 @@ op {
     }
   }
   summary: "Gather values or slices from `params` according to `indices`."
-  description: "`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.\n\nThe innermost dimension of `indices` (with length `R`) corresponds to\nindices into elements (if `R = M`) or slices (if `R < M`) along the `N`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n```python\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n```\n\nSlice indexing into a matrix:\n\n```python\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n```\n\nIndexing into a 3-tensor:\n\n```python\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n```\n\nBatched indexing into a matrix:\n\n```python\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n```\n\nBatched slice indexing into a matrix:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n```\n\nBatched indexing into a 3-tensor:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]\n```"
+  description: "`params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n```\n[d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].\n```\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n```python\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n```\n\nSlice indexing into a matrix:\n\n```python\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n```\n\nIndexing into a 3-tensor:\n\n```python\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n```\n\nBatched indexing into a matrix:\n\n```python\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n```\n\nBatched slice indexing into a matrix:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n```\n\nBatched indexing into a 3-tensor:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]\n```"
 }
 op {
   name: "GetSessionHandle"
@@ -9251,6 +9417,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -10307,7 +10475,7 @@ op {
   name: "MutableDenseHashTable"
   input_arg {
     name: "empty_key"
-    description: "The key to use to represent empty buckets internally. Must not\nbe used in insert or lookup operations."
+    description: "The key used to represent empty key buckets internally. Must not\nbe used in insert or lookup operations."
     type_attr: "key_dtype"
   }
   output_arg {
@@ -10365,6 +10533,14 @@ op {
       i: 131072
     }
     description: "The initial number of hash table buckets. Must be a power\nto 2."
+  }
+  attr {
+    name: "max_load_factor"
+    type: "float"
+    default_value {
+      f: 0.8
+    }
+    description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
   }
   summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
   description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
@@ -11221,6 +11397,26 @@ op {
   description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
 }
 op {
+  name: "PlaceholderV2"
+  output_arg {
+    name: "output"
+    description: "A placeholder tensor that must be replaced using the feed mechanism."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of elements in the tensor."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The shape of the tensor. The shape can be any partially-specified\nshape.  To be unconstrained, pass in a shape with unknown rank."
+  }
+  summary: "A placeholder op for a value that will be fed into the computation."
+  description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
+}
+op {
   name: "PlaceholderWithDefault"
   input_arg {
     name: "input"
@@ -11595,6 +11791,986 @@ op {
   }
   summary: "Quantizes then dequantizes a tensor."
   description: "This op simulates the precision loss from the quantized forward pass by:\n1. Quantizing the tensor to fixed point numbers, which should match the target\n   quantization method when it is used in inference.\n2. Dequantizing it back to floating point numbers for the following ops, most\n   likely matmul.\n\nThere are different ways to quantize. This version does not use the full range\nof the output type, choosing to elide the lowest possible value for symmetry\n(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit\nquantization), so that 0.0 maps to 0.\n\nTo perform this op, we first find the range of values in our tensor. The range\nwe use is always centered on 0, so we find m such that\n\n1. m = max(abs(input_min), abs(input_max)) if range_given is true,\n2. m = max(max(abs(min_elem(input)), abs(max_elem(input))) otherwise.\n\nOur input tensor range is then [-m, m].\n\nNext, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].\nIf signed_input is true, this is\n\n  [min_fixed, max_fixed ] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].\n\nOtherwise, if signed_input is false, the fixed-point range is\n\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].\n\nFrom this we compute our scaling factor, s:\n\n  s = (max_fixed - min_fixed) / (2 * m).\n\nNow we can quantize and dequantize the elements of our tensor.  An element e\nis transformed into e\':\n\n  e\' = (e * s).round_to_nearest() / s.\n\nNote that we have a different number of buckets in the signed vs. unsigned\ncases.  For example, if num_bits == 8, we get 254 buckets in the signed case\nvs. 255 in the unsigned case.\n\nFor example, suppose num_bits = 8 and m = 1.  Then\n\n  [min_fixed, max_fixed] = [-127, 127], and\n  s = (127 + 127) / 2 = 127.\n\nGiven the vector {-1, -0.5, 0, 0.3}, this is quantized to\n{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}."
+}
+op {
+  name: "QuantizeDownAndShrinkRange"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The float value that the minimum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The float value that the maximum quantized input value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "output_min"
+    description: "The float value that the minimum quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "The float value that the maximum quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    description: "The type of the input."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    description: "The type of the output. Should be a lower bit depth than Tinput."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Convert the quantized \'input\' tensor into a lower-precision \'output\', using the"
+  description: "actual distribution of the values to maximize the usage of the lower bit depth\nand adjusting the output min and max ranges accordingly.\n\n[input_min, input_max] are scalar floats that specify the range for the float\ninterpretation of the \'input\' data. For example, if input_min is -1.0f and\ninput_max is 1.0f, and we are dealing with quint16 quantized data, then a 0\nvalue in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f.\n\nThis operator tries to squeeze as much precision as possible into an output with\na lower bit depth by calculating the actual min and max values found in the\ndata. For example, maybe that quint16 input has no values lower than 16,384 and\nnone higher than 49,152. That means only half the range is actually needed, all\nthe float interpretations are between -0.5f and 0.5f, so if we want to compress\nthe data into a quint8 output, we can use that range rather than the theoretical\n-1.0f to 1.0f that is suggested by the input min and max.\n\nIn practice, this is most useful for taking output from operations like\nQuantizedMatMul that can produce higher bit-depth outputs than their inputs and\nmay have large potential output ranges, but in practice have a distribution of\ninput values that only uses a small fraction of the possible range. By feeding\nthat output into this operator, we can reduce it from 32 bits down to 8 with\nminimal loss of accuracy."
+}
+op {
+  name: "QuantizeV2"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_range"
+    description: "The minimum scalar value possibly produced for the input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_range"
+    description: "The maximum scalar value possibly produced for the input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "The quantized data produced from the float input."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_min"
+    description: "The actual minimum scalar value used for the output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "The actual maximum scalar value used for the output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    default_value {
+      s: "MIN_COMBINED"
+    }
+    allowed_values {
+      list {
+        s: "MIN_COMBINED"
+        s: "MIN_FIRST"
+      }
+    }
+  }
+  summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
+}
+op {
+  name: "QuantizedAvgPool"
+  input_arg {
+    name: "input"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "min_input"
+    description: "The float value that the lowest quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    description: "The float value that the highest quantized input value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "min_output"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_output"
+    description: "The float value that the highest quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "The size of the window for each dimension of the input tensor.\nThe length must be 4 to match the number of dimensions of the input."
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "The stride of the sliding window for each dimension of the input\ntensor.  The length must be 4 to match the number of dimensions of the input."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Produces the average pool of the input tensor for quantized types."
+}
+op {
+  name: "QuantizedBatchNormWithGlobalNormalization"
+  input_arg {
+    name: "t"
+    description: "A 4D input Tensor."
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "t_min"
+    description: "The value represented by the lowest quantized input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "t_max"
+    description: "The value represented by the highest quantized input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m"
+    description: "A 1D mean Tensor with size matching the last dimension of t.\nThis is the first output from tf.nn.moments,\nor a saved moving average thereof."
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "m_min"
+    description: "The value represented by the lowest quantized mean."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m_max"
+    description: "The value represented by the highest quantized mean."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v"
+    description: "A 1D variance Tensor with size matching the last dimension of t.\nThis is the second output from tf.nn.moments,\nor a saved moving average thereof."
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "v_min"
+    description: "The value represented by the lowest quantized variance."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v_max"
+    description: "The value represented by the highest quantized variance."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta"
+    description: "A 1D beta Tensor with size matching the last dimension of t.\nAn offset to be added to the normalized tensor."
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "beta_min"
+    description: "The value represented by the lowest quantized offset."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_max"
+    description: "The value represented by the highest quantized offset."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gamma"
+    description: "A 1D gamma Tensor with size matching the last dimension of t.\nIf \"scale_after_normalization\" is true, this tensor will be multiplied\nwith the normalized tensor."
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "gamma_min"
+    description: "The value represented by the lowest quantized gamma."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gamma_max"
+    description: "The value represented by the highest quantized gamma."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "result"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "result_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "result_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+    description: "A small float number to avoid dividing by 0."
+  }
+  attr {
+    name: "scale_after_normalization"
+    type: "bool"
+    description: "A bool indicating whether the resulted tensor\nneeds to be multiplied with gamma."
+  }
+  summary: "Quantized Batch normalization."
+  description: "This op is deprecated and will be removed in the future. Prefer\n`tf.nn.batch_normalization`."
+}
+op {
+  name: "QuantizedBiasAdd"
+  input_arg {
+    name: "input"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "bias"
+    description: "A 1D bias Tensor with size matching the last dimension of \'input\'."
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_input"
+    description: "The float value that the lowest quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    description: "The float value that the highest quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_bias"
+    description: "The float value that the lowest quantized bias value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_bias"
+    description: "The float value that the highest quantized bias value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_out"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_out"
+    description: "The float value that the highest quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Adds Tensor \'bias\' to Tensor \'input\' for Quantized types."
+  description: "Broadcasts the values of bias on dimensions 0..N-2 of \'input\'."
+}
+op {
+  name: "QuantizedConcat"
+  input_arg {
+    name: "concat_dim"
+    description: "0-D.  The dimension along which to concatenate.  Must be in the\nrange [0, rank(values))."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    description: "The `N` Tensors to concatenate. Their ranks and types must match,\nand their sizes must match in all dimensions except `concat_dim`."
+    type_attr: "T"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "input_mins"
+    description: "The minimum scalar values for each of the input tensors."
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "input_maxes"
+    description: "The maximum scalar values for each of the input tensors."
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    description: "A `Tensor` with the concatenation of values stacked along the\n`concat_dim` dimension.  This tensor\'s shape matches that of `values` except\nin `concat_dim` where it has the sum of the sizes."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_min"
+    description: "The float value that the minimum quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "The float value that the maximum quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Concatenates quantized tensors along one dimension."
+}
+op {
+  name: "QuantizedConv2D"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "filter"
+    description: "filter\'s input_depth dimension must match input\'s depth dimensions."
+    type_attr: "Tfilter"
+  }
+  input_arg {
+    name: "min_input"
+    description: "The float value that the lowest quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    description: "The float value that the highest quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_filter"
+    description: "The float value that the lowest quantized filter value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_filter"
+    description: "The float value that the highest quantized filter value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_output"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_output"
+    description: "The float value that the highest quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Tfilter"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "The stride of the sliding window for each dimension of the input\ntensor."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes a 2D convolution given quantized 4D input and filter tensors."
+  description: "The inputs are quantized tensors where the lowest value represents the real\nnumber of the associated minimum, and the highest represents the maximum.\nThis means that you can only interpret the quantized output in the same way, by\ntaking the returned minimum and maximum values into account."
+}
+op {
+  name: "QuantizedMatMul"
+  input_arg {
+    name: "a"
+    description: "Must be a two-dimensional tensor."
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "b"
+    description: "Must be a two-dimensional tensor."
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_a"
+    description: "The float value that the lowest quantized `a` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_a"
+    description: "The float value that the highest quantized `a` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_b"
+    description: "The float value that the lowest quantized `b` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_b"
+    description: "The float value that the highest quantized `b` value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_out"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_out"
+    description: "The float value that the highest quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, `a` is transposed before multiplication."
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, `b` is transposed before multiplication."
+  }
+  summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b`."
+  description: "The inputs must be two-dimensional matrices and the inner dimension of\n`a` (after being transposed if `transpose_a` is non-zero) must match the\nouter dimension of `b` (after being transposed if `transposed_b` is\nnon-zero)."
+}
+op {
+  name: "QuantizedMaxPool"
+  input_arg {
+    name: "input"
+    description: "The 4D (batch x rows x cols x depth) Tensor to MaxReduce over."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "min_input"
+    description: "The float value that the lowest quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    description: "The float value that the highest quantized input value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "min_output"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_output"
+    description: "The float value that the highest quantized output value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "The size of the window for each dimension of the input tensor.\nThe length must be 4 to match the number of dimensions of the input."
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "The stride of the sliding window for each dimension of the input\ntensor. The length must be 4 to match the number of dimensions of the input."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Produces the max pool of the input tensor for quantized types."
+}
+op {
+  name: "QuantizedRelu"
+  input_arg {
+    name: "features"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "min_features"
+    description: "The float value that the lowest quantized value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_features"
+    description: "The float value that the highest quantized value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    description: "Has the same output shape as \"features\"."
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_activations"
+    description: "The float value that the lowest quantized value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_activations"
+    description: "The float value that the highest quantized value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Computes Quantized Rectified Linear: `max(features, 0)`"
+}
+op {
+  name: "QuantizedRelu6"
+  input_arg {
+    name: "features"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "min_features"
+    description: "The float value that the lowest quantized value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_features"
+    description: "The float value that the highest quantized value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    description: "Has the same output shape as \"features\"."
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_activations"
+    description: "The float value that the lowest quantized value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_activations"
+    description: "The float value that the highest quantized value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Computes Quantized Rectified Linear 6: `min(max(features, 0), 6)`"
+}
+op {
+  name: "QuantizedReluX"
+  input_arg {
+    name: "features"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "max_value"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_features"
+    description: "The float value that the lowest quantized value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_features"
+    description: "The float value that the highest quantized value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    description: "Has the same output shape as \"features\"."
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_activations"
+    description: "The float value that the lowest quantized value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_activations"
+    description: "The float value that the highest quantized value represents."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`"
+}
+op {
+  name: "QuantizedReshape"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    description: "Defines the shape of the output tensor."
+    type_attr: "Tshape"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The minimum value of the input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The maximum value of the input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_min"
+    description: "This value is copied from input_min."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "This value is copied from input_max."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Reshapes a quantized tensor as per the Reshape op."
+  description: "```"
 }
 op {
   name: "QueueClose"
@@ -12455,6 +13631,100 @@ op {
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the real part of each element in `input`. All elements in\n`input` must be complex numbers of the form \\\\(a + bj\\\\), where *a* is the real\n part returned by this operation and *b* is the imaginary part.\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.real(input) ==> [-2.25, 3.25]\n```"
 }
 op {
+  name: "RealDiv"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns x / y element-wise for real types."
+  description: "If `x` and `y` are reals, this will return the floating-point division.\n\n*NOTE*: `Div` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+}
+op {
+  name: "Reciprocal"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the reciprocal of x element-wise."
+  description: "I.e., \\\\(y = 1 / x\\\\)."
+}
+op {
+  name: "ReciprocalGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the gradient for the inverse of `x` wrt its input."
+  description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
+}
+op {
   name: "ReduceJoin"
   input_arg {
     name: "inputs"
@@ -12819,6 +14089,77 @@ op {
     }
   }
   summary: "Computes rectified linear gradients for a Relu operation."
+}
+op {
+  name: "Requantize"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The float value that the minimum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The float value that the maximum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "requested_output_min"
+    description: "The float value that the minimum quantized output value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "requested_output_max"
+    description: "The float value that the maximum quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "output_min"
+    description: "The requested_output_min value is copied into this output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "The requested_output_max value is copied into this output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    description: "The type of the input."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    description: "The type of the output. Should be a lower bit depth than Tinput."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Convert the quantized \'input\' tensor into a lower-precision \'output\', using the"
+  description: "output range specified with \'requested_output_min\' and \'requested_output_max\'.\n\n[input_min, input_max] are scalar floats that specify the range for the float\ninterpretation of the \'input\' data. For example, if input_min is -1.0f and\ninput_max is 1.0f, and we are dealing with quint16 quantized data, then a 0\nvalue in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f."
 }
 op {
   name: "Reshape"
@@ -13299,6 +14640,85 @@ op {
   }
   summary: "Reverses variable length slices."
   description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
+}
+op {
+  name: "ReverseV2"
+  input_arg {
+    name: "tensor"
+    description: "Up to 8-D."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    description: "1-D. The indices of the dimensions to reverse."
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "output"
+    description: "The same shape as `tensor`."
+    type_attr: "T"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Reverses specific dimensions of a tensor."
+  description: "Given a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+}
+op {
+  name: "Round"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Rounds the values of a tensor to the nearest integer, element-wise."
+  description: "Rounds half to even.  Also known as bankers rounding. If you want to round\naccording to the current system rounding mode use std::cint."
 }
 op {
   name: "Rsqrt"
@@ -19249,6 +20669,71 @@ op {
   }
   summary: "Shuffle dimensions of x according to a permutation."
   description: "The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:\n  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`"
+}
+op {
+  name: "TruncateDiv"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns x / y element-wise for integer types."
+  description: "Truncation designates that negative numbers will round fractional quantities\ntoward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different\nthan Python semantics. See `FloorDiv` for a division function that matches\nPython Semantics.\n\n*NOTE*: `TruncateDiv` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+}
+op {
+  name: "TruncateMod"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns element-wise remainder of division. This emulates C semantics where"
+  description: "true, this follows C semantics in that the result here is consistent\nwith a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.\n\n*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "TruncatedNormal"

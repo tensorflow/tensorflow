@@ -25,6 +25,8 @@ from tensorflow.python.platform import flags
 
 def run(main=None):
   f = flags.FLAGS
+  # pylint: disable=protected-access
   flags_passthrough = f._parse_flags()
+  # pylint: enable=protected-access
   main = main or sys.modules['__main__'].main
   sys.exit(main(sys.argv[:1] + flags_passthrough))

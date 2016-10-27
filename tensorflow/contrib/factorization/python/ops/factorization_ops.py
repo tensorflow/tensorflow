@@ -27,14 +27,13 @@ import tensorflow as tf
 
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.platform import resource_loader
 
-_factorization_ops = load_op_library(resource_loader.get_path_to_datafile(
-    "_factorization_ops.so"))
-assert _factorization_ops, "Could not load _factorization_ops.so"
+_factorization_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile("_factorization_ops.so"))
 
 
 class WALSModel(object):

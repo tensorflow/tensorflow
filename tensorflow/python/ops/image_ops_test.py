@@ -164,6 +164,80 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       self.assertFalse(rgb_unknown.get_shape())
 
 
+class AdjustGamma(test_util.TensorFlowTestCase):
+
+  def test_adjust_gamma_one(self):
+    """Same image should be returned for gamma equal to one"""
+    with self.test_session():
+      x_data = np.random.uniform(0, 255, (8, 8))
+      x_np = np.array(x_data, dtype=np.float32)
+
+      x = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.adjust_gamma(x, gamma=1)
+
+      y_tf = y.eval()
+      y_np = x_np
+
+      self.assertAllClose(y_tf, y_np, 1e-6)
+
+
+  def test_adjust_gamma_zero(self):
+    """White image should be returned for gamma equal to zero"""
+    with self.test_session():
+      x_data = np.random.uniform(0, 255, (8, 8))
+      x_np = np.array(x_data, dtype=np.float32)
+      
+      x = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.adjust_gamma(x, gamma=0)
+      
+      y_tf = y.eval()
+
+      dtype = x.dtype.as_numpy_dtype
+      y_np = np.array([dtypes.dtype_range[dtype][1]] * x_np.size)
+      y_np = y_np.reshape((8,8))
+      
+      self.assertAllClose(y_tf, y_np, 1e-6)
+      
+
+  def test_adjust_gamma_less_one(self):
+    """Verifying the output with expected results for gamma
+    correction with gamma equal to half"""
+    with self.test_session():
+      x_np = np.arange(0, 255, 4, np.uint8).reshape(8,8)
+      y = image_ops.adjust_gamma(x_np, gamma=0.5)
+      y_tf = np.trunc(y.eval())
+
+      y_np = np.array([[  0,  31,  45,  55,  63,  71,  78,  84],
+          [ 90,  95, 100, 105, 110, 115, 119, 123],
+          [127, 131, 135, 139, 142, 146, 149, 153],
+          [156, 159, 162, 165, 168, 171, 174, 177],
+          [180, 183, 186, 188, 191, 194, 196, 199],
+          [201, 204, 206, 209, 211, 214, 216, 218],
+          [221, 223, 225, 228, 230, 232, 234, 236],
+          [238, 241, 243, 245, 247, 249, 251, 253]], dtype=np.float32)
+      
+      self.assertAllClose(y_tf, y_np, 1e-6)
+
+  def test_adjust_gamma_greater_one(self):
+    """Verifying the output with expected results for gamma
+    correction with gamma equal to two"""
+    with self.test_session():
+      x_np = np.arange(0, 255, 4, np.uint8).reshape(8,8)
+      y = image_ops.adjust_gamma(x_np, gamma=2)
+      y_tf = np.trunc(y.eval())
+
+      y_np = np.array([[  0,   0,   0,   0,   1,   1,   2,   3],
+          [  4,   5,   6,   7,   9,  10,  12,  14],
+          [ 16,  18,  20,  22,  25,  27,  30,  33],
+          [ 36,  39,  42,  45,  49,  52,  56,  60],
+          [ 64,  68,  72,  76,  81,  85,  90,  95],
+          [100, 105, 110, 116, 121, 127, 132, 138],
+          [144, 150, 156, 163, 169, 176, 182, 189],
+          [196, 203, 211, 218, 225, 233, 241, 249]], dtype=np.float32)
+
+      self.assertAllClose(y_tf, y_np, 1e-6)
+
+
 class AdjustHueTest(test_util.TensorFlowTestCase):
 
   def testAdjustNegativeHue(self):
@@ -417,6 +491,33 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     self._testContrast(x_np, y_np, contrast_factor=2.0)
+
+  def _adjustContrastNp(self, x_np, contrast_factor):
+    mean = np.mean(x_np, (1, 2), keepdims=True)
+    y_np = mean + contrast_factor * (x_np - mean)
+    return y_np
+
+  def _adjustContrastTf(self, x_np, contrast_factor):
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_np)
+      y = image_ops.adjust_contrast(x, contrast_factor)
+      y_tf = y.eval()
+    return y_tf
+
+  def testRandomContrast(self):
+    x_shapes = [
+        [1, 2, 2, 3],
+        [2, 1, 2, 3],
+        [1, 2, 2, 3],
+        [2, 5, 5, 3],
+        [2, 1, 1, 3],
+    ]
+    for x_shape in x_shapes:
+      x_np = np.random.rand(*x_shape) * 255.
+      contrast_factor = np.random.rand() * 2.0 + 0.1
+      y_np = self._adjustContrastNp(x_np, contrast_factor)
+      y_tf = self._adjustContrastTf(x_np, contrast_factor)
+      self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):

@@ -34,8 +34,7 @@ from tensorflow.python.training import queue_runner
 
 
 __all__ = ['rejection_sample',
-           'stratified_sample',
-           'stratified_sample_unknown_dist',]
+           'stratified_sample',]
 
 
 def rejection_sample(tensors, accept_prob_fn, batch_size, queue_threads=1,
@@ -124,9 +123,7 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
 
   This method discards examples. Internally, it creates one queue to amortize
   the cost of disk reads, and one queue to hold the properly-proportioned
-  batch. See `stratified_sample_unknown_dist` for a function that performs
-  stratified sampling with one queue per class and doesn't require knowing the
-  class data-distribution ahead of time.
+  batch.
 
   Args:
     tensors: List of tensors for data. All tensors are either one item or a
@@ -234,80 +231,6 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
         batch_size,
         num_threads=threads_per_queue)
     return batched[:-1], batched[-1]
-
-
-def stratified_sample_unknown_dist(tensors, labels, probs, batch_size,
-                                   enqueue_many=False, queue_capacity=16,
-                                   threads_per_queue=1, name=None):
-  """Stochastically creates batches based on per-class probabilities.
-
-  **NOTICE** This sampler can be significantly slower than `stratified_sample`
-  due to each thread discarding all examples not in its assigned class.
-
-  This uses a number of threads proportional to the number of classes. See
-  `stratified_sample` for an implementation that discards fewer examples and
-  uses a fixed number of threads. This function's only advantage over
-  `stratified_sample` is that the class data-distribution doesn't need to be
-  known ahead of time.
-
-  Args:
-    tensors: List of tensors for data. All tensors are either one item or a
-        batch, according to enqueue_many.
-    labels: Tensor for label of data. Label is a single integer or a batch,
-        depending on enqueue_many. It is not a one-hot vector.
-    probs: Target class probabilities. An object whose type has a registered
-        Tensor conversion function.
-    batch_size: Size of batch to be returned.
-    enqueue_many: Bool. If true, interpret input tensors as having a batch
-        dimension.
-    queue_capacity: Capacity of each per-class queue.
-    threads_per_queue: Number of threads for each per-class queue.
-    name: Optional prefix for ops created by this function.
-  Raises:
-    ValueError: enqueue_many is True and labels doesn't have a batch
-        dimension, or if enqueue_many is False and labels isn't a scalar.
-    ValueError: enqueue_many is True, and batch dimension of data and labels
-        don't match.
-    ValueError: if probs don't sum to one.
-    TFAssertion: if labels aren't integers in [0, num classes).
-  Returns:
-    (data_batch, label_batch), where data_batch is a list of tensors of the same
-        length as `tensors`
-
-  Example:
-    # Get tensor for a single data and label example.
-    data, label = data_provider.Get(['data', 'label'])
-
-    # Get stratified batch according to per-class probabilities.
-    init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
-    [data_batch], labels = (
-        tf.contrib.training.stratified_sample_unknown_dist(
-            [data], label, init_probs, 16))
-
-    # Run batch through network.
-    ...
-  """
-  with ops.name_scope(name, 'stratified_sample_unknown_dist',
-                      tensors + [labels]):
-    tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
-    labels = ops.convert_to_tensor(labels)
-    probs = ops.convert_to_tensor(probs, dtype=dtypes.float32)
-    # Reduce the case of a single example to that of a batch of size 1.
-    if not enqueue_many:
-      tensor_list = [array_ops.expand_dims(tensor, 0) for tensor in tensor_list]
-      labels = array_ops.expand_dims(labels, 0)
-
-    # Validate that input is consistent.
-    tensor_list, labels, [probs] = _verify_input(tensor_list, labels, [probs])
-
-    # Make per-class queues.
-    per_class_queues = _make_per_class_queues(
-        tensor_list, labels, probs.get_shape().num_elements(), queue_capacity,
-        threads_per_queue)
-
-    # Use the per-class queues to generate stratified batches.
-    return _get_batch_from_per_class_queues(
-        per_class_queues, probs, batch_size)
 
 
 def _estimate_data_distribution(labels, num_classes, smoothing_constant=10):
@@ -521,88 +444,3 @@ def _conditional_batch(tensors, keep_input, batch_size, num_threads=10):
     out_tensor = [out_tensor]
 
   return out_tensor
-
-
-def _make_per_class_queues(tensor_list, labels, num_classes, queue_capacity,
-                           threads_per_queue):
-  """Creates per-class-queues based on data and labels."""
-  # Create one queue per class.
-  queues = []
-  data_shapes = []
-  data_dtypes = []
-  for data_tensor in tensor_list:
-    per_data_shape = data_tensor.get_shape().with_rank_at_least(1)[1:]
-    per_data_shape.assert_is_fully_defined()
-    data_shapes.append(per_data_shape)
-    data_dtypes.append(data_tensor.dtype)
-
-  for i in range(num_classes):
-    q = data_flow_ops.FIFOQueue(capacity=queue_capacity,
-                                shapes=data_shapes, dtypes=data_dtypes,
-                                name='stratified_sample_class%d_queue' % i)
-    logging_ops.scalar_summary(
-        'queue/%s/stratified_sample_class%d' % (q.name, i), q.size())
-    queues.append(q)
-
-  # Partition tensors according to labels. `partitions` is a list of lists, of
-  # size num_classes X len(tensor_list). The number of tensors in partition `i`
-  # should be the same for all tensors.
-  all_partitions = [data_flow_ops.dynamic_partition(data, labels, num_classes)
-                    for data in tensor_list]
-  partitions = [[cur_partition[i] for cur_partition in all_partitions] for i in
-                range(num_classes)]
-
-  # Enqueue each tensor on the per-class-queue.
-  for i in range(num_classes):
-    enqueue_op = queues[i].enqueue_many(partitions[i]),
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(
-        queues[i], [enqueue_op] * threads_per_queue))
-
-  return queues
-
-
-def _get_batch_from_per_class_queues(per_class_queues, probs, batch_size):
-  """Generates batches according to per-class-probabilities."""
-  num_classes = probs.get_shape().num_elements()
-  # Number of examples per class is governed by a multinomial distribution.
-  # Note: multinomial takes unnormalized log probabilities for its first
-  # argument, of dimension [batch_size, num_classes].
-  examples = random_ops.multinomial(
-      array_ops.expand_dims(math_ops.log(probs), 0), batch_size)
-
-  # Prepare the data and label batches.
-  val_list = []
-  label_list = []
-  for i in range(num_classes):
-    num_examples = math_ops.reduce_sum(
-        math_ops.cast(math_ops.equal(examples, i), dtypes.int32))
-    tensors = per_class_queues[i].dequeue_many(num_examples)
-
-    # If you enqueue a list with a single tensor, only a single tensor is
-    # returned. If you enqueue a list with multiple tensors, then a list is
-    # returned. We want to handle both cases, so reduce the case of the single
-    # tensor to the case of multiple tensors.
-    if not isinstance(tensors, list):
-      tensors = [tensors]
-
-    val_list.append(tensors)
-    label_list.append(array_ops.ones([num_examples], dtype=dtypes.int32) * i)
-
-  # Create a list of tensor of values. val_list is of dimension
-  # [num_classes x len(tensors)]. We want list_batch_vals to be of dimension
-  # [len(tensors)].
-  num_data = len(val_list[0])
-  list_batch_vals = [array_ops.concat(
-      0, [val_list[i][j] for i in range(num_classes)]) for j in range(num_data)]
-
-  # Create a tensor of labels.
-  batch_labels = array_ops.concat(0, label_list)
-  batch_labels.set_shape([batch_size])
-
-  # Debug instrumentation.
-  sample_tags = ['stratified_sample/%s/samples_class%i' % (batch_labels.name, i)
-                 for i in range(num_classes)]
-  logging_ops.scalar_summary(sample_tags, math_ops.reduce_sum(
-      array_ops.one_hot(batch_labels, num_classes), 0))
-
-  return list_batch_vals, batch_labels

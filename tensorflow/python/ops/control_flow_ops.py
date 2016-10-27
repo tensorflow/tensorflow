@@ -131,14 +131,21 @@ def Assert(condition, data, summarize=None, name=None):
     `tf.errors.InvalidArgumentError` if `condition` is not true.
   """
   with ops.name_scope(name, "Assert", [condition, data]) as name:
-    condition = ops.convert_to_tensor(condition, name="Condition")
-    def true_assert():
+    xs = ops.convert_n_to_tensor(data)
+    if all([x.dtype in {dtypes.string, dtypes.int32} for x in xs]):
+      # As a simple heuristic, we assume that string and int32 are
+      # on host to avoid the need to use cond. If it is not case,
+      # we will pay the price copying the tensor to host memory.
       return gen_logging_ops._assert(
           condition, data, summarize, name="Assert")
-    # TODO(ebrevdo): Remove the cond once when can tell all inputs are on host.
-    guarded_assert = cond(
-        condition, no_op, true_assert, name="AssertGuard")
-    return guarded_assert.op
+    else:
+      condition = ops.convert_to_tensor(condition, name="Condition")
+      def true_assert():
+        return gen_logging_ops._assert(
+            condition, data, summarize, name="Assert")
+      guarded_assert = cond(
+          condition, no_op, true_assert, name="AssertGuard")
+      return guarded_assert.op
 
 
 def _Identity(data, name=None):
@@ -1332,22 +1339,24 @@ class ControlFlowContext(object):
       Pushed and popped by ctxt.Enter() and ctxt.Exit()
   """
 
-  def __init__(self, values_def=None):
+  def __init__(self, values_def=None, import_scope=None):
     self._outer_context = ops.get_default_graph()._get_control_flow_context()
     self._context_stack = []
     if values_def:
-      self._init_values_from_proto(values_def)
+      self._init_values_from_proto(values_def,
+                                   import_scope=import_scope)
     else:
       # Values that have been already seen in this context.
       self._values = set()
       # Values referenced by but external to this context.
       self._external_values = {}
 
-  def _init_values_from_proto(self, values_def):
+  def _init_values_from_proto(self, values_def, import_scope=None):
     """Initializes values and external_values from `ValuesDef` protocol buffer.
 
     Args:
       values_def: `ValuesDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(values_def, control_flow_pb2.ValuesDef)
     self._values = set(values_def.values)
@@ -1359,7 +1368,8 @@ class ControlFlowContext(object):
                     for op in self._values - set(self._external_values)])
     for op in op_names:
       # pylint: disable=protected-access
-      g.as_graph_element(op)._set_control_flow_context(self)
+      g.as_graph_element(ops.prepend_name_scope(
+          op, import_scope))._set_control_flow_context(self)
       # pylint: enable=protected-access
 
   @property
@@ -1375,22 +1385,29 @@ class ControlFlowContext(object):
   def back_prop(self):
     raise NotImplementedError("Abstract method")
 
-  def _to_proto(self):
+  def _to_proto(self, export_scope=None):
     """Converts the values to a `ValuesDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
 
     Returns:
       A `ValuesDef` protocol buffer.
     """
     values_def = control_flow_pb2.ValuesDef()
-    values_def.values.extend([v for v in sorted(self._values)])
+    values_def.values.extend(
+        [ops.strip_name_scope(v, export_scope)
+         for v in sorted(self._values)])
     for k, v in self._external_values.items():
-      values_def.external_values[k] = v.name
+      values_def.external_values[k] = ops.strip_name_scope(
+          v.name, export_scope)
     return values_def
 
   @staticmethod
-  def _from_proto(values_def):
+  def _from_proto(values_def, import_scope=None):
     """Returns a `ControlFlowContext` created from `values_def`."""
-    return ControlFlowContext(values_def=values_def)
+    return ControlFlowContext(values_def=values_def,
+                              import_scope=import_scope)
 
   def AddName(self, name):
     self._values.add(name)
@@ -1467,11 +1484,23 @@ class CondContext(ControlFlowContext):
   """The context for the conditional construct."""
 
   def __init__(self, pred=None, pivot=None, branch=None,
-               name="cond_text", context_def=None):
+               name="cond_text", context_def=None, import_scope=None):
+    """Creates a `CondContext`.
+
+    Args:
+      pred: The `boolean` tensor for the conditional predicate.
+      pivot: The predicate tensor in this branch.
+      branch: 0 or 1 representing this branch.
+      name: Name of the `CondContext` python object.
+      context_def: Optional `ContextDef` protocol buffer to initialize the
+        `CondContext` object from.
+      import_scope: Optional `string`. Name scope to add. Only used when
+        initialing from protocol buffer.
+    """
     self._name = ops.get_default_graph().unique_name(name)
 
     if context_def:
-      self._init_from_proto(context_def)
+      self._init_from_proto(context_def, import_scope=import_scope)
     else:
       # Initializes the default fields.
       ControlFlowContext.__init__(self)
@@ -1483,20 +1512,25 @@ class CondContext(ControlFlowContext):
       self._values.add(pred.name)
       self._values.add(pivot.name)
 
-  def _init_from_proto(self, context_def):
+  def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `CondContext` from protocol buffer.
 
     Args:
       context_def: `CondContextDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(context_def, control_flow_pb2.CondContextDef)
     # Create from context_def.
     g = ops.get_default_graph()
-    self._name = context_def.context_name
-    self._pred = g.as_graph_element(context_def.pred_name)
-    self._pivot = g.as_graph_element(context_def.pivot_name)
+    self._name = ops.prepend_name_scope(
+        context_def.context_name, import_scope)
+    self._pred = g.as_graph_element(ops.prepend_name_scope(
+        context_def.pred_name, import_scope))
+    self._pivot = g.as_graph_element(ops.prepend_name_scope(
+        context_def.pivot_name, import_scope))
     self._branch = context_def.branch
-    super(CondContext, self).__init__(values_def=context_def.values_def)
+    super(CondContext, self).__init__(values_def=context_def.values_def,
+                                      import_scope=import_scope)
 
   @property
   def name(self):
@@ -1529,25 +1563,37 @@ class CondContext(ControlFlowContext):
   def GetControlPivot(self):
     return self._pivot
 
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
     """Converts a `CondContext` to a `CondContextDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
 
     Returns:
       A `CondContextDef` protocol buffer.
     """
-    context_def = control_flow_pb2.CondContextDef()
-    context_def.context_name = self.name
-    context_def.pred_name = self._pred.name
-    context_def.pivot_name = self._pivot.name
-    context_def.branch = self._branch
-    context_def.values_def.MergeFrom(super(CondContext, self)._to_proto())
+    if (export_scope is None or
+        self.name.startswith(export_scope)):
+      context_def = control_flow_pb2.CondContextDef()
+      context_def.context_name = ops.strip_name_scope(
+          self.name, export_scope)
+      context_def.pred_name = ops.strip_name_scope(
+          self._pred.name, export_scope)
+      context_def.pivot_name = ops.strip_name_scope(
+          self._pivot.name, export_scope)
+      context_def.branch = self._branch
+      context_def.values_def.MergeFrom(super(CondContext, self)._to_proto(
+          export_scope))
 
-    return context_def
+      return context_def
+    else:
+      return None
 
   @staticmethod
-  def from_proto(context_def):
+  def from_proto(context_def, import_scope=None):
     """Returns a `CondContext` object created from `context_def`."""
-    return CondContext(context_def=context_def)
+    return CondContext(context_def=context_def,
+                       import_scope=import_scope)
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
@@ -1770,9 +1816,23 @@ class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
   def __init__(self, parallel_iterations=10, back_prop=True, swap_memory=False,
-               name="while_context", grad_state=None, context_def=None):
+               name="while_context", grad_state=None, context_def=None,
+               import_scope=None):
+    """"Creates a `WhileContext`.
+
+    Args:
+      parallel_iterations: The number of iterations allowed to run in parallel.
+      back_prop: Whether backprop is enabled for this while loop.
+      swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
+      name: Optional name prefix for the returned tensors.
+      grad_state: The gradient loop state.
+      context_def: Optional `WhileContextDef` protocol buffer to initialize
+        the `Whilecontext` python object from.
+      import_scope: Optional `string`. Name scope to add. Only used when
+        initialing from protocol buffer.
+    """
     if context_def:
-      self._init_from_proto(context_def)
+      self._init_from_proto(context_def, import_scope=import_scope)
     else:
       ControlFlowContext.__init__(self)
       self._init_from_args(parallel_iterations, back_prop, swap_memory,
@@ -1810,29 +1870,36 @@ class WhileContext(ControlFlowContext):
     # The list of exit tensors for loop variables.
     self._loop_exits = []
 
-  def _init_from_proto(self, context_def):
+  def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `WhileContext` from protocol buffer.
 
     Args:
       context_def: `WhileContextDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(context_def, control_flow_pb2.WhileContextDef)
     # Create from context_def.
     g = ops.get_default_graph()
-    self._name = context_def.context_name
+    self._name = ops.prepend_name_scope(
+        context_def.context_name, import_scope)
     self._parallel_iterations = context_def.parallel_iterations
     self._back_prop = context_def.back_prop
     self._swap_memory = context_def.swap_memory
-    self._pivot_for_pred = g.as_graph_element(context_def.pivot_for_pred_name)
+    self._pivot_for_pred = g.as_graph_element(ops.prepend_name_scope(
+        context_def.pivot_for_pred_name, import_scope))
     # We use this node to control constants created by the body lambda.
-    self._pivot_for_body = g.as_graph_element(context_def.pivot_for_body_name)
+    self._pivot_for_body = g.as_graph_element(ops.prepend_name_scope(
+        context_def.pivot_for_body_name, import_scope))
     # The boolean tensor for loop termination condition. Used in code
     # generation for gradient computation.
-    self._pivot = g.as_graph_element(context_def.pivot_name)
+    self._pivot = g.as_graph_element(
+        ops.prepend_name_scope(context_def.pivot_name, import_scope))
     # The list of exit tensors for loop variables.
-    self._loop_exits = [g.as_graph_element(exit_name)
+    self._loop_exits = [g.as_graph_element(
+        ops.prepend_name_scope(exit_name, import_scope))
                         for exit_name in context_def.loop_exit_names]
-    super(WhileContext, self).__init__(values_def=context_def.values_def)
+    super(WhileContext, self).__init__(values_def=context_def.values_def,
+                                       import_scope=import_scope)
 
   @property
   def name(self):
@@ -1868,30 +1935,52 @@ class WhileContext(ControlFlowContext):
     """The gradient loop state."""
     return self._grad_state
 
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
     """Converts a `WhileContext` to a `WhileContextDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
 
     Returns:
       A `WhileContextDef` protocol buffer.
     """
-    context_def = control_flow_pb2.WhileContextDef()
-    context_def.context_name = self.name
-    context_def.parallel_iterations = self._parallel_iterations
-    context_def.back_prop = self._back_prop
-    context_def.swap_memory = self._swap_memory
-    context_def.pivot_for_pred_name = self._pivot_for_pred.name
-    context_def.pivot_for_body_name = self._pivot_for_body.name
-    context_def.pivot_name = self._pivot.name
-    if self._loop_exits:
-      context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
-    context_def.values_def.MergeFrom(super(WhileContext, self)._to_proto())
+    if (export_scope is None or
+        self.name.startswith(export_scope)):
+      context_def = control_flow_pb2.WhileContextDef()
+      context_def.context_name = ops.strip_name_scope(
+          self.name, export_scope)
+      context_def.parallel_iterations = self._parallel_iterations
+      context_def.back_prop = self._back_prop
+      context_def.swap_memory = self._swap_memory
+      context_def.pivot_for_pred_name = ops.strip_name_scope(
+          self._pivot_for_pred.name, export_scope)
+      context_def.pivot_for_body_name = ops.strip_name_scope(
+          self._pivot_for_body.name, export_scope)
+      context_def.pivot_name = ops.strip_name_scope(
+          self._pivot.name, export_scope)
+      if self._loop_exits:
+        context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
+      context_def.values_def.MergeFrom(
+          super(WhileContext, self)._to_proto(
+              export_scope=export_scope))
 
-    return context_def
+      return context_def
+    else:
+      return None
 
   @staticmethod
-  def from_proto(context_def):
-    """Returns a `WhileContext` object created from `context_def`."""
-    return WhileContext(context_def=context_def)
+  def from_proto(context_def, import_scope=None):
+    """Returns a `WhileContext` object created from `context_def`.
+
+    Args:
+      context_def: A `WhileContextDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to add.
+
+    Returns:
+      A `WhileContext` Python object.
+    """
+    return WhileContext(context_def=context_def,
+                        import_scope=import_scope)
 
   def GetWhileContext(self):
     return self

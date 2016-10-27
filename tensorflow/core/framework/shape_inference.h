@@ -121,12 +121,11 @@ struct DimensionOrConstant {
   DimensionOrConstant();
 };
 
-// Note: This is experimental support for op shape inference in C++.  Shape
-// inference functions are not ready to be implemented yet.
-//
-// An InferenceContext is created by the framework and passed to a shape
-// inference function.  The shape inference function calls functions on the
-// context, and should call set_output() to set the shape on all outputs.
+// Shape inference functions registered on ops in REGISTER_OP implement
+// their shape functions in terms of this InferenceContext.  An InferenceContext
+// is created by the framework and passed to a shape inference function.  The
+// shape inference function calls functions on the context, and should call
+// set_output() to set the shape on all outputs.
 //
 // All Shape* and Dimension* returned by functions of InferenceContext are owned
 // by the InferenceContext.

@@ -26,7 +26,7 @@ cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-Wno-sign-compare"],
     deps = [
         ":naming",
         "//tensorflow/core:core_cpu_internal",

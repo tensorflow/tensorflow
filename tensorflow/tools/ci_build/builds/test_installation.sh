@@ -47,10 +47,6 @@
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
 #
-# TF_BUILD_SERIAL_INSTALL_TESTS, if set to any non-empty and non-0 value,
-# will force the Python install tests to run serially, overriding than the
-# concurrent testing behavior.
-#
 # TF_GPU_COUNT, Set the number of GPUs in the system. We run only this many
 # concurrent tests when running GPU tests.
 #
@@ -411,21 +407,21 @@ SKIP_COUNTER=0
 FAILED_TESTS=""
 FAILED_TEST_LOGS=""
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-if [[ -z ${N_JOBS} ]]; then
-  # Try the Mac way of getting number of CPUs
-  N_JOBS=$(sysctl -n hw.ncpu)
-fi
-
-if [[ -z ${N_JOBS} ]]; then
-  N_JOBS=8
-  echo "Cannot determine the number of processors"
-  echo "Using default concurrent job counter ${N_JOBS}"
-fi
-
-if [[ ! -z "${TF_BUILD_SERIAL_INSTALL_TESTS}" ]] &&
-   [[ "${TF_BUILD_SERIAL_INSTALL_TESTS}" != "0" ]]; then
+if [[ "${IS_GPU}" == "1" ]]; then
   N_JOBS=$TF_GPU_COUNT
+else
+  N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -z ${N_JOBS} ]]; then
+    # Try the Mac way of getting number of CPUs
+    N_JOBS=$(sysctl -n hw.ncpu)
+  fi
+
+  # If still cannot determine the number of CPUs, pick 8.
+  if [[ -z ${N_JOBS} ]]; then
+    N_JOBS=8
+    echo "Cannot determine the number of processors"
+    echo "Using default concurrent job counter ${N_JOBS}"
+  fi
 fi
 
 echo "Running Python tests-on-install with ${N_JOBS} concurrent jobs..."
@@ -485,9 +481,14 @@ while true; do
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
 
     # Launch test asynchronously
-    "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
+    if [[ "${IS_GPU}" == "1" ]]; then
+      "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
+        "${SCRIPT_DIR}/py_test_delegate.sh" \
+        "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    else
       "${SCRIPT_DIR}/py_test_delegate.sh" \
-      "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+        "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    fi
 
     if [[ "${TEST_COUNTER}" -ge "${N_PAR_TESTS}" ]]; then
       # Run in exclusive mode

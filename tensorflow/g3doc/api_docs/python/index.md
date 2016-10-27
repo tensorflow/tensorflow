@@ -129,6 +129,7 @@
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
   * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
+  * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
@@ -139,6 +140,8 @@
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
+  * [`quantize_v2`](../../api_docs/python/array_ops.md#quantize_v2)
+  * [`quantized_concat`](../../api_docs/python/array_ops.md#quantized_concat)
   * [`rank`](../../api_docs/python/array_ops.md#rank)
   * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
@@ -186,6 +189,7 @@
   * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
+  * [`count_nonzero`](../../api_docs/python/math_ops.md#count_nonzero)
   * [`cross`](../../api_docs/python/math_ops.md#cross)
   * [`cumprod`](../../api_docs/python/math_ops.md#cumprod)
   * [`cumsum`](../../api_docs/python/math_ops.md#cumsum)
@@ -241,7 +245,6 @@
   * [`reduce_max`](../../api_docs/python/math_ops.md#reduce_max)
   * [`reduce_mean`](../../api_docs/python/math_ops.md#reduce_mean)
   * [`reduce_min`](../../api_docs/python/math_ops.md#reduce_min)
-  * [`reduce_nnz`](../../api_docs/python/math_ops.md#reduce_nnz)
   * [`reduce_prod`](../../api_docs/python/math_ops.md#reduce_prod)
   * [`reduce_sum`](../../api_docs/python/math_ops.md#reduce_sum)
   * [`round`](../../api_docs/python/math_ops.md#round)
@@ -339,6 +342,7 @@
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)
   * [`adjust_contrast`](../../api_docs/python/image.md#adjust_contrast)
+  * [`adjust_gamma`](../../api_docs/python/image.md#adjust_gamma)
   * [`adjust_hue`](../../api_docs/python/image.md#adjust_hue)
   * [`adjust_saturation`](../../api_docs/python/image.md#adjust_saturation)
   * [`central_crop`](../../api_docs/python/image.md#central_crop)
@@ -491,6 +495,9 @@
   * [`nce_loss`](../../api_docs/python/nn.md#nce_loss)
   * [`normalize_moments`](../../api_docs/python/nn.md#normalize_moments)
   * [`pool`](../../api_docs/python/nn.md#pool)
+  * [`quantized_avg_pool`](../../api_docs/python/nn.md#quantized_avg_pool)
+  * [`quantized_max_pool`](../../api_docs/python/nn.md#quantized_max_pool)
+  * [`quantized_relu_x`](../../api_docs/python/nn.md#quantized_relu_x)
   * [`raw_rnn`](../../api_docs/python/nn.md#raw_rnn)
   * [`relu`](../../api_docs/python/nn.md#relu)
   * [`relu6`](../../api_docs/python/nn.md#relu6)
@@ -556,6 +563,8 @@
   * [`AggregationMethod`](../../api_docs/python/train.md#AggregationMethod)
   * [`assert_global_step`](../../api_docs/python/train.md#assert_global_step)
   * [`audio_summary`](../../api_docs/python/train.md#audio_summary)
+  * [`basic_train_loop`](../../api_docs/python/train.md#basic_train_loop)
+  * [`checkpoint_exists`](../../api_docs/python/train.md#checkpoint_exists)
   * [`CheckpointSaverHook`](../../api_docs/python/train.md#CheckpointSaverHook)
   * [`ChiefSessionCreator`](../../api_docs/python/train.md#ChiefSessionCreator)
   * [`clip_by_average_norm`](../../api_docs/python/train.md#clip_by_average_norm)
@@ -569,6 +578,7 @@
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
   * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
+  * [`get_checkpoint_mtimes`](../../api_docs/python/train.md#get_checkpoint_mtimes)
   * [`get_global_step`](../../api_docs/python/train.md#get_global_step)
   * [`global_norm`](../../api_docs/python/train.md#global_norm)
   * [`global_step`](../../api_docs/python/train.md#global_step)
@@ -585,7 +595,10 @@
   * [`MonitoredTrainingSession`](../../api_docs/python/train.md#MonitoredTrainingSession)
   * [`NanLossDuringTrainingError`](../../api_docs/python/train.md#NanLossDuringTrainingError)
   * [`NanTensorHook`](../../api_docs/python/train.md#NanTensorHook)
+  * [`NewCheckpointReader`](../../api_docs/python/train.md#NewCheckpointReader)
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
+  * [`ProximalAdagradOptimizer`](../../api_docs/python/train.md#ProximalAdagradOptimizer)
+  * [`ProximalGradientDescentOptimizer`](../../api_docs/python/train.md#ProximalGradientDescentOptimizer)
   * [`QueueRunner`](../../api_docs/python/train.md#QueueRunner)
   * [`replica_device_setter`](../../api_docs/python/train.md#replica_device_setter)
   * [`RMSPropOptimizer`](../../api_docs/python/train.md#RMSPropOptimizer)
@@ -605,7 +618,10 @@
   * [`summary_iterator`](../../api_docs/python/train.md#summary_iterator)
   * [`SummarySaverHook`](../../api_docs/python/train.md#SummarySaverHook)
   * [`SummaryWriter`](../../api_docs/python/train.md#SummaryWriter)
+  * [`SummaryWriterCache`](../../api_docs/python/train.md#SummaryWriterCache)
   * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
+  * [`SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)
+  * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
   * [`WorkerSessionCreator`](../../api_docs/python/train.md#WorkerSessionCreator)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
   * [`zero_fraction`](../../api_docs/python/train.md#zero_fraction)
@@ -614,16 +630,26 @@
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
 * **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`audio`](../../api_docs/python/summary.md#audio)
+  * [`get_summary_description`](../../api_docs/python/summary.md#get_summary_description)
+  * [`histogram`](../../api_docs/python/summary.md#histogram)
+  * [`image`](../../api_docs/python/summary.md#image)
+  * [`merge`](../../api_docs/python/summary.md#merge)
+  * [`merge_all`](../../api_docs/python/summary.md#merge_all)
   * [`scalar`](../../api_docs/python/summary.md#scalar)
   * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
 
 * **[Testing](../../api_docs/python/test.md)**:
   * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
+  * [`Benchmark`](../../api_docs/python/test.md#Benchmark)
   * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
   * [`compute_gradient_error`](../../api_docs/python/test.md#compute_gradient_error)
   * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
+  * [`is_gpu_available`](../../api_docs/python/test.md#is_gpu_available)
   * [`main`](../../api_docs/python/test.md#main)
+  * [`test_src_dir_path`](../../api_docs/python/test.md#test_src_dir_path)
+  * [`TestCase`](../../api_docs/python/test.md#TestCase)
 
 * **[BayesFlow Entropy (contrib)](../../api_docs/python/contrib.bayesflow.entropy.md)**:
   * [`elbo_ratio`](../../api_docs/python/contrib.bayesflow.entropy.md#elbo_ratio)
@@ -643,6 +669,8 @@
   * [`BaseStochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#BaseStochasticTensor)
   * [`BernoulliTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#BernoulliTensor)
   * [`BernoulliWithSigmoidPTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#BernoulliWithSigmoidPTensor)
+  * [`beta_aaTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#beta_aaTensor)
+  * [`beta_bbTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#beta_bbTensor)
   * [`BetaTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#BetaTensor)
   * [`BetaWithSoftplusABTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#BetaWithSoftplusABTensor)
   * [`BinomialTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#BinomialTensor)
@@ -703,6 +731,8 @@
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
   * [`BernoulliWithSigmoidP`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidP)
   * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
+  * [`beta_aa`](../../api_docs/python/contrib.distributions.md#beta_aa)
+  * [`beta_bb`](../../api_docs/python/contrib.distributions.md#beta_bb)
   * [`BetaWithSoftplusAB`](../../api_docs/python/contrib.distributions.md#BetaWithSoftplusAB)
   * [`Binomial`](../../api_docs/python/contrib.distributions.md#Binomial)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
@@ -744,10 +774,14 @@
 
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
+  * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
   * [`Exp`](../../api_docs/python/contrib.distributions.bijector.md#Exp)
   * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
+  * [`Invert`](../../api_docs/python/contrib.distributions.bijector.md#Invert)
   * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
+  * [`SigmoidCentered`](../../api_docs/python/contrib.distributions.bijector.md#SigmoidCentered)
+  * [`SoftmaxCentered`](../../api_docs/python/contrib.distributions.bijector.md#SoftmaxCentered)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
@@ -917,9 +951,6 @@
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
-  * [`TensorFlowEstimator`](../../api_docs/python/contrib.learn.md#TensorFlowEstimator)
-  * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
-  * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
   * [`train`](../../api_docs/python/contrib.learn.md#train)
 
 * **[Monitors (contrib)](../../api_docs/python/contrib.learn.monitors.md)**:
@@ -937,7 +968,6 @@
   * [`StepCounter`](../../api_docs/python/contrib.learn.monitors.md#StepCounter)
   * [`StopAtStep`](../../api_docs/python/contrib.learn.monitors.md#StopAtStep)
   * [`SummarySaver`](../../api_docs/python/contrib.learn.monitors.md#SummarySaver)
-  * [`SummaryWriterCache`](../../api_docs/python/contrib.learn.monitors.md#SummaryWriterCache)
   * [`ValidationMonitor`](../../api_docs/python/contrib.learn.monitors.md#ValidationMonitor)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
@@ -958,6 +988,7 @@
 
 * **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
+  * [`BidirectionalGridLSTMCell`](../../api_docs/python/contrib.rnn.md#BidirectionalGridLSTMCell)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
   * [`FusedRNNCell`](../../api_docs/python/contrib.rnn.md#FusedRNNCell)
   * [`FusedRNNCellAdaptor`](../../api_docs/python/contrib.rnn.md#FusedRNNCellAdaptor)
@@ -1001,6 +1032,7 @@
   * [`streaming_sensitivity_at_specificity`](../../api_docs/python/contrib.metrics.md#streaming_sensitivity_at_specificity)
   * [`streaming_sparse_average_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_average_precision_at_k)
   * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
+  * [`streaming_sparse_precision_at_top_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_top_k)
   * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
   * [`streaming_specificity_at_sensitivity`](../../api_docs/python/contrib.metrics.md#streaming_specificity_at_sensitivity)
 
@@ -1013,7 +1045,6 @@
   * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
-  * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
   * [`weighted_resample`](../../api_docs/python/contrib.training.md#weighted_resample)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:

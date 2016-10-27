@@ -277,6 +277,12 @@ classes when using one of the sampled loss functions above.
 
 @@compute_accidental_hits
 
+### Quantization ops
+
+@@quantized_relu_x
+@@quantized_max_pool
+@@quantized_avg_pool
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1023,6 +1029,8 @@ def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
+  # Add 1e-12 to epsilon when epsilon <= 1e-5 to prevent CUDNN exception.
+  epsilon = epsilon if epsilon > 1e-5 else epsilon + 1e-12
   y, batch_mean, batch_var, _, _ = gen_nn_ops.fused_batch_norm(
       x,
       scale,

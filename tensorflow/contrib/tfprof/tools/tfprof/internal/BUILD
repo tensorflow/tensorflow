@@ -122,6 +122,7 @@ cc_library(
     name = "tfprof_utils",
     srcs = ["tfprof_utils.cc"],
     hdrs = ["tfprof_utils.h"],
+    copts = ["-Wno-sign-compare"],
     deps = [
         ":tfprof_options",
         "//tensorflow/core:lib",
@@ -182,6 +183,7 @@ cc_library(
     name = "tfprof_tensor",
     srcs = ["tfprof_tensor.cc"],
     hdrs = ["tfprof_tensor.h"],
+    copts = ["-Wno-sign-compare"],
     deps = [
         "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:framework",

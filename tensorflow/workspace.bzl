@@ -101,9 +101,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.http_archive(
     name = "protobuf",
-    url = "http://github.com/google/protobuf/archive/c2b3e70efd2038a54ef8973771ac58192885125e.tar.gz",
-    sha256 = "eafc1bc4c27970d62effe64ba6610823fdd66711f440d8ca4a168167786a2fcb",
-    strip_prefix = "protobuf-c2b3e70efd2038a54ef8973771ac58192885125e",
+    url = "http://github.com/google/protobuf/archive/008b5a228b37c054f46ba478ccafa5e855cb16db.tar.gz",
+    sha256 = "2737ad055eb8a9bc63ed068e32c4ea280b62d8236578cb4d4120eb5543f759ab",
+    strip_prefix = "protobuf-008b5a228b37c054f46ba478ccafa5e855cb16db",
   )
 
   native.new_http_archive(
@@ -127,6 +127,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "python_headers",
     actual = str(Label("//util/python:python_headers")),
+  )
+
+  native.new_http_archive(
+    name = "pcre",
+    sha256 = "ccdf7e788769838f8285b3ee672ed573358202305ee361cfec7a4a4fb005bbc7",
+    url = "http://ftp.cs.stanford.edu/pub/exim/pcre/pcre-8.39.tar.gz",
+    strip_prefix = "pcre-8.39",
+    build_file = str(Label("//third_party:pcre.BUILD")),
+  )
+
+  native.new_http_archive(
+    name = "swig",
+    sha256 = "a2669657cabcedc371f63c0457407a183e0b6b2ef4e7e303c1ec9a3964cc7813",
+    url = "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.2/swig-3.0.2.tar.gz",
+    strip_prefix = "swig-3.0.2",
+    build_file = str(Label("//third_party:swig.BUILD")),
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler

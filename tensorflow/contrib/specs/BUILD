@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 py_library(
     name = "specs",
     srcs = [
+        "__init__.py",
         "python/__init__.py",
         "python/params_ops.py",
         "python/specs.py",

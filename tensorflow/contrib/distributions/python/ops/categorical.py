@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -103,6 +104,8 @@ class Categorical(distribution.Distribution):
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[logits]) as ns:
       self._logits, self._p = distribution_util.get_logits_and_prob(
           name=name, logits=logits, p=p, validate_args=validate_args,
@@ -137,14 +140,15 @@ class Categorical(distribution.Distribution):
       else:
         with ops.name_scope(name="batch_shape"):
           self._batch_shape_val = logits_shape[:-1]
-      super(Categorical, self).__init__(
-          dtype=dtype,
-          parameters={"logits": self._logits, "num_classes": self._num_classes},
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=ns)
+    super(Categorical, self).__init__(
+        dtype=dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._logits, self._num_classes],
+        name=ns)
 
   @property
   def num_classes(self):
@@ -220,3 +224,24 @@ class Categorical(distribution.Distribution):
     ret = math_ops.cast(ret, self.dtype)
     ret.set_shape(self.get_batch_shape())
     return ret
+
+
+@kullback_leibler.RegisterKL(Categorical, Categorical)
+def _kl_categorical_categorical(a, b, name=None):
+  """Calculate the batched KL divergence KL(a || b) with a and b Categorical.
+
+  Args:
+    a: instance of a Categorical distribution object.
+    b: instance of a Categorical distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_categorical_categorical".
+
+  Returns:
+    Batchwise KL(a || b)
+  """
+  with ops.name_scope(
+    name, "kl_categorical_categorical", [a.logits, b.logits]):
+    # sum(p*ln(p/q))
+    return math_ops.reduce_sum(
+        nn_ops.softmax(a.logits)*(nn_ops.log_softmax(a.logits)
+            - nn_ops.log_softmax(b.logits)), reduction_indices=[-1])

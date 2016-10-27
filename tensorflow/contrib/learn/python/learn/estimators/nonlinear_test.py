@@ -44,7 +44,7 @@ class NonLinearTest(tf.test.TestCase):
     self.assertEqual(weights[2].shape, (20, 10))
     self.assertEqual(weights[3].shape, (10, 3))
     biases = classifier.bias_
-    self.assertEqual(len(biases), 5)
+    self.assertEqual(len(biases), 4)
 
   def testBostonDNN(self):
     boston = tf.contrib.learn.datasets.load_boston()
@@ -60,7 +60,7 @@ class NonLinearTest(tf.test.TestCase):
     self.assertEqual(weights[2].shape, (20, 10))
     self.assertEqual(weights[3].shape, (10, 1))
     biases = regressor.bias_
-    self.assertEqual(len(biases), 5)
+    self.assertEqual(len(biases), 4)
 
   def testDNNDropout0(self):
     # Dropout prob == 0.

@@ -44,9 +44,9 @@ from tensorflow.python.training import queue_runner
 # pylint: disable=protected-access
 _as_original_type = input_py._as_original_type
 _as_tensor_list = input_py._as_tensor_list
-_deserialize_sparse_tensors = input_py._deserialize_sparse_tensors
+_restore_sparse_tensors = input_py._restore_sparse_tensors
 _dtypes = input_py._dtypes
-_serialize_sparse_tensors = input_py._serialize_sparse_tensors
+_store_sparse_tensors = input_py._store_sparse_tensors
 _shapes = input_py._shapes
 _which_queue = input_py._which_queue
 # pylint: enable=protected-access
@@ -151,7 +151,7 @@ def bucket(tensors,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "bucket", tensor_list) as name:
     tensor_list = _validate_bucket(tensor_list)
-    (tensor_list, sparse_info) = _serialize_sparse_tensors(
+    (tensor_list, sparse_info) = _store_sparse_tensors(
         tensor_list, enqueue_many=False)
 
     # Round-trip batch_size to a tensor, and possibly back
@@ -206,7 +206,7 @@ def bucket(tensors,
 
     if keep_input is not None:
       # TODO(ebrevdo): Expand keep_input param to core training
-      # methods, and pipe through to _serialize_sparse_tensors; so
+      # methods, and pipe through to _store_sparse_tensors; so
       # that expensive serialization is guarded by keep_input.
       maybe_enqueue = control_flow_ops.cond(
           keep_input,
@@ -250,7 +250,7 @@ def bucket(tensors,
     dequeued = top_queue.dequeue(name="dequeue_top")
     which_bucket_dequeued = dequeued[0]
     dequeued = dequeued[1:]
-    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
     return (which_bucket_dequeued, _as_original_type(tensors, dequeued))
 
 

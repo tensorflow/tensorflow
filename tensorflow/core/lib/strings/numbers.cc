@@ -86,9 +86,11 @@ T locale_independent_strtonum(const char* str, const char** endptr) {
     if (result == std::numeric_limits<T>::max()) {
       result = std::numeric_limits<T>::infinity();
       real_fail = false;
+      s.clear(s.rdstate() & ~std::ios::failbit);
     } else if (result == -std::numeric_limits<T>::max()) {
       result = -std::numeric_limits<T>::infinity();
       real_fail = false;
+      s.clear(s.rdstate() & ~std::ios::failbit);
     }
   }
 

@@ -226,7 +226,7 @@ def main(_):
           loss, global_step=global_step)
 
       saver = tf.train.Saver()
-      summary_op = tf.merge_all_summaries()
+      summary_op = tf.summary.merge_all()
       init_op = tf.initialize_all_variables()
 
     # Create a "supervisor", which oversees the training process.

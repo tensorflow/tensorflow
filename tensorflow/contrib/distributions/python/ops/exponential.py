@@ -60,21 +60,25 @@ class Exponential(gamma.Gamma):
         undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
+    parameters = locals()
+    parameters.pop("self")
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
     with ops.name_scope(name, values=[lam]) as ns:
       self._lam = ops.convert_to_tensor(lam, name="lam")
-      super(Exponential, self).__init__(
-          alpha=array_ops.ones((), dtype=self._lam.dtype),
-          beta=self._lam,
-          allow_nan_stats=allow_nan_stats,
-          validate_args=validate_args,
-          name=ns)
-      # While the Gamma distribution is not reparameterizeable, the
-      # exponential distribution is.
-      self._is_reparameterized = True
+    super(Exponential, self).__init__(
+        alpha=array_ops.ones((), dtype=self._lam.dtype),
+        beta=self._lam,
+        allow_nan_stats=allow_nan_stats,
+        validate_args=validate_args,
+        name=ns)
+    # While the Gamma distribution is not reparameterizeable, the
+    # exponential distribution is.
+    self._is_reparameterized = True
+    self._parameters = parameters
+    self._graph_parents += [self._lam]
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -105,9 +109,12 @@ class ExponentialWithSoftplusLam(Exponential):
                validate_args=False,
                allow_nan_stats=True,
                name="ExponentialWithSoftplusLam"):
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[lam]) as ns:
       super(ExponentialWithSoftplusLam, self).__init__(
           lam=nn.softplus(lam),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 import random
+import six
 import tempfile
 
 import numpy as np
@@ -63,8 +64,8 @@ class ExportTest(tf.test.TestCase):
     # Only the written checkpoints are exported.
     self.assertTrue(tf.gfile.Exists(export_dir + '00000001/export'))
     self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
-    self.assertEquals(export_monitor.last_export_dir, os.path.join(export_dir,
-                                                                   '00000010'))
+    self.assertEquals(export_monitor.last_export_dir,
+                      six.b(os.path.join(export_dir, '00000010')))
     # Validate the signature
     signature = self._get_default_signature(export_dir + '00000010/export.meta')
     self.assertTrue(signature.HasField('regression_signature'))
@@ -86,8 +87,8 @@ class ExportTest(tf.test.TestCase):
     # Only the written checkpoints are exported.
     self.assertTrue(tf.gfile.Exists(export_dir + '00000001/export'))
     self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
-    self.assertEquals(export_monitor.last_export_dir, os.path.join(export_dir,
-                                                                   '00000010'))
+    self.assertEquals(export_monitor.last_export_dir,
+                      six.b(os.path.join(export_dir, '00000010')))
     # Validate the signature
     signature = self._get_default_signature(export_dir + '00000010/export.meta')
     self.assertTrue(signature.HasField('generic_signature'))
