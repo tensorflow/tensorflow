@@ -88,8 +88,28 @@ class _SecondOrStepTimer(object):
     return False
 
   def update_last_triggered_step(self, step):
-    self._last_triggered_time = time.time()
+    """Update the last triggered time and step number.
+
+    Args:
+      step: The current step.
+
+    Returns:
+      A pair `(elapsed_time, elapsed_steps)`, where `elapsed_time` is the number
+      of seconds between the current trigger and the last one (a float), and
+      `elapsed_steps` is the number of steps between the current trigger and
+      the last one. Both values will be set to `None` on the first trigger.
+    """
+    current_time = time.time()
+    if self._last_triggered_time is None:
+      elapsed_secs = None
+      elapsed_steps = None
+    else:
+      elapsed_secs = current_time - self._last_triggered_time
+      elapsed_steps = step - self._last_triggered_step
+
+    self._last_triggered_time = current_time
     self._last_triggered_step = step
+    return (elapsed_secs, elapsed_steps)
 
   def last_triggered_step(self):
     return self._last_triggered_step
@@ -272,16 +292,24 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 class StepCounterHook(session_run_hook.SessionRunHook):
   """Steps per second monitor."""
 
-  def __init__(self, every_n_steps=100, output_dir=None, summary_writer=None):
+  def __init__(self,
+               every_n_steps=100,
+               every_n_secs=None,
+               output_dir=None,
+               summary_writer=None):
     self._summary_tag = "global_step/sec"
-    self._every_n_steps = every_n_steps
+
+    if (every_n_steps is None) == (every_n_secs is None):
+      raise ValueError(
+          "exactly one of every_n_steps and every_n_secs should be provided.")
+    self._timer = _SecondOrStepTimer(every_steps=every_n_steps,
+                                     every_secs=every_n_secs)
+
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
       self._summary_writer = SummaryWriterCache.get(output_dir)
 
   def begin(self):
-    self._last_reported_time = None
-    self._last_reported_step = None
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
@@ -294,22 +322,16 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     _ = run_context
 
     global_step = run_values.results
-    current_time = time.time()
-    if self._last_reported_time is None:
-      self._last_reported_step = global_step
-      self._last_reported_time = current_time
-    else:
-      if global_step >= self._every_n_steps + self._last_reported_step:
-        added_steps = global_step - self._last_reported_step
-        elapsed_time = current_time - self._last_reported_time
-        steps_per_sec = added_steps / elapsed_time
+    if self._timer.should_trigger_for_step(global_step):
+      elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
+          global_step)
+      if elapsed_time is not None:
+        steps_per_sec = elapsed_steps / elapsed_time
         if self._summary_writer is not None:
           summary = Summary(value=[Summary.Value(
               tag=self._summary_tag, simple_value=steps_per_sec)])
           self._summary_writer.add_summary(summary, global_step)
         logging.info("%s: %g", self._summary_tag, steps_per_sec)
-        self._last_reported_step = global_step
-        self._last_reported_time = current_time
 
 
 class NanLossDuringTrainingError(RuntimeError):
