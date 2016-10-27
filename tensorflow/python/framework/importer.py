@@ -413,8 +413,10 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
                            'RefSwitch', 'RefEnter', 'RefNextIteration',
                            'RefMerge', 'RefIdentity']:
               pass
-            elif op.type in ['ConditionalAccumulator',
-                             'SparseConditionalAccumulator']:
+            elif op.type in [
+                'ConditionalAccumulator', 'SparseConditionalAccumulator',
+                'Table'
+            ]:
               # This can be removed after 2017/04/24.
               pass
             else:
