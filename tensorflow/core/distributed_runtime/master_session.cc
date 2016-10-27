@@ -180,7 +180,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Post-processing of any runtime statistics gathered during execution.
   void ProcessStats(const MasterEnv* env, int64 step_id, PerStepState* pss,
                     SimpleGraphExecutionState* execution_state,
-                    ProfileHandler* ph, RunStepResponse* resp);
+                    ProfileHandler* ph, const RunStepRequest& req,
+                    RunStepResponse* resp);
   void ProcessDeviceStats(ProfileHandler* ph,
                           const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
@@ -676,7 +677,7 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
 void MasterSession::ReffedClientGraph::ProcessStats(
     const MasterEnv* env, int64 step_id, PerStepState* pss,
     SimpleGraphExecutionState* execution_state, ProfileHandler* ph,
-    RunStepResponse* resp) {
+    const RunStepRequest& req, RunStepResponse* resp) {
   if (!pss->collect_costs && !pss->collect_timeline) return;
 
   // Out-of-band logging data is collected now, during post-processing.
@@ -711,7 +712,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(
     stats_publisher_->PublishStatsProto(step_stats_proto);
     // Copy the stats back, but only for on-demand profiling to avoid slowing
     // down calls that trigger the automatic profiling.
-    if (session_opts_.config.graph_options().timeline_step() <= 0) {
+    if (req.options().trace_level() == RunOptions::FULL_TRACE) {
       resp->mutable_metadata()->mutable_step_stats()->Swap(&step_stats_proto);
     }
   }
@@ -1082,7 +1083,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   // Schedule post-processing and cleanup to be done asynchronously.
   rcg->Ref();
-  rcg->ProcessStats(env_, step_id, &pss, execution_state_.get(), ph.get(),
+  rcg->ProcessStats(env_, step_id, &pss, execution_state_.get(), ph.get(), *req,
                     resp);
   rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
     if (!s.ok()) {
