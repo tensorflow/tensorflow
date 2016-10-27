@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataProto, DataSet, MetadataInfo, PointAccessor, Projection, State, PointMetadata, DataPoint} from './data';
+import {ColorOption, DataPoint, DataProto, DataSet, MetadataInfo, PointAccessor, PointMetadata, Projection, State, stateGetAccessorDimensions} from './data';
 import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
@@ -470,7 +470,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       }
       state.projections.push(projections);
     }
-
     state.selectedProjection = this.selectedProjection;
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
@@ -497,17 +496,13 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
     this.selectedLabelOption = state.selectedLabelOption;
     this.scatterPlot.setCameraDefForNextCameraCreation(state.cameraDef);
-
     {
-      const dimensions = (state.selectedProjection === 'tsne') ?
-          [0, 1, 2] :
-          state.componentDimensions;
+      const dimensions = stateGetAccessorDimensions(state);
       const accessors =
           this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
       this.setProjection(
-          state.selectedProjection, state.is3d ? 3 : 2, accessors);
+          state.selectedProjection, dimensions.length, accessors);
     }
-
     this.notifySelectionChanged(state.selectedPoints);
   }
 }

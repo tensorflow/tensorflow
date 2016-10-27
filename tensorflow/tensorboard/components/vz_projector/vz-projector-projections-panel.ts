@@ -24,17 +24,18 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 export let ProjectionsPanelPolymer = PolymerElement({
   is: 'vz-projector-projections-panel',
   properties: {
-    is3d: {type: Boolean, observer: '_dimensionsObserver'},
+    pcaIs3d:
+        {type: Boolean, value: true, observer: '_pcaDimensionToggleObserver'},
+    tSNEis3d:
+        {type: Boolean, value: true, observer: '_tsneDimensionToggleObserver'},
     // PCA projection.
     pcaComponents: {type: Array, value: d3.range(0, 10)},
     pcaX: {type: Number, value: 0, observer: 'showPCAIfEnabled'},
     pcaY: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
     pcaZ: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
     // Custom projection.
-    selectedSearchByMetadataOption: {
-      type: String,
-      observer: '_searchByMetadataOptionChanged'
-    },
+    selectedSearchByMetadataOption:
+        {type: String, observer: '_searchByMetadataOptionChanged'},
   }
 });
 
@@ -54,7 +55,6 @@ type Centroids = {
  */
 export class ProjectionsPanel extends ProjectionsPanelPolymer {
   selectedSearchByMetadataOption: string;
-  is3d: boolean;
 
   private projector: Projector;
   private currentProjection: Projection;
@@ -79,6 +79,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   /** Polymer properties. */
   // TODO(nsthorat): Move these to a separate view controller.
+  public pcaIs3d: boolean;
+  public tSNEis3d: boolean;
   public pcaX: number;
   public pcaY: number;
   public pcaZ: number;
@@ -92,11 +94,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private zDropdown: d3.Selection<HTMLElement>;
   private iterationLabel: d3.Selection<HTMLElement>;
 
+  private customProjectionXLeftInput: ProjectorInput;
+  private customProjectionXRightInput: ProjectorInput;
+  private customProjectionYUpInput: ProjectorInput;
+  private customProjectionYDownInput: ProjectorInput;
+
   initialize(projector: Projector) {
     this.polymerChangesTriggerReprojection = true;
     this.projector = projector;
-
-    this.is3d = true;
 
     // Set up TSNE projections.
     this.perplexity = 30;
@@ -128,14 +133,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.polymerChangesTriggerReprojection = true;
   }
 
-  private updatePerplexityFromUIChange() {
+  private updateTSNEPerplexityFromUIChange() {
     if (this.perplexitySlider) {
       this.perplexity = +this.perplexitySlider.value;
     }
     this.dom.select('.tsne-perplexity span').text(this.perplexity);
   }
 
-  private updateLearningRateFromUIChange() {
+  private updateTSNELearningRateFromUIChange() {
     if (this.learningRateInput) {
       this.learningRate = Math.pow(10, +this.learningRateInput.value);
     }
@@ -156,14 +161,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
     this.perplexitySlider.value = this.perplexity.toString();
     this.perplexitySlider.addEventListener(
-        'change', () => this.updatePerplexityFromUIChange());
-    this.updatePerplexityFromUIChange();
+        'change', () => this.updateTSNEPerplexityFromUIChange());
+    this.updateTSNEPerplexityFromUIChange();
 
     this.learningRateInput.addEventListener(
-        'change', () => this.updateLearningRateFromUIChange());
-    this.updateLearningRateFromUIChange();
+        'change', () => this.updateTSNELearningRateFromUIChange());
+    this.updateTSNELearningRateFromUIChange();
 
-    this.setupAllInputsInCustomTab();
+    this.setupCustomProjectionInputFields();
     // TODO: figure out why `--paper-input-container-input` css mixin didn't
     // work.
     this.dom.selectAll('paper-dropdown-menu paper-input input')
@@ -173,42 +178,83 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   restoreUIFromBookmark(bookmark: State) {
     this.disablePolymerChangesTriggerReprojection();
 
-    this.pcaX = bookmark.componentDimensions[0];
-    this.pcaY = bookmark.componentDimensions[1];
-    if (bookmark.componentDimensions.length === 3) {
-      this.pcaZ = bookmark.componentDimensions[2];
+    // PCA
+    this.pcaX = bookmark.pcaComponentDimensions[0];
+    this.pcaY = bookmark.pcaComponentDimensions[1];
+    if (bookmark.pcaComponentDimensions.length === 3) {
+      this.pcaZ = bookmark.pcaComponentDimensions[2];
     }
+    this.pcaIs3d = (bookmark.pcaComponentDimensions.length === 3);
+
+    // t-SNE
     if (this.perplexitySlider) {
       this.perplexitySlider.value = bookmark.tSNEPerplexity.toString();
     }
     if (this.learningRateInput) {
       this.learningRateInput.value = bookmark.tSNELearningRate.toString();
     }
-    this.is3d = bookmark.is3d;
+    this.tSNEis3d = bookmark.tSNEis3d;
 
-    this.setZDropdownEnabled(bookmark.componentDimensions.length === 3);
-    this.updatePerplexityFromUIChange();
-    this.updateLearningRateFromUIChange();
+    // custom
+    if (this.customProjectionXLeftInput) {
+      this.customProjectionXLeftInput.set(
+          bookmark.customXLeftText, bookmark.customXLeftRegex);
+    }
+    if (this.customProjectionXRightInput) {
+      this.customProjectionXRightInput.set(
+          bookmark.customXRightText, bookmark.customXRightRegex);
+    }
+    if (this.customProjectionYUpInput) {
+      this.customProjectionYUpInput.set(
+          bookmark.customYUpText, bookmark.customYUpRegex);
+    }
+    if (this.customProjectionYDownInput) {
+      this.customProjectionYDownInput.set(
+          bookmark.customYDownText, bookmark.customYDownRegex);
+    }
+    this.computeAllCentroids();
+
+    this.setZDropdownEnabled(this.pcaIs3d);
+    this.updateTSNEPerplexityFromUIChange();
+    this.updateTSNELearningRateFromUIChange();
     if (this.iterationLabel) {
       this.iterationLabel.text(bookmark.tSNEIteration.toString());
     }
     this.showTab(bookmark.selectedProjection);
-
     this.enablePolymerChangesTriggerReprojection();
   }
 
   populateBookmarkFromUI(bookmark: State) {
     this.disablePolymerChangesTriggerReprojection();
-    bookmark.componentDimensions = [this.pcaX, this.pcaY];
-    if (this.is3d) {
-      bookmark.componentDimensions.push(this.pcaZ);
+    bookmark.pcaComponentDimensions = [this.pcaX, this.pcaY];
+    if (this.pcaIs3d) {
+      bookmark.pcaComponentDimensions.push(this.pcaZ);
     }
-    bookmark.is3d = this.is3d;
-    if (this.perplexitySlider) {
+    if (this.perplexitySlider != null) {
       bookmark.tSNEPerplexity = +this.perplexitySlider.value;
     }
-    if (this.learningRateInput) {
+    if (this.learningRateInput != null) {
       bookmark.tSNELearningRate = +this.learningRateInput.value;
+    }
+    bookmark.tSNEis3d = this.tSNEis3d;
+    if (this.customProjectionXLeftInput != null) {
+      bookmark.customXLeftText = this.customProjectionXLeftInput.getValue();
+      bookmark.customXLeftRegex =
+          this.customProjectionXLeftInput.getInRegexMode();
+    }
+    if (this.customProjectionXRightInput != null) {
+      bookmark.customXRightText = this.customProjectionXRightInput.getValue();
+      bookmark.customXRightRegex =
+          this.customProjectionXRightInput.getInRegexMode();
+    }
+    if (this.customProjectionYUpInput != null) {
+      bookmark.customYUpText = this.customProjectionYUpInput.getValue();
+      bookmark.customYUpRegex = this.customProjectionYUpInput.getInRegexMode();
+    }
+    if (this.customProjectionYDownInput != null) {
+      bookmark.customYDownText = this.customProjectionYDownInput.getValue();
+      bookmark.customYDownRegex =
+          this.customProjectionYDownInput.getInRegexMode();
     }
     this.enablePolymerChangesTriggerReprojection();
   }
@@ -217,7 +263,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   // abstracts DOM manipulation so we can stub it in a test.
   // TODO(nsthorat): Move this to its own class as the glue between this class
   // and the DOM.
-  public setZDropdownEnabled(enabled: boolean) {
+  setZDropdownEnabled(enabled: boolean) {
     if (this.zDropdown) {
       this.zDropdown.attr('disabled', enabled ? null : true);
     }
@@ -236,8 +282,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.showTab('pca');
   }
 
-  _dimensionsObserver() {
-    this.setZDropdownEnabled(this.is3d);
+  _pcaDimensionToggleObserver() {
+    this.setZDropdownEnabled(this.pcaIs3d);
+    this.beginProjection(this.currentProjection);
+  }
+
+  _tsneDimensionToggleObserver() {
     this.beginProjection(this.currentProjection);
   }
 
@@ -265,27 +315,32 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dom.select('.ink-panel-content[data-panel="' + id + '"]')
         .classed('active', true);
 
-    // In order for the projections panel to animate its height, we need to set
-    // it explicitly.
-    requestAnimationFrame(() => {
-      this.style.height = this.$['main'].clientHeight + 'px';
-    });
+    // guard for unit tests, where polymer isn't attached and $ doesn't exist.
+    if (this.$ != null) {
+      const main = this.$['main'];
+      // In order for the projections panel to animate its height, we need to
+      // set it explicitly.
+      requestAnimationFrame(() => {
+        this.style.height = main.clientHeight + 'px';
+      });
+    }
 
     this.beginProjection(id);
   }
 
   private beginProjection(projection: string) {
-    if (this.polymerChangesTriggerReprojection) {
-      if (projection === 'pca') {
-        this.dataSet.stopTSNE();
-        this.showPCA();
-      } else if (projection === 'tsne') {
-        this.showTSNE();
-      } else if (projection === 'custom') {
-        this.dataSet.stopTSNE();
-        this.computeAllCentroids();
-        this.reprojectCustom();
-      }
+    if (this.polymerChangesTriggerReprojection === false) {
+      return;
+    }
+    if (projection === 'pca') {
+      this.dataSet.stopTSNE();
+      this.showPCA();
+    } else if (projection === 'tsne') {
+      this.showTSNE();
+    } else if (projection === 'custom') {
+      this.dataSet.stopTSNE();
+      this.computeAllCentroids();
+      this.reprojectCustom();
     }
   }
 
@@ -295,8 +350,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return;
     }
     const accessors =
-        dataSet.getPointAccessors('tsne', [0, 1, this.is3d ? 2 : null]);
-    this.projector.setProjection('tsne', this.is3d ? 3 : 2, accessors);
+        dataSet.getPointAccessors('tsne', [0, 1, this.tSNEis3d ? 2 : null]);
+    this.projector.setProjection('tsne', this.tSNEis3d ? 3 : 2, accessors);
 
     if (!this.dataSet.hasTSNERun) {
       this.runTSNE();
@@ -309,7 +364,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.runTsneButton.attr('disabled', true);
     this.stopTsneButton.attr('disabled', null);
     this.dataSet.projectTSNE(
-        this.perplexity, this.learningRate, this.is3d ? 3 : 2,
+        this.perplexity, this.learningRate, this.tSNEis3d ? 3 : 2,
         (iteration: number) => {
           if (iteration != null) {
             this.iterationLabel.text(iteration);
@@ -337,7 +392,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       const accessors = this.dataSet.getPointAccessors(
           'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
-      this.projector.setProjection('pca', this.is3d ? 3 : 2, accessors);
+      this.projector.setProjection('pca', this.pcaIs3d ? 3 : 2, accessors);
     });
   }
 
@@ -370,11 +425,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     }
   }
 
-  private setupAllInputsInCustomTab() {
-    this.setupInputUIInCustomTab('xLeft');
-    this.setupInputUIInCustomTab('xRight');
-    this.setupInputUIInCustomTab('yUp');
-    this.setupInputUIInCustomTab('yDown');
+  private setupCustomProjectionInputFields() {
+    this.customProjectionXLeftInput =
+        this.setupCustomProjectionInputField('xLeft');
+    this.customProjectionXRightInput =
+        this.setupCustomProjectionInputField('xRight');
+    this.customProjectionYUpInput = this.setupCustomProjectionInputField('yUp');
+    this.customProjectionYDownInput =
+        this.setupCustomProjectionInputField('yDown');
   }
 
   private computeAllCentroids() {
@@ -385,13 +443,15 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private computeCentroid(name: InputControlName) {
-    let input = this.querySelector('#' + name) as ProjectorInput;
-    let value = input.getValue();
-    let inRegexMode = input.getInRegexMode();
-
+    const input = this.querySelector('#' + name) as ProjectorInput;
+    if (input == null) {
+      return;
+    }
+    const value = input.getValue();
     if (value == null) {
       return;
     }
+    let inRegexMode = input.getInRegexMode();
     let result = this.getCentroid(value, inRegexMode);
     if (result.numMatches === 0) {
       input.message = '0 matches. Using a random vector.';
@@ -403,13 +463,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.centroidValues[name] = value;
   }
 
-  private setupInputUIInCustomTab(name: InputControlName) {
+  private setupCustomProjectionInputField(name: InputControlName):
+      ProjectorInput {
     let input = this.querySelector('#' + name) as ProjectorInput;
-    // Setup the input text.
-    input.onInputChanged((input, inRegexMode) => {
-      this.computeCentroid(name);
-      this.reprojectCustom();
+    input.registerInputChangedListener((input, inRegexMode) => {
+      if (this.polymerChangesTriggerReprojection) {
+        this.computeCentroid(name);
+        this.reprojectCustom();
+      }
     });
+    return input;
   }
 
   private getCentroid(pattern: string, inRegexMode: boolean): CentroidResult {

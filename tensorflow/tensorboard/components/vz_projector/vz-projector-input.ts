@@ -27,51 +27,53 @@ export interface InputChangedListener {
 /** Input control with custom capabilities (e.g. regex). */
 export class ProjectorInput extends PolymerClass {
   private dom: d3.Selection<HTMLElement>;
-  private inputChangedListeners: InputChangedListener[];
+  private textChangedListeners: InputChangedListener[];
   private paperInput: HTMLInputElement;
+  private inRegexModeButton: HTMLButtonElement;
   private inRegexMode: boolean;
 
   /** Message that will be displayed at the bottom of the input control. */
   message: string;
-  /** Placeholder text for the input control. */
-  label: string;
 
   /** Subscribe to be called everytime the input changes. */
-  onInputChanged(listener: InputChangedListener) {
-    this.inputChangedListeners.push(listener);
+  registerInputChangedListener(listener: InputChangedListener) {
+    this.textChangedListeners.push(listener);
   }
 
   ready() {
     this.inRegexMode = false;
-    this.inputChangedListeners = [];
+    this.textChangedListeners = [];
     this.dom = d3.select(this);
     this.paperInput = this.querySelector('paper-input') as HTMLInputElement;
-    let paperButton = this.querySelector('paper-button') as HTMLButtonElement;
+    this.inRegexModeButton =
+        this.querySelector('paper-button') as HTMLButtonElement;
     this.paperInput.setAttribute('error-message', 'Invalid regex');
 
     this.paperInput.addEventListener('input', () => {
-      this.inputChanged();
+      this.onTextChanged();
     });
 
     this.paperInput.addEventListener('keydown', event => {
       event.stopPropagation();
     });
 
-    // Setup the regex mode button.
-    paperButton.addEventListener('click', () => {
-      this.inRegexMode = (paperButton as any).active;
-      this.showHideSlashes();
-      this.inputChanged();
-    });
-    this.showHideSlashes();
-    this.inputChanged();
+    this.inRegexModeButton.addEventListener(
+        'click', () => this.onClickRegexModeButton());
+    this.updateRegexModeDisplaySlashes();
+    this.onTextChanged();
+  }
+
+  private onClickRegexModeButton() {
+    this.inRegexMode = (this.inRegexModeButton as any).active;
+    this.updateRegexModeDisplaySlashes();
+    this.onTextChanged();
   }
 
   private notifyInputChanged(value: string, inRegexMode: boolean) {
-    this.inputChangedListeners.forEach(l => l(value, inRegexMode));
+    this.textChangedListeners.forEach(l => l(value, inRegexMode));
   }
 
-  private inputChanged() {
+  private onTextChanged() {
     try {
       if (this.inRegexMode) {
         new RegExp(this.paperInput.value);
@@ -86,7 +88,7 @@ export class ProjectorInput extends PolymerClass {
     this.notifyInputChanged(this.paperInput.value, this.inRegexMode);
   }
 
-  private showHideSlashes() {
+  private updateRegexModeDisplaySlashes() {
     d3.select(this.paperInput)
         .selectAll('.slash')
         .style('display', this.inRegexMode ? null : 'none');
@@ -98,6 +100,12 @@ export class ProjectorInput extends PolymerClass {
 
   getInRegexMode(): boolean {
     return this.inRegexMode;
+  }
+
+  set(value: string, inRegexMode: boolean) {
+    (this.inRegexModeButton as any).active = inRegexMode;
+    this.paperInput.value = value;
+    this.onClickRegexModeButton();
   }
 }
 

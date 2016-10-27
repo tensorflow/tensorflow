@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './scatterPlot';
-import {Point2D} from './vector';
 import {DataPoint} from './data';
 import * as logging from './logging';
+import {DataSet} from './scatterPlot';
+import {Point2D} from './vector';
 
 /**
  * Delay for running expensive tasks, in milliseconds.

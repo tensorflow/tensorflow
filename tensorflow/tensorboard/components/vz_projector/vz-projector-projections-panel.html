@@ -149,7 +149,7 @@ limitations under the License.
         <label>Dimension</label>
         <div class="two-way-toggle">
           <span>2D</span>
-          <paper-toggle-button id="tsne-toggle" checked="{{is3d}}">3D</paper-toggle-button>
+          <paper-toggle-button id="tsne-toggle" checked="{{tSNEis3d}}">3D</paper-toggle-button>
         </div>
       </div>
       <div class="slider tsne-perplexity">
@@ -222,7 +222,7 @@ limitations under the License.
               </template>
             </paper-listbox>
           </paper-dropdown-menu>
-          <paper-checkbox id="z-checkbox" checked="{{is3d}}"></paper-checkbox>
+          <paper-checkbox id="z-checkbox" checked="{{pcaIs3d}}"></paper-checkbox>
         </div>
       </div>
       <p id="pca-sampling" class="notice">

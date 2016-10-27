@@ -433,17 +433,24 @@ export class State {
   /** The selected projection tab. */
   selectedProjection: Projection;
 
-  /** The t-SNE iteration of this projection. */
+  /** t-SNE parameters */
   tSNEIteration: number = 0;
-
-  /** The t-SNE perplexity parameter. */
   tSNEPerplexity: number = 0;
-
-  /** The t-SNE learning rate. */
   tSNELearningRate: number = 0;
+  tSNEis3d: boolean = true;
 
-  /** The projection component dimensions (for PCA) */
-  componentDimensions: number[] = [];
+  /** PCA projection component dimensions */
+  pcaComponentDimensions: number[] = [];
+
+  /** Custom projection axis text + regex flags */
+  customXLeftText: string;
+  customXLeftRegex: boolean;
+  customXRightText: string;
+  customXRightRegex: boolean;
+  customYUpText: string;
+  customYUpRegex: boolean;
+  customYDownText: string;
+  customYDownRegex: boolean;
 
   /** The computed projections of the tensors. */
   projections: Array<{[key: string]: number}> = [];
@@ -459,7 +466,25 @@ export class State {
 
   /** Label by option. */
   selectedLabelOption: string;
+}
 
-  /** Whether the state is a 3d view. If false, the state is a 2d view. */
-  is3d: boolean;
+export function stateGetAccessorDimensions(state: State): Array<number|string> {
+  let dimensions: Array<number|string>;
+  switch (state.selectedProjection) {
+    case 'pca':
+      dimensions = state.pcaComponentDimensions.slice();
+      break;
+    case 'tsne':
+      dimensions = [0, 1];
+      if (state.tSNEis3d) {
+        dimensions.push(2);
+      }
+      break;
+    case 'custom':
+      dimensions = ['x', 'y'];
+      break;
+    default:
+      throw new Error('Unexpected fallthrough');
+  }
+  return dimensions;
 }

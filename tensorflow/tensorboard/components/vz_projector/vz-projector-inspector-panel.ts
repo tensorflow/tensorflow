@@ -249,7 +249,7 @@ export class InspectorPanel extends PolymerClass {
       }
       this.projector.notifySelectionChanged(indices);
     };
-    this.searchBox.onInputChanged((value, inRegexMode) => {
+    this.searchBox.registerInputChangedListener((value, inRegexMode) => {
       updateInput(value, inRegexMode);
     });
 

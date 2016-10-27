@@ -17,7 +17,7 @@ import {ProjectionsPanel} from './vz-projector-projections-panel';
 
 const assert = chai.assert;
 
-describe('setPCAComponentUIValues', () => {
+describe('restoreUIFromBookmark', () => {
   it('sets the pcaX/Y properties when setting 2D component values', () => {
     let projectionsPanel = document.createElement(
         ProjectionsPanel.prototype.is) as ProjectionsPanel;
@@ -25,7 +25,7 @@ describe('setPCAComponentUIValues', () => {
     spyOn(projectionsPanel, 'setZDropdownEnabled');
 
     const s = new State();
-    s.componentDimensions = [0, 1];
+    s.pcaComponentDimensions = [0, 1];
     projectionsPanel.restoreUIFromBookmark(s);
 
     assert.equal(0, projectionsPanel.pcaX);
@@ -41,7 +41,7 @@ describe('setPCAComponentUIValues', () => {
     spyOn(projectionsPanel, 'setZDropdownEnabled');
 
     const s = new State();
-    s.componentDimensions = [0, 1, 2];
+    s.pcaComponentDimensions = [0, 1, 2];
     projectionsPanel.restoreUIFromBookmark(s);
 
     assert.equal(0, projectionsPanel.pcaX);
@@ -52,18 +52,18 @@ describe('setPCAComponentUIValues', () => {
   });
 });
 
-describe('getPCAComponentUIValues', () => {
+describe('populateBookmarkFromUI', () => {
   it('gets the PCA component UI values from a 2D PCA projection', () => {
     let projectionsPanel = document.createElement(
         ProjectionsPanel.prototype.is) as ProjectionsPanel;
 
     projectionsPanel.pcaX = 0;
     projectionsPanel.pcaY = 1;
-    projectionsPanel.is3d = false;
+    projectionsPanel.pcaIs3d = false;
 
     const s = new State();
     projectionsPanel.populateBookmarkFromUI(s);
-    assert.deepEqual([0, 1], s.componentDimensions);
+    assert.deepEqual([0, 1], s.pcaComponentDimensions);
   });
 
   it('gets the PCA component UI values from a 3D PCA projection', () => {
@@ -73,10 +73,10 @@ describe('getPCAComponentUIValues', () => {
     projectionsPanel.pcaX = 0;
     projectionsPanel.pcaY = 1;
     projectionsPanel.pcaZ = 2;
-    projectionsPanel.is3d = true;
+    projectionsPanel.pcaIs3d = true;
 
     const s = new State();
     projectionsPanel.populateBookmarkFromUI(s);
-    assert.deepEqual([0, 1, 2], s.componentDimensions);
+    assert.deepEqual([0, 1, 2], s.pcaComponentDimensions);
   });
 });
