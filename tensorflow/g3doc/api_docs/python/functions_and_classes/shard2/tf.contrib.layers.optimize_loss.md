@@ -42,7 +42,11 @@ Various ways of passing optimizers, include:
 *  <b>`gradient_multipliers`</b>: dict of variables or variable names to floats.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
-*  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
+*  <b>`clip_gradients`</b>: float, callable or `None`. If float, is provided, a global
+    clipping is applied to prevent the norm of the gradient to exceed this
+    value. Alternatively, a callable can be provided e.g.: adaptive_clipping.
+    This callable takes a `list` of `(gradients, variables)` `tuple`s and
+    returns the same thing with the gradients modified.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
@@ -73,6 +77,7 @@ Various ways of passing optimizers, include:
       * `global_step` is an invalid type or shape.
       * `learning_rate` is an invalid type or value.
       * `optimizer` is wrong type.
+      * `clip_gradients' is not float or callable.
       * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
         `global_step` is available.
 
