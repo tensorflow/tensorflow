@@ -86,11 +86,6 @@ Certain metrics, such as streaming_mean or streaming_accuracy, can be weighted
 via a `weights` argument. The `weights` tensor must be the same size as the
 labels and predictions tensors and results in a weighted average of the metric.
 
-Other metrics, such as streaming_recall, streaming_precision, and streaming_auc,
-are not well defined with regard to weighted samples. However, a binary
-`ignore_mask` argument can be used to ignore certain values at graph executation
-time.
-
 ## Metric `Ops`
 
 - - -
@@ -191,104 +186,100 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 - - -
 
-### `tf.contrib.metrics.streaming_recall(*args, **kwargs)` {#streaming_recall}
+### `tf.contrib.metrics.streaming_recall(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_recall}
 
-Computes the recall of the predictions with respect to the labels. (deprecated arguments)
+Computes the recall of the predictions with respect to the labels.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+The `streaming_recall` function creates two local variables, `true_positives`
+and `false_negatives`, that are used to compute the recall. This value is
+ultimately returned as `recall`, an idempotent operation that simply divides
+`true_positives` by the sum of `true_positives`  and `false_negatives`.
 
-  The `streaming_recall` function creates two local variables, `true_positives`
-  and `false_negatives`, that are used to compute the recall. This value is
-  ultimately returned as `recall`, an idempotent operation that simply divides
-  `true_positives` by the sum of `true_positives`  and `false_negatives`.
+For estimation of the metric  over a stream of data, the function creates an
+`update_op` that updates these variables and returns the `recall`. `update_op`
+weights each prediction by the corresponding value in `weights`.
 
-  For estimation of the metric  over a stream of data, the function creates an
-  `update_op` that updates these variables and returns the `recall`. `update_op`
-  weights each prediction by the corresponding value in `weights`.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+##### Args:
 
-  Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
-    metrics_collections: An optional list of collections that `recall` should
-      be added to.
-    updates_collections: An optional list of collections that `update_op` should
-      be added to.
-    name: An optional variable_scope name.
 
-  Returns:
-    recall: Scalar float `Tensor` with the value of `true_positives` divided
-      by the sum of `true_positives` and `false_negatives`.
-    update_op: `Operation` that increments `true_positives` and
-      `false_negatives` variables appropriately and whose value matches
-      `recall`.
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
+    match `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that `recall` should
+    be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
+    be added to.
+*  <b>`name`</b>: An optional variable_scope name.
 
-  Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
+##### Returns:
+
+
+*  <b>`recall`</b>: Scalar float `Tensor` with the value of `true_positives` divided
+    by the sum of `true_positives` and `false_negatives`.
+*  <b>`update_op`</b>: `Operation` that increments `true_positives` and
+    `false_negatives` variables appropriately and whose value matches
+    `recall`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 
 
 - - -
 
-### `tf.contrib.metrics.streaming_precision(*args, **kwargs)` {#streaming_precision}
+### `tf.contrib.metrics.streaming_precision(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_precision}
 
-Computes the precision of the predictions with respect to the labels. (deprecated arguments)
+Computes the precision of the predictions with respect to the labels.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+The `streaming_precision` function creates two local variables,
+`true_positives` and `false_positives`, that are used to compute the
+precision. This value is ultimately returned as `precision`, an idempotent
+operation that simply divides `true_positives` by the sum of `true_positives`
+and `false_positives`.
 
-  The `streaming_precision` function creates two local variables,
-  `true_positives` and `false_positives`, that are used to compute the
-  precision. This value is ultimately returned as `precision`, an idempotent
-  operation that simply divides `true_positives` by the sum of `true_positives`
-  and `false_positives`.
+For estimation of the metric  over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`precision`. `update_op` weights each prediction by the corresponding value in
+`weights`.
 
-  For estimation of the metric  over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `precision`. `update_op` weights each prediction by the corresponding value in
-  `weights`.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+##### Args:
 
-  Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
-    metrics_collections: An optional list of collections that `precision` should
-      be added to.
-    updates_collections: An optional list of collections that `update_op` should
-      be added to.
-    name: An optional variable_scope name.
 
-  Returns:
-    precision: Scalar float `Tensor` with the value of `true_positives`
-      divided by the sum of `true_positives` and `false_positives`.
-    update_op: `Operation` that increments `true_positives` and
-      `false_positives` variables appropriately and whose value matches
-      `precision`.
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
+    match `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
+    be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
+    be added to.
+*  <b>`name`</b>: An optional variable_scope name.
 
-  Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
+##### Returns:
+
+
+*  <b>`precision`</b>: Scalar float `Tensor` with the value of `true_positives`
+    divided by the sum of `true_positives` and `false_positives`.
+*  <b>`update_op`</b>: `Operation` that increments `true_positives` and
+    `false_positives` variables appropriately and whose value matches
+    `precision`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 
 
 - - -
@@ -355,15 +346,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 ### `tf.contrib.metrics.streaming_recall_at_k(*args, **kwargs)` {#streaming_recall_at_k}
 
-Computes the recall@k of the predictions with respect to dense labels. (deprecated arguments) (deprecated)
+Computes the recall@k of the predictions with respect to dense labels. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-11-08.
 Instructions for updating:
 Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] to [batch_size, 1].
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
 
   The `streaming_recall_at_k` function creates two local variables, `total` and
   `count`, that are used to compute the recall@k frequency. This frequency is
@@ -379,15 +366,12 @@ Instructions for updating:
   increments `count` with the reduced sum of `weights`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: A floating point tensor of dimension [batch_size, num_classes]
     labels: A tensor of dimension [batch_size] whose type is in `int32`,
       `int64`.
     k: The number of top elements to look at for computing recall.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall_at_k`
       should be added to.
@@ -403,9 +387,8 @@ Instructions for updating:
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
       tuple.
 
 
@@ -462,56 +445,56 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 - - -
 
-### `tf.contrib.metrics.streaming_mean_iou(*args, **kwargs)` {#streaming_mean_iou}
+### `tf.contrib.metrics.streaming_mean_iou(predictions, labels, num_classes, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_mean_iou}
 
-Calculate per-step mean Intersection-Over-Union (mIOU). (deprecated arguments)
+Calculate per-step mean Intersection-Over-Union (mIOU).
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+Mean Intersection-Over-Union is a common evaluation metric for
+semantic image segmentation, which first computes the IOU for each
+semantic class and then computes the average over classes.
 
-  Mean Intersection-Over-Union is a common evaluation metric for
-  semantic image segmentation, which first computes the IOU for each
-  semantic class and then computes the average over classes.
-  IOU is defined as follows:
-    IOU = true_positive / (true_positive + false_positive + false_negative).
-  The predictions are accumulated in a confusion matrix, weighted by `weights`,
-  and mIOU is then calculated from it.
+##### IOU is defined as follows:
 
-  For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the `mean_iou`.
+  IOU = true_positive / (true_positive + false_positive + false_negative).
+The predictions are accumulated in a confusion matrix, weighted by `weights`,
+and mIOU is then calculated from it.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the `mean_iou`.
 
-  Args:
-    predictions: A tensor of prediction results for semantic labels, whose
-      shape is [batch size] and type `int32` or `int64`. The tensor will be
-      flattened, if its rank > 1.
-    labels: A tensor of ground truth labels with shape [batch size] and of
-      type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
-    num_classes: The possible number of labels the prediction task can
-      have. This value must be provided, since a confusion matrix of
-      dimension = [num_classes, num_classes] will be allocated.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
-    metrics_collections: An optional list of collections that `mean_iou`
-      should be added to.
-    updates_collections: An optional list of collections `update_op` should be
-      added to.
-    name: An optional variable_scope name.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  Returns:
-    mean_iou: A tensor representing the mean intersection-over-union.
-    update_op: An operation that increments the confusion matrix.
+##### Args:
 
-  Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
+
+*  <b>`predictions`</b>: A tensor of prediction results for semantic labels, whose
+    shape is [batch size] and type `int32` or `int64`. The tensor will be
+    flattened, if its rank > 1.
+*  <b>`labels`</b>: A tensor of ground truth labels with shape [batch size] and of
+    type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
+*  <b>`num_classes`</b>: The possible number of labels the prediction task can
+    have. This value must be provided, since a confusion matrix of
+    dimension = [num_classes, num_classes] will be allocated.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that `mean_iou`
+    should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
+    added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`mean_iou`</b>: A tensor representing the mean intersection-over-union.
+*  <b>`update_op`</b>: An operation that increments the confusion matrix.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 
 
 - - -
@@ -828,50 +811,48 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 - - -
 
-### `tf.contrib.metrics.streaming_percentage_less(*args, **kwargs)` {#streaming_percentage_less}
+### `tf.contrib.metrics.streaming_percentage_less(values, threshold, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_percentage_less}
 
-Computes the percentage of values less than the given threshold. (deprecated arguments)
+Computes the percentage of values less than the given threshold.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+The `streaming_percentage_less` function creates two local variables,
+`total` and `count` that are used to compute the percentage of `values` that
+fall below `threshold`. This rate is weighted by `weights`, and it is
+ultimately returned as `percentage` which is an idempotent operation that
+simply divides `total` by `count`.
 
-  The `streaming_percentage_less` function creates two local variables,
-  `total` and `count` that are used to compute the percentage of `values` that
-  fall below `threshold`. This rate is weighted by `weights`, and it is
-  ultimately returned as `percentage` which is an idempotent operation that
-  simply divides `total` by `count`.
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`percentage`.
 
-  For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `percentage`.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+##### Args:
 
-  Args:
-    values: A numeric `Tensor` of arbitrary size.
-    threshold: A scalar threshold.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `values`.
-    weights: An optional `Tensor` whose shape is broadcastable to `values`.
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-    name: An optional variable_scope name.
 
-  Returns:
-    percentage: A tensor representing the current mean, the value of `total`
-      divided by `count`.
-    update_op: An operation that increments the `total` and `count` variables
-      appropriately.
+*  <b>`values`</b>: A numeric `Tensor` of arbitrary size.
+*  <b>`threshold`</b>: A scalar threshold.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
+*  <b>`metrics_collections`</b>: An optional list of collections that the metric
+    value variable should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that the metric update
+    ops should be added to.
+*  <b>`name`</b>: An optional variable_scope name.
 
-  Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `values`, or if `weights` is not `None` and its shape doesn't match
-      `values`, or if either `metrics_collections` or `updates_collections` are
-      not a list or tuple.
+##### Returns:
+
+
+*  <b>`percentage`</b>: A tensor representing the current mean, the value of `total`
+    divided by `count`.
+*  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
+    appropriately.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match `values`,
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -991,232 +972,223 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 - - -
 
-### `tf.contrib.metrics.streaming_sparse_precision_at_k(*args, **kwargs)` {#streaming_sparse_precision_at_k}
+### `tf.contrib.metrics.streaming_sparse_precision_at_k(predictions, labels, k, class_id=None, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_sparse_precision_at_k}
 
-Computes precision@k of the predictions with respect to sparse labels. (deprecated arguments)
+Computes precision@k of the predictions with respect to sparse labels.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+If `class_id` is specified, we calculate precision by considering only the
+    entries in the batch for which `class_id` is in the top-k highest
+    `predictions`, and computing the fraction of them for which `class_id` is
+    indeed a correct label.
+If `class_id` is not specified, we'll calculate precision as how often on
+    average a class among the top-k classes with the highest predicted values
+    of a batch entry is correct and can be found in the label for that entry.
 
-  If `class_id` is specified, we calculate precision by considering only the
-      entries in the batch for which `class_id` is in the top-k highest
-      `predictions`, and computing the fraction of them for which `class_id` is
-      indeed a correct label.
-  If `class_id` is not specified, we'll calculate precision as how often on
-      average a class among the top-k classes with the highest predicted values
-      of a batch entry is correct and can be found in the label for that entry.
+`streaming_sparse_precision_at_k` creates two local variables,
+`true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
+the precision@k frequency. This frequency is ultimately returned as
+`precision_at_<k>`: an idempotent operation that simply divides
+`true_positive_at_<k>` by total (`true_positive_at_<k>` +
+`false_positive_at_<k>`).
 
-  `streaming_sparse_precision_at_k` creates two local variables,
-  `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
-  the precision@k frequency. This frequency is ultimately returned as
-  `precision_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
-  `false_positive_at_<k>`).
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`precision_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
+indicating the top `k` `predictions`. Set operations applied to `top_k` and
+`labels` calculate the true positives and false positives weighted by
+`weights`. Then `update_op` increments `true_positive_at_<k>` and
+`false_positive_at_<k>` using these values.
 
-  For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `precision_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
-  indicating the top `k` `predictions`. Set operations applied to `top_k` and
-  `labels` calculate the true positives and false positives weighted by
-  `weights`. Then `update_op` increments `true_positive_at_<k>` and
-  `false_positive_at_<k>` using these values.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+##### Args:
 
-  Args:
-    predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
-      N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
-      The final dimension contains the logit values for each class. [D1, ... DN]
-      must match `labels`.
-    labels: `int64` `Tensor` or `SparseTensor` with shape
-      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
-      target classes for the associated prediction. Commonly, N=1 and `labels`
-      has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `predictions`. Values should be in range [0, num_classes), where
-      num_classes is the last dimension of `predictions`. Values outside this
-      range are ignored.
-    k: Integer, k for @k metric.
-    class_id: Integer class ID for which we want binary metrics. This should be
-      in range [0, num_classes], where num_classes is the last dimension of
-      `predictions`. If `class_id` is outside this range, the method returns
-      NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
-    weights: An optional `Tensor` whose shape is broadcastable to the the first
-      [D1, ... DN] dimensions of `predictions` and `labels`.
-    metrics_collections: An optional list of collections that values should
-      be added to.
-    updates_collections: An optional list of collections that updates should
-      be added to.
-    name: Name of new update operation, and namespace for other dependent ops.
 
-  Returns:
-    precision: Scalar `float64` `Tensor` with the value of `true_positives`
-      divided by the sum of `true_positives` and `false_positives`.
-    update_op: `Operation` that increments `true_positives` and
-      `false_positives` variables appropriately, and whose value matches
-      `precision`.
+*  <b>`predictions`</b>: Float `Tensor` with shape [D1, ... DN, num_classes] where
+    N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
+    The final dimension contains the logit values for each class. [D1, ... DN]
+    must match `labels`.
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
+    [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+    target classes for the associated prediction. Commonly, N=1 and `labels`
+    has shape [batch_size, num_labels]. [D1, ... DN] must match
+    `predictions`. Values should be in range [0, num_classes), where
+    num_classes is the last dimension of `predictions`. Values outside this
+    range are ignored.
+*  <b>`k`</b>: Integer, k for @k metric.
+*  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
+    in range [0, num_classes], where num_classes is the last dimension of
+    `predictions`. If `class_id` is outside this range, the method returns
+    NAN.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`metrics_collections`</b>: An optional list of collections that values should
+    be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that updates should
+    be added to.
+*  <b>`name`</b>: Name of new update operation, and namespace for other dependent ops.
 
-  Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
-      `predictions`, or if either `metrics_collections` or `updates_collections`
-      are not a list or tuple.
+##### Returns:
+
+
+*  <b>`precision`</b>: Scalar `float64` `Tensor` with the value of `true_positives`
+    divided by the sum of `true_positives` and `false_positives`.
+*  <b>`update_op`</b>: `Operation` that increments `true_positives` and
+    `false_positives` variables appropriately, and whose value matches
+    `precision`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match
+    `predictions`, or if either `metrics_collections` or `updates_collections`
+    are not a list or tuple.
 
 
 - - -
 
-### `tf.contrib.metrics.streaming_sparse_precision_at_top_k(*args, **kwargs)` {#streaming_sparse_precision_at_top_k}
+### `tf.contrib.metrics.streaming_sparse_precision_at_top_k(top_k_predictions, labels, class_id=None, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_sparse_precision_at_top_k}
 
-Computes precision@k of top-k predictions with respect to sparse labels. (deprecated arguments)
+Computes precision@k of top-k predictions with respect to sparse labels.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+If `class_id` is specified, we calculate precision by considering only the
+    entries in the batch for which `class_id` is in the top-k highest
+    `predictions`, and computing the fraction of them for which `class_id` is
+    indeed a correct label.
+If `class_id` is not specified, we'll calculate precision as how often on
+    average a class among the top-k classes with the highest predicted values
+    of a batch entry is correct and can be found in the label for that entry.
 
-  If `class_id` is specified, we calculate precision by considering only the
-      entries in the batch for which `class_id` is in the top-k highest
-      `predictions`, and computing the fraction of them for which `class_id` is
-      indeed a correct label.
-  If `class_id` is not specified, we'll calculate precision as how often on
-      average a class among the top-k classes with the highest predicted values
-      of a batch entry is correct and can be found in the label for that entry.
+`streaming_sparse_precision_at_top_k` creates two local variables,
+`true_positive_at_k` and `false_positive_at_k`, that are used to compute
+the precision@k frequency. This frequency is ultimately returned as
+`precision_at_k`: an idempotent operation that simply divides
+`true_positive_at_k` by total (`true_positive_at_k` + `false_positive_at_k`).
 
-  `streaming_sparse_precision_at_top_k` creates two local variables,
-  `true_positive_at_k` and `false_positive_at_k`, that are used to compute
-  the precision@k frequency. This frequency is ultimately returned as
-  `precision_at_k`: an idempotent operation that simply divides
-  `true_positive_at_k` by total (`true_positive_at_k` + `false_positive_at_k`).
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`precision_at_k`. Internally, set operations applied to `top_k_predictions`
+and `labels` calculate the true positives and false positives weighted by
+`weights`. Then `update_op` increments `true_positive_at_k` and
+`false_positive_at_k` using these values.
 
-  For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `precision_at_k`. Internally, set operations applied to `top_k_predictions`
-  and `labels` calculate the true positives and false positives weighted by
-  `weights`. Then `update_op` increments `true_positive_at_k` and
-  `false_positive_at_k` using these values.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+##### Args:
 
-  Args:
-    top_k_predictions: Integer `Tensor` with shape [D1, ... DN, k] where
-      N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
-      The final dimension contains the indices of top-k labels. [D1, ... DN]
-      must match `labels`.
-    labels: `int64` `Tensor` or `SparseTensor` with shape
-      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
-      target classes for the associated prediction. Commonly, N=1 and `labels`
-      has shape [batch_size, num_labels]. [D1, ... DN] must match
-      `top_k_predictions`. Values should be in range [0, num_classes), where
-      num_classes is the last dimension of `predictions`. Values outside this
-      range are ignored.
-    class_id: Integer class ID for which we want binary metrics. This should be
-      in range [0, num_classes), where num_classes is the last dimension of
-      `predictions`. If `class_id` is outside this range, the method returns
-      NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
-    weights: An optional `Tensor` whose shape is broadcastable to the the first
-      [D1, ... DN] dimensions of `predictions` and `labels`.
-    metrics_collections: An optional list of collections that values should
-      be added to.
-    updates_collections: An optional list of collections that updates should
-      be added to.
-    name: Name of new update operation, and namespace for other dependent ops.
 
-  Returns:
-    precision: Scalar `float64` `Tensor` with the value of `true_positives`
-      divided by the sum of `true_positives` and `false_positives`.
-    update_op: `Operation` that increments `true_positives` and
-      `false_positives` variables appropriately, and whose value matches
-      `precision`.
+*  <b>`top_k_predictions`</b>: Integer `Tensor` with shape [D1, ... DN, k] where
+    N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
+    The final dimension contains the indices of top-k labels. [D1, ... DN]
+    must match `labels`.
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
+    [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+    target classes for the associated prediction. Commonly, N=1 and `labels`
+    has shape [batch_size, num_labels]. [D1, ... DN] must match
+    `top_k_predictions`. Values should be in range [0, num_classes), where
+    num_classes is the last dimension of `predictions`. Values outside this
+    range are ignored.
+*  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
+    in range [0, num_classes), where num_classes is the last dimension of
+    `predictions`. If `class_id` is outside this range, the method returns
+    NAN.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`metrics_collections`</b>: An optional list of collections that values should
+    be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that updates should
+    be added to.
+*  <b>`name`</b>: Name of new update operation, and namespace for other dependent ops.
 
-  Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
-      `predictions`, or if either `metrics_collections` or `updates_collections`
-      are not a list or tuple.
-    ValueError: If `top_k_predictions` has rank < 2.
+##### Returns:
+
+
+*  <b>`precision`</b>: Scalar `float64` `Tensor` with the value of `true_positives`
+    divided by the sum of `true_positives` and `false_positives`.
+*  <b>`update_op`</b>: `Operation` that increments `true_positives` and
+    `false_positives` variables appropriately, and whose value matches
+    `precision`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match
+    `predictions`, or if either `metrics_collections` or `updates_collections`
+    are not a list or tuple.
+*  <b>`ValueError`</b>: If `top_k_predictions` has rank < 2.
 
 
 - - -
 
-### `tf.contrib.metrics.streaming_sparse_recall_at_k(*args, **kwargs)` {#streaming_sparse_recall_at_k}
+### `tf.contrib.metrics.streaming_sparse_recall_at_k(predictions, labels, k, class_id=None, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_sparse_recall_at_k}
 
-Computes recall@k of the predictions with respect to sparse labels. (deprecated arguments)
+Computes recall@k of the predictions with respect to sparse labels.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-10-19.
-Instructions for updating:
-`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.
+If `class_id` is specified, we calculate recall by considering only the
+    entries in the batch for which `class_id` is in the label, and computing
+    the fraction of them for which `class_id` is in the top-k `predictions`.
+If `class_id` is not specified, we'll calculate recall as how often on
+    average a class among the labels of a batch entry is in the top-k
+    `predictions`.
 
-  If `class_id` is specified, we calculate recall by considering only the
-      entries in the batch for which `class_id` is in the label, and computing
-      the fraction of them for which `class_id` is in the top-k `predictions`.
-  If `class_id` is not specified, we'll calculate recall as how often on
-      average a class among the labels of a batch entry is in the top-k
-      `predictions`.
+`streaming_sparse_recall_at_k` creates two local variables,
+`true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
+the recall_at_k frequency. This frequency is ultimately returned as
+`recall_at_<k>`: an idempotent operation that simply divides
+`true_positive_at_<k>` by total (`true_positive_at_<k>` +
+`false_negative_at_<k>`).
 
-  `streaming_sparse_recall_at_k` creates two local variables,
-  `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
-  the recall_at_k frequency. This frequency is ultimately returned as
-  `recall_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
-  `false_negative_at_<k>`).
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`recall_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
+indicating the top `k` `predictions`. Set operations applied to `top_k` and
+`labels` calculate the true positives and false negatives weighted by
+`weights`. Then `update_op` increments `true_positive_at_<k>` and
+`false_negative_at_<k>` using these values.
 
-  For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `recall_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
-  indicating the top `k` `predictions`. Set operations applied to `top_k` and
-  `labels` calculate the true positives and false negatives weighted by
-  `weights`. Then `update_op` increments `true_positive_at_<k>` and
-  `false_negative_at_<k>` using these values.
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
+##### Args:
 
-  Args:
-    predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
-      N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
-      The final dimension contains the logit values for each class. [D1, ... DN]
-      must match `labels`.
-    labels: `int64` `Tensor` or `SparseTensor` with shape
-      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
-      target classes for the associated prediction. Commonly, N=1 and `labels`
-      has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
-      Values should be in range [0, num_classes), where num_classes is the last
-      dimension of `predictions`. Values outside this range always count
-      towards `false_negative_at_<k>`.
-    k: Integer, k for @k metric.
-    class_id: Integer class ID for which we want binary metrics. This should be
-      in range [0, num_classes), where num_classes is the last dimension of
-      `predictions`. If class_id is outside this range, the method returns NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
-    weights: An optional `Tensor` whose shape is broadcastable to the the first
-      [D1, ... DN] dimensions of `predictions` and `labels`.
-    metrics_collections: An optional list of collections that values should
-      be added to.
-    updates_collections: An optional list of collections that updates should
-      be added to.
-    name: Name of new update operation, and namespace for other dependent ops.
 
-  Returns:
-    recall: Scalar `float64` `Tensor` with the value of `true_positives` divided
-      by the sum of `true_positives` and `false_negatives`.
-    update_op: `Operation` that increments `true_positives` and
-      `false_negatives` variables appropriately, and whose value matches
-      `recall`.
+*  <b>`predictions`</b>: Float `Tensor` with shape [D1, ... DN, num_classes] where
+    N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
+    The final dimension contains the logit values for each class. [D1, ... DN]
+    must match `labels`.
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
+    [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+    target classes for the associated prediction. Commonly, N=1 and `labels`
+    has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
+    Values should be in range [0, num_classes), where num_classes is the last
+    dimension of `predictions`. Values outside this range always count
+    towards `false_negative_at_<k>`.
+*  <b>`k`</b>: Integer, k for @k metric.
+*  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
+    in range [0, num_classes), where num_classes is the last dimension of
+    `predictions`. If class_id is outside this range, the method returns NAN.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`metrics_collections`</b>: An optional list of collections that values should
+    be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that updates should
+    be added to.
+*  <b>`name`</b>: Name of new update operation, and namespace for other dependent ops.
 
-  Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
-      `predictions`, or if either `metrics_collections` or `updates_collections`
-      are not a list or tuple.
+##### Returns:
+
+
+*  <b>`recall`</b>: Scalar `float64` `Tensor` with the value of `true_positives` divided
+    by the sum of `true_positives` and `false_negatives`.
+*  <b>`update_op`</b>: `Operation` that increments `true_positives` and
+    `false_negatives` variables appropriately, and whose value matches
+    `recall`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match
+  `predictions`, or if either `metrics_collections` or `updates_collections`
+  are not a list or tuple.
 
 
 - - -

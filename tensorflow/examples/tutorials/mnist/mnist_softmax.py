@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
 # Import data
 from tensorflow.examples.tutorials.mnist import input_data
@@ -73,5 +74,5 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--data_dir', type=str, default='/tmp/tensorflow/mnist/input_data',
                       help='Directory for storing input data')
-  FLAGS = parser.parse_args()
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

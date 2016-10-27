@@ -24,6 +24,7 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,7 +54,7 @@ def _get_saver():
     else:
       saver = None
   if saver is None and variables.all_variables():
-    saver = tf_saver.Saver()
+    saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
 

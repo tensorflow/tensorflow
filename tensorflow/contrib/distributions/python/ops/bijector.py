@@ -14,7 +14,7 @@
 # ==============================================================================
 r"""Bijector Ops.
 
-An API for reversible (bijective) transformations of random variables.
+An API for invertible, differentiable transformations of random variables.
 
 ## Background
 
@@ -31,6 +31,7 @@ To apply a `Bijector`, use `distributions.TransformedDistribution`.
 
 @@Bijector
 @@Chain
+@@CholeskyOuterProduct
 @@Exp
 @@Identity
 @@Inline
@@ -46,7 +47,9 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import contextlib
+import math
 import re
 import numpy as np
 import six
@@ -58,18 +61,112 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 
+__all__ = [
+    "Bijector",
+    "Chain",
+    "CholeskyOuterProduct",
+    "Exp",
+    "Identity",
+    "Inline",
+    "Invert",
+    "ScaleAndShift",
+    "SigmoidCentered",
+    "SoftmaxCentered",
+    "Softplus",
+]
+
+
+class _Mapping(collections.namedtuple("_Mapping",
+                                      ["x", "y", "ildj", "condition_kwargs"])):
+  """Helper class to make it easier to manage caching in `Bijector`."""
+
+  def __new__(cls, x=None, y=None, ildj=None, condition_kwargs=None):
+    """Custom __new__ so namedtuple items have defaults.
+
+    Args:
+      x: `Tensor`. Forward.
+      y: `Tensor`. Inverse.
+      ildj: `Tensor`. Inverse log det Jacobian.
+      condition_kwargs: Python dictionary. Extra args supplied to
+        forward/inverse/etc functions.
+
+    Returns:
+      mapping: New instance of _Mapping.
+    """
+    return super(_Mapping, cls).__new__(cls, x, y, ildj, condition_kwargs)
+
+  @property
+  def x_key(self):
+    """Returns key used for caching Y=g(X)."""
+    return (self.x,) + self._deep_tuple(tuple(sorted(
+        self.condition_kwargs.items())))
+
+  @property
+  def y_key(self):
+    """Returns key used for caching X=g^{-1}(Y)."""
+    return (self.y,) + self._deep_tuple(tuple(sorted(
+        self.condition_kwargs.items())))
+
+  def merge(self, x=None, y=None, ildj=None,
+            condition_kwargs=None, mapping=None):
+    """Returns new _Mapping with args merged with self.
+
+    Args:
+      x: `Tensor`. Forward.
+      y: `Tensor`. Inverse.
+      ildj: `Tensor`. Inverse log det Jacobian.
+      condition_kwargs: Python dictionary. Extra args supplied to
+        forward/inverse/etc functions.
+      mapping: Instance of _Mapping to merge. Can only be specified if no other
+        arg is specified.
+
+    Returns:
+      mapping: New instance of `_Mapping` which has inputs merged with self.
+
+    Raises:
+      ValueError: if mapping and any other arg is not `None`.
+    """
+    if mapping is None:
+      mapping = _Mapping(x=x, y=y, ildj=ildj,
+                         condition_kwargs=condition_kwargs)
+    elif not all([arg is None for arg in [x, y, ildj, condition_kwargs]]):
+      raise ValueError("Cannot specify mapping and individual args.")
+    return _Mapping(
+        x=self._merge(self.x, mapping.x),
+        y=self._merge(self.y, mapping.y),
+        ildj=self._merge(self.ildj, mapping.ildj),
+        condition_kwargs=self._merge(self.condition_kwargs,
+                                     mapping.condition_kwargs))
+
+  def _merge(self, old, new):
+    """Helper to merge which handles merging one value."""
+    if old is None:
+      return new
+    elif new is not None and old != new:
+      raise ValueError("Incompatible values: %s != %s" % (old, new))
+    return old
+
+  def _deep_tuple(self, x):
+    """Converts lists of lists to tuples of tuples."""
+    return (tuple(map(self._deep_tuple, x))
+            if isinstance(x, (list, tuple)) else x)
+
 
 @six.add_metaclass(abc.ABCMeta)
 class Bijector(object):
-  """Interface for transforming a `Distribution` via `TransformedDistribution`.
+  """Interface for transforming a `Distribution` sample.
 
-  A `Bijector` implements a bijective, differentiable function by transforming
-  an input `Tensor`. The output `Tensor` shape is constrained by the input
-  `sample`, `batch`, and `event` shape.  A `Bijector` is characterized by three
+  A `Bijector` implements a
+  [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
+  bijective, differentiable function. A `Bijector` is used by
+  `TransformedDistribution` but can be generally used for transforming a
+  `Distribution` generated `Tensor`.  A `Bijector` is characterized by three
   operations:
 
   1. Forward Evaluation
@@ -210,7 +307,8 @@ class Bijector(object):
   - The inverse `log o det o Jacobian` can be implemented as the negative of the
     forward `log o det o Jacobian`.  This is useful if the `inverse` is
     implemented as a cache or the inverse Jacobian is computationally more
-    expensive. The following demonstrates the suggested implementation.
+    expensive (e.g., `CholeskyOuterProduct` `Bijector`). The following
+    demonstrates the suggested implementation.
 
     ```python
     def _inverse_and_log_det_jacobian(self, y):
@@ -300,6 +398,11 @@ class Bijector(object):
     self._is_constant_jacobian = is_constant_jacobian
     self._validate_args = validate_args
     self._dtype = dtype
+    self._from_y = {}
+    self._from_x = {}
+    # Using abbreviation ildj for "inverse log det Jacobian."
+    # This variable is not `None` iff is_constant_jacobian is `True`.
+    self._constant_ildj = None
     if name:
       self._name = name
     else:
@@ -368,7 +471,12 @@ class Bijector(object):
     with self._name_scope(name, [x]):
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
-      return self._forward(x, **condition_kwargs)
+      mapping = self._lookup(x=x, condition_kwargs=condition_kwargs)
+      if mapping.y is not None:
+        return mapping.y
+      mapping = mapping.merge(y=self._forward(x, **condition_kwargs))
+      self._cache(mapping)
+      return mapping.y
 
   def _inverse(self, y):
     raise NotImplementedError("inverse is not implemented")
@@ -393,16 +501,28 @@ class Bijector(object):
     with self._name_scope(name, [y]):
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      mapping = self._lookup(y=y, condition_kwargs=condition_kwargs)
+      if mapping.x is not None:
+        return mapping.x
+      ildj = None
       try:
-        return self._inverse(y, **condition_kwargs)
+        x = self._inverse(y, **condition_kwargs)
       except NotImplementedError as original_error:
         # Since _inverse was not implemented, try to see if it's implemented
         # by the _inverse_and_inverse_log_det_jacobian member.
         try:
-          return self._inverse_and_inverse_log_det_jacobian(
-              y, **condition_kwargs)[0]
+          x, ildj = self._inverse_and_inverse_log_det_jacobian(
+              y, **condition_kwargs)
+          if self._constant_ildj is not None:
+            ildj = self._constant_ildj  # Use the "global" result.
+          elif self.is_constant_jacobian:
+            self._constant_ildj = ildj
         except NotImplementedError:
           raise original_error
+      x = x if mapping.x is None else mapping.x
+      mapping = mapping.merge(x=x, ildj=ildj)
+      self._cache(mapping)
+      return mapping.x
 
   def _inverse_log_det_jacobian(self, y):
     raise NotImplementedError("inverse_log_det_jacobian is not implemented.")
@@ -430,18 +550,32 @@ class Bijector(object):
         `_inverse_and_inverse_log_det_jacobian` are implemented.
     """
     with self._name_scope(name, [y]):
+      if self._constant_ildj is not None:
+        return self._constant_ildj
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      mapping = self._lookup(y=y, condition_kwargs=condition_kwargs)
+      if mapping.ildj is not None:
+        return mapping.ildj
       try:
-        return self._inverse_log_det_jacobian(y, **condition_kwargs)
+        x = mapping.x
+        ildj = self._inverse_log_det_jacobian(y, **condition_kwargs)
       except NotImplementedError as original_error:
         # Since _inverse_log_det_jacobian was not implemented, try to see if
         # it's implemented by the _inverse_and_inverse_log_det_jacobian member.
         try:
-          return self._inverse_and_inverse_log_det_jacobian(
-              y, **condition_kwargs)[1]
+          x, ildj = self._inverse_and_inverse_log_det_jacobian(
+              y, **condition_kwargs)
+          if mapping.x is not None:
+            x = mapping.x
         except NotImplementedError:
           raise original_error
+      if self.is_constant_jacobian:
+        self._constant_ildj = ildj
+      x = x if mapping.x is None else mapping.x
+      mapping = mapping.merge(x=x, ildj=ildj)
+      self._cache(mapping)
+      return mapping.ildj
 
   def _inverse_and_inverse_log_det_jacobian(self, y):
     raise NotImplementedError(
@@ -473,18 +607,30 @@ class Bijector(object):
     with self._name_scope(name, [y]):
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      mapping = self._lookup(y=y, condition_kwargs=condition_kwargs)
+      if mapping.x is not None and mapping.ildj is not None:
+        return mapping.x, mapping.ildj
       try:
-        return self._inverse_and_inverse_log_det_jacobian(
+        x, ildj = self._inverse_and_inverse_log_det_jacobian(
             y, **condition_kwargs)
       except NotImplementedError as original_error:
         # Since _inverse_and_inverse_log_det_jacobian was not implemented, try
         # to see if we can separately use _inverse and
         # _inverse_log_det_jacobian members.
         try:
-          return (self._inverse(y, **condition_kwargs),
-                  self._inverse_log_det_jacobian(y, **condition_kwargs))
+          x = self._inverse(y, **condition_kwargs)
+          if self._constant_ildj is None:
+            ildj = self._inverse_log_det_jacobian(y, **condition_kwargs)
         except NotImplementedError:
           raise original_error
+      if self._constant_ildj is not None:
+        ildj = self._constant_ildj  # Ignore any ildj we may/not have.
+      elif self.is_constant_jacobian:
+        self._constant_ildj = ildj
+      x = x if mapping.x is None else mapping.x
+      mapping = mapping.merge(x=x, ildj=ildj)
+      self._cache(mapping)
+      return mapping.x, mapping.ildj
 
   def _forward_log_det_jacobian(self, x):
     raise NotImplementedError(
@@ -509,16 +655,29 @@ class Bijector(object):
         nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
     """
     with self._name_scope(name, [x]):
+      if self._constant_ildj is not None:
+        # Need "-1. *" to avoid invalid-unary-operand-type linter warning.
+        return -1. * self._constant_ildj
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
+      mapping = self._lookup(x=x, condition_kwargs=condition_kwargs)
+      if mapping.ildj is not None:
+        return -mapping.ildj
+      y = None
       try:
-        return self._forward_log_det_jacobian(x, **condition_kwargs)
+        ildj = -self._forward_log_det_jacobian(x, **condition_kwargs)
       except NotImplementedError as original_error:
         try:
-          y = self.inverse(x, **condition_kwargs)
-          return -self.inverse_log_det_jacobian(y, **condition_kwargs)
+          y = self.inverse(x, **condition_kwargs) if y is None else y
+          ildj = self.inverse_log_det_jacobian(y, **condition_kwargs)
         except NotImplementedError:
           raise original_error
+      if self.is_constant_jacobian:
+        self._constant_ildj = ildj
+      y = y if mapping.y is None else mapping.y
+      mapping = mapping.merge(y=y, ildj=ildj)
+      self._cache(mapping)
+      return -mapping.ildj
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
@@ -534,6 +693,31 @@ class Bijector(object):
       raise TypeError("Input had dtype %s but expected %s." %
                       (self.dtype, x.dtype))
 
+  def _cache(self, mapping):
+    """Helper which stores mapping info in forward/inverse dicts."""
+    if self._constant_ildj is not None:
+      # Fold in ildj if known constant Jacobian.
+      mapping = mapping.merge(ildj=self._constant_ildj)
+    # Merging from lookup is an added check that we're not overwriting anything
+    # which is not None.
+    mapping = mapping.merge(mapping=self._lookup(
+        mapping.x, mapping.y, mapping.condition_kwargs))
+    if mapping.x is None or mapping.y is None:
+      ValueError("Caching expects both (x,y) to be known, i.e., not None.")
+    self._from_x[mapping.x_key] = mapping
+    self._from_y[mapping.y_key] = mapping
+
+  def _lookup(self, x=None, y=None, condition_kwargs=None):
+    """Helper which retrieves mapping info from forward/inverse dicts."""
+    mapping = _Mapping(x=x, y=y, condition_kwargs=condition_kwargs)
+    # Since _cache requires both x,y to be set, we only need to do one cache
+    # lookup since the mapping is always in both or neither.
+    if mapping.x is not None:
+      return self._from_x.get(mapping.x_key, mapping)
+    if mapping.y is not None:
+      return self._from_y.get(mapping.y_key, mapping)
+    return mapping
+
 
 class Inline(Bijector):
   # pylint: disable=line-too-long
@@ -547,7 +731,7 @@ class Inline(Bijector):
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
       lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
-    name="Exp")
+    name="exp")
   ```
 
   The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
@@ -573,8 +757,8 @@ class Inline(Bijector):
         log o det o jacobian of the forward transformation.
       is_constant_jacobian: `Boolean` indicating that the Jacobian is constant
         for all input arguments.
-      validate_args: `Boolean` indicated whether arguments should be checked for
-        correctness.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
       name: `String`, name given to ops managed by this object.
     """
     super(Inline, self).__init__(
@@ -643,8 +827,8 @@ class Invert(Bijector):
 
     Args:
       bijector: Bijector instance.
-      validate_args: `Boolean` indicated whether arguments should be checked for
-        correctness.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
       name: `String`, name given to ops managed by this object.
     """
 
@@ -713,8 +897,8 @@ class Chain(Bijector):
     Args:
       bijectors: Python list of bijector instances. An empty list makes this
         bijector equivalent to the `Identity` bijector.
-      validate_args: `Boolean` indicated whether arguments should be checked for
-        correctness.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
       name: `String`, name given to ops managed by this object. Default: E.g.,
         `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
 
@@ -794,12 +978,9 @@ class Identity(Bijector):
 
   def __init__(self, validate_args=False, name="identity"):
     super(Identity, self).__init__(
-        batch_ndims=0,
-        event_ndims=0,
         is_constant_jacobian=True,
         validate_args=validate_args,
         name=name)
-    self._is_constant_jacobian = True
 
   def _forward(self, x):
     return x
@@ -841,8 +1022,8 @@ class Exp(Bijector):
     Args:
       event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
         associated with a particular draw from the distribution.
-      validate_args: `Boolean` indicated whether arguments should be checked for
-        correctness.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
       name: `String` name given to ops managed by this object.
     """
 
@@ -923,8 +1104,8 @@ class ScaleAndShift(Bijector):
       scale: `Tensor` used to scale input, i.e., `Y = g(X) = scale * X + shift`.
       event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
         associated with a particular draw from the distribution.
-      validate_args: `Boolean` indicated whether arguments should be checked for
-        correctness.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
       name: `String` name given to ops managed by this object.
     """
 
@@ -1271,3 +1452,150 @@ class SigmoidCentered(SoftmaxCentered):
   def __init__(self, validate_args=False, name="sigmoid_centered"):
     super(SigmoidCentered, self).__init__(
         validate_args=validate_args, name=name)
+
+
+class CholeskyOuterProduct(Bijector):
+  # pylint: disable=line-too-long
+  """Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
+
+  `event_ndims` must be 0 or 2, i.e., scalar or matrix.
+
+  Note: the upper-triangular part of X is ignored (whether or not its zero).
+
+  Examples:
+
+  ```python
+  bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
+  # Result: [[1, 1], [1, 5]], i.e., x x^T
+
+  bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
+  # Result: [[1, 0], [2, 1]], i.e., chol(y).
+  ```
+
+  """
+  # pylint: enable=line-too-long
+
+  def __init__(self, event_ndims=2, validate_args=False,
+               name="cholesky_outer_product"):
+    """Instantiates the `CholeskyOuterProduct` bijector.
+
+    Args:
+      event_ndims: `constant` `int32` scalar `Tensor` indicating the number of
+        dimensions associated with a particular draw from the distribution. Must
+        be 0 or 2.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
+      name: `String` name given to ops managed by this object.
+
+    Raises:
+      ValueError: if event_ndims is neither 0 or 2.
+    """
+    self._parameters = {}
+    self._name = name
+    with self._name_scope("init", values=[event_ndims]):
+      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
+      event_ndims = tensor_util.constant_value(event_ndims)
+    if event_ndims is None or event_ndims not in [0, 2]:
+      raise ValueError("`event_ndims` must be a TF constant which is 0 or 2")
+    self._static_event_ndims = event_ndims
+    super(CholeskyOuterProduct, self).__init__(
+        validate_args=validate_args,
+        name=name)
+
+  def _forward(self, x):
+    if self._static_event_ndims == 0:
+      return math_ops.square(x)
+    if self.validate_args:
+      is_matrix = check_ops.assert_rank_at_least(x, 2)
+      shape = array_ops.shape(x)
+      is_square = check_ops.assert_equal(shape[-2], shape[-1])
+      x = control_flow_ops.with_dependencies([is_matrix, is_square], x)
+    # For safety, explicitly zero-out the upper triangular part.
+    x = array_ops.matrix_band_part(x, -1, 0)
+    return math_ops.batch_matmul(x, x, adj_y=True)
+
+  def _inverse_and_inverse_log_det_jacobian(self, y):
+    x = (math_ops.sqrt(y) if self._static_event_ndims == 0
+         else linalg_ops.cholesky(y))
+    return x, -self._forward_log_det_jacobian(x)
+
+  def _forward_log_det_jacobian(self, x):
+    # Let Y be a symmetric, positive definite matrix and write:
+    #   Y = X X^T
+    # where X is lower-triangular.
+    #
+    # Observe that,
+    #   dY[i,j]/dX[a,b]
+    #   = d/dX[a,b] { X[i,:] X[j,:] }
+    #   = sum_{d=1}^p { I[i=a] I[d=b] X[j,d] + I[j=a] I[d=b] X[i,d] }
+    #
+    # To compute the Jacobian dX/dY we must represent X,Y as vectors. Since Y is
+    # symmetric and X is lower-triangular, we need vectors of dimension:
+    #   d = p (p + 1) / 2
+    # where X, Y are p x p matrices, p > 0. We use a row-major mapping, i.e.,
+    #   k = { i (i + 1) / 2 + j   i>=j
+    #       { undef               i<j
+    # and assume zero-based indexes. When k is undef, the element is dropped.
+    # Example:
+    #           j      k
+    #        0 1 2 3  /
+    #    0 [ 0 . . . ]
+    # i  1 [ 1 2 . . ]
+    #    2 [ 3 4 5 . ]
+    #    3 [ 6 7 8 9 ]
+    # Write vec[.] to indicate transforming a matrix to vector via k(i,j). (With
+    # slight abuse: k(i,j)=undef means the element is dropped.)
+    #
+    # We now show d vec[Y] / d vec[X] is lower triangular. Assuming both are
+    # defined, observe that k(i,j) < k(a,b) iff (1) i<a or (2) i=a and j<b.
+    # In both cases dvec[Y]/dvec[X]@[k(i,j),k(a,b)] = 0 since:
+    # (1) j<=i<a thus i,j!=a.
+    # (2) i=a>j  thus i,j!=a.
+    #
+    # Since the Jacobian is lower-triangular, we need only compute the product
+    # of diagonal elements:
+    #   d vec[Y] / d vec[X] @[k(i,j), k(i,j)]
+    #   = X[j,j] + I[i=j] X[i,j]
+    #   = 2 X[j,j].
+    # Since there is a 2 X[j,j] term for every lower-triangular element of X we
+    # conclude:
+    #   |Jac(d vec[Y]/d vec[X])| = 2^p prod_{j=0}^{p-1} X[j,j]^{p-j}.
+    if self._static_event_ndims == 0:
+      if self.validate_args:
+        is_positive = check_ops.assert_positive(
+            x, message="All elements must be positive.")
+        x = control_flow_ops.with_dependencies([is_positive], x)
+      return math.log(2.) + math_ops.log(x)
+
+    diag = array_ops.matrix_diag_part(x)
+    if self.validate_args:
+      is_matrix = check_ops.assert_rank_at_least(
+          x, 2, message="Input must be a (batch of) matrix.")
+      shape = array_ops.shape(x)
+      is_square = check_ops.assert_equal(
+          shape[-2], shape[-1],
+          message="Input must be a (batch of) square matrix.")
+      # Assuming lower-triangular means we only need check diag>0.
+      is_positive_definite = check_ops.assert_positive(
+          diag, message="Input must be positive definite.")
+      x = control_flow_ops.with_dependencies(
+          [is_matrix, is_square, is_positive_definite], x)
+
+    # Create a column vector equal to: [p, p-1, ..., 2, 1]^T.
+    if x.get_shape().ndims is None or x.get_shape()[-1].value is None:
+      p = array_ops.shape(x)[-1]
+    else:
+      p = x.get_shape()[-1].value
+    exponents = array_ops.expand_dims(
+        math_ops.linspace(math_ops.cast(p, dtype=x.dtype), 1., p),
+        dim=1)
+
+    sum_weighted_log_diag = array_ops.squeeze(
+        math_ops.batch_matmul(math_ops.log(diag), exponents),
+        squeeze_dims=-1)
+    fldj = p * math.log(2.) + sum_weighted_log_diag
+
+    if x.get_shape().ndims is not None:
+      fldj.set_shape(x.get_shape()[:-2])
+
+    return fldj

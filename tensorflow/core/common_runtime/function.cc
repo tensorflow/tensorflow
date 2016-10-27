@@ -44,11 +44,7 @@ static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 static const char* const kFuncAttr = "f";
-// kNoinlineAttr must start with an "_" to avoid collisions with
-// user-specified attrs.
-static const char* const kNoinlineAttr = "_noinline";
-// Old graphs use no "_".
-static const char* const kOldNoinlineAttr = "noinline";
+static const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -168,6 +164,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Device* device() override { return device_; }
   Env* env() override { return env_; }
+  int graph_def_version() override { return graph_def_version_; }
 
   string DebugString(Handle h) override;
 
@@ -290,6 +287,34 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   return func_graphs_[h];
 }
 
+namespace {
+
+struct CustomCreatorSingleton {
+  mutex mu;
+  CustomKernelCreator custom_creator = nullptr;
+
+  void Set(CustomKernelCreator cb) {
+    mutex_lock l(mu);
+    custom_creator = cb;
+  }
+
+  CustomKernelCreator Get() {
+    mutex_lock l(mu);
+    return custom_creator;
+  }
+};
+
+CustomCreatorSingleton* GetCustomCreatorSingleton() {
+  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
+  return ccs;
+}
+
+}  // end namespace
+
+void RegisterCustomKernelCreator(CustomKernelCreator cb) {
+  GetCustomCreatorSingleton()->Set(cb);
+}
+
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
   if (lib_def_->Find(ndef.op()) == nullptr) {
@@ -318,8 +343,23 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
     output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
   }
 
-  // Constructs a CallOp kernel for running the instantiated function.
+  // If a custom kernel creator is given, try that.
+  CustomKernelCreator custom_creator = GetCustomCreatorSingleton()->Get();
   Status s;
+  if (custom_creator) {
+    std::unique_ptr<OpKernel> ret;
+    s = custom_creator(this, ndef, &ret);
+    if (s.ok()) {
+      *kernel = ret.release();
+      return s;
+    } else {
+      VLOG(2) << "Custom creator error: " << s;
+      // Falls through.
+      s = Status::OK();
+    }
+  }
+
+  // Constructs a CallOp kernel for running the instantiated function.
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
@@ -327,7 +367,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
   *kernel = new CallOp(handle, &construction);
   if (!s.ok()) {
-    delete kernel;
+    delete *kernel;
   }
   return s;
 }
@@ -887,15 +927,11 @@ static void InlineFunctionBody(Graph* g, Node* caller,
 }
 
 // Given a node's NodeDef, returns false iff the node explicitly
-// specified _noinline. This gives ExpandInlineFunctions a heuristic to
-// decide whether to inline the function.
-// `old` is true for GraphDef versions older than 12, when the
-// `noinline` attr was renamed to `_noinline` to avoid conflicts with
-// user-specified attrs.
-bool ShouldInline(const NodeDef& ndef, bool old) {
+// specified _noinline. This gives ExpandInlineFunctions a heuristic
+// to decide whether to inline the function.
+bool ShouldInline(const NodeDef& ndef) {
   bool noinline = false;
-  const char* const attr = old ? kOldNoinlineAttr : kNoinlineAttr;
-  if (GetNodeAttr(ndef, attr, &noinline).ok()) {
+  if (GetNodeAttr(ndef, kNoInlineAttr, &noinline).ok()) {
     // If the node specifies attribute '_noinline', returns accordingly.
     return !noinline;
   }
@@ -914,7 +950,8 @@ bool ShouldInline(const NodeDef& ndef, bool old) {
     // continue and the runtime will error out.
     return false;
   }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), attr, &noinline);
+  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoInlineAttr,
+                  &noinline);
   if (!s.ok()) {
     // The forward function doesn't specify '_noinline' attr, we should
     // be free to decide.
@@ -926,11 +963,9 @@ bool ShouldInline(const NodeDef& ndef, bool old) {
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
-  // Identify old graphs before the 'noinline' attr was renamed '_noinline'.
-  const bool old_inline_attr = graph->versions().producer() < 12;
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
-    if (!ShouldInline(node->def(), old_inline_attr)) {
+    if (!ShouldInline(node->def())) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }

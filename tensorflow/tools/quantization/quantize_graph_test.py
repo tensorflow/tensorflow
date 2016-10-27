@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 
+import sys
 import numpy as np
 import tensorflow as tf
 
@@ -174,7 +175,8 @@ def test_graph(float_graph_def, input_map, output_names):
   #
   # TODO(petewarden): Add test for "quantize" mode.
 
-  eightbit_rewriter = quantize_graph.GraphRewriter(float_graph_def, "eightbit")
+  eightbit_rewriter = quantize_graph.GraphRewriter(float_graph_def, "eightbit",
+                                                   quantized_input_range=None)
   eightbit_graph_def = eightbit_rewriter.rewrite(output_names)
   eightbit_results = run_graph_def(eightbit_graph_def, input_map,
                                    [output_name + ":0"
@@ -184,11 +186,11 @@ def test_graph(float_graph_def, input_map, output_names):
 
   # Test the weights_rounded mode. This uses the default bit_depth.
   weights_rounded_rewriter = quantize_graph.GraphRewriter(
-      float_graph_def, "weights_rounded")
+      float_graph_def, "weights_rounded", quantized_input_range=None)
   weights_rounded_graph_def = weights_rounded_rewriter.rewrite(output_names)
-  weights_rounded_results = run_graph_def(weights_rounded_graph_def, input_map,
-                                          [output_name + ":0"
-                                           for output_name in output_names])
+  weights_rounded_results = run_graph_def(
+      weights_rounded_graph_def, input_map,
+      [output_name + ":0" for output_name in output_names])
   for expected, result in zip(float_results, weights_rounded_results):
     assert are_tensors_near(expected, result, 1.0)
 
@@ -265,10 +267,9 @@ class QuantizeGraphTest(tf.test.TestCase):
     test_graph(g, {}, ["matmul_2"])
 
     # Verify there is only one Quantize and one Requantize op.
-    eightbit_rewriter = quantize_graph.GraphRewriter(g, "eightbit")
+    eightbit_rewriter = quantize_graph.GraphRewriter(g, "eightbit",
+                                                     quantized_input_range=None)
     eightbit_graph_def = eightbit_rewriter.rewrite(["matmul_2"])
-
-    tf.logging.info("S:\n%s", str(eightbit_graph_def))
 
     ops = [node.op for node in eightbit_graph_def.node]
     # No quantize since all inputs are const and can be quantized up-front.
@@ -621,6 +622,104 @@ class QuantizeGraphTest(tf.test.TestCase):
     float_graph_def.node.extend([bias_add_node])
     test_graph(float_graph_def, {}, [bias_add_name])
 
+  def test_quantized_input_range_errors(self):
+    with self.assertRaises(ValueError):
+      # Invalid mode.
+      quantize_graph.GraphRewriter(tf.GraphDef(), "weights_rounded", [0, 1])
+    with self.assertRaises(ValueError):
+      # Invalid range.
+      quantize_graph.GraphRewriter(tf.GraphDef(), "eightbit", [0, -1])
+
+  def test_quantized_input_range_bias_add(self):
+    input_shape = [1, 1, 2, 6]
+    input_n = quantize_graph.create_node(
+        "PlaceholderV2", "input", [])
+    quantize_graph.set_attr_dtype(input_n, "dtype", tf.float32)
+    quantize_graph.set_attr_shape(input_n, "shape", input_shape)
+    offset_n = quantize_graph.create_constant_node("offset",
+                                                   value=[1, 2, 3, 4, 5, 6],
+                                                   dtype=tf.float32,
+                                                   shape=[6])
+    bias_add_n = quantize_graph.create_node("BiasAdd", "bias_add",
+                                            [input_n.name, offset_n.name])
+    quantize_graph.set_attr_dtype(bias_add_n, "T", tf.float32)
+
+    float_graph_def = tf.GraphDef()
+    float_graph_def.node.extend([input_n, offset_n, bias_add_n])
+
+    input_map = {input_n.name + ":0":
+                 np.reshape([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+                            input_shape)}
+    self._RunTestsForQuantizedInputRange(
+        float_graph_def, input_map, [bias_add_n.name], [-1, 20.])
+    self._RunTestsForQuantizedInputRange(
+        float_graph_def, input_map, [bias_add_n.name], [0, 12.])
+
+  def test_quantized_input_range_mat_mul(self):
+    shapes = [[3, 2], [2, 4]]
+    inputs = []
+    for i, shape in enumerate(shapes):
+      node = quantize_graph.create_node("PlaceholderV2", "input_%s" % i, [])
+      quantize_graph.set_attr_dtype(node, "dtype", tf.float32)
+      quantize_graph.set_attr_shape(node, "shape", shape)
+      inputs.append(node)
+    mat_mul_node = quantize_graph.create_node("MatMul", "mat_mul",
+                                              [n.name for n in inputs])
+    quantize_graph.set_attr_dtype(mat_mul_node, "T", tf.float32)
+
+    float_graph_def = tf.GraphDef()
+    float_graph_def.node.extend(inputs + [mat_mul_node])
+
+    input_map = {inputs[0].name + ":0":
+                     np.reshape([1, 2, 3, 4, 5, 6], shapes[0]),
+                 inputs[1].name + ":0":
+                     np.reshape([.8, .7, .6, .5, .4, .3, .2, .1], shapes[1])}
+    self._RunTestsForQuantizedInputRange(
+        float_graph_def, input_map, [mat_mul_node.name], [-1, 20.])
+    self._RunTestsForQuantizedInputRange(
+        float_graph_def, input_map, [mat_mul_node.name], [0, 6.])
+
+  def _RunTestsForQuantizedInputRange(self, float_graph_def, input_map,
+                                      output_names, input_range):
+    if sys.version_info[0] == 3:
+      # uint8->quint8 conversion for numpy is not working currently.
+      return
+
+    quantized_input_map = {}
+    for k, v in input_map.items():
+      arr = [
+          int(round((n-input_range[0])*255/(input_range[1]-input_range[0])))
+          for n in v.flat]
+      arr = np.array(arr, np.uint8)
+      arr = arr.reshape(v.shape)
+      arr = arr.astype(tf.quint8.as_numpy_dtype)
+      quantized_input_map[k] = arr
+    output_tensors = [output_name + ":0" for output_name in output_names]
+    float_results = run_graph_def(float_graph_def, input_map, output_tensors)
+
+    # Quantize treating the input as quantized in range <input_range>.
+    rewriter = quantize_graph.GraphRewriter(float_graph_def, "eightbit",
+                                            input_range)
+    graph_def = rewriter.rewrite(output_names)
+    results = run_graph_def(graph_def, quantized_input_map, output_tensors)
+    for expected, result in zip(float_results, results):
+      assert are_tensors_near(expected, result, .5)
+    ops = [node.op for node in graph_def.node]
+    self.assertEqual(0, ops.count("QuantizeV2") + ops.count("Quantize"))
+    self.assertEqual(len(output_names), ops.count("Dequantize"))
+
+    # Quantize without treating input as quantized.
+    rewriter = quantize_graph.GraphRewriter(float_graph_def, "eightbit",
+                                            quantized_input_range=None)
+    graph_def = rewriter.rewrite(output_names)
+    results = run_graph_def(graph_def, input_map, output_tensors)
+    for expected, result in zip(float_results, results):
+      assert are_tensors_near(expected, result, .5)
+    ops = [node.op for node in graph_def.node]
+    self.assertEqual(len(input_map),
+                     ops.count("QuantizeV2") + ops.count("Quantize"))
+    self.assertEqual(len(output_names), ops.count("Dequantize"))
+
   def test_remove_redundant_quantization(self):
     a_constant_name = "a_constant"
     a_constant_min_name = "a_constant_min"
@@ -745,7 +844,8 @@ class QuantizeGraphTest(tf.test.TestCase):
     quantize_graph.set_attr_dtype(mat_mul_node, "T2", tf.int32)
     expected_output.node.extend([mat_mul_node])
 
-    rewriter = quantize_graph.GraphRewriter(graph_def, [mat_mul_name])
+    rewriter = quantize_graph.GraphRewriter(graph_def, [mat_mul_name],
+                                            quantized_input_range=None)
     output = rewriter.remove_redundant_quantization(graph_def)
     stripped_output = graph_util.extract_sub_graph(output, [mat_mul_name])
     self.assertProtoEquals(expected_output, stripped_output)

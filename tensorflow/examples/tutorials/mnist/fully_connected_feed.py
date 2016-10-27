@@ -21,6 +21,7 @@ from __future__ import print_function
 # pylint: disable=missing-docstring
 import argparse
 import os.path
+import sys
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -271,5 +272,6 @@ if __name__ == '__main__':
       help='If true, uses fake data for unit testing.',
       action='store_true'
   )
-  FLAGS = parser.parse_args()
-  tf.app.run()
+
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -65,10 +65,7 @@ class DecodeRawOpTest(tf.test.TestCase):
       self.assertEqual([None, None], decode.get_shape().as_list())
 
       expected_result = np.matrix([[1, -2, -3, 4]], dtype=np.float16)
-      result = decode.eval(
-        feed_dict={
-          in_bytes: [expected_result.tobytes()]
-        })
+      result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
 
       self.assertAllEqual(expected_result, result)
 

@@ -22,12 +22,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_activations.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace perftools {
-namespace gputools {
-class Stream;
-}  // end namespace gputools
-}  // end namespace perftools
-
 namespace tensorflow {
 class OpKernelContext;
 
@@ -153,29 +147,26 @@ struct LSTMBlockCellFprop : public LSTMBlockCell {
                      const int cell_size)
       : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
-  void operator()(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                  const Device& d, const T forget_bias, const T cell_clip,
-                  bool use_peephole, typename TTypes<T>::ConstMatrix x,
-                  typename TTypes<T>::ConstMatrix cs_prev,
-                  typename TTypes<T>::ConstMatrix h_prev,
-                  typename TTypes<T>::ConstMatrix w,
-                  typename TTypes<T>::ConstVec wci,
-                  typename TTypes<T>::ConstVec wcf,
-                  typename TTypes<T>::ConstVec wco,
-                  typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,
-                  typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,
-                  typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,
-                  typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,
-                  typename TTypes<T>::Matrix icfo,
-                  typename TTypes<T>::Matrix h) {
+  void operator()(
+      OpKernelContext* ctx, const Device& d, const T forget_bias,
+      const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x,
+      typename TTypes<T>::ConstMatrix cs_prev,
+      typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
+      typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
+      typename TTypes<T>::ConstVec wco, typename TTypes<T>::ConstVec b,
+      typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix i,
+      typename TTypes<T>::Matrix cs, typename TTypes<T>::Matrix f,
+      typename TTypes<T>::Matrix o, typename TTypes<T>::Matrix ci,
+      typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
+      typename TTypes<T>::Matrix h) {
     // Concat xh = [x, h].
     xh.slice(xh_x_offsets(), xh_x_extents()).device(d) = x;
     xh.slice(xh_h_offsets(), xh_h_extents()).device(d) = h_prev;
 
     // states1 = xh * w + b
     typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
-    TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, stream, d, false, false, T(1), const_xh, w, T(0), icfo);
+    TensorBlasGemm<Device, T, USE_CUBLAS>::compute(ctx, d, false, false, T(1),
+                                                   const_xh, w, T(0), icfo);
     Eigen::array<Eigen::DenseIndex, 2> b_shape({1, b.dimensions()[0]});
     Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({batch_size_, 1});
     icfo.device(d) += b.reshape(b_shape).broadcast(broadcast_shape);
@@ -239,8 +230,8 @@ struct LSTMBlockCellBprop : public LSTMBlockCell {
       : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
   void operator()(
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,
-      const Device& d, bool use_peephole, typename TTypes<T>::ConstMatrix x,
+      OpKernelContext* ctx, const Device& d, bool use_peephole,
+      typename TTypes<T>::ConstMatrix x,
       typename TTypes<T>::ConstMatrix cs_prev,
       typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
       typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
@@ -305,8 +296,8 @@ struct BlockLSTMBprop : public LSTMBlockCell {
       : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
   void operator()(
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,
-      const Device& d, bool use_peephole, typename TTypes<T>::ConstMatrix x,
+      OpKernelContext* ctx, const Device& d, bool use_peephole,
+      typename TTypes<T>::ConstMatrix x,
       typename TTypes<T>::ConstMatrix cs_prev,
       typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
       typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
@@ -364,7 +355,7 @@ struct BlockLSTMBprop : public LSTMBlockCell {
     typename TTypes<T>::ConstMatrix const_dicfo(dicfo.data(),
                                                 dicfo.dimensions());
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, stream, d, false, true, T(1), const_dicfo, w, T(0), xh_grad);
+        ctx, d, false, true, T(1), const_dicfo, w, T(0), xh_grad);
 
     // xh.
     xh.slice(xh_x_offsets(), xh_x_extents()).device(d) = x;
@@ -377,7 +368,7 @@ struct BlockLSTMBprop : public LSTMBlockCell {
 
     // w_grad.
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, stream, d, true, false, T(1), const_xh, const_dicfo, T(1), w_grad);
+        ctx, d, true, false, T(1), const_xh, const_dicfo, T(1), w_grad);
 
     // b_grad.
     b_grad.device(d) += dicfo.sum(Eigen::array<int, 1>({0}));

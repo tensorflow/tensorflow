@@ -274,16 +274,6 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   return Status::OK();
 }
 
-void SimpleGraphExecutionState::UpdateCostsFromStats(const StepStats& ss) {
-  mutex_lock l(mu_);
-  costs_.MergeFromStats(node_name_to_cost_id_map_, ss);
-}
-
-void SimpleGraphExecutionState::MergeCostsFromGlobal(CostModel* costs) {
-  mutex_lock l(mu_);
-  costs->MergeFromGlobal(costs_);
-}
-
 Status SimpleGraphExecutionState::BuildGraph(
     const BuildGraphOptions& options, std::unique_ptr<SimpleClientGraph>* out) {
   VLOG(1) << "BuildGraph";

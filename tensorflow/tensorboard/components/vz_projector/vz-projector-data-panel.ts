@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, ColumnStats} from './data';
-import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
+import {ColorOption, ColumnStats, MetadataInfo} from './data';
+import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-provider';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -75,8 +75,8 @@ export class DataPanel extends DataPanelPolymer {
     // Get all the runs.
     this.dataProvider.retrieveRuns(runs => {
       this.runNames = runs;
-      // If there is only 1 run, choose that one by default.
-      if (this.runNames.length === 1) {
+      // Choose the first run by default.
+      if (this.runNames.length > 0) {
         this.selectedRun = runs[0];
       }
     });
@@ -86,23 +86,23 @@ export class DataPanel extends DataPanelPolymer {
     return isSeparator ? 'separator' : null;
   }
 
-  updateMetadataUI(columnStats: ColumnStats[], metadataFile: string) {
+  metadataChanged(metadata: MetadataInfo, metadataFile: string) {
+    this.updateMetadataUI(metadata.stats, metadataFile);
+  }
+
+  private updateMetadataUI(columnStats: ColumnStats[], metadataFile: string) {
     this.dom.select('#metadata-file')
         .text(metadataFile)
         .attr('title', metadataFile);
     // Label by options.
     let labelIndex = -1;
-    if (columnStats.length > 1) {
-      this.labelOptions = columnStats.map((stats, i) => {
-        // Make the default label by the first non-numeric column.
-        if (!stats.isNumeric && labelIndex === -1) {
-          labelIndex = i;
-        }
-        return stats.name;
-      });
-    } else {
-      this.labelOptions = ['label'];
-    }
+    this.labelOptions = columnStats.map((stats, i) => {
+      // Make the default label by the first non-numeric column.
+      if (!stats.isNumeric && labelIndex === -1) {
+        labelIndex = i;
+      }
+      return stats.name;
+    });
     this.selectedLabelOption = this.labelOptions[Math.max(0, labelIndex)];
 
     // Color by options.
@@ -170,11 +170,10 @@ export class DataPanel extends DataPanelPolymer {
       if (metadataFile) {
         this.dataProvider.retrieveMetadata(
             this.selectedRun, this.selectedTensor, metadata => {
-              this.projector.updateDataSet(ds, metadata);
-              this.updateMetadataUI(metadata.stats, metadataFile);
+              this.projector.updateDataSet(ds, metadata, metadataFile);
             });
       } else {
-        this.projector.updateDataSet(ds, null);
+        this.projector.updateDataSet(ds);
       }
     });
     this.projector.setSelectedTensor(
@@ -208,7 +207,13 @@ export class DataPanel extends DataPanelPolymer {
           .text(this.checkpointInfo.checkpointFile)
           .attr('title', this.checkpointInfo.checkpointFile);
       this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
-        this.selectedTensor = defaultTensor;
+        if (this.selectedTensor === defaultTensor) {
+          // Explicitly call the observer. Polymer won't call it if the previous
+          // string matches the current string.
+          this._selectedTensorChanged();
+        } else {
+          this.selectedTensor = defaultTensor;
+        }
       });
     });
   }
@@ -254,14 +259,13 @@ export class DataPanel extends DataPanelPolymer {
       this.dom.select('#checkpoint-file')
           .text(fileName)
           .attr('title', fileName);
-      this.projector.updateDataSet(ds, null);
+      this.projector.updateDataSet(ds);
     });
   }
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
     parseRawMetadata(rawContents, metadata => {
-      this.projector.updateDataSet(this.projector.currentDataSet, metadata);
-      this.updateMetadataUI(metadata.stats, fileName);
+      this.projector.updateDataSet(this.projector.dataSet, metadata, fileName);
     });
   }
 

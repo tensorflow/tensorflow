@@ -118,7 +118,7 @@ def error_rate(predictions, labels):
       predictions.shape[0])
 
 
-def main(argv=None):  # pylint: disable=unused-argument
+def main(_):
   if FLAGS.self_test:
     print('Running self-test.')
     train_data, train_labels = fake_data(256)
@@ -326,14 +326,12 @@ if __name__ == '__main__':
       '--use_fp16',
       default=False,
       help='Use half floats instead of full floats if True.',
-      action='store_true'
-  )
+      action='store_true')
   parser.add_argument(
       '--self_test',
       default=False,
       action='store_true',
-      help='True if running a self test.'
-  )
-  FLAGS = parser.parse_args()
+      help='True if running a self test.')
 
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

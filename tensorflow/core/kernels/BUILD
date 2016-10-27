@@ -57,6 +57,7 @@ tf_kernel_library(
     name = "strided_slice_op",
     srcs = [
         "strided_slice_op.cc",
+        "strided_slice_op_inst_0.cc",
         "strided_slice_op_inst_1.cc",
         "strided_slice_op_inst_2.cc",
         "strided_slice_op_inst_3.cc",
@@ -404,7 +405,6 @@ ARRAY_DEPS = [
     "//tensorflow/core:array_ops_op_lib",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
-    "//tensorflow/core:gpu_runtime",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:proto_text",
@@ -419,7 +419,9 @@ tf_kernel_libraries(
         "debug_ops",
         "immutable_constant_op",
     ],
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core:gpu_runtime",
+    ],
 )
 
 tf_kernel_libraries(
@@ -551,6 +553,24 @@ tf_cc_test(
     srcs = ["example_parsing_ops_test.cc"],
     deps = [
         ":example_parsing_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_quant_ops_test",
+    size = "small",
+    srcs = ["fake_quant_ops_test.cc"],
+    deps = [
+        ":fake_quant_ops",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -1058,6 +1078,7 @@ tf_kernel_libraries(
         ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
+        "//tensorflow/core:jpeg",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -1711,6 +1732,22 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "fake_quant_ops",
+    srcs = ["fake_quant_ops.cc"],
+    hdrs = ["fake_quant_ops_functor.h"],
+    gpu_srcs = [
+        "fake_quant_ops_gpu.cu.cc",
+        "fake_quant_ops_functor.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_kernel_library(
     name = "fused_batch_norm_util",
     gpu_srcs = [
         "fused_batch_norm_op.h",
@@ -2226,6 +2263,7 @@ filegroup(
         "strided_slice_op.cc",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
+        "strided_slice_op_inst_0.cc",
         "strided_slice_op_inst_1.cc",
         "strided_slice_op_inst_2.cc",
         "strided_slice_op_inst_3.cc",
@@ -2393,6 +2431,8 @@ filegroup(
     name = "android_quantized_ops",
     srcs = [
         "dequantize_op.cc",
+        "meta_support.cc",
+        "meta_support.h",
         "quantization_utils.cc",
         "quantization_utils.h",
         "quantize_down_and_shrink_range.cc",
@@ -2406,6 +2446,7 @@ filegroup(
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
         "reference_gemm.h",
+        "requantization_range_op.cc",
         "requantize.cc",
         "reshape_op.h",
     ],
@@ -2493,6 +2534,7 @@ tf_kernel_library(
     name = "quantized_ops",
     srcs = [
         "dequantize_op.cc",
+        "meta_support.cc",
         "quantization_utils.cc",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
@@ -2504,10 +2546,12 @@ tf_kernel_library(
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
+        "requantization_range_op.cc",
         "requantize.cc",
         "reshape_op.h",
     ],
     hdrs = [
+        "meta_support.h",
         "quantization_utils.h",
         "reference_gemm.h",
     ],
@@ -2525,6 +2569,22 @@ tf_kernel_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+    ],
+)
+
+tf_cc_test(
+    name = "requantization_range_op_test",
+    size = "small",
+    srcs = ["requantization_range_op_test.cc"],
+    deps = [
+        ":quantized_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
@@ -2621,6 +2681,7 @@ tf_cc_test(
     name = "quantized_conv_ops_test",
     size = "small",
     srcs = ["quantized_conv_ops_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
@@ -2659,6 +2720,7 @@ tf_cc_test(
     name = "quantized_matmul_op_test",
     size = "small",
     srcs = ["quantized_matmul_op_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",

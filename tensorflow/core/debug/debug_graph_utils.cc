@@ -24,6 +24,30 @@ limitations under the License.
 
 namespace tensorflow {
 
+const string SummarizeDebugTensorWatches(
+    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches) {
+  std::ostringstream oss;
+
+  for (const DebugTensorWatch& watch : watches) {
+    string tensor_name =
+        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+    oss << tensor_name << "|";
+
+    for (const string& debug_op : watch.debug_ops()) {
+      oss << debug_op << ",";
+    }
+
+    oss << "@";
+    for (const string& debug_url : watch.debug_urls()) {
+      oss << debug_url << ",";
+    }
+
+    oss << ";";
+  }
+
+  return oss.str();
+}
+
 // static
 Status DebugNodeInserter::InsertNodes(
     const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,

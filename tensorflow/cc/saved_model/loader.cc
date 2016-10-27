@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -83,10 +84,32 @@ Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
   return (*session)->Create(meta_graph_def.graph_def());
 }
 
-Status Restore(const RunOptions& run_options, const string& export_dir,
-               const StringPiece restore_op_name,
-               const StringPiece variable_filename_const_op_name,
-               Session* session) {
+Tensor CreateStringTensor(const string& value) {
+  Tensor tensor(DT_STRING, TensorShape({}));
+  tensor.scalar<string>()() = value;
+  return tensor;
+}
+
+void AddAssetsTensorsToInputs(const StringPiece export_dir,
+                              const std::vector<AssetFileDef>& asset_file_defs,
+                              std::vector<std::pair<string, Tensor>>* inputs) {
+  if (asset_file_defs.empty()) {
+    return;
+  }
+  for (auto& asset_file_def : asset_file_defs) {
+    Tensor assets_file_path_tensor = CreateStringTensor(io::JoinPath(
+        export_dir, kSavedModelAssetsDirectory, asset_file_def.filename()));
+    inputs->push_back(
+        {asset_file_def.tensor_info().name(), assets_file_path_tensor});
+  }
+}
+
+Status RunRestore(const RunOptions& run_options, const string& export_dir,
+                  const StringPiece restore_op_name,
+                  const StringPiece variable_filename_const_op_name,
+                  const std::vector<AssetFileDef>& asset_file_defs,
+                  Session* session) {
+  LOG(INFO) << "Restoring SavedModel bundle.";
   // Find path to variables to be restored in export directory.
   const string variables_directory =
       io::JoinPath(export_dir, kSavedModelVariablesDirectory);
@@ -109,9 +132,52 @@ Status Restore(const RunOptions& run_options, const string& export_dir,
   std::vector<std::pair<string, Tensor>> inputs = {
       {variable_filename_const_op_name.ToString(), variables_path_tensor}};
 
+  AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
+
   RunMetadata run_metadata;
   return session->Run(run_options, inputs, {}, {restore_op_name.ToString()},
                       nullptr /* outputs */, &run_metadata);
+}
+
+Status RunLegacyInitOp(const RunOptions& run_options, const string& export_dir,
+                       const MetaGraphDef& meta_graph_def,
+                       const std::vector<AssetFileDef>& asset_file_defs,
+                       Session* session) {
+  LOG(INFO) << "Running LegacyInitOp on SavedModel bundle.";
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  const auto init_op_it = collection_def_map.find(kSavedModelLegacyInitOpKey);
+  if (init_op_it != collection_def_map.end()) {
+    if (init_op_it->second.node_list().value_size() != 1) {
+      return errors::FailedPrecondition(strings::StrCat(
+          "Expected exactly one serving init op in : ", export_dir));
+    }
+    std::vector<std::pair<string, Tensor>> inputs;
+    AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
+    RunMetadata run_metadata;
+    const StringPiece legacy_init_op_name =
+        init_op_it->second.node_list().value(0);
+    return session->Run(run_options, inputs, {},
+                        {legacy_init_op_name.ToString()}, nullptr /* outputs */,
+                        &run_metadata);
+  }
+  return Status::OK();
+}
+
+Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
+                        std::vector<AssetFileDef>* asset_file_defs) {
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  const auto assets_it = collection_def_map.find(kSavedModelAssetsKey);
+  if (assets_it == collection_def_map.end()) {
+    return Status::OK();
+  }
+  const auto& any_assets = assets_it->second.any_list().value();
+  for (const auto& any_asset : any_assets) {
+    AssetFileDef asset_file_def;
+    TF_RETURN_IF_ERROR(
+        ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef"));
+    asset_file_defs->push_back(asset_file_def);
+  }
+  return Status::OK();
 }
 
 Status LoadSavedModelInternal(const SessionOptions& session_options,
@@ -134,12 +200,19 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   TF_RETURN_IF_ERROR(LoadMetaGraphIntoSession(
       bundle->meta_graph_def, session_options, &bundle->session));
 
+  std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(
-      Restore(run_options, export_dir,
-              bundle->meta_graph_def.saver_def().restore_op_name(),
-              bundle->meta_graph_def.saver_def().filename_tensor_name(),
-              bundle->session.get()));
-
+      GetAssetFileDefs(bundle->meta_graph_def, &asset_file_defs));
+  TF_RETURN_IF_ERROR(
+      RunRestore(run_options, export_dir,
+                 bundle->meta_graph_def.saver_def().restore_op_name(),
+                 bundle->meta_graph_def.saver_def().filename_tensor_name(),
+                 asset_file_defs, bundle->session.get()));
+  // TODO(sukritiramesh): Add support for a single main op to run upon load,
+  // which will supersede the legacy_init_op and separate RunRestore.
+  TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
+                                     bundle->meta_graph_def, asset_file_defs,
+                                     bundle->session.get()));
   return Status::OK();
 }
 

@@ -29,6 +29,7 @@ from __future__ import print_function
 
 import argparse
 import os.path
+import sys
 import time
 
 import tensorflow as tf
@@ -224,6 +225,5 @@ if __name__ == '__main__':
       default='/tmp/data',
       help='Directory with the training data.'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

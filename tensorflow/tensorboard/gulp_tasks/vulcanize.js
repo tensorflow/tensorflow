@@ -41,29 +41,46 @@ Instead, use `gulp regenerate` to create a new version with your changes.\n\
 -->\n\n'
 
 /**
- * Returns a list of non-tensorboard components inside the components
- * directory, i.e. components that don't begin with 'tf-' or 'vz-''.
+ * Returns a list of web components inside the components directory for which
+ * the name predicate is true.
  */
-function getNonTensorBoardComponents() {
+function getComponents(namePredicate) {
   return fs.readdirSync('components')
       .filter(function(file) {
-        var prefix = file.slice(0,3);
         return fs.statSync(path.join('components', file)).isDirectory() &&
-            prefix !== 'tf-'  && prefix !== 'vz-';
+            namePredicate(file);
       })
       .map(function(dir) { return '/' + dir + '/'; });
 }
+
+var tbComponents = getComponents(function(name) {
+  var prefix = name.slice(0, 3);
+  return prefix == 'tf_' || prefix == 'vz_';
+});
+var base = path.join(__dirname, '../components');
+// List of redirects of the form path1|path2 for every tensorboard component
+// in order to replace dashes with underscores.
+// E.g. .../tf-tensorboard|.../tf_tensorboard
+var redirects = tbComponents.map(function(dir) {
+  return path.join(base, dir.replace(/_/g, '-')) + '|' + path.join(base, dir);
+});
+
+var nonTBComponents = getComponents(function(name) {
+  var prefix = name.slice(0, 3);
+  return prefix !== 'tf_'  && prefix !== 'vz_';
+});
 
 module.exports = function(overwrite) {
   return function() {
     var suffix = overwrite ? '' : '.OPENSOURCE';
     // Vulcanize TensorBoard without external libraries.
-    gulp.src('components/tf-tensorboard/tf-tensorboard.html')
+    gulp.src('components/tf_tensorboard/tf-tensorboard.html')
         .pipe(vulcanize({
           inlineScripts: true,
           inlineCss: true,
           stripComments: true,
-          excludes: getNonTensorBoardComponents()
+          excludes: nonTBComponents,
+          redirects: redirects
         }))
         .pipe(header(HEADER_STR))
         .pipe(rename('tf-tensorboard.html' + suffix))

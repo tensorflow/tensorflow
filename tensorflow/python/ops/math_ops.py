@@ -2021,3 +2021,5 @@ def reduced_shape(input_shape, axes):
 
 
 ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Requantize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RequantizationRange")(common_shapes.call_cpp_shape_fn)
