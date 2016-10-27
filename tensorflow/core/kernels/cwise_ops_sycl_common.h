@@ -37,6 +37,15 @@ void Assign(const SYCLDevice& d, OUT out, RHS rhs) {
   out.device(d) = rhs;
 }
 
+// Partial specialization of UnaryFunctor<Device=SYCLDevice, Functor>.
+template <typename Functor>
+struct UnaryFunctor<SYCLDevice, Functor> {
+  void operator()(const SYCLDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in) {
+    To32Bit(out).device(d) = To32Bit(in).unaryExpr(typename Functor::func());
+  }
+};
+
 // Partial specialization of BinaryFunctor<Device=SYCLDevice, Functor>.
 template <typename Functor, int NDIMS, bool has_errors>
 struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
