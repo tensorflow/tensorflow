@@ -627,7 +627,7 @@ def _eval_results_to_str(eval_results):
 
 def _write_summary_results(output_dir, eval_results, current_global_step):
   """Writes eval results into summary file in given dir."""
-  logging.info('Saving evaluation summary for %d step: %s', current_global_step,
+  logging.info('Saving evaluation summary for step %d: %s', current_global_step,
                _eval_results_to_str(eval_results))
   summary_writer = get_summary_writer(output_dir)
   summary = summary_pb2.Summary()
