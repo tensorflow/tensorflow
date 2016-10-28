@@ -64,7 +64,14 @@ class WindowsFileSystem : public FileSystem {
   }
 };
 
-Status IOError(const string& context, int err_number);
+class LocalWinFileSystem : public WindowsFileSystem {
+public:
+    string TranslateName(const string& name) const override {
+      StringPiece scheme, host, path;
+      ParseURI(name, &scheme, &host, &path);
+      return path.ToString();
+    }
+};
 
 }  // namespace tensorflow
 

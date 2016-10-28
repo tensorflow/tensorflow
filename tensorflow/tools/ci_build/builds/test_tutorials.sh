@@ -146,7 +146,7 @@ test_mnist_with_summaries() {
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
     tensorflow/examples/tutorials/mnist/mnist_with_summaries.py \
-    --data_dir="${TUT_TEST_DATA_DIR}/mnist" --summaries_dir="${SUMMARIES_DIR}"
+    --data_dir="${TUT_TEST_DATA_DIR}/mnist" --log_dir="${SUMMARIES_DIR}"
 
   # Verify final accuracy
   FINAL_ACCURACY=$(grep "Accuracy at step" "${LOG_FILE}" \

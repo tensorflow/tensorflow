@@ -68,7 +68,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
       Must be positive.  See the decay computation above.
     decay_rate: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The decay rate.
-    staircase: Boolean.  It `True` decay the learning rate at discrete intervals
+    staircase: Boolean.  If `True` decay the learning rate at discrete intervals
     name: String.  Optional name of the operation.  Defaults to
       'ExponentialDecay'.
 

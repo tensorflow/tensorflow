@@ -3200,6 +3200,7 @@ bool CudnnSupport::DoNormalize(
     Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
     const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
+  return false;
 }
 
 bool CudnnSupport::DoNormalizeWithDimensions(

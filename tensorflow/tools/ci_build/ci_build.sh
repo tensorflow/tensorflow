@@ -103,10 +103,8 @@ WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 # Add extra params for cuda devices and libraries for GPU container.
-if [ "${CONTAINER_TYPE}" == "gpu" ]; then
-  # GPU pip tests-on-install concurrency is limited to the number of GPUs.
-  GPU_EXTRA_PARAMS="${GPU_EXTRA_PARAMS} -e TF_BUILD_SERIAL_INSTALL_TESTS=1"
-else
+# And clear them if we are not building for GPU.
+if [ "${CONTAINER_TYPE}" != "gpu" ]; then
   GPU_EXTRA_PARAMS=""
 fi
 

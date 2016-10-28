@@ -349,6 +349,15 @@ TEST(Tensor_Float, Reshape) {
 
 TEST(Tensor_Scalar, Basics) {
   {
+    Tensor t(DT_BOOL, TensorShape({}));
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<bool>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    t.scalar<bool>()() = true;
+    EXPECT_TRUE(Tt());
+  }
+  {
     Tensor t(DT_FLOAT, TensorShape({}));
     EXPECT_EQ(1, t.NumElements());
     auto Tt = t.scalar<float>();

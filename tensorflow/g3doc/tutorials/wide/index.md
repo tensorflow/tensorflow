@@ -222,12 +222,12 @@ To define a feature column for a categorical feature, we can create a
 feature values of a column and there are only a few of them, you can use
 `sparse_column_with_keys`. Each key in the list will get assigned an
 auto-incremental ID starting from 0. For example, for the `gender` column we can
-assign the feature string "female" to an integer ID of 0 and "male" to 1 by
+assign the feature string "Female" to an integer ID of 0 and "Male" to 1 by
 doing:
 
 ```python
 gender = tf.contrib.layers.sparse_column_with_keys(
-  column_name="gender", keys=["female", "male"])
+  column_name="gender", keys=["Female", "Male"])
 ```
 
 What if we don't know the set of possible values in advance? Not a problem. We

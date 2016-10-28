@@ -147,7 +147,7 @@ def get_git_version(git_base_path):
   """
   unknown_label = b"unknown"
   try:
-    val = subprocess.check_output(["git", "-C", git_base_path, "describe",
+    val = subprocess.check_output(["git", str("--git-dir="+git_base_path+"/.git"), str("--work-tree="+git_base_path), "describe",
                                    "--long", "--dirty", "--tags"]).strip()
     return val if val else unknown_label
   except subprocess.CalledProcessError:
