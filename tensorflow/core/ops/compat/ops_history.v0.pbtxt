@@ -25009,17 +25009,6 @@ op {
   }
 }
 op {
-  name: "SdcaFprint"
-  input_arg {
-    name: "input"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "output"
-    type: DT_STRING
-  }
-}
-op {
   name: "SdcaOptimizer"
   input_arg {
     name: "sparse_example_indices"
