@@ -368,7 +368,6 @@ export class ScatterPlot {
    * hoverlisteners (usually called from embedding.ts)
    */
   private onMouseMove(e: MouseEvent) {
-    this.stopOrbitAnimation();
     if (!this.dataSet) {
       return;
     }
