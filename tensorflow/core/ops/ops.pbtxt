@@ -15552,8 +15552,8 @@ op {
   }
   output_arg {
     name: "output"
-    description: "vector containing the computed fingerprints."
-    type: DT_STRING
+    description: "a (N,2) shaped matrix where N is the number of elements in the input\nvector. Each row contains the low and high parts of the fingerprint."
+    type: DT_INT64
   }
   summary: "Computes fingerprints of the input strings."
 }
