@@ -125,8 +125,6 @@ class OpRegistry : public OpRegistryInterface {
   void ClearDeferredRegistrations();
 
  private:
-  mutable mutex mu_;
-
   // Ensures that all the functions in deferred_ get called, their OpDef's
   // registered, and returns with deferred_ empty.  Returns true the first
   // time it is called. Prints a fatal log if any op registration fails.
@@ -143,6 +141,7 @@ class OpRegistry : public OpRegistryInterface {
   Status RegisterAlreadyLocked(OpRegistrationDataFactory op_data_factory) const
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
   mutable std::vector<OpRegistrationDataFactory> deferred_ GUARDED_BY(mu_);
   // Values are owned.

@@ -135,7 +135,7 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     _ = run_context
     if self._iter_count % self._every_n_iter == 0:
       stats = []
-      for tag in sorted(self._current_tensors.keys()):
+      for tag in self._current_tensors.keys():
         stats.append("%s = %s" % (tag, run_values.results[tag]))
       logging.info("%s", ", ".join(stats))
     self._iter_count += 1
@@ -208,8 +208,12 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
+      ValueError: Exactly one of saver or scaffold should be set.
     """
     logging.info("Create CheckpointSaverHook.")
+    if ((saver is None and scaffold is None) or
+        (saver is not None and scaffold is not None)):
+      raise ValueError("Exactly one of saver or scaffold must be provided.")
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
@@ -255,10 +259,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
   def _save(self, step, session):
     """Saves the latest checkpoint."""
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
-    if self._saver is None:
-      self._scaffold.saver.save(session, self._save_path, global_step=step)
-    else:
+    if self._saver is not None:
       self._saver.save(session, self._save_path, global_step=step)
+    elif self._scaffold is not None:
+      self._scaffold.saver.save(session, self._save_path, global_step=step)
     self._summary_writer.add_session_log(
         SessionLog(
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
@@ -288,8 +292,6 @@ class StepCounterHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     _ = run_context
-    if not self._summary_writer:
-      return
 
     global_step = run_values.results
     current_time = time.time()
@@ -301,9 +303,11 @@ class StepCounterHook(session_run_hook.SessionRunHook):
         added_steps = global_step - self._last_reported_step
         elapsed_time = current_time - self._last_reported_time
         steps_per_sec = added_steps / elapsed_time
-        summary = Summary(value=[Summary.Value(
-            tag=self._summary_tag, simple_value=steps_per_sec)])
-        self._summary_writer.add_summary(summary, global_step)
+        if self._summary_writer is not None:
+          summary = Summary(value=[Summary.Value(
+              tag=self._summary_tag, simple_value=steps_per_sec)])
+          self._summary_writer.add_summary(summary, global_step)
+        logging.info("%s: %g", self._summary_tag, steps_per_sec)
         self._last_reported_step = global_step
         self._last_reported_time = current_time
 
@@ -350,7 +354,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
   """Saves summaries every N steps."""
 
   def __init__(self,
-               save_steps=100,
+               save_steps=None,
                save_secs=None,
                output_dir=None,
                summary_writer=None,
@@ -368,9 +372,16 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
           one will be created accordingly.
       scaffold: `Scaffold` to get summary_op if it's not provided.
       summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `scalar_summary` or
-          `merge_all_summaries`.
+          buffer, as output by TF summary methods like `tf.summary.scalar` or
+          `tf.summary.merge_all`.
+
+    Raises:
+      ValueError: Exactly one of scaffold or summary_op should be set.
     """
+    if ((scaffold is None and summary_op is None) or
+        (scaffold is not None and summary_op is not None)):
+      raise ValueError(
+          "Exactly one of scaffold or summary_op must be provided.")
     self._summary_op = summary_op
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:

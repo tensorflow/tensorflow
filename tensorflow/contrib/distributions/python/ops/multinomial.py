@@ -148,33 +148,32 @@ class Multinomial(distribution.Distribution):
     ```
 
     """
-
-    self._logits, self._p = distribution_util.get_logits_and_prob(
-        name=name, logits=logits, p=p, validate_args=validate_args,
-        multidimensional=True)
-    with ops.name_scope(name, values=[n, self._p]) as ns:
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[n, p]) as ns:
       with ops.control_dependencies([
           check_ops.assert_non_negative(
               n, message="n has negative components."),
           distribution_util.assert_integer_form(
               n, message="n has non-integer components.")
       ] if validate_args else []):
+        self._logits, self._p = distribution_util.get_logits_and_prob(
+            name=name, logits=logits, p=p, validate_args=validate_args,
+            multidimensional=True)
         self._n = array_ops.identity(n, name="convert_n")
         self._mean_val = array_ops.expand_dims(n, -1) * self._p
         self._broadcast_shape = math_ops.reduce_sum(
             self._mean_val, reduction_indices=[-1], keep_dims=False)
-        super(Multinomial, self).__init__(
-            dtype=self._p.dtype,
-            parameters={"p": self._p,
-                        "n": self._n,
-                        "mean": self._mean,
-                        "logits": self._logits,
-                        "broadcast_shape": self._broadcast_shape},
-            is_continuous=False,
-            is_reparameterized=False,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Multinomial, self).__init__(
+        dtype=self._p.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._p, self._n, self._mean_val,
+                       self._logits, self._broadcast_shape],
+        name=ns)
 
   @property
   def n(self):

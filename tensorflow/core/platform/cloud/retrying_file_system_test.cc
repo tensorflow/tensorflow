@@ -139,6 +139,11 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("IsDirectory");
   }
 
+  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+                           int64* undeleted_dirs) override {
+    return calls_.ConsumeNextCall("DeleteRecursively");
+  }
+
   std::unique_ptr<WritableFile> writable_file_to_return;
   std::unique_ptr<RandomAccessFile> random_access_file_to_return;
 
@@ -635,6 +640,40 @@ TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   EXPECT_EQ("Last error", fs.IsDirectory("gs://path/dir").error_message());
+}
+
+TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("DeleteRecursively",
+                       errors::Unavailable("Something is wrong")),
+       std::make_tuple("DeleteRecursively", Status::OK())});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs), 0);
+  int64 undeleted_files, undeleted_dirs;
+
+  TF_EXPECT_OK(
+      fs.DeleteRecursively("gs://path/dir", &undeleted_files, &undeleted_dirs));
+}
+
+TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("DeleteRecursively",
+                       errors::Unavailable("Something is wrong")),
+       std::make_tuple("DeleteRecursively",
+                       errors::Unavailable("Something is wrong again")),
+       std::make_tuple("DeleteRecursively", errors::Unavailable("And again")),
+       std::make_tuple("DeleteRecursively",
+                       errors::Unavailable("Last error"))});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs), 0);
+  int64 undeleted_files, undeleted_dirs;
+
+  EXPECT_EQ(
+      "Last error",
+      fs.DeleteRecursively("gs://path/dir", &undeleted_files, &undeleted_dirs)
+          .error_message());
 }
 
 }  // namespace

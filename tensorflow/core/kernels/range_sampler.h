@@ -115,10 +115,12 @@ class AllSampler : public RangeSampler {
 
   int64 Sample(random::SimplePhilox* rnd) const override {
     LOG(FATAL) << "Should not be called";
+    return 0;
   }
 
   float Probability(int64 value) const override {
     LOG(FATAL) << "Should not be called";
+    return 0;
   }
 
   void SampleBatchGetExpectedCountAvoid(

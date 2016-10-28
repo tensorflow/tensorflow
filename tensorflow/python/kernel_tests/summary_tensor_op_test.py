@@ -61,7 +61,7 @@ class SummaryOpsTest(tf.test.TestCase):
   def testScalarSummary(self):
     with self.test_session() as sess:
       const = tf.constant(10.0)
-      summ = tf.summary.scalar("foo", const)
+      summ = tf.summary.tensor_summary("foo", const)
       result = sess.run(summ)
 
     value = self._SummarySingleValue(result)

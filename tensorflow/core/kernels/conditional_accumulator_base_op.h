@@ -43,7 +43,6 @@ namespace tensorflow {
  * ConditionalAccumulatorBase (via sub-class's Creator) and returns its handle.
  */
 class ConditionalAccumulatorBaseOp : public OpKernel {
-  mutex mu_;
  public:
   explicit ConditionalAccumulatorBaseOp(OpKernelConstruction* context)
       : OpKernel(context), accumulator_handle_set_(false) {
@@ -110,6 +109,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
     return Status::OK();
   }
 
+  mutex mu_;
   PersistentTensor accumulator_handle_ GUARDED_BY(mu_);
   bool accumulator_handle_set_ GUARDED_BY(mu_);
 };

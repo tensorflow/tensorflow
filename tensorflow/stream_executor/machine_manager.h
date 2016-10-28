@@ -60,9 +60,6 @@ namespace gputools {
 //
 // Thread-safe.
 class MachineManager {
-  // Mutex that guards the initialization of the machine manager static
-  // variable.
-  static mutex mu_;
  public:
   // Inspects the host to determine the preferred GPU execution platform.
   // To force OpenCL from a build target on a machine that has both OpenCL and
@@ -173,6 +170,10 @@ class MachineManager {
 
   // Returns the NUMA node association for the StreamExecutor.
   int ExecutorToNumaNode(const StreamExecutor *stream_exec) const;
+
+  // Mutex that guards the initialization of the machine manager static
+  // variable.
+  static mutex mu_;
 
   // Singleton MachineManager value -- assignment to this is protected by a
   // static singleton guard clause.

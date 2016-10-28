@@ -813,7 +813,7 @@ class AnyReductionTest(tf.test.TestCase):
     self._compareAll([], [0])
 
 
-class NNZReductionTest(tf.test.TestCase):
+class CountNonzeroReductionTest(tf.test.TestCase):
 
   def _compare(self,
                x,
@@ -829,7 +829,7 @@ class NNZReductionTest(tf.test.TestCase):
       for ra in reduction_axes.ravel()[::-1]:
         np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
     with self.test_session(use_gpu=use_gpu) as sess:
-      tf_ans = tf.reduce_nnz(x, reduction_axes, keep_dims)
+      tf_ans = tf.count_nonzero(x, reduction_axes, keep_dims)
       out = sess.run(tf_ans, feed_dict)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -884,7 +884,7 @@ class NNZReductionTest(tf.test.TestCase):
         for dtype in (tf.bool,):
           # A large number is needed to get Eigen to die
           x = tf.zeros((0, 9938), dtype=dtype)
-          y = tf.reduce_nnz(x, [0])
+          y = tf.count_nonzero(x, [0])
           self.assertAllEqual(y.eval(), np.zeros(9938))
 
 

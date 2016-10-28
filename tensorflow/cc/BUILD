@@ -405,3 +405,35 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+cc_library(
+    name = "queue_runner",
+    srcs = ["training/queue_runner.cc"],
+    hdrs = ["training/queue_runner.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_test(
+    name = "queue_runner_test",
+    srcs = ["training/queue_runner_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":queue_runner",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)

@@ -231,14 +231,14 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     // TODO(jeff,sanjay): Should decrement ref-count when we implement eviction.
   }
 
-  bool GetDeviceBusNonBlocking(const string& device,
-                               BusAdjacency* ba) override {
-    return wrapped_->GetDeviceBusNonBlocking(device, ba);
+  bool GetDeviceLocalityNonBlocking(const string& device,
+                                    DeviceLocality* locality) override {
+    return wrapped_->GetDeviceLocalityNonBlocking(device, locality);
   }
 
-  void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
-                         StatusCallback done) override {
-    wrapped_->GetDeviceBusAsync(device, ba, done);
+  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+                              StatusCallback done) override {
+    wrapped_->GetDeviceLocalityAsync(device, locality, done);
   }
 
   void SetLogging(bool active) override { wrapped_->SetLogging(active); }

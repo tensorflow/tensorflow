@@ -48,15 +48,15 @@ def upsample_filters(filters, rate):
 
 class AtrousConvolutionTest(tf.test.TestCase):
 
-  def _test_atrous_convolution(self, input_shape, filter_shape, padding,
-                               dilation_rate):
+  def _test_atrous_convolution(self, input_shape, filter_shape, dilation_rate,
+                               **kwargs):
     filters = np.arange(
         np.prod(filter_shape), dtype=np.float32).reshape(filter_shape)
     filters_upsampled = upsample_filters(filters, dilation_rate)
     x = np.arange(np.prod(input_shape), dtype=np.float32).reshape(input_shape)
     y1 = tf.nn.convolution(
-        input=x, filter=filters, padding=padding, dilation_rate=dilation_rate)
-    y2 = tf.nn.convolution(input=x, filter=filters_upsampled, padding=padding)
+        input=x, filter=filters, dilation_rate=dilation_rate, **kwargs)
+    y2 = tf.nn.convolution(input=x, filter=filters_upsampled, **kwargs)
     self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2, atol=1e-2)
 
   def testAtrousConvolution2D(self):
@@ -98,6 +98,24 @@ class AtrousConvolutionTest(tf.test.TestCase):
                   filter_shape=[kernel_width, 2, 2],
                   padding=padding,
                   dilation_rate=[rate])
+
+  def testAtrousConvolutionNC(self):
+    if tf.test.is_gpu_available():
+      # "NCW" and "NCHW" formats are not currently supported on CPU.
+      with self.test_session(use_gpu=True):
+        for padding in ["SAME", "VALID"]:
+          self._test_atrous_convolution(
+              input_shape=[2, 2, 9],
+              padding=padding,
+              filter_shape=[3, 2, 2],
+              dilation_rate=[2],
+              data_format="NCW")
+          self._test_atrous_convolution(
+              input_shape=[2, 2, 9, 5],
+              padding=padding,
+              filter_shape=[3, 3, 2, 2],
+              dilation_rate=[2, 1],
+              data_format="NCHW")
 
   def testAtrousSequence(self):
     """Tests optimization of sequence of atrous convolutions.

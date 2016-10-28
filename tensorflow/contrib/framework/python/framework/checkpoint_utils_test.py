@@ -129,7 +129,7 @@ class CheckpointsTest(tf.test.TestCase):
         self.assertAllEqual(my4.eval(session), v4)
 
         # Check that tensors are not explicitly in the graph.
-        self.assertLess(len(str(session.graph.as_graph_def())), 26000)
+        self.assertLess(len(str(session.graph.as_graph_def())), 27000)
 
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()

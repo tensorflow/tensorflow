@@ -28,6 +28,7 @@ from tensorflow.python.ops import variables
 
 __all__ = [
     'assert_same_float_dtype',
+    'assert_scalar',
     'assert_scalar_int',
     'convert_to_tensor_or_sparse_tensor',
     'is_tensor',
@@ -106,9 +107,15 @@ def assert_scalar_int(tensor):
   Raises:
     ValueError: if `tensor` is not 0-D, of type `tf.int32` or `tf.int64`.
   """
+  tensor = ops.convert_to_tensor(tensor)
   data_type = tensor.dtype
   if data_type.base_dtype not in [dtypes.int32, dtypes.int64]:
     raise ValueError('Unexpected type %s for %s.' % (data_type, tensor.name))
+  assert_scalar(tensor)
+
+
+def assert_scalar(tensor):
+  tensor = ops.convert_to_tensor(tensor)
   shape = tensor.get_shape()
   if shape.ndims != 0:
     raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))

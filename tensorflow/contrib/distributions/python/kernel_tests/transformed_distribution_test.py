@@ -22,6 +22,38 @@ import numpy as np
 from scipy import stats
 import tensorflow as tf
 
+bijectors = tf.contrib.distributions.bijector
+distributions = tf.contrib.distributions
+
+
+class _ChooseLocation(bijectors.Bijector):
+  """A Bijector which chooses between one of two location parameters."""
+
+  def __init__(self, loc, name="ChooseLocation"):
+    self._parameters = {}
+    self._name = name
+    with self._name_scope("init", values=[loc]):
+      self._loc = tf.convert_to_tensor(loc, name="loc")
+      super(_ChooseLocation, self).__init__(
+          parameters={"loc": self._loc},
+          is_constant_jacobian=True,
+          validate_args=False,
+          name=name)
+
+  def _forward(self, x, z):
+    return x + self._gather_loc(z)
+
+  def _inverse(self, x, z):
+    return x - self._gather_loc(z)
+
+  def _inverse_log_det_jacobian(self, x, z=None):
+    return 0.
+
+  def _gather_loc(self, z):
+    z = tf.convert_to_tensor(z)
+    z = tf.cast((1 + z) / 2, tf.int32)
+    return tf.gather(self._loc, z)
+
 
 class TransformedDistributionTest(tf.test.TestCase):
 
@@ -32,9 +64,9 @@ class TransformedDistributionTest(tf.test.TestCase):
       sigma = 2.0
       # Note: the Jacobian callable only works for this example; more generally
       # you may or may not need a reduce_sum.
-      log_normal = tf.contrib.distributions.TransformedDistribution(
-          base_distribution=tf.contrib.distributions.Normal(mu=mu, sigma=sigma),
-          bijector=tf.contrib.distributions.bijector.Exp(event_ndims=0))
+      log_normal = distributions.TransformedDistribution(
+          distribution=distributions.Normal(mu=mu, sigma=sigma),
+          bijector=bijectors.Exp(event_ndims=0))
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
       # sample
@@ -62,9 +94,9 @@ class TransformedDistributionTest(tf.test.TestCase):
     with self.test_session() as sess:
       mu = 3.0
       sigma = 0.02
-      log_normal = tf.contrib.distributions.TransformedDistribution(
-          base_distribution=tf.contrib.distributions.Normal(mu=mu, sigma=sigma),
-          bijector=tf.contrib.distributions.bijector.Exp(event_ndims=0))
+      log_normal = distributions.TransformedDistribution(
+          distribution=distributions.Normal(mu=mu, sigma=sigma),
+          bijector=bijectors.Exp(event_ndims=0))
 
       sample = log_normal.sample_n(1)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_pdf(sample)])
@@ -73,6 +105,33 @@ class TransformedDistributionTest(tf.test.TestCase):
                                scale=np.exp(mu)),
           log_pdf_val,
           atol=1e-2)
+
+  def testConditioning(self):
+    with self.test_session():
+      conditional_normal = distributions.TransformedDistribution(
+          distribution=distributions.Normal(mu=0., sigma=1.),
+          bijector=_ChooseLocation(loc=[-100., 100.]))
+      z = [-1, +1, -1, -1, +1]
+      self.assertAllClose(
+          np.sign(conditional_normal.sample_n(
+              5, bijector_kwargs={"z": z}).eval()), z)
+
+  def testShapeChangingBijector(self):
+    with self.test_session():
+      softmax = bijectors.SoftmaxCentered()
+      standard_normal = distributions.Normal(mu=0., sigma=1.)
+      multi_logit_normal = distributions.TransformedDistribution(
+          distribution=standard_normal,
+          bijector=softmax)
+      x = [[-np.log(3.), 0.],
+           [np.log(3), np.log(5)]]
+      y = softmax.forward(x).eval()
+      expected_log_pdf = (stats.norm(loc=0., scale=1.).logpdf(x) -
+                          np.sum(np.log(y), axis=-1))
+      self.assertAllClose(expected_log_pdf,
+                          multi_logit_normal.log_prob(y).eval())
+      self.assertAllClose([1, 2, 3, 2],
+                          tf.shape(multi_logit_normal.sample([1, 2, 3])).eval())
 
 
 if __name__ == "__main__":

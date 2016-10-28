@@ -188,7 +188,10 @@ TEST(MathOpsTest, Select_ShapeFn) {
   ShapeInferenceTestOp op("Select");
   INFER_OK(op, "?;?;?", "in1|in2");
 
+  // scalar case
+  INFER_OK(op, "[];[1];?", "in1");
   INFER_OK(op, "[];?;?", "in1|in2");
+
   INFER_OK(op, "[1];?;?",
            "in1|in2");  // When cond is vector, t/e may not match it.
   INFER_OK(op, "[1,2];?;?", "in1|in2?");
@@ -200,8 +203,8 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_OK(op, "?;[1,2];?", "in1");
   INFER_OK(op, "?;?;[1,2]", "in2");
 
-  INFER_OK(op, "[1];[];?", "in1");
-  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[];[1];?");
+  INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op, "[1];[];?");
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[];[1];[1,2]");
   INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[1,2];[1];?");
   INFER_OK(op, "[2];[?];[?]", "in1|in2");
 
@@ -444,6 +447,19 @@ TEST(MathOpsTest, Betainc_ShapeFn) {
   // Non-scalars must match shape.
   INFER_ERROR("must be equal", op, "[1,2];[];[1,4]");
   INFER_ERROR("must be equal", op, "[1,2];[];[1,2,3]");
+}
+
+TEST(MathOpsTest, Requantize_ShapeFn) {
+  ShapeInferenceTestOp op("Requantize");
+
+  INFER_OK(op, "?;?;?;?;?", "in0;[];[]");
+  INFER_OK(op, "?;[];[];[];[]", "in0;[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[4]");
 }
 
 }  // end namespace tensorflow

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow {
 namespace {
@@ -87,17 +88,20 @@ Status Restore(const RunOptions& run_options, const string& export_dir,
                const StringPiece variable_filename_const_op_name,
                Session* session) {
   // Find path to variables to be restored in export directory.
-  string variables_path =
+  const string variables_directory =
       io::JoinPath(export_dir, kSavedModelVariablesDirectory);
-  const string unsharded_variables_path =
-      io::JoinPath(variables_path, kSavedModelVariablesFilename);
-  if (Env::Default()->FileExists(unsharded_variables_path)) {
-    variables_path = unsharded_variables_path;
-  } else {
-    const string sharded_variables_path =
-        io::JoinPath(variables_path, kSavedModelVariablesShardedFilename);
-    variables_path = sharded_variables_path;
+  // Check for saver checkpoints in v2 format. Models exported in the checkpoint
+  // v2 format will have a variables.index file. The corresponding
+  // variables are stored in the variables.data-?????-of-????? files.
+  const string variables_index_path = io::JoinPath(
+      variables_directory, MetaFilename(kSavedModelVariablesFilename));
+  if (!Env::Default()->FileExists(variables_index_path)) {
+    return errors::NotFound(
+        "Checkpoint index file not found in SavedModel directory.");
   }
+  const string variables_path =
+      io::JoinPath(variables_directory, kSavedModelVariablesFilename);
+
   // Add variables to the graph.
   Tensor variables_path_tensor(DT_STRING, TensorShape({}));
   variables_path_tensor.scalar<string>()() = variables_path;

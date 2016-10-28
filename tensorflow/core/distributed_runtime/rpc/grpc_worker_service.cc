@@ -294,6 +294,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   Status PrepareRunGraph(const RunGraphRequest& req, GraphMgr::NamedTensors* in,
                          GraphMgr::NamedTensors* out) {
+    if (req.is_partial()) {
+      return errors::Unimplemented(
+          "Partial run not implemented for GRPC worker service");
+    }
     if (req.send_size() > 0) {
       // TODO(zhifengc): Let the caller decide on which device to
       // allocate the tensor.
@@ -343,8 +347,11 @@ class GrpcWorkerService : public AsyncServiceInterface {
     }
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in, out,
-        [this, call, cm, out, token, collector](Status s) {
+        collector, cm, in,
+        [this, step_id, call, cm, out, token, collector](Status s) {
+          if (s.ok()) {
+            env_->graph_mgr->RecvOutputs(step_id, out);
+          }
           call->ClearCancelCallback();
           {
             mutex_lock l(mu_);
@@ -464,8 +471,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
                                          tmp->mutable_tensor(), is_dead,
                                          response_ready);
 #else
-                call->SendResponse(ToGrpcStatus(
-                    errors::Internal("No GPU device in process")));
+                call->SendResponse(
+                    ToGrpcStatus(errors::Internal("No GPU device in process")));
 #endif  // GOOGLE_CUDA
               } else {
                 grpc::EncodeTensorToByteBuffer(is_dead, val, &call->response);

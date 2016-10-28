@@ -383,11 +383,13 @@ I.e., \(y = x * x = x^2\).
 
 Rounds the values of a tensor to the nearest integer, element-wise.
 
+Rounds half to even.  Also known as bankers rounding. If you want to round
+according to the current system rounding mode use tf::cint.
 For example:
 
 ```python
-# 'a' is [0.9, 2.5, 2.3, -4.4]
-tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
+# 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
+tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
 ```
 
 ##### Args:
@@ -1622,7 +1624,7 @@ If `adjoint` is `True` then each output matrix satisfies
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
     Shape is `[..., M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
@@ -2413,7 +2415,7 @@ tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
 
 - - -
 
-### `tf.reduce_nnz(input_tensor, reduction_indices=None, keep_dims=False, dtype=tf.int32, name=None)` {#reduce_nnz}
+### `tf.count_nonzero(input_tensor, reduction_indices=None, keep_dims=False, dtype=tf.int64, name=None)` {#count_nonzero}
 
 Computes number of nonzero elements across dimensions of a tensor.
 
@@ -2434,11 +2436,11 @@ For example:
 ```python
 # 'x' is [[0, 1, 0]
 #         [1, 1, 0]]
-tf.reduce_nnz(x) ==> 3
-tf.reduce_nnz(x, 0) ==> [1, 2, 0]
-tf.reduce_nnz(x, 1) ==> [1, 2]
-tf.reduce_nnz(x, 1, keep_dims=True) ==> [[1], [2]]
-tf.reduce_nnz(x, [0, 1]) ==> 3
+tf.count_nonzero(x) ==> 3
+tf.count_nonzero(x, 0) ==> [1, 2, 0]
+tf.count_nonzero(x, 1) ==> [1, 2]
+tf.count_nonzero(x, 1, keep_dims=True) ==> [[1], [2]]
+tf.count_nonzero(x, [0, 1]) ==> 3
 ```
 
 ##### Args:
@@ -2448,12 +2450,12 @@ tf.reduce_nnz(x, [0, 1]) ==> 3
 *  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
-*  <b>`dtype`</b>: The output dtype; defaults to `tf.int32`.
+*  <b>`dtype`</b>: The output dtype; defaults to `tf.int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  The reduced tensor.
+  The reduced tensor (number of nonzero values).
 
 
 
@@ -2507,7 +2509,28 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 A generalized contraction between tensors of arbitrary dimension.
 
-Like numpy.einsum.
+Like `numpy.einsum`, but does not support:
+* Ellipses (subscripts like `ij...,jk...->ik...`)
+* Subscripts where an axis appears more than once for a single input (e.g. `ijj,jk->ik`).
+
+##### Args:
+
+
+*  <b>`axes`</b>: a `str` describing the contraction, in the same format as `numpy.einsum`.
+*  <b>`inputs`</b>: the inputs to contract (each one a `Tensor`), whose shapes should be consistent with `axes`.
+
+##### Returns:
+
+  The contracted `Tensor`, with shape determined by `axes`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the format of `axes` is incorrect,
+              or the number of inputs implied by `axes` does not match `len(inputs)`,
+              or an axis appears in the output subscripts but not in any of the inputs,
+              or the number of dimensions of an input differs from the number of indices in its subscript,
+              or the input shapes are inconsistent along a particular axis.
 
 
 

@@ -55,7 +55,10 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
 // the first part of the output.
 std::pair<StringPiece, StringPiece> SplitPath(StringPiece path) {
   auto pos = path.rfind('/');
-
+#ifdef PLATFORM_WINDOWS
+  if (pos == StringPiece::npos)
+    pos = path.rfind('\\');
+#endif
   // Handle the case with no '/' in 'path'.
   if (pos == StringPiece::npos)
     return std::make_pair(StringPiece(path.data(), 0), path);

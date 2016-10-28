@@ -162,6 +162,16 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
       }
       progress = true;
     }
+    if (str_util::ConsumePrefix(&fullname, "/sycl:") ||
+        str_util::ConsumePrefix(&fullname, "/SYCL:")) {
+      p->has_type = true;
+      p->type = "SYCL";  // Treat '/sycl:..' as uppercase '/device:SYCL:...'
+      p->has_id = !str_util::ConsumePrefix(&fullname, "*");
+      if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
+        return false;
+      }
+      progress = true;
+    }
 
     if (!progress) {
       return false;

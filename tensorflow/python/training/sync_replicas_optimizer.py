@@ -123,6 +123,11 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
   # When you create the supervisor, you need to add the local_init_op and
   # ready_for_local_init_op to make sure the local_step is initialized to the
   # global_step. Here is an example:
+  if is_chief:
+    local_init_op = opt.chief_init_op
+  else:
+    local_init_op = opt.local_step_init_op
+  ready_for_local_init_op = opt.ready_for_local_init_op
   sv = tf.Supervisor(graph=g,
                      is_chief=is_chief,
                      # This initialize local step.
@@ -257,6 +262,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
         initial_value=0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]

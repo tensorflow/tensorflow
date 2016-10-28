@@ -137,7 +137,7 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_all
 @@reduce_any
 @@reduce_logsumexp
-@@reduce_nnz
+@@count_nonzero
 
 @@accumulate_n
 
@@ -267,6 +267,12 @@ def abs(x, name=None):
       if x.dtype in (dtypes.complex64, dtypes.complex128):
         return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
       return gen_math_ops._abs(x, name=name)
+
+
+def divide(x, y, name=None):
+  """Computes Python style division of `x` by `y`."""
+  with ops.name_scope(name, "Divide", [x]) as name:
+    return x / y
 
 
 def neg(x, name=None):
@@ -556,11 +562,13 @@ def imag(input, name=None):
 def round(x, name=None):
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
+  Rounds half to even.  Also known as bankers rounding. If you want to round
+  according to the current system rounding mode use tf::cint.
   For example:
 
   ```python
-  # 'a' is [0.9, 2.5, 2.3, -4.4]
-  tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
+  # 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
+  tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
   Args:
@@ -574,7 +582,12 @@ def round(x, name=None):
   if x.dtype.is_integer:
     return x
   else:
+    # TODO(nolivia): Switch to new Round op
+    # return gen_math_ops.round(x, name=name)
     return gen_math_ops.floor(x + 0.5, name=name)
+
+
+ops.RegisterShape("Round")(common_shapes.call_cpp_shape_fn)
 
 
 def cast(x, dtype, name=None):
@@ -902,6 +915,8 @@ def floordiv(x, y, name=None):
     else:
       if not dtype.is_integer:
         raise TypeError("Expected floating point or integer, got %r" % dtype)
+      # TODO(aselle): Switch to math_ops.floor_div() when ready
+      # return gen_math_ops.floor_div(x, y, name=name)
       return gen_math_ops.div(x, y, name=name)
 
 
@@ -931,6 +946,8 @@ _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
+# TODO(aselle): Switch mod to floor_mod when ready
+# _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(gen_math_ops.mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
@@ -1083,8 +1100,8 @@ def reduce_sum(input_tensor, reduction_indices=None, keep_dims=False,
                            keep_dims, name=name)
 
 
-def reduce_nnz(input_tensor, reduction_indices=None, keep_dims=False,
-               dtype=dtypes.int32, name=None):
+def count_nonzero(input_tensor, reduction_indices=None, keep_dims=False,
+                  dtype=dtypes.int64, name=None):
   """Computes number of nonzero elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `reduction_indices`.
@@ -1104,11 +1121,11 @@ def reduce_nnz(input_tensor, reduction_indices=None, keep_dims=False,
   ```python
   # 'x' is [[0, 1, 0]
   #         [1, 1, 0]]
-  tf.reduce_nnz(x) ==> 3
-  tf.reduce_nnz(x, 0) ==> [1, 2, 0]
-  tf.reduce_nnz(x, 1) ==> [1, 2]
-  tf.reduce_nnz(x, 1, keep_dims=True) ==> [[1], [2]]
-  tf.reduce_nnz(x, [0, 1]) ==> 3
+  tf.count_nonzero(x) ==> 3
+  tf.count_nonzero(x, 0) ==> [1, 2, 0]
+  tf.count_nonzero(x, 1) ==> [1, 2]
+  tf.count_nonzero(x, 1, keep_dims=True) ==> [[1], [2]]
+  tf.count_nonzero(x, [0, 1]) ==> 3
   ```
 
   Args:
@@ -1116,13 +1133,13 @@ def reduce_nnz(input_tensor, reduction_indices=None, keep_dims=False,
     reduction_indices: The dimensions to reduce. If `None` (the default),
       reduces all dimensions.
     keep_dims: If true, retains reduced dimensions with length 1.
-    dtype: The output dtype; defaults to `tf.int32`.
+    dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
 
   Returns:
-    The reduced tensor.
+    The reduced tensor (number of nonzero values).
   """
-  with ops.name_scope(name, "NNZ", [input_tensor]):
+  with ops.name_scope(name, "count_nonzero", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
     zero = input_tensor.dtype.as_numpy_dtype()
     return cast(
@@ -1910,6 +1927,8 @@ ops.RegisterShape("LogicalOr")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Maximum")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Minimum")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Mod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FloorMod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FloorDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Mul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("NotEqual")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Pow")(common_shapes.call_cpp_shape_fn)
@@ -1999,3 +2018,6 @@ def reduced_shape(input_shape, axes):
        axes],                               # [1, 2]
       [input_shape,                         # [2, 3, 5, 7]
        array_ops.fill(axes_shape, 1)])      # [1, 1]
+
+
+ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)

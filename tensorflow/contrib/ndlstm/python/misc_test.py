@@ -19,8 +19,8 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.ndlstm.python import misc
 from tensorflow.python.framework import test_util
+misc = tf.contrib.ndlstm.misc
 
 
 def _rand(*size):
