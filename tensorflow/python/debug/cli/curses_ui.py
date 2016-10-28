@@ -696,6 +696,10 @@ class CursesUI(object):
     # state where the last text line is on the top of the output area.
     self._curr_wrapped_output.lines.extend([""] * (self._output_num_rows - 1))
 
+    # Append lines to curr_wrapped_output so that the user can scroll to a
+    # state where the last text line is on the top of the output area.
+    self._curr_wrapped_output.lines.extend([""] * (self._output_num_rows - 1))
+
     # Limit number of lines displayed to avoid curses overflow problems.
     if self._curr_wrapped_output.num_lines() > self.max_output_lines:
       self._curr_wrapped_output = self._curr_wrapped_output.slice(

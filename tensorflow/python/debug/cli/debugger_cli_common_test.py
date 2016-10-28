@@ -469,6 +469,9 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     # Add non-row-index field to out.
     out.annotations["metadata"] = "foo"
 
+    # Add non-row-index field to out.
+    out.annotations["metadata"] = "foo"
+
     # Check wrapped text.
     self.assertEqual(5, len(out.lines))
     self.assertEqual("Folk song:", out.lines[0])
