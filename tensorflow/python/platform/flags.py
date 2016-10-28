@@ -31,8 +31,8 @@ class _FlagValues(object):
     self.__dict__['__flags'] = {}
     self.__dict__['__parsed'] = False
 
-  def _parse_flags(self):
-    result, unparsed = _global_parser.parse_known_args()
+  def _parse_flags(self, args=None):
+    result, unparsed = _global_parser.parse_known_args(args=args)
     for flag_name, val in vars(result).items():
       self.__dict__['__flags'][flag_name] = val
     self.__dict__['__parsed'] = True

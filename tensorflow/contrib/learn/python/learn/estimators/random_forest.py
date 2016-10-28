@@ -17,25 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import six
-
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.learn.python.learn import monitors as mon
+from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import trainable
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.data import data_ops
 from tensorflow.contrib.tensor_forest.python import tensor_forest
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import session_run_hook
+
+
+KEYS_NAME = 'keys'
+LOSS_NAME = 'rf_training_loss'
 
 
 def _assert_float32(tensors):
@@ -56,58 +59,124 @@ def _assert_float32(tensors):
       raise TypeError('Expected dtype=float32, %s.' % tensor)
 
 
-class TensorForestLossMonitor(mon.EveryN):
-  """Terminates training when training loss stops decreasing."""
+class TensorForestLossHook(session_run_hook.SessionRunHook):
+  """Monitor to request stop when loss stops decreasing."""
 
-  def __init__(self,
-               early_stopping_rounds,
-               every_n_steps):
-    super(TensorForestLossMonitor, self).__init__(every_n_steps=every_n_steps)
+  def __init__(self, early_stopping_rounds):
     self.early_stopping_rounds = early_stopping_rounds
     self.min_loss = None
-    self.min_loss_step = 0
+    self.last_step = -1
+    # self.steps records the number of steps for which the loss has been
+    # non-decreasing
+    self.steps = 0
 
-  def step_begin(self, step):
-    super(TensorForestLossMonitor, self).step_begin(step)
-    return [self._loss_op_name]
+  def before_run(self, run_context):
+    return session_run_hook.SessionRunArgs(
+        {'global_step': contrib_framework.get_global_step(),
+         'current_loss': run_context.session.graph.get_operation_by_name(
+             LOSS_NAME).outputs[0]})
 
-  def set_estimator(self, est):
-    """This function gets called in the same graph as _get_train_ops."""
-    super(TensorForestLossMonitor, self).set_estimator(est)
-    self._loss_op_name = est.training_loss.name
+  def after_run(self, run_context, run_values):
+    current_loss = run_values.results['current_loss']
+    current_step = run_values.results['global_step']
+    self.steps += 1
+    # Gaurd against the global step going backwards, which might happen
+    # if we recover from something.
+    if self.last_step == -1 or self.last_step > current_step:
+      logging.info('TensorForestLossHook resetting last_step.')
+      self.last_step = current_step
+      self.steps = 0
+      return
 
-  def every_n_step_end(self, step, outputs):
-    super(TensorForestLossMonitor, self).every_n_step_end(step, outputs)
-    current_loss = outputs[self._loss_op_name]
     if self.min_loss is None or current_loss < self.min_loss:
       self.min_loss = current_loss
-      self.min_loss_step = step
-    return step - self.min_loss_step >= self.early_stopping_rounds
+      self.steps = 0
+    if self.steps > self.early_stopping_rounds:
+      logging.info('TensorForestLossHook requesting stop.')
+      run_context.request_stop()
 
 
-class TensorForestEstimator(estimator.BaseEstimator):
+def get_model_fn(params, graph_builder_class, device_assigner,
+                 weights_name=None, keys_name=None):
+  """Return a model function given a way to construct a graph builder."""
+  def _model_fn(features, targets):
+    """Function that returns predictions, training loss, and training op."""
+    weights = None
+    keys = None
+    if weights_name and weights_name in features:
+      weights = features.pop(weights_name)
+    if keys_name and keys_name in features:
+      keys = features.pop(keys_name)
+    processed_features, spec = data_ops.ParseDataTensorOrDict(features)
+    _assert_float32(processed_features)
+    if targets is not None:
+      targets = data_ops.ParseLabelTensorOrDict(targets)
+      _assert_float32(targets)
+
+    graph_builder = graph_builder_class(params, device_assigner=device_assigner)
+    inference = {eval_metrics.INFERENCE_PROB_NAME:
+                 graph_builder.inference_graph(processed_features,
+                                               data_spec=spec)}
+    if not params.regression:
+      inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
+          inference[eval_metrics.INFERENCE_PROB_NAME], 1)
+    if keys:
+      inference[KEYS_NAME] = keys
+
+    # targets might be None if we're doing prediction (which brings up the
+    # question of why we force everything to adhere to a single model_fn).
+    training_loss = None
+    training_graph = None
+    if targets is not None:
+      training_loss = graph_builder.training_loss(processed_features, targets,
+                                                  data_spec=spec,
+                                                  name=LOSS_NAME)
+      training_graph = control_flow_ops.group(
+          graph_builder.training_graph(
+              processed_features, targets, data_spec=spec,
+              input_weights=weights),
+          state_ops.assign_add(contrib_framework.get_global_step(), 1))
+    # Put weights back in
+    if weights is not None:
+      features[weights_name] = weights
+    return (inference, training_loss, training_graph)
+  return _model_fn
+
+
+class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
   """An estimator that can train and evaluate a random forest."""
 
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
-               master='', accuracy_metric=None,
-               tf_random_seed=None, config=None,
-               feature_engineering_fn=None):
+               config=None, weights_name=None, keys_name=None,
+               feature_engineering_fn=None, early_stopping_rounds=100):
     self.params = params.fill()
-    self.accuracy_metric = (accuracy_metric or
-                            ('r2' if self.params.regression else 'accuracy'))
-    self.data_feeder = None
-    self.device_assigner = (
-        device_assigner or tensor_forest.RandomForestDeviceAssigner())
     self.graph_builder_class = graph_builder_class
-    self.training_args = {}
-    self.construction_args = {}
-    self._feature_engineering_fn = (
-        feature_engineering_fn or
-        (lambda features, targets: (features, targets)))
+    self.early_stopping_rounds = early_stopping_rounds
+    self._estimator = estimator.Estimator(
+        model_fn=get_model_fn(params, graph_builder_class, device_assigner,
+                              weights_name=weights_name, keys_name=keys_name),
+        model_dir=model_dir,
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)
 
-    super(TensorForestEstimator, self).__init__(model_dir=model_dir,
-                                                config=config)
+  def evaluate(
+      self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
+      steps=None, metrics=None, name=None):
+    """See evaluable.Evaluable."""
+    return self._estimator.evaluate(
+        input_fn=input_fn, x=x, y=y, feed_fn=feed_fn,
+        batch_size=batch_size, steps=steps,
+        metrics=metrics, name=name)
+
+  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+          monitors=None, max_steps=None):
+    """See trainable.Trainable."""
+    if not monitors:
+      monitors = [TensorForestLossHook(self.early_stopping_rounds)]
+    self._estimator.fit(input_fn=input_fn, x=x, y=y,
+                        batch_size=batch_size, steps=steps, monitors=monitors,
+                        max_steps=max_steps)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -135,13 +204,14 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Raises:
       ValueError: If both or neither of x and input_fn were given.
     """
-    results = super(TensorForestEstimator, self).predict(
+    results = self._estimator.predict(
         x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
         as_iterable=as_iterable)
+
     if as_iterable:
-      return (r['probabilities'] for r in results)
+      return (x[eval_metrics.INFERENCE_PROB_NAME] for x in results)
     else:
-      return results['probabilities']
+      return results[eval_metrics.INFERENCE_PROB_NAME]
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -168,16 +238,16 @@ class TensorForestEstimator(estimator.BaseEstimator):
       Numpy array of predicted classes or regression values (or an iterable of
       predictions if as_iterable is True).
     """
-    probabilities = self.predict_proba(
+    results = self._estimator.predict(
         x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
         as_iterable=as_iterable)
-    if self.params.regression:
-      return probabilities
+
+    predict_name = (eval_metrics.INFERENCE_PROB_NAME if self.params.regression
+                    else eval_metrics.INFERENCE_PRED_NAME)
+    if as_iterable:
+      return (x[predict_name] for x in results)
     else:
-      if as_iterable:
-        return (np.argmax(p, axis=0) for p in probabilities)
-      else:
-        return np.argmax(probabilities, axis=1)
+      return results[predict_name]
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -186,100 +256,40 @@ class TensorForestEstimator(estimator.BaseEstimator):
       self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
       as_iterable=True):
     """Same as predict but also returns the example keys."""
-    results = super(TensorForestEstimator, self).predict(
+    results = self._estimator.predict(
         x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
         as_iterable=as_iterable)
-    if self.params.regression:
-      if as_iterable:
-        return ((r['probabilities'], r.get('keys', None)) for r in results)
-      else:
-        return results['probabilities'], results.get('keys', None)
+
+    predict_name = (eval_metrics.INFERENCE_PROB_NAME if self.params.regression
+                    else eval_metrics.INFERENCE_PRED_NAME)
+    if as_iterable:
+      return ((x[predict_name], x.get(KEYS_NAME, None)) for x in results)
     else:
-      if as_iterable:
-        return ((np.argmax(r['probabilities'], axis=0),
-                 r.get('keys', None)) for r in results)
+      return results[predict_name], results.get(KEYS_NAME, None)
 
-      else:
-        return np.argmax(results['probabilities'], axis=1), results.get('keys',
-                                                                        None)
-
-  def _get_train_ops(self, features, targets):
-    """Method that builds model graph and returns trainer ops.
-
-    Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
-      targets: `Tensor` or `dict` of `Tensor` objects.
-
-    Returns:
-      Tuple of train `Operation` and loss `Tensor`.
-    """
-    features, _, weights, spec = data_ops.ParseDataTensorOrDict(features)
-    labels = data_ops.ParseLabelTensorOrDict(targets)
-    features, labels = self._feature_engineering_fn(features, labels)
-    _assert_float32(features)
-    _assert_float32(labels)
-
-    if weights is not None:
-      if 'input_weights' in self.training_args:
-        logging.warning('Replacing input_weights in training_args.')
-      self.training_args['input_weights'] = weights
-
-    graph_builder = self.graph_builder_class(
-        self.params, device_assigner=self.device_assigner,
-        **self.construction_args)
-
-    epoch = None
-    if self.data_feeder:
-      epoch = self.data_feeder.make_epoch_variable()
-
-    train = control_flow_ops.group(
-        graph_builder.training_graph(
-            features, labels, data_spec=spec, epoch=epoch,
-            **self.training_args),
-        state_ops.assign_add(contrib_framework.get_global_step(), 1))
-
-    self.training_loss = graph_builder.training_loss(features, targets)
-
-    return train, self.training_loss
-
-  def _get_predict_ops(self, features):
-    graph_builder = self.graph_builder_class(
-        self.params, device_assigner=self.device_assigner, training=False,
-        **self.construction_args)
-    features, keys, _, spec = data_ops.ParseDataTensorOrDict(features)
-    features, _ = self._feature_engineering_fn(features, None)
-    _assert_float32(features)
-    output_dict = {
-        'probabilities': graph_builder.inference_graph(features,
-                                                       data_spec=spec)}
-    if keys is not None:
-      output_dict['keys'] = keys
-    return output_dict
-
-  def _get_eval_ops(self, features, targets, metrics):
-    features, _, _, spec = data_ops.ParseDataTensorOrDict(features)
-    labels = data_ops.ParseLabelTensorOrDict(targets)
-    features, labels = self._feature_engineering_fn(features, labels)
-    _assert_float32(features)
-    _assert_float32(labels)
-
-    graph_builder = self.graph_builder_class(
-        self.params, device_assigner=self.device_assigner, training=False,
-        **self.construction_args)
-
-    probabilities = graph_builder.inference_graph(features, data_spec=spec)
-
-    # One-hot the labels.
-    if not self.params.regression:
-      labels = math_ops.to_int64(array_ops.one_hot(math_ops.to_int64(
-          array_ops.squeeze(labels)), self.params.num_classes, 1, 0))
-
-    if metrics is None:
-      metrics = {self.accuracy_metric:
-                 eval_metrics.get_metric(self.accuracy_metric)}
-
-    result = {}
-    for name, metric in six.iteritems(metrics):
-      result[name] = metric(probabilities, labels)
-
+  def export(self,
+             export_dir,
+             input_fn,
+             signature_fn=None,
+             default_batch_size=1):
+    """See BaseEstimator.export."""
+    # Reset model function with basic device assigner.
+    # Servo doesn't support distributed inference
+    # but it will try to respect device assignments if they're there.
+    # pylint: disable=protected-access
+    orig_model_fn = self._estimator._model_fn
+    self._estimator._model_fn = get_model_fn(
+        self.params, self.graph_builder_class,
+        tensor_forest.RandomForestDeviceAssigner())
+    result = self._estimator.export(
+        export_dir=export_dir,
+        use_deprecated_input_fn=True,
+        signature_fn=(signature_fn or
+                      (export.regression_signature_fn
+                       if self.params.regression else
+                       export.classification_signature_fn_with_prob)),
+        default_batch_size=default_batch_size,
+        prediction_key=eval_metrics.INFERENCE_PROB_NAME)
+    self._estimator._model_fn = orig_model_fn
+    # pylint: enable=protected-access
     return result

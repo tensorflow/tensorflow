@@ -693,8 +693,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
               "[7];[2]");
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
-  INFER_ERROR("Cannot infer multiple unknown dimensions in shape [?,?,2]", op,
-              "[8];[3]");
+  INFER_OK(op, "[8];[3]", "[?,?,2]");
 
   // Reshaping to a scalar.
   new_shape = test::AsTensor<int32>({});

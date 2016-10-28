@@ -5,10 +5,26 @@ package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 
+# This returns a list of headers of all public header libraries (e.g.,
+# framework, lib), and all of the transitive dependencies of those
+# public headers.  Not all of the headers returned by the filegroup
+# are public (e.g., internal headers that are included by public
+# headers), but the internal headers need to be packaged in the
+# pip_package for the public headers to be properly included.
+#
+# Public headers are therefore defined by those that are both:
+#
+# 1) "publicly visible" as defined by bazel
+# 2) Have documentation.
+#
+# This matches the policy of "public" for our python API.
 transitive_hdrs(
-    name = "other_headers",
+    name = "included_headers",
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -30,7 +46,7 @@ py_binary(
         "MANIFEST.in",
         "README",
         "setup.py",
-        ":other_headers",
+        ":included_headers",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
@@ -40,7 +56,6 @@ py_binary(
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
-        "//tensorflow/core:framework_headers",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",
         "//tensorflow/models/image/alexnet:all_files",
@@ -70,7 +85,7 @@ sh_binary(
             "MANIFEST.in",
             "README",
             "setup.py",
-            ":other_headers",
+            ":included_headers",
             ":simple_console",
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/ndlstm:all_files",
@@ -81,7 +96,6 @@ sh_binary(
             "//tensorflow/contrib/specs:all_files",
             "//tensorflow/contrib/tensor_forest:all_files",
             "//tensorflow/contrib/tensor_forest/hybrid:all_files",
-            "//tensorflow/core:framework_headers",
             "//tensorflow/examples/tutorials/mnist:package",
             "//tensorflow/models/embedding:package",
             "//tensorflow/models/image/alexnet:all_files",

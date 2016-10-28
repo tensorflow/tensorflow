@@ -8,7 +8,7 @@ exp = Inline(
   inverse_fn=tf.log,
   inverse_log_det_jacobian_fn=(
     lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
-  name="Exp")
+  name="exp")
 ```
 
 The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
@@ -29,8 +29,8 @@ Creates a `Bijector` from callables.
     log o det o jacobian of the forward transformation.
 *  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is constant
     for all input arguments.
-*  <b>`validate_args`</b>: `Boolean` indicated whether arguments should be checked for
-    correctness.
+*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
+    for correctness.
 *  <b>`name`</b>: `String`, name given to ops managed by this object.
 
 

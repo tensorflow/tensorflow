@@ -97,6 +97,12 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # Set up the assets collection.
     assets_filepath = tf.constant(original_assets_filepath)
     tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, assets_filepath)
+    filename_tensor = tf.Variable(
+        original_assets_filename,
+        name="filename_tensor",
+        trainable=False,
+        collections=[])
+    assign_filename_op = filename_tensor.assign(original_assets_filename)
 
     # Set up the signature for regression with input and output tensor
     # specification.
@@ -118,7 +124,8 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
         signature_def_map={
             signature_constants.REGRESS_METHOD_NAME: signature_def
         },
-        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS))
+        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
+        legacy_init_op=tf.group(assign_filename_op))
     builder.save(as_text)
 
 

@@ -118,7 +118,7 @@ def error_rate(predictions, labels):
       predictions.shape[0])
 
 
-def main(argv=None):  # pylint: disable=unused-argument
+def main(_):
   if FLAGS.self_test:
     print('Running self-test.')
     train_data, train_labels = fake_data(256)
@@ -296,11 +296,13 @@ def main(argv=None):  # pylint: disable=unused-argument
       # node in the graph it should be fed to.
       feed_dict = {train_data_node: batch_data,
                    train_labels_node: batch_labels}
-      # Run the graph and fetch some of the nodes.
-      _, l, lr, predictions = sess.run(
-          [optimizer, loss, learning_rate, train_prediction],
-          feed_dict=feed_dict)
+      # Run the optimizer to update weights.
+      sess.run(optimizer, feed_dict=feed_dict)
+      # print some extra information once reach the evaluation frequency
       if step % EVAL_FREQUENCY == 0:
+        # fetch some extra nodes' data
+        l, lr, predictions = sess.run([loss, learning_rate, train_prediction],
+                                      feed_dict=feed_dict)
         elapsed_time = time.time() - start_time
         start_time = time.time()
         print('Step %d (epoch %.2f), %.1f ms' %
@@ -326,14 +328,12 @@ if __name__ == '__main__':
       '--use_fp16',
       default=False,
       help='Use half floats instead of full floats if True.',
-      action='store_true'
-  )
+      action='store_true')
   parser.add_argument(
       '--self_test',
       default=False,
       action='store_true',
-      help='True if running a self test.'
-  )
-  FLAGS = parser.parse_args()
+      help='True if running a self test.')
 
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

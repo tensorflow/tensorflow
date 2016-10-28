@@ -185,8 +185,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -200,6 +200,29 @@ Additional documentation from `TransformedDistribution`:
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.copy(**override_parameters_kwargs)` {#TransformedDistribution.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
 
 
 - - -
@@ -303,8 +326,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -387,8 +410,8 @@ Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -426,8 +449,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -579,8 +602,8 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -633,8 +656,8 @@ Samples from the base distribution and then passes through
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -682,8 +705,8 @@ Additional documentation from `TransformedDistribution`:
 
 ##### <b>`condition_kwargs`</b>:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 *  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 

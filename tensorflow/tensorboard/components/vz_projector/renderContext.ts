@@ -57,13 +57,14 @@ export class RenderContext {
   pointScaleFactors: Float32Array;
   labelAccessor: (index: number) => string;
   labels: LabelRenderParams;
+  traceColors: {[trace: number]: Float32Array};
 
   constructor(
       camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
       screenHeight: number, nearestCameraSpacePointZ: number,
       farthestCameraSpacePointZ: number, pointColors: Float32Array,
       pointScaleFactors: Float32Array, labelAccessor: (index: number) => string,
-      labels: LabelRenderParams) {
+      labels: LabelRenderParams, traceColors: {[trace: number]: Float32Array}) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
@@ -74,5 +75,6 @@ export class RenderContext {
     this.pointScaleFactors = pointScaleFactors;
     this.labelAccessor = labelAccessor;
     this.labels = labels;
+    this.traceColors = traceColors;
   }
 }

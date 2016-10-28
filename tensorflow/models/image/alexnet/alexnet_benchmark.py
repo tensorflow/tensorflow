@@ -36,6 +36,7 @@ from __future__ import print_function
 import argparse
 from datetime import datetime
 import math
+import sys
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -241,6 +242,5 @@ if __name__ == '__main__':
       default=100,
       help='Number of batches to run.'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

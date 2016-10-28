@@ -71,6 +71,34 @@ class ShapeRefiner {
       Node* node, Graph* out_graph, bool* is_constant_graph,
       std::vector<std::pair<string, Tensor>>* const_inputs) TF_MUST_USE_RESULT;
 
+  Status EvaluateConstantTensorForEdge(const Node* node, int dst_idx,
+                                       bool* evaluated, Tensor* result);
+
+  // This function tries to materialize as much information about the 'node''s
+  // dst_idx input as a statically computable shape, and the result may be
+  // partially known, depending on what is statically inferable.
+  //
+  // This is called when node.input[dst_idx] is a tensor that is used to define
+  // the shape of some other tensor (e.g., the second argument to Reshape is a
+  // <shape> tensor, where each element of the shape tensor is a dimension of
+  // the target tensor).  It returns in <result> a shape for that input.
+  //
+  // Unlike simply resolving node.input[dst_idx] to a constant and then
+  // converting that to a shape, this function can return a partial shape. This
+  // is useful for cases where the shape tensor is only partially defined, such
+  // as with calls for: reshape(x, shape(y)) where shape(y) is partially
+  // defined.
+  //
+  // The implementation has op implementations for ops commonly called on shape
+  // tensors, and the implementations are specialized to shape tensors (namely,
+  // the output is a vector).
+  //
+  // <target_context> is used when creating new DimensionHandle and ShapeHandle
+  // objects.
+  Status ConstantPartialShape(shape_inference::InferenceContext* target_context,
+                              const Node* node, int dst_idx,
+                              shape_inference::ShapeHandle* result);
+
   const OpRegistryInterface* ops_registry_ = nullptr;
 
   // Stores a map from a node to its InferenceContext.

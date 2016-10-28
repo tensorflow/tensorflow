@@ -309,7 +309,7 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
           inputs=rnn_outputs,
           num_outputs=self._target_column.num_label_columns,
           activation_fn=None,
-          trainable=False)
+          trainable=True)
       return activations, final_state
 
   @abc.abstractmethod

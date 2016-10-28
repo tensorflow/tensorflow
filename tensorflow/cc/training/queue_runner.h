@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 #include <vector>
+
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -49,6 +50,9 @@ class QueueRunner {
   // Starts the queue runner with the given session.
   Status Start(Session* sess);
 
+  // Requests to stop and runs the cancel op.
+  Status Stop(Session* sess);
+
   // Joins all the threads. Returns okay if all threads run successfully;
   // otherwise returns the first captured failure status.
   Status Join();
@@ -60,14 +64,14 @@ class QueueRunner {
   string queue_name_;
   std::vector<string> enqueue_op_names_;
   string close_op_name_;
-  // The cancel op is not being called currently.
   string cancel_op_name_;
   // code::Code casted to int to avoid a hash function.
   std::unordered_set<int> queue_closed_exception_types_;
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  bool should_stop_;
+  std::atomic<bool> should_stop_;
   std::atomic<bool> started_;
+  condition_variable wait_to_close_;
   mutex mu_;
   // TODO(yuefengz): implement c++ coordinator.
   int runs_ = 0;

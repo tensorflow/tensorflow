@@ -329,7 +329,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
       return;
     }
     StepStatsCollector* collector = nullptr;
-    if (call->request.exec_opts().record_timeline()) {
+    if (call->request.exec_opts().record_timeline() ||
+        call->request.exec_opts().record_costs()) {
       collector = new StepStatsCollector(call->response.mutable_step_stats());
       // TODO(mrry,pbar): GPU tracing for distributed steps.
     }
@@ -345,9 +346,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
       cancellation_manager_->RegisterCallback(token,
                                               [cm]() { cm->StartCancel(); });
     }
+    CostGraphDef* cost_graph = call->response.mutable_cost_graph();
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in,
+        collector, cost_graph, cm, in,
         [this, step_id, call, cm, out, token, collector](Status s) {
           if (s.ok()) {
             env_->graph_mgr->RecvOutputs(step_id, out);

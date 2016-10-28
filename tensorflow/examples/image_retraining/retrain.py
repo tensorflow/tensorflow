@@ -1009,6 +1009,5 @@ if __name__ == '__main__':
       input pixels up or down by.\
       """
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
