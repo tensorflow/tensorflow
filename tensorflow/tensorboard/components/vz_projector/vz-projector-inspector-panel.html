@@ -54,6 +54,19 @@ limitations under the License.
   margin-right: 0;
 }
 
+.nn {
+  display: flex;
+  flex-direction: column;
+}
+
+.nn > * {
+  padding: 0 20px;
+}
+
+.nn-list {
+  overflow-y: auto;
+}
+
 .nn-list .neighbor {
   font-size: 12px;
   margin-bottom: 8px;
@@ -154,6 +167,10 @@ limitations under the License.
   margin-right: 10px;
 }
 
+.matches-list {
+  padding: 0 20px;
+}
+
 .matches-list .row {
   border-bottom: 1px solid #ddd;
   cursor: pointer;
@@ -164,8 +181,8 @@ limitations under the License.
 }
 
 .results {
-  overflow-y: auto;
-  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
 }
 </style>
 <template>

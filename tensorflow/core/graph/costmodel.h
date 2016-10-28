@@ -159,6 +159,9 @@ class CostModel {
   void WriteSummaryToLog() const;
 
  private:
+  static Bytes MinTensorMemoryUsage(const TensorShapeProto& tensor_shape,
+                                    const DataType& dtype);
+
   const bool is_global_;
 
   // Resizes vectors so that they are large enough for "id".

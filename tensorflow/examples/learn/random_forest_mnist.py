@@ -18,13 +18,20 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 import tempfile
 
 import tensorflow as tf
 
 # pylint: disable=g-backslash-continuation
+from tensorflow.contrib.learn.python.learn\
+        import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators\
         import random_forest
+from tensorflow.contrib.tensor_forest.client\
+        import eval_metrics
+from tensorflow.contrib.tensor_forest.python\
+        import tensor_forest
 from tensorflow.examples.tutorials.mnist import input_data
 
 FLAGS = None
@@ -35,7 +42,12 @@ def build_estimator(model_dir):
   params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
       num_classes=10, num_features=784,
       num_trees=FLAGS.num_trees, max_nodes=FLAGS.max_nodes)
-  return random_forest.TensorForestEstimator(params, model_dir=model_dir)
+  graph_builder_class = tensor_forest.RandomForestGraphs
+  if FLAGS.use_training_loss:
+    graph_builder_class = tensor_forest.TrainingLossForest
+  return random_forest.TensorForestEstimator(
+      params, graph_builder_class=graph_builder_class,
+      model_dir=model_dir)
 
 
 def train_and_eval():
@@ -45,20 +57,25 @@ def train_and_eval():
 
   estimator = build_estimator(model_dir)
 
-  # TensorForest's LossMonitor allows training to terminate early if the
+  # TensorForest's loss hook allows training to terminate early if the
   # forest is no longer growing.
   early_stopping_rounds = 100
-  check_every_n_steps = 100
-  monitor = random_forest.TensorForestLossMonitor(early_stopping_rounds,
-                                                  check_every_n_steps)
+  monitor = random_forest.TensorForestLossHook(early_stopping_rounds)
 
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
 
   estimator.fit(x=mnist.train.images, y=mnist.train.labels,
                 batch_size=FLAGS.batch_size, monitors=[monitor])
 
+  metric_name = 'accuracy'
+  metric = {metric_name:
+            metric_spec.MetricSpec(
+                eval_metrics.get_metric(metric_name),
+                prediction_key=eval_metrics.get_prediction_key(metric_name))}
+
   results = estimator.evaluate(x=mnist.test.images, y=mnist.test.labels,
-                               batch_size=FLAGS.batch_size)
+                               batch_size=FLAGS.batch_size,
+                               metrics=metric)
   for key in sorted(results):
     print('%s: %s' % (key, results[key]))
 
@@ -105,6 +122,11 @@ if __name__ == '__main__':
       default=1000,
       help='Max total nodes in a single tree.'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  parser.add_argument(
+      '--use_training_loss',
+      type=bool,
+      default=False,
+      help='If true, use training loss as termination criteria.'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

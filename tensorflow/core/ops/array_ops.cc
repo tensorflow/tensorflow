@@ -114,48 +114,49 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
 
-  // If the rank and all dimensions of the input tensor are known, we may
-  // infer missing shape information or perform shape checks.
-  // NumElements conveniently returns kUnknownDim upon missing rank or
-  // dimension information.
-  // Additionally, if the rank of the out shape is unknown we have no shape
-  // information to go off of.
+  if (!c->RankKnown(out)) {
+    // We have no information about the shape of the output.
+    c->set_output(0, out);
+    return Status::OK();
+  }
   DimensionHandle num_in_elems = c->NumElements(in);
-  DimensionHandle num_out_elems = c->NumElements(out);
-  if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
-    // Do nothing. We have no shape information to infer from so we directly
-    // return out as our shape.
-  } else if (c->ValueKnown(num_out_elems)) {
-    // If we know the number of output elements, we ensure that they
-    // are equal to the number of input elements.
-    if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
+  if (c->FullyDefined(out)) {
+    DimensionHandle num_out_elems = c->NumElements(out);
+    if (c->ValueKnown(num_in_elems) &&
+        c->Value(num_in_elems) != c->Value(num_out_elems)) {
       return errors::InvalidArgument(
           "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
           " elements to shape ", c->DebugString(out), " (",
           c->DebugString(num_out_elems), " elements)");
     }
-  } else {
-    // If we don't know the number of output elements, we can infer
+    c->set_output(0, out);
+    return Status::OK();
+  }
+
+  if (c->ValueKnown(num_in_elems)) {
+    // We don't know the number of output elements, but we can try to infer
     // the missing dimension.
     int32 unknown_idx = -1;
+    bool too_many_unknown = false;
     DimensionHandle known_elems = c->MakeDim(1);
     for (int32 i = 0; i < c->Rank(out); ++i) {
       DimensionHandle dim = c->Dim(out, i);
       if (!c->ValueKnown(dim)) {
         if (unknown_idx >= 0) {
-          return errors::InvalidArgument(
-              "Cannot infer multiple unknown dimensions in shape ",
-              c->DebugString(out));
+          too_many_unknown = true;
+          break;
         }
         unknown_idx = i;
       } else {
         TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
       }
     }
-    DimensionHandle inferred_dim;
-    TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
-                                 true /* evenly_divisible */, &inferred_dim));
-    TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+    if (!too_many_unknown) {
+      DimensionHandle inferred_dim;
+      TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                   true /* evenly_divisible */, &inferred_dim));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+    }
   }
 
   c->set_output(0, out);
@@ -2477,11 +2478,10 @@ REGISTER_OP("Placeholder")
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
 
-      // Placeholder has a legacy bug where we cannot tell
-      // the difference between a scalar shape attribute and
-      // 'unknown shape'.  So if the shape is a scalar, we return
-      // an unknown shape.
-      if (shape.dims() == 0) {
+      // Placeholder has legacy behavior where we cannot tell the difference
+      // between a scalar shape attribute and 'unknown shape'.  So if the shape
+      // is a scalar, we return an unknown shape.
+      if (shape.dims() <= 0) {
         return shape_inference::UnknownShape(c);
       }
 
@@ -4381,6 +4381,117 @@ input_max: The maximum value of the input.
 output_min: This value is copied from input_min.
 output_max: This value is copied from input_max.
 )Doc");
+
+REGISTER_OP("FakeQuantWithMinMaxArgs")
+    .Attr("min: float = -6.0")
+    .Attr("max: float = 6.0")
+    .Input("inputs: float")
+    .Output("outputs: float")
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+
+Attributes [min; max] define the clamping range for the 'inputs' data.  Op
+divides this range into 255 steps (total of 256 values), then replaces each
+'inputs' value with the closest of the quantized step values.
+
+Quantization is called fake since the output is still in floating point.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxArgsGradient")
+    .Attr("min: float = -6.0")
+    .Attr("max: float = 6.0")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Output("backprops: float")
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxArgs operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
+backprops: Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
+  `gradients * (inputs >= min && inputs <= max)`.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVars")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("outputs: float")
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+global float scalars `min` and `max` to 'outputs' tensor of same shape as
+`inputs`.
+
+[min; max] is the clamping range for the 'inputs' data.  Op divides this range
+into 255 steps (total of 256 values), then replaces each 'inputs' value with the
+closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsGradient")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("backprops_wrt_input: float")
+    .Output("backprop_wrt_min: float")
+    .Output("backprop_wrt_max: float")
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxVars operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation.
+min, max: Quantization interval, scalar floats.
+backprops_wrt_input: Backpropagated gradients w.r.t. inputs:
+  `gradients * (inputs >= min && inputs <= max)`.
+backprop_wrt_min: Backpropagated gradients w.r.t. min parameter:
+  `sum(gradients * (inputs < min))`.
+backprop_wrt_max: Backpropagated gradients w.r.t. max parameter:
+  `sum(gradients * (inputs > max))`.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsPerChannel")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("outputs: float")
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
+to 'outputs' tensor of same shape as `inputs`.
+
+[min; max] is the clamping range for the 'inputs' data in the corresponding
+depth channel.  Op divides this range into 255 steps (total of 256 values), then
+replaces each 'inputs' value with the closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("backprops_wrt_input: float")
+    .Output("backprop_wrt_min: float")
+    .Output("backprop_wrt_max: float")
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation,
+  shape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
+  same as `gradients`.
+min, max: Quantization interval, floats of shape `[d]`.
+backprops_wrt_input: Backpropagated gradients w.r.t. inputs, shape same as
+  `inputs`:
+    `gradients * (inputs >= min && inputs <= max)`.
+backprop_wrt_min: Backpropagated gradients w.r.t. min parameter, shape `[d]`:
+  `sum_per_d(gradients * (inputs < min))`.
+backprop_wrt_max: Backpropagated gradients w.r.t. max parameter, shape `[d]`:
+  `sum_per_d(gradients * (inputs > max))`.
+)doc");
 
 // Deprecated op registrations:
 

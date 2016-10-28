@@ -15,7 +15,6 @@ limitations under the License.
 
 package org.tensorflow.demo;
 
-import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
@@ -26,12 +25,11 @@ import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Handler;
 import android.os.Trace;
-
-import java.io.IOException;
-import java.util.List;
 import junit.framework.Assert;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
+
+import java.util.List;
 
 /**
  * Class that takes in preview frames and converts the image to Bitmaps to process with Tensorflow.
@@ -41,29 +39,13 @@ public class TensorFlowImageListener implements OnImageAvailableListener {
 
   private static final boolean SAVE_PREVIEW_BITMAP = false;
 
-  // These are the settings for the original v1 Inception model. If you want to
-  // use a model that's been produced from the TensorFlow for Poets codelab,
-  // you'll need to set IMAGE_SIZE = 299, IMAGE_MEAN = 128, IMAGE_STD = 128,
-  // INPUT_NAME = "Mul:0", and OUTPUT_NAME = "final_result:0".
-  // You'll also need to update the MODEL_FILE and LABEL_FILE paths to point to
-  // the ones you produced.
-  private static final int NUM_CLASSES = 1001;
-  private static final int INPUT_SIZE = 224;
-  private static final int IMAGE_MEAN = 117;
-  private static final float IMAGE_STD = 1;
-  private static final String INPUT_NAME = "input:0";
-  private static final String OUTPUT_NAME = "output:0";
-
-  private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
-  private static final String LABEL_FILE =
-      "file:///android_asset/imagenet_comp_graph_label_strings.txt";
-
   private Integer sensorOrientation;
 
-  private final TensorFlowImageClassifier tensorflow = new TensorFlowImageClassifier();
+  private Classifier tensorflow;
 
   private int previewWidth = 0;
   private int previewHeight = 0;
+  private int inputSize = 0;
   private byte[][] yuvBytes;
   private int[] rgbBytes = null;
   private Bitmap rgbFrameBitmap = null;
@@ -72,22 +54,18 @@ public class TensorFlowImageListener implements OnImageAvailableListener {
   private boolean computing = false;
   private Handler handler;
 
-  private RecognitionScoreView scoreView;
+  private ResultsView resultsView;
 
   public void initialize(
-      final AssetManager assetManager,
-      final RecognitionScoreView scoreView,
+      final Classifier tensorflow,
+      final ResultsView resultsView,
+      final int inputSize,
       final Handler handler,
       final Integer sensorOrientation) {
     Assert.assertNotNull(sensorOrientation);
-    try {
-      tensorflow.initializeTensorFlow(
-        assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
-        INPUT_NAME, OUTPUT_NAME);
-    } catch (IOException e) {
-      LOGGER.e(e, "Exception!");
-    }
-    this.scoreView = scoreView;
+    this.tensorflow = tensorflow;
+    this.resultsView = resultsView;
+    this.inputSize = inputSize;
     this.handler = handler;
     this.sensorOrientation = sensorOrientation;
   }
@@ -146,7 +124,7 @@ public class TensorFlowImageListener implements OnImageAvailableListener {
         LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
         rgbBytes = new int[previewWidth * previewHeight];
         rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
-        croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
+        croppedBitmap = Bitmap.createBitmap(inputSize, inputSize, Config.ARGB_8888);
 
         yuvBytes = new byte[planes.length][];
         for (int i = 0; i < planes.length; ++i) {
@@ -201,7 +179,7 @@ public class TensorFlowImageListener implements OnImageAvailableListener {
             for (final Classifier.Recognition result : results) {
               LOGGER.v("Result: " + result.getTitle());
             }
-            scoreView.setResults(results);
+            resultsView.setResults(results);
             computing = false;
           }
         });

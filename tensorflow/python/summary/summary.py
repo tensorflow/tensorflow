@@ -33,6 +33,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re as _re
+
 import six
 
 from google.protobuf import json_format as _json_format
@@ -56,16 +58,22 @@ def _collect(val, collections, default_collections):
     _ops.add_to_collection(key, val)
 
 
+_INVALID_TAG_CHARACTERS = _re.compile(r'[^-/\w\.]')
+
 def _clean_tag(name):
   # In the past, the first argument to summary ops was a tag, which allowed
-  # spaces. Since now we pass in the name, spaces are disallowed; to ease the
-  # transition and support backwards compatbility, we will convert the spaces
-  # to underscores (and also warn about it).
-  if name is not None and ' ' in name:
-    _logging.warning(
-        'Summary tag name %s contains spaces; replacing with underscores.' %
-        name)
-    name = name.replace(' ', '_')
+  # arbitrary characters. Now we are changing the first argument to be the node
+  # name. This has a number of advantages (users of summary ops now can
+  # take advantage of the tf name scope system) but risks breaking existing
+  # usage, because a much smaller set of characters are allowed in node names.
+  # This function replaces all illegal characters with _s, and logs a warning.
+  if name is not None:
+    new_name = _INVALID_TAG_CHARACTERS.sub('_', name)
+    if new_name != name:
+      _logging.warning(
+          'Summary tag name %s has illegal chars; replacing with underscores.' %
+          name)
+      name = new_name
   return name
 
 

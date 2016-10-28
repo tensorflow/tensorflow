@@ -21,22 +21,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_activations.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace perftools {
-namespace gputools {
-class Stream;
-}  // end namespace gputools
-}  // end namespace perftools
-
 namespace tensorflow {
 class OpKernelContext;
 namespace functor {
 
 template <typename T>
 struct TensorCuBlasGemm {
-  void operator()(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                  bool transa, bool transb, uint64 m, uint64 n, uint64 k,
-                  T alpha, const T* a, int lda, const T* b, int ldb, T beta,
-                  T* c, int ldc);
+  void operator()(OpKernelContext* ctx, bool transa, bool transb, uint64 m,
+                  uint64 n, uint64 k, T alpha, const T* a, int lda, const T* b,
+                  int ldb, T beta, T* c, int ldc);
 };
 
 template <typename Device, typename T, bool USE_CUBLAS>
@@ -44,16 +37,15 @@ struct TensorBlasGemm;
 
 template <typename Device, typename T>
 struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
-  static void compute(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                      const Device& d, bool transa, bool transb, T alpha,
-                      typename TTypes<T>::ConstMatrix a,
+  static void compute(OpKernelContext* ctx, const Device& d, bool transa,
+                      bool transb, T alpha, typename TTypes<T>::ConstMatrix a,
                       typename TTypes<T>::ConstMatrix b, T beta,
                       typename TTypes<T>::Matrix c) {
     int64 m = c.dimensions()[0];
     int64 n = c.dimensions()[1];
     int64 k = transa ? a.dimensions()[0] : a.dimensions()[1];
 
-    TensorCuBlasGemm<T>()(ctx, stream, transb, transa, n, m, k, alpha, b.data(),
+    TensorCuBlasGemm<T>()(ctx, transb, transa, n, m, k, alpha, b.data(),
                           transb ? k : n, a.data(), transa ? m : k, beta,
                           c.data(), n);
   }
@@ -61,9 +53,8 @@ struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
 
 template <typename Device, typename T>
 struct TensorBlasGemm<Device, T, false /* USE_CUBLAS */> {
-  static void compute(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                      const Device& d, bool transa, bool transb, T alpha,
-                      typename TTypes<T>::ConstMatrix a,
+  static void compute(OpKernelContext* ctx, const Device& d, bool transa,
+                      bool transb, T alpha, typename TTypes<T>::ConstMatrix a,
                       typename TTypes<T>::ConstMatrix b, T beta,
                       typename TTypes<T>::Matrix c) {
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;

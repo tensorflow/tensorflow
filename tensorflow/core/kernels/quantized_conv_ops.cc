@@ -18,12 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#define EIGEN_USE_THREADS
+
 #include "public/gemmlowp.h"
-#include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
+#include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/padding.h"
 
@@ -338,12 +341,20 @@ class Im2ColConvFunctor {
     const int lda = filter_value_count;
     const int ldb = filter_count;
     const int ldc = filter_count;
-    // The gemmlowp optimized library only works for a particular set of data
-    // types, so check if we meet those requirements and
-    // fall back to a slower reference implementation if not.
-    if (std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
-        std::is_same<T3, qint32>() && (output_offset == 0) &&
-        (output_mult == 1) && (output_shift == 0)) {
+
+    if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
+        std::is_same<T2, quint8>() && std::is_same<T3, qint32>() &&
+        (output_offset == 0) && (output_mult == 1) && (output_shift == 0) &&
+        (transpose_c == false)) {
+      meta::QuantizedGemm(op_context, transpose_a, transpose_b,
+                          im2col_buffer.get(), filter_data, output_data, m, n,
+                          k, -input_offset, -filter_offset, lda, ldb, ldc);
+    } else if (std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
+               std::is_same<T3, qint32>() && (output_offset == 0) &&
+               (output_mult == 1) && (output_shift == 0)) {
+      // The gemmlowp optimized library only works for a particular set of data
+      // types, so check if we meet those requirements and
+      // fall back to a slower reference implementation if not.
       const uint8* im2col_data_as_uint8 = &(im2col_buffer.get()->value);
       const uint8* filter_data_as_uint8 = &(filter_data->value);
       int32* output_data_as_int32 = &(output_data->value);

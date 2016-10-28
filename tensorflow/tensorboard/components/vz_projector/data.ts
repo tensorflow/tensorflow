@@ -115,6 +115,7 @@ export class DataSet implements scatterPlot.DataSet {
   projections = d3.set();
   nearest: knn.NearestEntry[][];
   nearestK: number;
+  tSNEIteration: number = 0;
   tSNEShouldStop = true;
   dim = [0, 0];
   hasTSNERun: boolean = false;
@@ -123,26 +124,19 @@ export class DataSet implements scatterPlot.DataSet {
 
   private tsne: TSNE;
 
-  /**
-   * Creates a new Dataset by copying out data from an array of datapoints.
-   * We make a copy because we have to modify the vectors by normalizing them.
-   */
+  /** Creates a new Dataset */
   constructor(points: DataPoint[]) {
-    // Keep a list of indices seen so we don't compute traces for a given
-    // point twice.
-    let indicesSeen: boolean[] = [];
     this.points = points;
-    this.points.forEach(dp => {
-      indicesSeen.push(false);
-    });
-
     this.sampledDataIndices =
         shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
-    this.traces = this.computeTraces(points, indicesSeen);
+    this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
   }
 
-  private computeTraces(points: DataPoint[], indicesSeen: boolean[]) {
+  private computeTraces(points: DataPoint[]) {
+    // Keep a list of indices seen so we don't compute traces for a given
+    // point twice.
+    let indicesSeen = new Int8Array(points.length);
     // Compute traces.
     let indexToTrace: {[index: number]: scatterPlot.DataTrace} = {};
     let traces: scatterPlot.DataTrace[] = [];
@@ -150,7 +144,7 @@ export class DataSet implements scatterPlot.DataSet {
       if (indicesSeen[i]) {
         continue;
       }
-      indicesSeen[i] = true;
+      indicesSeen[i] = 1;
 
       // Ignore points without a trace attribute.
       let next = points[i].metadata[TRACE_METADATA_ATTR];
@@ -173,7 +167,7 @@ export class DataSet implements scatterPlot.DataSet {
         newTrace.pointIndices.push(currentIndex);
         let next = points[currentIndex].metadata[TRACE_METADATA_ATTR];
         if (next != null && next !== '') {
-          indicesSeen[+next] = true;
+          indicesSeen[+next] = 1;
           currentIndex = +next;
         } else {
           currentIndex = -1;
@@ -192,11 +186,21 @@ export class DataSet implements scatterPlot.DataSet {
         [null, null, null];
     const prefix = (projection === 'custom') ? 'linear' : projection;
     for (let i = 0; i < components.length; ++i) {
+      if (components[i] == null) {
+        continue;
+      }
       accessors[i] =
           (index =>
                this.points[index].projections[prefix + '-' + components[i]]);
     }
     return accessors;
+  }
+
+  hasMeaningfulVisualization(projection: Projection): boolean {
+    if (projection !== 'tsne') {
+      return true;
+    }
+    return this.tSNEIteration > 0;
   }
 
   /**
@@ -295,11 +299,12 @@ export class DataSet implements scatterPlot.DataSet {
     let opt = {epsilon: learningRate, perplexity: perplexity, dim: tsneDim};
     this.tsne = new TSNE(opt);
     this.tSNEShouldStop = false;
-    let iter = 0;
+    this.tSNEIteration = 0;
 
     let step = () => {
       if (this.tSNEShouldStop) {
         stepCallback(null);
+        this.tsne = null;
         return;
       }
       this.tsne.step();
@@ -313,8 +318,8 @@ export class DataSet implements scatterPlot.DataSet {
           dataPoint.projections['tsne-2'] = result[i * tsneDim + 2];
         }
       });
-      iter++;
-      stepCallback(iter);
+      this.tSNEIteration++;
+      stepCallback(this.tSNEIteration);
       requestAnimationFrame(step);
     };
 
@@ -338,7 +343,6 @@ export class DataSet implements scatterPlot.DataSet {
       runAsyncTask('Initializing T-SNE...', () => {
         this.tsne.initDataDist(this.nearest);
       }).then(step);
-
     });
   }
 
@@ -419,34 +423,69 @@ export interface ColorOption {
  * An interface that holds all the data for serializing the current state of
  * the world.
  */
-export interface State {
+export class State {
   /** A label identifying this state. */
-  label?: string;
+  label: string = '';
 
   /** Whether this State is selected in the bookmarks pane. */
-  isSelected?: boolean;
+  isSelected: boolean = false;
 
   /** The selected projection tab. */
-  selectedProjection?: Projection;
+  selectedProjection: Projection;
 
-  /** The projection component dimensions (for PCA) */
-  componentDimensions?: number[];
+  /** t-SNE parameters */
+  tSNEIteration: number = 0;
+  tSNEPerplexity: number = 0;
+  tSNELearningRate: number = 0;
+  tSNEis3d: boolean = true;
+
+  /** PCA projection component dimensions */
+  pcaComponentDimensions: number[] = [];
+
+  /** Custom projection parameters */
+  customSelectedSearchByMetadataOption: string;
+  customXLeftText: string;
+  customXLeftRegex: boolean;
+  customXRightText: string;
+  customXRightRegex: boolean;
+  customYUpText: string;
+  customYUpRegex: boolean;
+  customYDownText: string;
+  customYDownRegex: boolean;
 
   /** The computed projections of the tensors. */
-  projections?: Array<{[key: string]: number}>;
+  projections: Array<{[key: string]: number}> = [];
 
   /** The indices of selected points. */
-  selectedPoints?: number[];
+  selectedPoints: number[] = [];
 
   /** Camera state (2d/3d, position, target, zoom, etc). */
-  cameraDef?: scatterPlot.CameraDef;
+  cameraDef: scatterPlot.CameraDef;
 
   /** Color by option. */
-  selectedColorOptionName?: string;
+  selectedColorOptionName: string;
 
   /** Label by option. */
-  selectedLabelOption?: string;
+  selectedLabelOption: string;
+}
 
-  /** Whether the state is a 3d view. If false, the state is a 2d view. */
-  is3d?: boolean;
+export function stateGetAccessorDimensions(state: State): Array<number|string> {
+  let dimensions: Array<number|string>;
+  switch (state.selectedProjection) {
+    case 'pca':
+      dimensions = state.pcaComponentDimensions.slice();
+      break;
+    case 'tsne':
+      dimensions = [0, 1];
+      if (state.tSNEis3d) {
+        dimensions.push(2);
+      }
+      break;
+    case 'custom':
+      dimensions = ['x', 'y'];
+      break;
+    default:
+      throw new Error('Unexpected fallthrough');
+  }
+  return dimensions;
 }

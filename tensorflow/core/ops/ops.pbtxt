@@ -6711,6 +6711,182 @@ op {
   summary: "Output a fact about factorials."
 }
 op {
+  name: "FakeQuantWithMinMaxArgs"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "min"
+    type: "float"
+    default_value {
+      f: -6
+    }
+  }
+  attr {
+    name: "max"
+    type: "float"
+    default_value {
+      f: 6
+    }
+  }
+  summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same type."
+  description: "Attributes [min; max] define the clamping range for the \'inputs\' data.  Op\ndivides this range into 255 steps (total of 256 values), then replaces each\n\'inputs\' value with the closest of the quantized step values.\n\nQuantization is called fake since the output is still in floating point."
+}
+op {
+  name: "FakeQuantWithMinMaxArgsGradient"
+  input_arg {
+    name: "gradients"
+    description: "Backpropagated gradients above the FakeQuantWithMinMaxArgs operation."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    description: "Values passed as inputs to the FakeQuantWithMinMaxArgs operation."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops"
+    description: "Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:\n`gradients * (inputs >= min && inputs <= max)`."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "min"
+    type: "float"
+    default_value {
+      f: -6
+    }
+  }
+  attr {
+    name: "max"
+    type: "float"
+    default_value {
+      f: 6
+    }
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxArgs operation."
+}
+op {
+  name: "FakeQuantWithMinMaxVars"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  summary: "Fake-quantize the \'inputs\' tensor of type float and shape `[b, h, w, d]` via"
+  description: "global float scalars `min` and `max` to \'outputs\' tensor of same shape as\n`inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+}
+op {
+  name: "FakeQuantWithMinMaxVarsGradient"
+  input_arg {
+    name: "gradients"
+    description: "Backpropagated gradients above the FakeQuantWithMinMaxVars operation."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    description: "Values passed as inputs to the FakeQuantWithMinMaxVars operation.\nmin, max: Quantization interval, scalar floats."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops_wrt_input"
+    description: "Backpropagated gradients w.r.t. inputs:\n`gradients * (inputs >= min && inputs <= max)`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_min"
+    description: "Backpropagated gradients w.r.t. min parameter:\n`sum(gradients * (inputs < min))`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_max"
+    description: "Backpropagated gradients w.r.t. max parameter:\n`sum(gradients * (inputs > max))`."
+    type: DT_FLOAT
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxVars operation."
+}
+op {
+  name: "FakeQuantWithMinMaxVarsPerChannel"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  summary: "Fake-quantize the \'inputs\' tensor of type float and one of the shapes: `[d]`,"
+  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data in the corresponding\ndepth channel.  Op divides this range into 255 steps (total of 256 values), then\nreplaces each \'inputs\' value with the closest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+}
+op {
+  name: "FakeQuantWithMinMaxVarsPerChannelGradient"
+  input_arg {
+    name: "gradients"
+    description: "Backpropagated gradients above the FakeQuantWithMinMaxVars operation,\nshape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    description: "Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape\n  same as `gradients`.\nmin, max: Quantization interval, floats of shape `[d]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops_wrt_input"
+    description: "Backpropagated gradients w.r.t. inputs, shape same as\n`inputs`:\n  `gradients * (inputs >= min && inputs <= max)`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_min"
+    description: "Backpropagated gradients w.r.t. min parameter, shape `[d]`:\n`sum_per_d(gradients * (inputs < min))`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_max"
+    description: "Backpropagated gradients w.r.t. max parameter, shape `[d]`:\n`sum_per_d(gradients * (inputs > max))`."
+    type: DT_FLOAT
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
+}
+op {
   name: "Fill"
   input_arg {
     name: "dims"
@@ -14089,6 +14265,49 @@ op {
     }
   }
   summary: "Computes rectified linear gradients for a Relu operation."
+}
+op {
+  name: "RequantizationRange"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The float value that the minimum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The float value that the maximum quantized input value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_min"
+    description: "The computed min output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "the computed max output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    description: "The type of the input."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Given a quantized tensor described by (input, input_min, input_max), outputs a"
+  description: "range that covers the actual values present in that tensor.  This op is\ntypically used to produce the requested_output_min and requested_output_max for\nRequantize."
 }
 op {
   name: "Requantize"

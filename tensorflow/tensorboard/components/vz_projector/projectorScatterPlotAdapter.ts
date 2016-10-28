@@ -19,7 +19,7 @@ import {LabelRenderParams} from './renderContext';
 
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
-const LABEL_SCALE_LARGE = 1.7;
+const LABEL_SCALE_LARGE = 2;
 const LABEL_FILL_COLOR = 0x000000;
 const LABEL_STROKE_COLOR = 0xFFFFFF;
 
@@ -35,6 +35,11 @@ const POINT_SCALE_HOVER = 1.2;
 
 const LABELS_3D_COLOR_UNSELECTED = 0xFFFFFF;
 const LABELS_3D_COLOR_NO_SELECTION = 0xFFFFFF;
+
+const TRACE_START_HUE = 60;
+const TRACE_END_HUE = 360;
+const TRACE_SATURATION = 1;
+const TRACE_LIGHTNESS = .3;
 
 /**
  * Interprets projector events and assembes the arrays and commands necessary
@@ -127,6 +132,66 @@ export class ProjectorScatterPlotAdapter {
     }
 
     return scale;
+  }
+
+  generateLineSegmentColorMap(
+      ds: DataSet, legendPointColorer: (index: number) => string):
+      {[trace: number]: Float32Array} {
+    let traceColorArrayMap: {[trace: number]: Float32Array} = {};
+    if (ds == null) {
+      return traceColorArrayMap;
+    }
+
+    for (let i = 0; i < ds.traces.length; i++) {
+      let dataTrace = ds.traces[i];
+
+      let colors =
+          new Float32Array(2 * (dataTrace.pointIndices.length - 1) * 3);
+      let colorIndex = 0;
+
+      if (legendPointColorer) {
+        for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
+          const c1 =
+              new THREE.Color(legendPointColorer(dataTrace.pointIndices[j]));
+          const c2 = new THREE.Color(
+              legendPointColorer(dataTrace.pointIndices[j + 1]));
+          colors[colorIndex++] = c1.r;
+          colors[colorIndex++] = c1.g;
+          colors[colorIndex++] = c1.b;
+
+          colors[colorIndex++] = c2.r;
+          colors[colorIndex++] = c2.g;
+          colors[colorIndex++] = c2.b;
+        }
+      } else {
+        for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
+          const c1 = this.getDefaultPointInTraceColor(
+              j, dataTrace.pointIndices.length);
+          const c2 = this.getDefaultPointInTraceColor(
+              j + 1, dataTrace.pointIndices.length);
+          colors[colorIndex++] = c1.r;
+          colors[colorIndex++] = c1.g;
+          colors[colorIndex++] = c1.b;
+
+          colors[colorIndex++] = c2.r;
+          colors[colorIndex++] = c2.g;
+          colors[colorIndex++] = c2.b;
+        }
+      }
+
+      traceColorArrayMap[i] = colors;
+    }
+
+    return traceColorArrayMap;
+  }
+
+  private getDefaultPointInTraceColor(index: number, totalPoints: number):
+      THREE.Color {
+    let hue = TRACE_START_HUE +
+        (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
+
+    let rgb = d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
+    return new THREE.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255);
   }
 
   generatePointColorArray(

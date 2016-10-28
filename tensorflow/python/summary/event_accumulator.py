@@ -31,7 +31,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import io_wrapper
+from tensorflow.python.summary.impl import event_file_loader
 from tensorflow.python.summary.impl import reservoir
 from tensorflow.python.util import compat
 
@@ -664,10 +664,10 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
   if IsTensorFlowEventsFile(path):
-    return io_wrapper.CreateFileLoader(path)
+    return event_file_loader.EventFileLoader(path)
   else:
-    return directory_watcher.DirectoryWatcher(path, io_wrapper.CreateFileLoader,
-                                              IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(
+        path, event_file_loader.EventFileLoader, IsTensorFlowEventsFile)
 
 
 def _ParseFileVersion(file_version):

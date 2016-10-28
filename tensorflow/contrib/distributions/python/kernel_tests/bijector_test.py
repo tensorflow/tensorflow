@@ -614,6 +614,67 @@ class SigmoidCenteredBijectorTest(tf.test.TestCase):
                           atol=0., rtol=1e-7)
 
 
+class CholeskyOuterProductBijectorTest(tf.test.TestCase):
+  """Tests the correctness of the Y = X * X^T transformation."""
+
+  def testBijectorMatrix(self):
+    with self.test_session():
+      bijector = bijectors.CholeskyOuterProduct(event_ndims=2,
+                                                validate_args=True)
+      self.assertEqual("cholesky_outer_product", bijector.name)
+      x = [[[1., 0],
+            [2, 1]],
+           [[math.sqrt(2.), 0],
+            [math.sqrt(8.), 1]]]
+      y = np.matmul(x, np.transpose(x, axes=(0, 2, 1)))
+      # Fairly easy to compute differentials since we have 2x2.
+      dx_dy = [[[2.*1, 0, 0],
+                [2, 1, 0],
+                [0, 2*2, 2*1]],
+               [[2*math.sqrt(2.), 0, 0],
+                [math.sqrt(8.), math.sqrt(2.), 0],
+                [0, 2*math.sqrt(8.), 2*1]]]
+      ildj = -np.sum(
+          np.log(np.asarray(dx_dy).diagonal(offset=0, axis1=1, axis2=2)),
+          axis=1)
+      self.assertAllEqual((2, 2, 2), bijector.forward(x).get_shape())
+      self.assertAllEqual((2, 2, 2), bijector.inverse(y).get_shape())
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+      self.assertAllClose(ildj,
+                          bijector.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
+      self.assertAllClose(-bijector.inverse_log_det_jacobian(y).eval(),
+                          bijector.forward_log_det_jacobian(x).eval(),
+                          atol=0., rtol=1e-7)
+
+  def testBijectorScalar(self):
+    with self.test_session():
+      bijector = bijectors.CholeskyOuterProduct(event_ndims=0,
+                                                validate_args=True)
+      self.assertEqual("cholesky_outer_product", bijector.name)
+      x = [[[1., 5],
+            [2, 1]],
+           [[math.sqrt(2.), 3],
+            [math.sqrt(8.), 1]]]
+      y = np.square(x)
+      ildj = -math.log(2.) - np.log(x)
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+      self.assertAllClose(ildj,
+                          bijector.inverse_log_det_jacobian(y).eval(),
+                          atol=0., rtol=1e-7)
+      self.assertAllClose(-bijector.inverse_log_det_jacobian(y).eval(),
+                          bijector.forward_log_det_jacobian(x).eval(),
+                          atol=0., rtol=1e-7)
+
+  def testScalarCongruency(self):
+    with self.test_session():
+      bijector = bijectors.CholeskyOuterProduct(event_ndims=0,
+                                                validate_args=True)
+      assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
+
+
 class ChainBijectorTest(tf.test.TestCase):
   """Tests the correctness of the Y = Chain(bij1, bij2, bij3) transformation."""
 

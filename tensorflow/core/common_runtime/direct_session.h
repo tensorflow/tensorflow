@@ -291,7 +291,7 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
-  // EXPERIMENTAL: debugger (tfdb) related
+  // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;
 };
 

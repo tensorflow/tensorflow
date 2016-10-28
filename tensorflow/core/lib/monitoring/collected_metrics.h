@@ -25,13 +25,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 
 namespace tensorflow {
 namespace monitoring {
-
-// The type of the metric values.
-enum class ValueType : int { kInt64 = 0 };
 
 // A metric is a statistic about a monitorable entity.
 //
@@ -89,6 +87,7 @@ struct Point {
   // The actual metric value, dependent on the value_type enum.
   ValueType value_type;
   int64 int64_value;
+  HistogramProto histogram_value;
 
   // start_timestamp and end_timestamp indicate the time period over which this
   // point's value measurement applies.

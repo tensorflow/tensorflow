@@ -17,5 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.tfprof.python.tools.tfprof import model_analyzer
 from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_logger
 from tensorflow.python.util.all_util import make_all

@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import tensor_util
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.metrics.python.ops import confusion_matrix_ops
@@ -39,40 +38,6 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-
-
-IGNORE_MASK_DATE = '2016-10-19'
-IGNORE_MASK_INSTRUCTIONS = (
-    '`ignore_mask` is being deprecated. Instead use `weights` with values 0.0 '
-    'and 1.0 to mask values. For example, `weights=tf.logical_not(mask)`.')
-
-
-def _mask_weights(mask=None, weights=None):
-  """Mask a given set of weights.
-
-  Elements are included when the corresponding `mask` element is `False`, and
-  excluded otherwise.
-
-  Args:
-    mask: An optional, `bool` `Tensor`.
-    weights: An optional `Tensor` whose shape matches `mask` if `mask` is not
-      `None`.
-
-  Returns:
-    Masked weights if `mask` and `weights` are not `None`, weights equivalent to
-    `mask` if `weights` is `None`, and otherwise `weights`.
-
-  Raises:
-    ValueError: If `weights` and `mask` are not `None` and have mismatched
-      shapes.
-  """
-  if mask is not None:
-    check_ops.assert_type(mask, dtypes.bool)
-    if weights is None:
-      weights = array_ops.ones_like(mask, dtype=dtypes.float32)
-    weights = math_ops.cast(math_ops.logical_not(mask), weights.dtype) * weights
-
-  return weights
 
 
 def _safe_div(numerator, denominator, name):
@@ -516,8 +481,7 @@ def streaming_accuracy(predictions, labels, weights=None,
                         updates_collections, name or 'accuracy')
 
 
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
-def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
+def streaming_precision(predictions, labels, weights=None,
                         metrics_collections=None, updates_collections=None,
                         name=None):
   """Computes the precision of the predictions with respect to the labels.
@@ -534,14 +498,11 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
   `weights`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `precision` should
       be added to.
@@ -558,9 +519,8 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
   with variable_scope.variable_scope(
@@ -570,7 +530,6 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    weights = _mask_weights(ignore_mask, weights)
     true_positives, true_positives_update_op = _streaming_true_positives(
         predictions, labels, weights, metrics_collections=None,
         updates_collections=None, name=None)
@@ -599,8 +558,7 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
     return precision, update_op
 
 
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
-def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
+def streaming_recall(predictions, labels, weights=None,
                      metrics_collections=None, updates_collections=None,
                      name=None):
   """Computes the recall of the predictions with respect to the labels.
@@ -615,14 +573,11 @@ def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
   weights each prediction by the corresponding value in `weights`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall` should
       be added to.
@@ -639,9 +594,8 @@ def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
   with variable_scope.variable_scope(name, 'recall', [predictions, labels]):
@@ -649,7 +603,6 @@ def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    weights = _mask_weights(ignore_mask, weights)
     true_positives, true_positives_update_op = _streaming_true_positives(
         predictions, labels, weights, metrics_collections=None,
         updates_collections=None, name=None)
@@ -1235,10 +1188,9 @@ def _at_k_name(name, k=None, class_id=None):
 
 @deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
             'and reshape labels from [batch_size] to [batch_size, 1].')
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
-def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
-                          weights=None, metrics_collections=None,
-                          updates_collections=None, name=None):
+def streaming_recall_at_k(predictions, labels, k, weights=None,
+                          metrics_collections=None, updates_collections=None,
+                          name=None):
   """Computes the recall@k of the predictions with respect to dense labels.
 
   The `streaming_recall_at_k` function creates two local variables, `total` and
@@ -1255,15 +1207,12 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
   increments `count` with the reduced sum of `weights`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: A floating point tensor of dimension [batch_size, num_classes]
     labels: A tensor of dimension [batch_size] whose type is in `int32`,
       `int64`.
     k: The number of top elements to look at for computing recall.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall_at_k`
       should be added to.
@@ -1279,26 +1228,23 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
   in_top_k = math_ops.to_float(nn.in_top_k(predictions, labels, k))
   return streaming_mean(in_top_k,
-                        _mask_weights(ignore_mask, weights),
+                        weights,
                         metrics_collections,
                         updates_collections,
                         name or _at_k_name('recall', k))
 
 
 # TODO(ptucker): Validate range of values in labels?
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
 def streaming_sparse_recall_at_k(predictions,
                                  labels,
                                  k,
                                  class_id=None,
-                                 ignore_mask=None,
                                  weights=None,
                                  metrics_collections=None,
                                  updates_collections=None,
@@ -1328,8 +1274,6 @@ def streaming_sparse_recall_at_k(predictions,
   `false_negative_at_<k>` using these values.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
@@ -1347,8 +1291,6 @@ def streaming_sparse_recall_at_k(predictions,
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes), where num_classes is the last dimension of
       `predictions`. If class_id is outside this range, the method returns NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
       [D1, ... DN] dimensions of `predictions` and `labels`.
     metrics_collections: An optional list of collections that values should
@@ -1365,16 +1307,14 @@ def streaming_sparse_recall_at_k(predictions,
       `recall`.
 
   Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
-      `predictions`, or if either `metrics_collections` or `updates_collections`
-      are not a list or tuple.
+    ValueError: If `weights` is not `None` and its shape doesn't match
+    `predictions`, or if either `metrics_collections` or `updates_collections`
+    are not a list or tuple.
   """
   default_name = _at_k_name('recall', k, class_id=class_id)
   with ops.name_scope(name, default_name, (predictions, labels)) as scope:
     _, top_k_idx = nn.top_k(predictions, k)
     top_k_idx = math_ops.to_int64(top_k_idx)
-    weights = _mask_weights(ignore_mask, weights)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
         predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
         weights=weights)
@@ -1396,7 +1336,6 @@ def _streaming_sparse_precision_at_k(top_k_idx,
                                      labels,
                                      k=None,
                                      class_id=None,
-                                     ignore_mask=None,
                                      weights=None,
                                      metrics_collections=None,
                                      updates_collections=None,
@@ -1423,8 +1362,6 @@ def _streaming_sparse_precision_at_k(top_k_idx,
       in range [0, num_classes), where num_classes is the last dimension of
       `predictions`. If `class_id` is outside this range, the method returns
       NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
       [D1, ... DN] dimensions of `predictions` and `labels`.
     metrics_collections: An optional list of collections that values should
@@ -1441,13 +1378,11 @@ def _streaming_sparse_precision_at_k(top_k_idx,
       `precision`.
 
   Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
+    ValueError: If `weights` is not `None` and its shape doesn't match
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
   top_k_idx = math_ops.to_int64(top_k_idx)
-  weights = _mask_weights(ignore_mask, weights)
   tp, tp_update = _streaming_sparse_true_positive_at_k(
       predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
       weights=weights)
@@ -1466,12 +1401,10 @@ def _streaming_sparse_precision_at_k(top_k_idx,
 
 
 # TODO(ptucker): Validate range of values in labels?
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
 def streaming_sparse_precision_at_k(predictions,
                                     labels,
                                     k,
                                     class_id=None,
-                                    ignore_mask=None,
                                     weights=None,
                                     metrics_collections=None,
                                     updates_collections=None,
@@ -1502,8 +1435,6 @@ def streaming_sparse_precision_at_k(predictions,
   `false_positive_at_<k>` using these values.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
@@ -1522,8 +1453,6 @@ def streaming_sparse_precision_at_k(predictions,
       in range [0, num_classes], where num_classes is the last dimension of
       `predictions`. If `class_id` is outside this range, the method returns
       NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
       [D1, ... DN] dimensions of `predictions` and `labels`.
     metrics_collections: An optional list of collections that values should
@@ -1540,21 +1469,19 @@ def streaming_sparse_precision_at_k(predictions,
       `precision`.
 
   Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
+    ValueError: If `weights` is not `None` and its shape doesn't match
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
   default_name = _at_k_name('precision', k, class_id=class_id)
   with ops.name_scope(name, default_name,
-                      (predictions, labels, ignore_mask, weights)) as scope:
+                      (predictions, labels, weights)) as scope:
     _, top_k_idx = nn.top_k(predictions, k)
     return _streaming_sparse_precision_at_k(
         top_k_idx=top_k_idx,
         labels=labels,
         k=k,
         class_id=class_id,
-        ignore_mask=ignore_mask,
         weights=weights,
         metrics_collections=metrics_collections,
         updates_collections=updates_collections,
@@ -1562,11 +1489,9 @@ def streaming_sparse_precision_at_k(predictions,
 
 
 # TODO(ptucker): Validate range of values in labels?
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
 def streaming_sparse_precision_at_top_k(top_k_predictions,
                                         labels,
                                         class_id=None,
-                                        ignore_mask=None,
                                         weights=None,
                                         metrics_collections=None,
                                         updates_collections=None,
@@ -1595,8 +1520,6 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
   `false_positive_at_k` using these values.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     top_k_predictions: Integer `Tensor` with shape [D1, ... DN, k] where
@@ -1614,8 +1537,6 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
       in range [0, num_classes), where num_classes is the last dimension of
       `predictions`. If `class_id` is outside this range, the method returns
       NAN.
-    ignore_mask: An optional, `bool` `Tensor` whose shape is broadcastable to
-      the the first [D1, ... DN] dimensions of `predictions` and `labels`.
     weights: An optional `Tensor` whose shape is broadcastable to the the first
       [D1, ... DN] dimensions of `predictions` and `labels`.
     metrics_collections: An optional list of collections that values should
@@ -1632,8 +1553,7 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
       `precision`.
 
   Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `predictions`, or if `weights` is not `None` and its shape doesn't match
+    ValueError: If `weights` is not `None` and its shape doesn't match
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
     ValueError: If `top_k_predictions` has rank < 2.
@@ -1641,7 +1561,7 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
   default_name = _at_k_name('precision', class_id=class_id)
   with ops.name_scope(
       name, default_name,
-      (top_k_predictions, labels, ignore_mask, weights)) as scope:
+      (top_k_predictions, labels, weights)) as scope:
     rank = array_ops.rank(top_k_predictions)
     check_rank_op = control_flow_ops.Assert(
         math_ops.greater_equal(rank, 2),
@@ -1651,7 +1571,6 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
           top_k_idx=top_k_predictions,
           labels=labels,
           class_id=class_id,
-          ignore_mask=ignore_mask,
           weights=weights,
           metrics_collections=metrics_collections,
           updates_collections=updates_collections,
@@ -2760,8 +2679,7 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
   return mean_distance, update_op
 
 
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
-def streaming_percentage_less(values, threshold, ignore_mask=None, weights=None,
+def streaming_percentage_less(values, threshold, weights=None,
                               metrics_collections=None,
                               updates_collections=None,
                               name=None):
@@ -2778,13 +2696,10 @@ def streaming_percentage_less(values, threshold, ignore_mask=None, weights=None,
   `percentage`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     values: A numeric `Tensor` of arbitrary size.
     threshold: A scalar threshold.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `values`.
     weights: An optional `Tensor` whose shape is broadcastable to `values`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
@@ -2799,23 +2714,21 @@ def streaming_percentage_less(values, threshold, ignore_mask=None, weights=None,
       appropriately.
 
   Raises:
-    ValueError: If `ignore_mask` is not `None` and its shape doesn't match
-      `values`, or if `weights` is not `None` and its shape doesn't match
-      `values`, or if either `metrics_collections` or `updates_collections` are
-      not a list or tuple.
+    ValueError: If `weights` is not `None` and its shape doesn't match `values`,
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
   """
   is_below_threshold = math_ops.to_float(math_ops.less(values, threshold))
-  return streaming_mean(is_below_threshold, _mask_weights(ignore_mask, weights),
+  return streaming_mean(is_below_threshold,
+                        weights,
                         metrics_collections,
                         updates_collections,
                         name or 'percentage_below_threshold')
 
 
-@deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
 def streaming_mean_iou(predictions,
                        labels,
                        num_classes,
-                       ignore_mask=None,
                        weights=None,
                        metrics_collections=None,
                        updates_collections=None,
@@ -2834,8 +2747,6 @@ def streaming_mean_iou(predictions,
   `update_op` operation that updates these variables and returns the `mean_iou`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-  Alternatively, if `ignore_mask` is not `None`, then mask values where
-  `ignore_mask` is `True`.
 
   Args:
     predictions: A tensor of prediction results for semantic labels, whose
@@ -2846,7 +2757,6 @@ def streaming_mean_iou(predictions,
     num_classes: The possible number of labels the prediction task can
       have. This value must be provided, since a confusion matrix of
       dimension = [num_classes, num_classes] will be allocated.
-    ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `mean_iou`
       should be added to.
@@ -2860,9 +2770,8 @@ def streaming_mean_iou(predictions,
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `ignore_mask` is not `None` and its shape doesn't match `predictions`, or
-      if `weights` is not `None` and its shape doesn't match `predictions`, or
-      if either `metrics_collections` or `updates_collections` are not a list or
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
   with variable_scope.variable_scope(name, 'mean_iou', [predictions, labels]):
@@ -2888,7 +2797,6 @@ def streaming_mean_iou(predictions,
     if labels_rank > 1:
       labels = array_ops.reshape(labels, [-1])
 
-    weights = _mask_weights(ignore_mask, weights)
     if weights is not None:
       weights_rank = weights.get_shape().ndims
       if weights_rank > 1:

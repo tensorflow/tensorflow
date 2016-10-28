@@ -229,20 +229,30 @@ class _Head(object):
         else:
           train_op = control_flow_ops.group(*additional_train_op)
 
-      return estimator.ModelFnOps(None, loss, train_op,
-                                  self._default_metric(),
-                                  self._create_signature_fn(), mode)
+      return estimator.ModelFnOps(
+          mode=estimator.ModeKeys.TRAIN,
+          loss=loss,
+          training_op=train_op,
+          default_metrics=self._default_metric(),
+          signature_fn=self._create_signature_fn())
+
     if mode == estimator.ModeKeys.INFER:
-      predictions = self._infer_op(logits, logits_input)
-      return estimator.ModelFnOps(predictions, None, None,
-                                  self._default_metric(),
-                                  self._create_signature_fn(), mode)
+      return estimator.ModelFnOps(
+          mode=estimator.ModeKeys.INFER,
+          predictions=self._infer_op(logits, logits_input),
+          default_metrics=self._default_metric(),
+          signature_fn=self._create_signature_fn())
+
     if mode == estimator.ModeKeys.EVAL:
       predictions, loss = self._eval_op(features, target, logits, logits_input)
-      return estimator.ModelFnOps(predictions, loss, None,
-                                  self._default_metric(),
-                                  self._create_signature_fn(), mode)
-    raise ValueError("mode=%s unrecognized" % str(mode))
+      return estimator.ModelFnOps(
+          mode=estimator.ModeKeys.EVAL,
+          predictions=predictions,
+          loss=loss,
+          default_metrics=self._default_metric(),
+          signature_fn=self._create_signature_fn())
+
+    raise ValueError("mode=%s unrecognized." % str(mode))
 
   @abc.abstractmethod
   def _training_loss(self, features, target, logits=None, logits_input=None,

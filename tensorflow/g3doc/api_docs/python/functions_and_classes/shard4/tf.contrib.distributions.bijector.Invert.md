@@ -29,8 +29,8 @@ return -self.inverse_log_det_jacobian(y, **condition_kwargs)
 
 
 *  <b>`bijector`</b>: Bijector instance.
-*  <b>`validate_args`</b>: `Boolean` indicated whether arguments should be checked for
-    correctness.
+*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
+    for correctness.
 *  <b>`name`</b>: `String`, name given to ops managed by this object.
 
 

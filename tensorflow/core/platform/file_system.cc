@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -28,6 +29,12 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+
+namespace {
+
+constexpr int32 kNumThreads = 8;
+
+}  // anonymous namespace
 
 FileSystem::~FileSystem() {}
 
@@ -105,16 +112,32 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
   std::deque<string> dir_q;
   dir_q.push_back(dir);
   Status ret;  // Status to return.
+  std::vector<bool> children_dir_status;  // holds is_dir status for children.
   while (!dir_q.empty()) {
     string current_dir = dir_q.front();
     dir_q.pop_front();
     std::vector<string> children;
     Status s = GetChildren(current_dir, &children);
     ret.Update(s);
-    for (const string& child : children) {
-      const string child_path = io::JoinPath(current_dir, child);
+    if (children.empty()) continue;
+    // This IsDirectory call can be expensive for some FS. Parallelizing it.
+    thread::ThreadPool* children_threads =
+        new thread::ThreadPool(Env::Default(), "TraverseChildren", kNumThreads);
+    children_dir_status.resize(children.size());
+    for (int i = 0; i < children.size(); ++i) {
+      const string child_path = io::JoinPath(current_dir, children[i]);
+      children_threads->Schedule([this, child_path, i, &children_dir_status] {
+        children_dir_status[i] = this->IsDirectory(child_path).ok();
+      });
+    }
+    delete children_threads;
+    for (int i = 0; i < children.size(); ++i) {
+      const string child_path = io::JoinPath(current_dir, children[i]);
+      // In case the child_path doesn't start with the fixed_prefix then we bail
+      // and don't add it to the queue / candidates.
+      if (!StringPiece(child_path).starts_with(fixed_prefix)) continue;
       // If the child is a directory add it to the queue.
-      if (IsDirectory(child_path).ok()) {
+      if (children_dir_status[i]) {
         dir_q.push_back(child_path);
       }
       all_files.push_back(child_path);

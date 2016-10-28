@@ -164,6 +164,8 @@ cc_library(
         "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
         "lib/gtl/cleanup.h",
+        "lib/gtl/flatmap.h",
+        "lib/gtl/flatset.h",
         "lib/gtl/inlined_vector.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",
@@ -178,7 +180,6 @@ cc_library(
         "lib/io/table.h",
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
-        "lib/jpeg/jpeg_mem.h",
         "lib/math/math_util.h",
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
@@ -218,6 +219,13 @@ cc_library(
     deps = [
         ":lib_internal",
     ],
+)
+
+cc_library(
+    name = "jpeg",
+    hdrs = ["lib/jpeg/jpeg_mem.h"],
+    visibility = ["//visibility:public"],
+    deps = [":jpeg_internal"],
 )
 
 # Test support library needed for all tests
@@ -521,6 +529,7 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
@@ -970,6 +979,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/jpeg/**/*",
                 "platform/**/cuda.h",
                 "platform/**/stream_executor.h",
                 "platform/load_library.cc",
@@ -986,6 +996,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/jpeg/**/*",
                 "platform/**/cuda.h",
                 "platform/**/stream_executor.h",
             ],
@@ -1019,7 +1030,6 @@ cc_library(
         "lib/io/zlib_compression_options.h",
         "lib/io/zlib_inputstream.h",
         "lib/io/zlib_outputbuffer.h",
-        "lib/jpeg/jpeg_handle.h",
         "lib/png/png_io.h",
         "lib/random/random.h",
         "lib/random/random_distributions.h",
@@ -1045,6 +1055,26 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
         "@zlib_archive//:zlib",
+    ],
+)
+
+cc_library(
+    name = "jpeg_internal",
+    srcs = glob(
+        [
+            "lib/jpeg/*h",
+            "lib/jpeg/*.cc",
+        ],
+        exclude = [
+            "**/*test*",
+        ],
+    ),
+    hdrs = ["lib/jpeg/jpeg_handle.h"],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        ":lib",
+        "//tensorflow/core/platform/default/build_config:jpeg",
     ],
 )
 
@@ -1149,83 +1179,6 @@ cc_header_only_library(
     ],
 )
 
-filegroup(
-    name = "framework_headers",
-    srcs = [
-        "framework/allocator.h",
-        "framework/attr_value_util.h",
-        "framework/bfloat16.h",
-        "framework/cancellation.h",
-        "framework/control_flow.h",
-        "framework/device_base.h",
-        "framework/function.h",
-        "framework/kernel_def_builder.h",
-        "framework/node_def_util.h",
-        "framework/numeric_types.h",
-        "framework/op.h",
-        "framework/op_def_builder.h",
-        "framework/op_def_util.h",
-        "framework/op_kernel.h",
-        "framework/partial_tensor_shape.h",
-        "framework/register_types.h",
-        "framework/rendezvous.h",
-        "framework/selective_registration.h",
-        "framework/session_state.h",
-        "framework/shape_inference.h",
-        "framework/tensor.h",
-        "framework/tensor_reference.h",
-        "framework/tensor_shape.h",
-        "framework/tensor_types.h",
-        "framework/tracking_allocator.h",
-        "framework/type_traits.h",
-        "framework/types.h",
-        "framework/unique_tensor_references.h",
-        "lib/core/errors.h",
-        "lib/core/notification.h",
-        "lib/core/refcount.h",
-        "lib/core/status.h",
-        "lib/core/stringpiece.h",
-        "lib/core/threadpool.h",
-        "lib/gtl/array_slice.h",
-        "lib/gtl/array_slice_internal.h",
-        "lib/gtl/inlined_vector.h",
-        "lib/gtl/manual_constructor.h",
-        "lib/hash/hash.h",
-        "lib/strings/numbers.h",
-        "lib/strings/str_util.h",
-        "lib/strings/strcat.h",
-        "platform/cpu_info.h",
-        "platform/default/dynamic_annotations.h",
-        "platform/default/integral_types.h",
-        "platform/default/logging.h",
-        "platform/default/mutex.h",
-        "platform/default/notification.h",
-        "platform/default/protobuf.h",
-        "platform/default/thread_annotations.h",
-        "platform/dynamic_annotations.h",
-        "platform/env.h",
-        "platform/file_statistics.h",
-        "platform/file_system.h",
-        "platform/fingerprint.h",
-        "platform/logging.h",
-        "platform/macros.h",
-        "platform/mem.h",
-        "platform/mutex.h",
-        "platform/net.h",
-        "platform/notification.h",
-        "platform/platform.h",
-        "platform/prefetch.h",
-        "platform/protobuf.h",
-        "platform/strong_hash.h",
-        "platform/thread_annotations.h",
-        "platform/types.h",
-        "public/session.h",
-        "public/session_options.h",
-        "public/version.h",
-        "util/device_name_utils.h",
-    ],
-)
-
 tf_cuda_library(
     name = "stream_executor",
     srcs = tf_additional_stream_executor_srcs(),
@@ -1316,7 +1269,7 @@ cc_library(
         "platform/regexp.h",
     ],
     visibility = [
-        "//tensorflow/contrib/tfprof:__subpackages__",
+        "//tensorflow/tools/tfprof:__subpackages__",
     ],
     deps = [":lib_internal"],
 )
@@ -1326,11 +1279,13 @@ tf_cuda_library(
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = ["common_runtime/direct_session.h"],
     copts = tf_copts(),
+    cuda_deps = [
+        ":gpu_tracer",
+    ],
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
         ":framework",
-        ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":proto_text",
@@ -1496,6 +1451,8 @@ tf_cc_tests(
         "lib/gtl/array_slice_test.cc",
         "lib/gtl/cleanup_test.cc",
         "lib/gtl/edit_distance_test.cc",
+        "lib/gtl/flatmap_test.cc",
+        "lib/gtl/flatset_test.cc",
         "lib/gtl/inlined_vector_test.cc",
         "lib/gtl/int_type_test.cc",
         "lib/gtl/iterator_range_test.cc",
@@ -1582,6 +1539,8 @@ cc_test(
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
     deps = [
+        ":jpeg",
+        ":jpeg_internal",
         ":lib",
         ":lib_internal",
         ":test",

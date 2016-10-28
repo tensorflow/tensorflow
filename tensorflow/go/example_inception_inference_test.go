@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tensorflow/tensorflow/tensorflow/go/op"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -53,8 +54,14 @@ func Example() {
 	// This example:
 	// - Loads the serialized representation of the pre-trained model into a Graph
 	// - Creates a Session to execute operations on the Graph
-	// - Converts an image file to a Tensor to provide as input for Graph execution
-	// - Exectues the graph and prints out the label with the highest probability
+	// - Converts an image file to a Tensor to provide as input to a Session run
+	// - Executes the Session and prints out the label with the highest probability
+	//
+	// To convert an image file to a Tensor suitable for input to the Inception model,
+	// this example:
+	// - Constructs another TensorFlow graph to normalize the image into a
+	//   form suitable for the model (for example, resizing the image)
+	// - Creates an executes a Session to obtain a Tensor in this normalized form.
 	modeldir := flag.String("dir", "", "Directory containing the trained model files. The directory will be created and the model downloaded into it if necessary")
 	imagefile := flag.String("image", "", "Path of the image to extract labels for")
 	flag.Parse()
@@ -89,7 +96,7 @@ func Example() {
 	// For multiple images, session.Run() can be called in a loop (and
 	// concurrently). Furthermore, images can be batched together since the
 	// model accepts batches of image data as input.
-	tensor, err := makeTensorFromImageForInception(*imagefile)
+	tensor, err := makeTensorFromImage(*imagefile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -136,54 +143,102 @@ func printBestLabel(probabilities []float32, labelsFile string) {
 	fmt.Printf("BEST MATCH: (%2.0f%% likely) %s\n", probabilities[bestIdx]*100.0, labels[bestIdx])
 }
 
-// Given an image stored in filename, returns a Tensor which is suitable for
-// providing the image data to the pre-defined model.
-func makeTensorFromImageForInception(filename string) (*tf.Tensor, error) {
-	const (
-		// Some constants specific to the pre-trained model at:
-		// https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
-		//
-		// - The model was trained after with images scaled to 224x224 pixels.
-		// - The colors, represented as R, G, B in 1-byte each were converted to
-		//   float using (value - Mean)/Std.
-		//
-		// If using a different pre-trained model, the values will have to be adjusted.
-		H, W = 224, 224
-		Mean = 117
-		Std  = float32(1)
-	)
+// Conver the image in filename to a Tensor suitable as input to the Inception model.
+func makeTensorFromImage(filename string) (*tf.Tensor, error) {
+	// Load the pixels from the file
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 	img, _, err := image.Decode(file)
+	file.Close()
 	if err != nil {
 		return nil, err
 	}
-	sz := img.Bounds().Size()
-	if sz.X != W || sz.Y != H {
-		return nil, fmt.Errorf("input image is required to be %dx%d pixels, was %dx%d", W, H, sz.X, sz.Y)
-	}
-	// 4-dimensional input:
-	// - 1st dimension: Batch size (the model takes a batch of images as
-	//                  input, here the "batch size" is 1)
-	// - 2nd dimension: Rows of the image
-	// - 3rd dimension: Columns of the row
-	// - 4th dimension: Colors of the pixel as (B, G, R)
-	// Thus, the shape is [1, 224, 224, 3]
-	var ret [1][H][W][3]float32
-	for y := 0; y < H; y++ {
-		for x := 0; x < W; x++ {
+	// Represent the image as [H][W][B,G,R]byte
+	contents := make([][][3]byte, img.Bounds().Size().Y)
+	for y := 0; y < len(contents); y++ {
+		contents[y] = make([][3]byte, img.Bounds().Size().X)
+		for x := 0; x < len(contents[y]); x++ {
 			px := x + img.Bounds().Min.X
 			py := y + img.Bounds().Min.Y
 			r, g, b, _ := img.At(px, py).RGBA()
-			ret[0][y][x][0] = float32((int(b>>8) - Mean)) / Std
-			ret[0][y][x][1] = float32((int(g>>8) - Mean)) / Std
-			ret[0][y][x][2] = float32((int(r>>8) - Mean)) / Std
+			// image.Image uses 16-bits for each color.
+			// We want 8-bits.
+			contents[y][x][0] = byte(b >> 8)
+			contents[y][x][1] = byte(g >> 8)
+			contents[y][x][2] = byte(r >> 8)
 		}
 	}
-	return tf.NewTensor(ret)
+	tensor, err := tf.NewTensor(contents)
+	if err != nil {
+		return nil, err
+	}
+	// Construct a graph to normalize the image
+	graph, input, output, err := constructGraphToNormalizeImage()
+	if err != nil {
+		return nil, err
+	}
+	// Execute that graph to normalize this one image
+	session, err := tf.NewSession(graph, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	normalized, err := session.Run(
+		map[tf.Output]*tf.Tensor{input: tensor},
+		[]tf.Output{output},
+		nil)
+	if err != nil {
+		return nil, err
+	}
+	return normalized[0], nil
+}
+
+// The inception model takes as input the image described by a Tensor in a very
+// specific normalized format (a particular image size, shape of the input tensor,
+// normalized pixel values etc.).
+//
+// This function constructs a graph of TensorFlow operations which takes as input
+// the raw pixel values of an image in the form of a Tensor of shape [Height, Width, 3]
+// and returns a tensor suitable for input to the inception model.
+//
+// T[y][x] is the (Blue, Green, Red) values of the pixel at position (x, y) in the image,
+// with each color value represented as a single byte.
+func constructGraphToNormalizeImage() (graph *tf.Graph, input, output tf.Output, err error) {
+	// Some constants specific to the pre-trained model at:
+	// https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
+	//
+	// - The model was trained after with images scaled to 224x224 pixels.
+	// - The colors, represented as R, G, B in 1-byte each were converted to
+	//   float using (value - Mean)/Scale.
+	//
+	// If using a different pre-trained model, the values will have to be adjusted.
+	const (
+		H, W  = 224, 224
+		Mean  = float32(117)
+		Scale = float32(1)
+	)
+	// - input is a 3D tensor of shape [Height, Width, Colors=3], where
+	//   each pixel is represented as a triplet of 1-byte colors
+	// - ResizeBilinear (and the inception model) takes a 4D tensor of shape
+	//   [BatchSize, Height, Width, Colors=3], where each pixel is
+	//   represented as a triplet of floats
+	// - Apply normalization on each pixel and use ExpandDims to make
+	//   this single image be a "batch" of size 1 for ResizeBilinear.
+	s := op.NewScope()
+	input = op.Placeholder(s, tf.Uint8)
+	output = op.Div(s,
+		op.Sub(s,
+			op.ResizeBilinear(s,
+				op.ExpandDims(s,
+					op.Cast(s, input, tf.Float),
+					op.Const(s.SubScope("make_batch"), int32(0))),
+				op.Const(s.SubScope("size"), []int32{H, W})),
+			op.Const(s.SubScope("mean"), Mean)),
+		op.Const(s.SubScope("scale"), Scale))
+	graph, err = s.Finalize()
+	return graph, input, output, err
 }
 
 func modelFiles(dir string) (modelfile, labelsfile string, err error) {
