@@ -80,16 +80,50 @@ class SubstrOpTest(tf.test.TestCase):
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
-  def _testBroadcastUnimplemented(self, dtype):
+  def _testBroadcast(self, dtype):
+    # Broadcast pos/len onto input string
+    test_string = [[b"ten", b"eleven", b"twelve"],
+                   [b"thirteen", b"fourteen", b"fifteen"],
+                   [b"sixteen", b"seventeen", b"eighteen"],
+                   [b"nineteen", b"twenty", b"twentyone"]]
+    position = np.array([1, 2, 3], dtype)
+    length = np.array([1, 2, 3], dtype)
+    expected_value = [[b"e", b"ev", b"lve"],
+                      [b"h", b"ur", b"tee"],
+                      [b"i", b"ve", b"hte"],
+                      [b"i", b"en", b"nty"]]
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
+    # Broadcast input string onto pos/len
+    test_string = [b"thirteen", b"fourteen", b"fifteen"]
+    position = np.array([[1, 2, 3],
+                         [3, 2, 1],
+                         [5, 5, 5]], dtype)
+    length = np.array([[3, 2, 1],
+                       [1, 2, 3],
+                       [2, 2, 2]], dtype)
+    expected_value = [[b"hir", b"ur", b"t"],
+                      [b"r", b"ur", b"ift"],
+                      [b"ee", b"ee", b"en"]]
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
+  def _testBadBroadcast(self, dtype):
     test_string = [[b"ten", b"eleven", b"twelve"],
                    [b"thirteen", b"fourteen", b"fifteen"],
                    [b"sixteen", b"seventeen", b"eighteen"]]
-    position = np.array([1, 2, 3], dtype)
-    length = np.array([1, 2, 3], dtype)
-    substr_op = tf.substr(test_string, position, length)
-    with self.test_session():
-      with self.assertRaises(tf.errors.UnimplementedError):
-        substr = substr_op.eval()
+    position = np.array([1, 2, 3, 4], dtype)
+    length = np.array([1, 2, 3, 4], dtype)
+    expected_value = [[b"e", b"ev", b"lve"],
+                      [b"h", b"ur", b"tee"],
+                      [b"i", b"ve", b"hte"]]
+    with self.assertRaises(ValueError):
+      substr_op = tf.substr(test_string, position, length)
 
   def _testOutOfRangeError(self, dtype):
     test_string = b"Hello"
@@ -139,7 +173,8 @@ class SubstrOpTest(tf.test.TestCase):
     self._testVectorStrings(dtype)
     self._testMatrixStrings(dtype)
     self._testElementWisePosLen(dtype)
-    self._testBroadcastUnimplemented(dtype)
+    self._testBroadcast(dtype)
+    self._testBadBroadcast(dtype)
     self._testOutOfRangeError(dtype)
     self._testMismatchPosLenShapes(dtype)
 
