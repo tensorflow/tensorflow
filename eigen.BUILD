@@ -55,8 +55,6 @@ EIGEN_MPL2_HEADER_FILES = glob(
     ],
 )
 
-# archive_dir = "benoitsteiner-opencl-9d4a08d57d0d"
-
 cc_library(
     name = "eigen",
     hdrs = EIGEN_MPL2_HEADER_FILES,
