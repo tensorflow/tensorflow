@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint} from './data';
+import {DataPoint, DataSet} from './data';
 import * as logging from './logging';
 import {Point2D} from './vector';
 

@@ -20,6 +20,7 @@ import * as logging from './logging';
 import * as scatterPlot from './scatterPlot';
 import {getSearchPredicate, runAsyncTask, shuffle} from './util';
 import * as vector from './vector';
+import {SpriteMetadata} from './data-provider';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
 export type PointAccessor = (index: number) => number;
