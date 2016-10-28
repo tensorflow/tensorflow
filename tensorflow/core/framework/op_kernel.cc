@@ -949,10 +949,12 @@ const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
 
+#ifdef TENSORFLOW_USE_SYCL
 template <>
 const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
   return eigen_sycl_device();
 }
+#endif
 
 void OpKernelConstruction::CtxFailure(Status s) {
   VLOG(1) << s;

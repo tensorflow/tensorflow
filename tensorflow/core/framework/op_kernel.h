@@ -892,9 +892,11 @@ class OpKernelContext {
   const Eigen::GpuDevice& eigen_gpu_device() const {
     return params_->eigen_gpu_device->device();
   }
+#ifdef TENSORFLOW_USE_SYCL
   const Eigen::SyclDevice& eigen_sycl_device() const {
     return *device()->eigen_sycl_device();
   }
+#endif
   template <typename EigenDeviceType>
   const EigenDeviceType& eigen_device() const;
 
