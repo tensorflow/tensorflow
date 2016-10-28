@@ -116,28 +116,36 @@ class _SecondOrStepTimer(object):
 
 
 class LoggingTensorHook(session_run_hook.SessionRunHook):
-  """Prints given tensors every N iteration.
+  """Prints the given tensors once every N local steps or once every N seconds.
 
   The tensors will be printed to the log, with `INFO` severity.
   """
 
-  def __init__(self, tensors, every_n_iter=100):
+  def __init__(self, tensors, every_n_iter=None, every_n_secs=None):
     """Initializes a LoggingHook monitor.
 
     Args:
-      tensors: `dict` of tag to tensors/names or
-          `iterable` of tensors/names.
-      every_n_iter: `int`, print every N iteration.
+      tensors: `dict` that maps string-valued tags to tensors/tensor names,
+          or `iterable` of tensors/tensor names.
+      every_n_iter: `int`, print the values of `tensors` once every N local
+          steps taken on the current worker.
+      every_n_secs: `int` or `float`, print the values of `tensors` once every N
+          seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
+          provided.
 
     Raises:
-     ValueError: if `every_n_iter` is non-positive.
+      ValueError: if `every_n_iter` is non-positive.
     """
-    if every_n_iter <= 0:
-      raise ValueError("Invalid every_n_iter=%s." % every_n_iter)
+    if (every_n_iter is None) == (every_n_secs is None):
+      raise ValueError(
+          "exactly one of every_n_iter and every_n_secs must be provided.")
+    if every_n_iter is not None and every_n_iter <= 0:
+      raise ValueError("invalid every_n_iter=%s." % every_n_iter)
     if not isinstance(tensors, dict):
       tensors = {item: item for item in tensors}
     self._tensors = tensors
-    self._every_n_iter = every_n_iter
+    self._timer = _SecondOrStepTimer(every_secs=every_n_secs,
+                                     every_steps=every_n_iter)
 
   def begin(self):
     self._iter_count = 0
@@ -146,18 +154,20 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
                              for (tag, tensor) in self._tensors.items()}
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
-    if self._iter_count % self._every_n_iter == 0:
+    self._should_trigger = self._timer.should_trigger_for_step(self._iter_count)
+    if self._should_trigger:
       return SessionRunArgs(self._current_tensors)
     else:
       return None
 
   def after_run(self, run_context, run_values):
     _ = run_context
-    if self._iter_count % self._every_n_iter == 0:
+    if self._should_trigger:
       stats = []
       for tag in self._current_tensors.keys():
         stats.append("%s = %s" % (tag, run_values.results[tag]))
       logging.info("%s", ", ".join(stats))
+      self._timer.update_last_triggered_step(self._iter_count)
     self._iter_count += 1
 
 
