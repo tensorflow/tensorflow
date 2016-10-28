@@ -8,7 +8,7 @@ Constructs an Estimator instance.
 ##### Args:
 
 
-*  <b>`model_fn`</b>: Model function, takes features and targets tensors or dicts of
+*  <b>`model_fn`</b>: Model function, takes features and labels tensors or dicts of
             tensors and returns tuple of:
 
       * predictions: `Tensor`, `SparseTensor` or dictionary of same.
@@ -19,19 +19,19 @@ Constructs an Estimator instance.
 
      Supports next three signatures for the function:
 
-      * `(features, targets) -> (predictions, loss, train_op)`
-      * `(features, targets, mode) -> (predictions, loss, train_op)`
-      * `(features, targets, mode, params) -> (predictions, loss, train_op)`
+      * `(features, labels) -> (predictions, loss, train_op)`
+      * `(features, labels, mode) -> (predictions, loss, train_op)`
+      * `(features, labels, mode, params) -> (predictions, loss, train_op)`
 
     Where
 
       * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `targets` are `Tensor` or `dict` of `Tensor`s (for multi-head
-             models). If mode is `ModeKeys.INFER`, `targets=None` will be
+      * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
+             models). If mode is `ModeKeys.INFER`, `labels=None` will be
              passed. If the `model_fn`'s signature does not accept
              `mode`, the `model_fn` must still be able to handle
-             `targets=None`.
+             `labels=None`.
       * `mode` represents if this training, evaluation or
              prediction. See `ModeKeys`.
       * `params` is a `dict` of hyperparameters. Will receive what
@@ -46,10 +46,10 @@ Constructs an Estimator instance.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
 *  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
-                          targets which are the output of `input_fn` and
-                          returns features and targets which will be fed
+                          labels which are the output of `input_fn` and
+                          returns features and labels which will be fed
                           into `model_fn`. Please check `model_fn` for
-                          a definition of features and targets.
+                          a definition of features and labels.
 
 ##### Raises:
 
@@ -101,8 +101,8 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
         `Tensor` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, targets), where features is a dict of
-        string key to `Tensor` and targets is a `Tensor` that's currently not
+        returns a tuple of (features, labels), where features is a dict of
+        string key to `Tensor` and labels is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
@@ -215,7 +215,7 @@ to converge, and you want to split up training into subparts.
      returns arrays of features. The training input samples for fitting the
      model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
+     iterator that returns array of labels. The training label values
      (class labels in classification, real numbers in regression). If set,
      `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
