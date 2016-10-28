@@ -307,7 +307,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
 
-    this.scatterPlot.setDataSet(this.dataSet, this.originalDataSet.spriteImage);
+    this.scatterPlot.setDataSet(this.dataSet);
     this.updateScatterPlot();
   }
 

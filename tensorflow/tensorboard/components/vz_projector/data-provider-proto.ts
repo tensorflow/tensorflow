@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {DataPoint, DataProto, DataSet, MetadataInfo, PointMetadata, State} from './data';
-import {analyzeMetadata, CheckpointInfo, DataProvider} from './data-provider';
+import {analyzeMetadata, ProjectorConfig, DataProvider} from './data-provider';
 
 
 export class ProtoDataProvider implements DataProvider {
@@ -28,7 +28,7 @@ export class ProtoDataProvider implements DataProvider {
     callback(['proto']);
   }
 
-  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void) {
+  retrieveProjectorConfig(run: string, callback: (d: ProjectorConfig) => void) {
     callback({
       modelCheckpointPath: 'proto',
       embeddings: [{

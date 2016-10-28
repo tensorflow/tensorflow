@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, ColumnStats, MetadataInfo} from './data';
-import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
+import {ProjectorConfig, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -51,7 +51,7 @@ export class DataPanel extends DataPanelPolymer {
   private tensorNames: {name: string, shape: number[]}[];
   private runNames: string[];
   private projector: Projector;
-  private checkpointInfo: CheckpointInfo;
+  private projectorConfig: ProjectorConfig;
   private colorLegendRenderInfo: ColorLegendRenderInfo;
 
   ready() {
@@ -181,10 +181,10 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   _selectedRunChanged() {
-    this.dataProvider.retrieveCheckpointInfo(this.selectedRun, info => {
-      this.checkpointInfo = info;
+    this.dataProvider.retrieveProjectorConfig(this.selectedRun, info => {
+      this.projectorConfig = info;
       let names =
-          this.checkpointInfo.embeddings.map(e => e.tensorName)
+          this.projectorConfig.embeddings.map(e => e.tensorName)
               .filter(name => {
                 let shape = this.getEmbeddingInfoByName(name).tensorShape;
                 return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
@@ -207,8 +207,8 @@ export class DataPanel extends DataPanelPolymer {
         };
       });
       this.dom.select('#checkpoint-file')
-          .text(this.checkpointInfo.modelCheckpointPath)
-          .attr('title', this.checkpointInfo.modelCheckpointPath);
+          .text(this.projectorConfig.modelCheckpointPath)
+          .attr('title', this.projectorConfig.modelCheckpointPath);
       this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
         if (this.selectedTensor === defaultTensor) {
           // Explicitly call the observer. Polymer won't call it if the previous
@@ -273,8 +273,8 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   private getEmbeddingInfoByName(tensorName: string): EmbeddingInfo {
-    for (let i = 0; i < this.checkpointInfo.embeddings.length; i++) {
-      let e = this.checkpointInfo.embeddings[i];
+    for (let i = 0; i < this.projectorConfig.embeddings.length; i++) {
+      let e = this.projectorConfig.embeddings[i];
       if (e.tensorName === tensorName) {
         return e;
       }

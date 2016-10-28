@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {PointAccessor} from './data';
+import {PointAccessor, DataSet} from './data';
 import {HoverContext} from './hoverContext';
 import {LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -49,12 +49,6 @@ const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
 
 const ORBIT_MOUSE_ROTATION_SPEED = 1;
 const ORBIT_ANIMATION_ROTATION_CYCLE_IN_SECONDS = 7;
-
-/** The spacial data of points and lines that will be shown in the projector. */
-export interface DataSet {
-  points: DataPoint[];
-  traces: DataTrace[];
-}
 
 /**
  * Points in 3D space that will be used in the projector. If the projector is
@@ -102,7 +96,6 @@ export class ScatterPlot {
   private selectionContext: SelectionContext;
   private hoverContext: HoverContext;
 
-  private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
 
@@ -633,7 +626,7 @@ export class ScatterPlot {
   addVisualizer(visualizer: ScatterPlotVisualizer) {
     this.visualizers.push(visualizer);
     if (this.dataSet) {
-      visualizer.onDataSet(this.dataSet, this.spriteImage);
+      visualizer.onDataSet(this.dataSet);
     }
     if (this.labelAccessor) {
       visualizer.onSetLabelAccessor(this.labelAccessor);
@@ -661,13 +654,12 @@ export class ScatterPlot {
   }
 
   /** Sets the data for the scatter plot. */
-  setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
+  setDataSet(dataSet: DataSet) {
     this.removeAll();
     this.dataSet = dataSet;
-    this.spriteImage = spriteImage;
     this.nearestPoint = null;
     this.visualizers.forEach(v => {
-      v.onDataSet(dataSet, spriteImage);
+      v.onDataSet(dataSet);
     });
     this.render();
   }

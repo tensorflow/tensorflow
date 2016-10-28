@@ -35,6 +35,11 @@ export interface EmbeddingInfo {
   tensorName: string;
   /** The shape of the tensor. */
   tensorShape: [number, number];
+  /**
+   * The path to the tensors TSV file. If empty, it is assumed that the tensor
+   * is stored in the checkpoint file.
+   */
+  tensorPath?: string;
   /** The path to the metadata file associated with the tensor. */
   metadataPath?: string;
   /** The path to the bookmarks file associated with the tensor. */
@@ -43,7 +48,7 @@ export interface EmbeddingInfo {
 }
 
 /** Matches the json format of `projector_config.proto` */
-export interface CheckpointInfo {
+export interface ProjectorConfig {
   embeddings: EmbeddingInfo[];
   modelCheckpointPath: string;
 }
@@ -56,13 +61,15 @@ export interface DataProvider {
   retrieveRuns(callback: (runs: string[]) => void): void;
 
   /**
-   * Returns info about the checkpoint: number of tensors, their shapes,
+   * Returns the projector configuration: number of tensors, their shapes,
    * and their associated metadata files.
    */
-  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void;
+  retrieveProjectorConfig(run: string,
+      callback: (d: ProjectorConfig) => void): void;
 
   /** Fetches and returns the tensor with the specified name. */
-  retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void);
+  retrieveTensor(run: string, tensorName: string,
+      callback: (ds: DataSet) => void);
 
   /**
    * Fetches the metadata for the specified tensor.
@@ -234,5 +241,41 @@ export function fetchImage(url: string): Promise<HTMLImageElement> {
     image.onload = () => resolve(image);
     image.onerror = (err) => reject(err);
     image.src = url;
+  });
+}
+
+export function retrieveMetadataInfo(metadataPath: string,
+    spriteImagePath: string, spriteMetadata: SpriteMetadata,
+    callback: (r: MetadataInfo) => void) {
+  let metadataPromise: Promise<MetadataInfo> = null;
+  if (metadataPath) {
+    metadataPromise = new Promise<MetadataInfo>((resolve, reject) => {
+      logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
+      d3.text(metadataPath, (err: any, rawMetadata: string) => {
+        if (err) {
+          logging.setModalMessage('Error: ' + err.responseText);
+          reject(err);
+          return;
+        }
+        resolve(parseMetadata(rawMetadata));
+      });
+    });
+  }
+  let spriteMsgId = null;
+  let spritesPromise: Promise<HTMLImageElement> = null;
+  if (spriteImagePath) {
+    spriteMsgId = logging.setModalMessage('Fetching sprite image...');
+    spritesPromise = fetchImage(spriteImagePath);
+  }
+
+  // Fetch the metadata and the image in parallel.
+  Promise.all([metadataPromise, spritesPromise]).then(values => {
+    if (spriteMsgId) {
+      logging.setModalMessage(null, spriteMsgId);
+    }
+    let [metadata, spriteImage] = values;
+    metadata.spriteImage = spriteImage;
+    metadata.spriteMetadata = spriteMetadata;
+    callback(metadata);
   });
 }

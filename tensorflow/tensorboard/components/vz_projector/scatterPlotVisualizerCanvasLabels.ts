@@ -15,7 +15,7 @@ limitations under the License.
 
 import {BoundingBox, CollisionGrid} from './label';
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {DataSet} from './data';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 
@@ -134,8 +134,8 @@ export class ScatterPlotVisualizerCanvasLabels implements
     }
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
-    this.labelsActive = (spriteImage == null);
+  onDataSet(dataSet: DataSet) {
+    this.labelsActive = (dataSet.metadataInfo.spriteImage == null);
     this.dataSet = dataSet;
   }
 
