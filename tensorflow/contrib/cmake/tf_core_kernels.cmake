@@ -76,7 +76,6 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.h"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*main.cc"
-   "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.h"  # stream_executor dependency
    "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.cc"  # stream_executor dependency
@@ -90,6 +89,7 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
