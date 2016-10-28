@@ -307,6 +307,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
 
+    this.scatterPlot.setCameraParametersForNextCameraCreation(null, true);
     this.scatterPlot.setDataSet(this.dataSet);
     this.updateScatterPlot();
   }
@@ -457,7 +458,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     this.scatterPlot.recreateScene();
-    this.scatterPlot.setCameraDefForNextCameraCreation(null);
+    this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
   }
 
   notifyProjectionsUpdated() {
@@ -506,7 +507,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
     this.selectedLabelOption = state.selectedLabelOption;
-    this.scatterPlot.setCameraDefForNextCameraCreation(state.cameraDef);
+    this.scatterPlot.setCameraParametersForNextCameraCreation(
+        state.cameraDef, false);
     {
       const dimensions = stateGetAccessorDimensions(state);
       const accessors =

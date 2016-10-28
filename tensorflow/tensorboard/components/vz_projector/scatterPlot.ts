@@ -127,6 +127,7 @@ export class ScatterPlot {
 
   private cameraDef: CameraDef = null;
   private camera: THREE.Camera;
+  private orbitAnimationOnNextCameraCreation: boolean = false;
   private orbitCameraControls: any;
   private orbitAnimationId: number;
 
@@ -309,6 +310,9 @@ export class ScatterPlot {
     this.orbitCameraControls.minDistance = MIN_ZOOM;
     this.orbitCameraControls.maxDistance = MAX_ZOOM;
     this.orbitCameraControls.update();
+    if (this.orbitAnimationOnNextCameraCreation) {
+      this.startOrbitAnimation();
+    }
   }
 
   private onClick(e?: MouseEvent, notify = true) {
@@ -566,8 +570,10 @@ export class ScatterPlot {
   }
 
   /** Sets parameters for the next camera recreation. */
-  setCameraDefForNextCameraCreation(def: CameraDef) {
+  setCameraParametersForNextCameraCreation(
+      def: CameraDef, orbitAnimation: boolean) {
     this.cameraDef = def;
+    this.orbitAnimationOnNextCameraCreation = orbitAnimation;
   }
 
   /** Gets the current camera position. */
