@@ -416,7 +416,7 @@ def _cuda_copts():
         "@local_config_cuda//cuda:using_nvcc": (
             common_cuda_opts +
             [
-                "-nvcc_options=relaxed-constexpr",
+                "-nvcc_options=expt-relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
