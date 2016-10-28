@@ -86,8 +86,10 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
       logging.info('TensorForestLossHook resetting last_step.')
       self.last_step = current_step
       self.steps = 0
+      self.min_loss = None
       return
 
+    self.last_step = current_step
     if self.min_loss is None or current_loss < self.min_loss:
       self.min_loss = current_loss
       self.steps = 0
@@ -153,6 +155,7 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
     self.params = params.fill()
     self.graph_builder_class = graph_builder_class
     self.early_stopping_rounds = early_stopping_rounds
+    self.weights_name = weights_name
     self._estimator = estimator.Estimator(
         model_fn=get_model_fn(params, graph_builder_class, device_assigner,
                               weights_name=weights_name, keys_name=keys_name),
@@ -280,7 +283,8 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
     orig_model_fn = self._estimator._model_fn
     self._estimator._model_fn = get_model_fn(
         self.params, self.graph_builder_class,
-        tensor_forest.RandomForestDeviceAssigner())
+        tensor_forest.RandomForestDeviceAssigner(),
+        weights_name=self.weights_name)
     result = self._estimator.export(
         export_dir=export_dir,
         use_deprecated_input_fn=True,
