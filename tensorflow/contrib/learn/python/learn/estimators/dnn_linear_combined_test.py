@@ -180,27 +180,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
-  def testWeightAndBiasNames(self):
-    """Tests that weight and bias names haven't changed."""
-    iris = tf.contrib.learn.datasets.load_iris()
-    cont_features = [
-        tf.contrib.layers.real_valued_column('feature', dimension=4)]
-    bucketized_features = [
-        tf.contrib.layers.bucketized_column(
-            cont_features[0], _get_quantile_based_buckets(iris.data, 10))]
-
-    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
-        n_classes=3,
-        linear_feature_columns=bucketized_features,
-        dnn_feature_columns=cont_features,
-        dnn_hidden_units=[3, 3])
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=100)
-
-    self.assertEquals(4, len(classifier.dnn_bias_))
-    self.assertEquals(3, len(classifier.dnn_weights_))
-    self.assertEquals(3, len(classifier.linear_bias_))
-    self.assertEquals(44, len(classifier.linear_weights_))
-
   def testLoss(self):
     """Tests loss calculation."""
 
@@ -254,7 +233,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
     # Weighted cross entropy = (-7*log(0.25)-3*log(0.75))/10 = 1.06
@@ -289,7 +267,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
     # The model should learn (y = x) because of the weights, so the accuracy
@@ -371,7 +348,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32)}
       return features, target
 
     def _input_fn_predict():
@@ -387,30 +364,26 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn_train, steps=100)
 
-    probs = classifier.predict_proba(input_fn=_input_fn_predict)
+    probs = list(classifier.predict_proba(input_fn=_input_fn_predict))
     self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.05)
-    classes = classifier.predict(input_fn=_input_fn_predict)
-    self.assertListEqual([0] * 4, list(classes))
-
-    probs = classifier.predict_proba(
-        input_fn=_input_fn_predict, as_iterable=True)
-    self.assertAllClose([[0.75, 0.25]] * 4, list(probs), 0.05)
-    classes = classifier.predict(
-        input_fn=_input_fn_predict, as_iterable=True)
-    self.assertListEqual([0] * 4, list(classes))
+    classes = list(classifier.predict(input_fn=_input_fn_predict))
+    self.assertListEqual([0] * 4, classes)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
 
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
       return features, target
 
     def _my_metric_op(predictions, targets):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
+      targets = tf.to_float(targets)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
       return tf.reduce_sum(tf.mul(predictions, targets))
 
@@ -419,9 +392,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=100,
         metrics={
             'my_accuracy': tf.contrib.metrics.streaming_accuracy,
@@ -431,22 +404,24 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertTrue(
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
             ]).issubset(set(scores.keys())))
-    predictions = classifier.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(
+        list(classifier.predict(input_fn=predict_input_fn)))
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
 
     # Test the case where the 2nd element of the key is neither "classes" nor
     # "probabilities".
-    with self.assertRaises(ValueError):
+    with self.assertRaises(KeyError):
       classifier.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=100,
           metrics={('bad_name', 'bad_type'): tf.contrib.metrics.streaming_auc})
 
     # Test the case where the tuple of the key doesn't have 2 elements.
     with self.assertRaises(ValueError):
       classifier.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=100,
           metrics={
               ('bad_length_name', 'classes', 'bad_length'):
@@ -483,7 +458,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
-        dnn_hidden_units=[3, 3])
+        dnn_hidden_units=[3, 3],
+        enable_centered_bias=True)
 
     classifier.fit(input_fn=_input_fn_train, steps=500)
     # logodds(0.75) = 1.09861228867
@@ -530,13 +506,11 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
     self.assertNotIn('dnn/logits/biases', classifier.get_variable_names())
     self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
     self.assertEquals(1, len(classifier.linear_bias_))
     self.assertEquals(2, len(classifier.linear_weights_))
-    print(classifier.linear_weights_)
     self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
     self.assertEquals(
         100, len(classifier.linear_weights_['linear/language/weights']))
@@ -559,8 +533,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=input_fn, steps=200)
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
-    self.assertLess(loss2, 0.01)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+    self.assertLess(loss2, 0.02)
 
     self.assertNotIn('dnn/logits/biases', classifier.get_variable_names())
     self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
@@ -577,9 +550,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_iris_input_multiclass_fn, steps=1000)
     classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
-    self.assertEquals(4, len(classifier.dnn_bias_))
+    self.assertEquals(3, len(classifier.dnn_bias_))
     self.assertEquals(3, len(classifier.dnn_weights_))
     self.assertNotIn('linear/bias_weight', classifier.get_variable_names())
     self.assertNotIn('linear/feature_BUCKETIZED_weights',
@@ -600,9 +572,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_input_fn_train, steps=5)
     # hiddenlayer_0/weights,hiddenlayer_1/weights and dnn_logits/weights.
     self.assertEquals(3, len(classifier.dnn_weights_))
-    # hiddenlayer_0/biases, hiddenlayer_1/biases, dnn_logits/biases,
-    # centered_bias_weight.
-    self.assertEquals(4, len(classifier.dnn_bias_))
+    # hiddenlayer_0/biases, hiddenlayer_1/biases, dnn_logits/biases.
+    self.assertEquals(3, len(classifier.dnn_bias_))
 
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):
@@ -810,10 +781,11 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1.], [0.], [0.], [0.]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {'x': tf.train.limit_epochs(
+          tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
       return features, target
 
     def _my_metric_op(predictions, targets):
@@ -825,9 +797,9 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn, steps=100)
     scores = regressor.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=1,
         metrics={
             'my_error': tf.contrib.metrics.streaming_mean_squared_error,
@@ -836,25 +808,27 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
-    predictions = regressor.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
 
     # Tests that when the key is a tuple, an error is raised.
-    with self.assertRaises(TypeError):
+    with self.assertRaises(KeyError):
       regressor.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=1,
           metrics={('my_error', 'predictions'
                    ): tf.contrib.metrics.streaming_mean_squared_error})
 
   def testTrainSaveLoad(self):
     """Tests regression with restarting training / evaluate."""
-    def _input_fn():
+    def _input_fn(num_epochs=None):
       # Create 4 rows of (y = x)
       target = tf.constant([[100.], [3.], [2.], [2.]])
-      features = {'x': tf.constant([[100.], [3.], [2.], [2.]])}
+      features = {'x': tf.train.limit_epochs(
+          tf.constant([[100.], [3.], [2.], [2.]]), num_epochs=num_epochs)}
       return features, target
 
     model_dir = tempfile.mkdtemp()
@@ -866,13 +840,14 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         model_dir=model_dir,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     classifier = new_estimator()
     classifier.fit(input_fn=_input_fn, steps=100)
-    predictions = classifier.predict(input_fn=_input_fn)
+    predictions = list(classifier.predict(input_fn=predict_input_fn))
     del classifier
 
     classifier = new_estimator()
-    predictions2 = classifier.predict(input_fn=_input_fn)
+    predictions2 = list(classifier.predict(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
   def testTrainWithPartitionedVariables(self):

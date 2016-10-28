@@ -27,6 +27,7 @@ import collections
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -35,12 +36,18 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import queue_runner
+
+
+# pylint: disable=protected-access
+_store_sparse = sparse_ops._add_sparse_to_tensors_map
+_store_many_sparse = sparse_ops._add_many_sparse_to_tensors_map
+_restore_sparse = sparse_ops._take_many_sparse_from_tensors_map
+# pylint: enable=protected-access
 
 
 def match_filenames_once(pattern, name=None):
@@ -140,9 +147,8 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
     enq = q.enqueue_many([input_tensor])
     queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
     if summary_name is not None:
-      logging_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
-                                 math_ops.cast(q.size(), dtypes.float32) *
-                                 (1. / capacity))
+      summary.scalar("queue/%s/%s" % (q.name, summary_name),
+                     math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
     return q
 
 
@@ -279,11 +285,20 @@ def _flatten(tensor_list_list):
 
 
 class _SparseMetaData(object):
-  """Store information about the Tensor: Is it sparse?, dtype, and rank."""
+  """Store information about the Tensor: Is it sparse?, map_op, and rank."""
 
-  def __init__(self, sparse, dtype, rank):
+  def __init__(self, sparse, map_op, rank):
+    """Create the metadata.
+
+    Args:
+      sparse: Python boolean.
+      map_op: The `Operation` that created the `SparseTensorsMap` in question.
+        This Op contains information about the underlying Map object and the
+        dtype of the original data.
+      rank: The statically known rank of the `SparseTensor`.
+    """
     self._sparse = sparse
-    self._dtype = dtype
+    self._map_op = map_op
     self._rank = rank
 
   def __eq__(self, other):
@@ -291,7 +306,10 @@ class _SparseMetaData(object):
       return False
     if not self.sparse:
       return True
-    if self.dtype != other.dtype:
+    # If map_ops are not the same, the data source is not the same.
+    if (self.map_op is not None) != (other.map_op is not None):
+      return False
+    if self.map_op != other.map_op:
       return False
     if not self.rank.is_compatible_with(other.rank):
       return False
@@ -301,7 +319,8 @@ class _SparseMetaData(object):
     return not self.__eq__(other)
 
   def __str__(self):
-    return "[SparseMetaData(%s, %s, %s)]" % (self.sparse, self.dtype, self.rank)
+    return "[SparseMetaData(%s, %s, %s)]" % (self.sparse, self.map_op.name,
+                                             self.rank)
 
   def merge_with(self, other):
     if self != other:
@@ -312,8 +331,8 @@ class _SparseMetaData(object):
     return self
 
   @property
-  def dtype(self):
-    return self._dtype
+  def map_op(self):
+    return self._map_op
 
   @property
   def sparse(self):
@@ -357,57 +376,99 @@ def _as_original_type(original_tensors, tensor_list):
     return tensor_list
 
 
-def _serialize_sparse_tensors(tensor_list, enqueue_many):
-  """Serialize SparseTensors for feeding into batch, etc."""
+def _store_sparse_tensors(tensor_list, enqueue_many, shared_map_ops=None):
+  """Store SparseTensors for feeding into batch, etc.
 
-  def _sparse_meta_data(t):
+  If `shared_map_ops` is provided, the underlying `SparseTensorsMap` objects
+  are reused (shared).  This argument is useful for, e.g., `batch_join`
+  where multiple enqueue operations write to the same Queue component,
+  and another (dequeue) thread reads from that same location and must then
+  restore the associated `SparseTensor` objects.  In this case, the sparse
+  restore must have a single `SparseTensorMap` from which to read out the
+  handles; so a single `SparseTensorMap` must be shared for storing
+  across the multiple enqueue operations.  This sharing is performed by
+  calling `_store_sparse_tensors` the first time with `shared_map_ops=None`,
+  and then in subsequent times with this value set to the list of `Operation`
+  objects created in the first call.
+
+  Args:
+    tensor_list: List of `Tensor` and `SparseTensor` objects.
+    enqueue_many: Python `Boolean`.
+    shared_map_ops: (optional) List of `Operation` objects from a previous
+      call to `_store_sparse_tensors`.  If not `None`, the op types should be
+      one of `AddSparseToTensorsMap` or `AddManySparseToTensorsMap` in the
+      locations corresponding to `SparseTensors` in `tensor_list`.
+
+  Returns:
+    A tuple `(stored_list, sparse_info_list)` where `stored_list` is a list
+    of `Tensor` objects (same length as `tensor_list`) and `sparse_info_list`
+    is a list of the same length of `_SparseMetaData` objects.
+  """
+  maybe_shared_map_ops = shared_map_ops or [None] * len(tensor_list)
+
+  def _sparse_meta_data(t, storing_op, map_op):
     if not isinstance(t, ops.SparseTensor):
       return _SparseMetaData(False, None, None)
     rank = t.shape.get_shape().with_rank(1)[0]
     if enqueue_many:
       rank -= 1
-    return _SparseMetaData(sparse=True, dtype=t.dtype, rank=rank)
+    # If a shared map_op was provided, use that.  Otherwise use the name of
+    # the operation used to store the SparseTensor.
+    return _SparseMetaData(
+        sparse=True, map_op=map_op or storing_op, rank=rank)
 
-  def _maybe_serialize(t):
+  def _maybe_store(t, shared_map_op):
     if not isinstance(t, ops.SparseTensor):
       return t
-    return (sparse_ops.serialize_many_sparse(t) if enqueue_many
-            else sparse_ops.serialize_sparse(t))
+    map_op_name = shared_map_op.name if shared_map_op else None
+    return (_store_many_sparse(t, shared_name=map_op_name) if enqueue_many
+            else _store_sparse(t, shared_name=map_op_name))
 
-  serialized_list = [_maybe_serialize(t) for t in tensor_list]
-  sparse_info_list = [_sparse_meta_data(t) for t in tensor_list]
-  return serialized_list, sparse_info_list
+  stored_list = [
+      _maybe_store(t, shared_map_op) for t, shared_map_op
+      in zip(tensor_list, maybe_shared_map_ops)]
+  sparse_info_list = [
+      _sparse_meta_data(t, stored.op, shared_map_op)
+      for t, stored, shared_map_op
+      in zip(tensor_list, stored_list, maybe_shared_map_ops)]
+  # expand dims of stored tensors by 1 for proper enqueue shape
+  stored_list = [
+      array_ops.expand_dims(s, [-1]) if s_info.sparse else s
+      for s, s_info in zip(stored_list, sparse_info_list)]
+  return stored_list, sparse_info_list
 
 
-def _serialize_sparse_tensors_join(tensor_list_list, enqueue_many):
-  """Serialize SparseTensors for feeding into batch_join, etc."""
-  (s0, sparse_info_list) = _serialize_sparse_tensors(
+def _store_sparse_tensors_join(tensor_list_list, enqueue_many):
+  """Store SparseTensors for feeding into batch_join, etc."""
+  (s0, sparse_info_list) = _store_sparse_tensors(
       tensor_list_list[0], enqueue_many)
-  serialized_list_list = [s0]
+  stored_list_list = [s0]
   for tensor_list in tensor_list_list[1:]:
-    s, sparse_info_candidate = _serialize_sparse_tensors(
-        tensor_list, enqueue_many)
+    s, sparse_info_candidate = _store_sparse_tensors(
+        tensor_list, enqueue_many, [st.map_op for st in sparse_info_list])
     if sparse_info_list != sparse_info_candidate:
       raise ValueError("Inconsistent SparseTensors list: %s vs. %s"
                        % (tensor_list_list[0], tensor_list))
     sparse_info_list = [
         info.merge_with(candidate)
         for (info, candidate) in zip(sparse_info_list, sparse_info_candidate)]
-    serialized_list_list.append(s)
+    stored_list_list.append(s)
 
-  return (serialized_list_list, sparse_info_list)
+  return (stored_list_list, sparse_info_list)
 
 
-def _deserialize_sparse_tensors(serialized_list, sparse_info_list):
-  """Deserialize SparseTensors after dequeue in batch, batch_join, etc."""
-  received_sequence = isinstance(serialized_list, collections.Sequence)
+def _restore_sparse_tensors(stored_list, sparse_info_list):
+  """Restore SparseTensors after dequeue in batch, batch_join, etc."""
+  received_sequence = isinstance(stored_list, collections.Sequence)
   if not received_sequence:
-    serialized_list = (serialized_list,)
+    stored_list = (stored_list,)
   tensors = [
-      sparse_ops.deserialize_many_sparse(s, info.dtype, (info.rank + 1).value)
+      _restore_sparse(sparse_map_op=info.map_op,
+                      sparse_handles=array_ops.squeeze(s, [1]),
+                      rank=(info.rank + 1).value)
       if info.sparse else s
       for (s, info)
-      in zip(serialized_list, sparse_info_list)]
+      in zip(stored_list, sparse_info_list)]
   return tensors if received_sequence else tensors[0]
 
 
@@ -579,7 +640,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "batch", tensor_list) as name:
     tensor_list = _validate(tensor_list)
-    (tensor_list, sparse_info) = _serialize_sparse_tensors(
+    (tensor_list, sparse_info) = _store_sparse_tensors(
         tensor_list, enqueue_many)
     types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
@@ -587,15 +648,15 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
+    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+                   math_ops.cast(queue.size(), dtypes.float32) *
+                   (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
     else:
       dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
     return _as_original_type(tensors, dequeued)
 
 
@@ -692,7 +753,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   tensor_list_list = _as_tensor_list_list(tensors_list)
   with ops.name_scope(name, "batch_join", _flatten(tensor_list_list)) as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    tensor_list_list, sparse_info = _serialize_sparse_tensors_join(
+    tensor_list_list, sparse_info = _store_sparse_tensors_join(
         tensor_list_list, enqueue_many)
     types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
@@ -700,15 +761,15 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many)
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
+    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+                   math_ops.cast(queue.size(), dtypes.float32) *
+                   (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
     else:
       dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
     # tensors_list was validated to not be empty.
     return _as_original_type(tensors_list[0], dequeued)
 
@@ -795,7 +856,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch", tensor_list) as name:
     tensor_list = _validate(tensor_list)
-    tensor_list, sparse_info = _serialize_sparse_tensors(
+    tensor_list, sparse_info = _store_sparse_tensors(
         tensor_list, enqueue_many)
     types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
@@ -811,13 +872,13 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     summary_name = (
         "queue/%sfraction_over_%d_of_%d_full" %
         (name, min_after_dequeue, capacity - min_after_dequeue))
-    logging_ops.scalar_summary(summary_name, full)
+    summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
     else:
       dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
     return _as_original_type(tensors, dequeued)
 
 
@@ -899,7 +960,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   with ops.name_scope(name, "shuffle_batch_join",
                       _flatten(tensor_list_list)) as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    tensor_list_list, sparse_info = _serialize_sparse_tensors_join(
+    tensor_list_list, sparse_info = _store_sparse_tensors_join(
         tensor_list_list, enqueue_many)
     types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
@@ -915,12 +976,12 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
     summary_name = (
         "queue/%sfraction_over_%d_of_%d_full" %
         (name, min_after_dequeue, capacity - min_after_dequeue))
-    logging_ops.scalar_summary(summary_name, full)
+    summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
     else:
       dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
     # tensors_list was validated to not be empty.
     return _as_original_type(tensors_list[0], dequeued)

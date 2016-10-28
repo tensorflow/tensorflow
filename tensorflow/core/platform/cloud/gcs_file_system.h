@@ -72,10 +72,25 @@ class GcsFileSystem : public FileSystem {
 
   Status IsDirectory(const string& fname) override;
 
+  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+                           int64* undeleted_dirs) override;
+
  private:
-  Status BucketExists(const string& bucket);
-  Status ObjectExists(const string& bucket, const string& object);
-  Status FolderExists(const string& dirname);
+  /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
+  ///
+  /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
+  Status BucketExists(const string& bucket, bool* result);
+
+  /// \brief Checks if the object exists. Returns OK if the check succeeded.
+  ///
+  /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
+  Status ObjectExists(const string& bucket, const string& object, bool* result);
+
+  /// \brief Checks if the folder exists. Returns OK if the check succeeded.
+  ///
+  /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
+  Status FolderExists(const string& dirname, bool* result);
+
   Status GetChildrenBounded(const string& dir, uint64 max_results,
                             std::vector<string>* result, bool recursively);
   /// Retrieves file statistics assuming fname points to a GCS object.

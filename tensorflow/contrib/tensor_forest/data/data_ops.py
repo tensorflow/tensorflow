@@ -17,10 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import threading
 
-from tensorflow.contrib.learn.python.learn.learn_io import graph_io
 from tensorflow.contrib.tensor_forest.python import constants
 
 from tensorflow.python.framework import common_shapes
@@ -67,68 +65,28 @@ def Load():
 def _ParseSparse(data):
   """Concat sparse tensors together.
 
-  A common use of sparse tensors is to treat strings as a sparse bit vector
-  with a large number of features representing the presence of all possible
-  values.  Here we convert these strings to integer indices in a sparse bit
-  tensor.  In order to pack each incoming feature into a single sparse tensor,
-  we add an offset to the converted indices to indicate that they came from
-  different features in the source data.
-
   Args:
     data: A dict of name -> Tensor.
 
   Returns:
-    A single sparse tensor with float values and a 1-D input spec Tensor.
+    A single sparse tensor and a 1-D input spec Tensor.
 
   Raises:
-    NotImplementedError:  Combining dense and sparse tensors is not yet
+    NotImplementedError:  Combining dense and sparse tensors is not
       supported.
     ValueError: If data contains non-string Tensors.
   """
-  convert_ops = Load()
-
-  # TODO(gilberth): Support mixed string/float sparse tensors.
-  # We currently only support string (categorical) data if we're using sparse
-  # tensors.
-  for v in data.values():
-    if v.dtype != dtypes.string:
-      raise ValueError('Only sparse tensors of type string are supported.')
-
-  # Sparse tensor indices have 63 bits to use for information. We use the
-  # minimum number of these (MSBs) for the offset, and pack the rest with the
-  # actual data.
-  num_features = len(data)
-  offset_bits = int(math.ceil(math.log(num_features, 2)))
-
-  # We condense data to 26 bits, see sparse_values_to_indices.cc
-  offset_increment = int(math.pow(2, 26 - offset_bits))
-  offset = 0
-
-  sparse_tensors = []
-  keys = None
   for k in sorted(data.keys()):
-    if k == graph_io.KEY_FEATURE_NAME:
-      keys = data[k]
-    elif isinstance(data[k], ops.SparseTensor):
-      sparse_indices = data[k].indices
-      sparse_values = data[k].values
-      new_shape = array_ops.concat(
-          0, [array_ops.slice(data[k].shape, [0], [1]), [offset_increment]])
+    if not isinstance(data[k], ops.SparseTensor):
+      raise NotImplementedError(
+          'Features should be either all sparse or all dense.  Use a '
+          'feature engineering function to convert some of them.')
 
-      new_indices, new_values = convert_ops.sparse_values_to_indices(
-          sparse_indices,
-          sparse_values,
-          offset, offset_bits=offset_bits)
-    else:
-      # Convert dense to sparse.
-      raise NotImplementedError('Dense to sparse conversion not implemented.')
-
-    sparse_tensors.append(ops.SparseTensor(indices=new_indices,
-                                           values=new_values,
-                                           shape=new_shape))
-
-  return (sparse_ops.sparse_concat(1, sparse_tensors), keys,
-          [constants.DATA_CATEGORICAL])
+  data_spec = [
+      constants.DATA_CATEGORICAL if data[data.keys()[0]].dtype == dtypes.string
+      else constants.DATA_FLOAT
+  ]
+  return sparse_ops.sparse_concat(1, data.values()), data_spec
 
 
 def _ParseDense(data):
@@ -141,19 +99,20 @@ def _ParseDense(data):
     A tuple of (single dense float Tensor, keys tensor (if exists), data spec).
   """
   convert_ops = Load()
-  data_spec = [constants.DATA_CATEGORICAL if data[k].dtype == dtypes.string else
-               constants.DATA_FLOAT for k in sorted(data.keys())]
+  data_spec = [constants.DATA_CATEGORICAL if (data[k].dtype == dtypes.string or
+                                              data[k].dtype == dtypes.int32 or
+                                              data[k].dtype == dtypes.int64)
+               else constants.DATA_FLOAT for k in sorted(data.keys())]
   data_spec = [constants.DATA_FLOAT] + data_spec
-  keys = None
   features = []
   for k in sorted(data.keys()):
-    if k == graph_io.KEY_FEATURE_NAME:
-      keys = data[k]
+    if data[k].dtype == dtypes.string:
+      features.append(convert_ops.string_to_float(data[k]))
+    elif data[k].dtype == dtypes.int64 or data[k].dtype == dtypes.int32:
+      features.append(math_ops.to_float(data[k]))
     else:
-      features.append(
-          convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
-          else data[k])
-  return array_ops.concat(1, features), keys, data_spec
+      features.append(data[k])
+  return array_ops.concat(1, features), data_spec
 
 
 def ParseDataTensorOrDict(data):
@@ -182,7 +141,7 @@ def ParseDataTensorOrDict(data):
     else:
       return _ParseDense(data)
   else:
-    return data, None, [constants.DATA_FLOAT] * data.get_shape().as_list()[1]
+    return (data, [constants.DATA_FLOAT] * data.get_shape().as_list()[1])
 
 
 def ParseLabelTensorOrDict(labels):

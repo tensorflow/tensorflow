@@ -28,11 +28,8 @@ import uuid
 import numpy as np
 import six
 
-from google.protobuf.any_pb2 import Any
 from google.protobuf import text_format
 
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
@@ -40,8 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
-from tensorflow.python.framework import importer
-from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -56,84 +52,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
-
-
-def ops_used_by_graph_def(graph_def):
-  """Collect the list of ops used by a graph.
-
-  Does not validate that the ops are all registered.
-
-  Args:
-    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
-
-  Returns:
-    A list of strings, each naming an op used by the graph.
-  """
-  # Map function names to definitions
-  name_to_function = {}
-  for fun in graph_def.library.function:
-    name_to_function[fun.signature.name] = fun
-
-  # Collect the list of op names.  Since functions can reference functions, we
-  # need a recursive traversal.
-  used_ops = set()  # Includes both primitive ops and functions
-  functions_to_process = []  # A subset of used_ops
-
-  def mark_op_as_used(op):
-    if op not in used_ops and op in name_to_function:
-      functions_to_process.append(name_to_function[op])
-    used_ops.add(op)
-
-  for node in graph_def.node:
-    mark_op_as_used(node.op)
-  while functions_to_process:
-    fun = functions_to_process.pop()
-    if fun.node_def:
-      for node in fun.node_def:
-        mark_op_as_used(node.op)
-    else:  # TODO(josh11b): Eventually remove this case.
-      for node in fun.node:
-        mark_op_as_used(node.op)
-
-  return [op for op in used_ops if op not in name_to_function]
-
-
-def stripped_op_list_for_graph(graph_def):
-  """Collect the stripped OpDefs for ops used by a graph.
-
-  This function computes the `stripped_op_list` field of `MetaGraphDef` and
-  similar protos.  The result can be communicated from the producer to the
-  consumer, which can then use the C++ function
-  `RemoveNewDefaultAttrsFromGraphDef` to improve forwards compatibility.
-
-  Args:
-    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
-
-  Returns:
-    An `OpList` of ops used by the graph.
-
-  Raises:
-    ValueError: If an unregistered op is used.
-  """
-  # This is the Python equivalent of StrippedOpListForGraph in C++.
-  # Unfortunately, since the Python op registry can differ from that in C++, we
-  # can't remove the duplication using swig (at least naively).
-  # TODO(irving): Support taking graphs directly.
-
-  used_ops = ops_used_by_graph_def(graph_def)
-
-  # Verify that all used ops are registered.
-  registered_ops = op_def_registry.get_registered_ops()
-  # These internal ops used by functions are not registered, so we need to
-  # whitelist them.  # TODO(irving): Do something better here.
-  op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
-  for op in used_ops:
-    if op not in registered_ops and op not in op_whitelist:
-      raise ValueError("Op %s is used by the graph, but is not registered" % op)
-
-  # Build the stripped op list in sorted order
-  return op_def_pb2.OpList(op=[registered_ops[op] for op in sorted(used_ops)
-                               if op in registered_ops])
 
 
 class BaseSaverBuilder(object):
@@ -821,12 +739,10 @@ def update_checkpoint_state(save_dir,
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
 
-  # Saves to a tmp file first.  On success, *atomically* renames it back.
-  # This prevents a potential read/write race between this function and
-  # get_checkpoint_state().
-  temp_pathname = coord_checkpoint_filename + ".tmp." + uuid.uuid4().hex
-  file_io.write_string_to_file(temp_pathname, text_format.MessageToString(ckpt))
-  file_io.rename(temp_pathname, coord_checkpoint_filename, overwrite=True)
+  # Preventing potential read/write race condition by *atomically* writing to a
+  # file.
+  file_io.atomic_write_string_to_file(coord_checkpoint_filename,
+                                      text_format.MessageToString(ckpt))
 
 
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
@@ -983,7 +899,8 @@ class Saver(object):
                builder=None,
                defer_build=False,
                allow_empty=False,
-               write_version=saver_pb2.SaverDef.V1):
+               write_version=saver_pb2.SaverDef.V1,
+               pad_step_number=False):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -1053,6 +970,9 @@ class Saver(object):
         currently, and will be switched to the more memory-efficient V2 format
         in the future.  If set to V2, the Saver is still able to restore from
         old V1 checkpoints.
+      pad_step_number: if True, pads the global step number in the checkpoint
+        filepaths to some fixed width (8 by default).  This is turned off by
+        default.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -1075,10 +995,12 @@ class Saver(object):
     self._allow_empty = allow_empty
     self._is_empty = None
     self._write_version = write_version
+    self._pad_step_number = pad_step_number
     if not defer_build:
       self.build()
     if self.saver_def:
       self._check_saver_def()
+      self._write_version = self.saver_def.version
 
   def build(self):
     """Builds saver_def."""
@@ -1106,6 +1028,17 @@ class Saver(object):
           keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
           name=self._name,
           restore_sequentially=self._restore_sequentially)
+    elif self.saver_def and self._name:
+      # Since self._name is used as a name_scope by builder(), we are
+      # overloading the use of this field to represent the "import_scope" as
+      # well.
+      self.saver_def.filename_tensor_name = ops.prepend_name_scope(
+          self.saver_def.filename_tensor_name, self._name)
+      self.saver_def.save_tensor_name = ops.prepend_name_scope(
+          self.saver_def.save_tensor_name, self._name)
+      self.saver_def.restore_op_name = ops.prepend_name_scope(
+          self.saver_def.restore_op_name, self._name)
+
     self._check_saver_def()
     # Updates next checkpoint time.
     self._next_checkpoint_time = (
@@ -1214,18 +1147,33 @@ class Saver(object):
     """
     return self.saver_def
 
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
     """Converts this `Saver` to a `SaverDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
 
     Returns:
       A `SaverDef` protocol buffer.
     """
-    return self.saver_def
+    if (export_scope is None or
+        self._name.startswith(export_scope)):
+      return self.saver_def
+    else:
+      return None
 
   @staticmethod
-  def from_proto(saver_def):
-    """Returns a `Saver` object created from `saver_def`."""
-    return Saver(saver_def=saver_def)
+  def from_proto(saver_def, import_scope=None):
+    """Returns a `Saver` object created from `saver_def`.
+
+    Args:
+      saver_def: a `SaveDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to use.
+
+    Returns:
+      A `Saver` built from saver_def.
+    """
+    return Saver(saver_def=saver_def, name=import_scope)
 
   @property
   def last_checkpoints(self):
@@ -1279,15 +1227,8 @@ class Saver(object):
     Args:
       checkpoint_paths: a list of checkpoint paths.
     """
-    last_checkpoints = []
-    for checkpoint_prefix in checkpoint_paths:
-      pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
-                                            self.saver_def.version)
-      fnames = file_io.get_matching_files(pathname)
-      if fnames:
-        mtime = int(file_io.stat(fnames[0]).mtime_nsec / 1e9)
-        last_checkpoints.append((checkpoint_prefix, mtime))
-    self.set_last_checkpoints_with_time(last_checkpoints)
+    mtimes = get_checkpoint_mtimes(checkpoint_paths)
+    self.set_last_checkpoints_with_time(list(zip(checkpoint_paths, mtimes)))
 
   def save(self,
            sess,
@@ -1295,7 +1236,8 @@ class Saver(object):
            global_step=None,
            latest_filename=None,
            meta_graph_suffix="meta",
-           write_meta_graph=True):
+           write_meta_graph=True,
+           write_state=True):
     """Saves variables.
 
     This method runs the ops added by the constructor for saving variables.
@@ -1320,6 +1262,8 @@ class Saver(object):
       meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
       write_meta_graph: `Boolean` indicating whether or not to write the meta
         graph file.
+      write_state: `Boolean` indicating whether or not to write the
+        `CheckpointStateProto`.
 
     Returns:
       A string: path at which the variables were saved.  If the saver is
@@ -1338,6 +1282,14 @@ class Saver(object):
           "`build()` should be called before save if defer_build==True")
     if latest_filename is None:
       latest_filename = "checkpoint"
+    if self._write_version != saver_pb2.SaverDef.V2:
+      logging.warning("*******************************************************")
+      logging.warning("TensorFlow's V1 checkpoint format is deprecated;"
+                      " V2 will become the default shortly after 10/31/2016.")
+      logging.warning("Consider switching to the more efficient V2 format now:")
+      logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
+      logging.warning("to prevent breakage.")
+      logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
       raise ValueError("'latest_filename' must not contain path components")
@@ -1346,6 +1298,9 @@ class Saver(object):
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
       checkpoint_file = "%s-%d" % (save_path, global_step)
+      if self._pad_step_number:
+        # Zero-pads the step numbers, so that they are sorted when listed.
+        checkpoint_file = "%s-%s" % (save_path, "{:08d}".format(global_step))
     else:
       checkpoint_file = save_path
       if os.path.basename(
@@ -1368,10 +1323,11 @@ class Saver(object):
           self.saver_def.save_tensor_name,
           {self.saver_def.filename_tensor_name: checkpoint_file})
       model_checkpoint_path = compat.as_str(model_checkpoint_path)
-      self._MaybeDeleteOldCheckpoints(
-          model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
-      update_checkpoint_state(save_path, model_checkpoint_path,
-                              self.last_checkpoints, latest_filename)
+      if write_state:
+        self._MaybeDeleteOldCheckpoints(
+            model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
+        update_checkpoint_state(save_path, model_checkpoint_path,
+                                self.last_checkpoints, latest_filename)
 
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
@@ -1387,13 +1343,15 @@ class Saver(object):
   def export_meta_graph(self,
                         filename=None,
                         collection_list=None,
-                        as_text=False):
+                        as_text=False,
+                        export_scope=None):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
       filename: Optional meta_graph filename including the path.
       collection_list: List of string keys to collect.
       as_text: If `True`, writes the meta_graph as an ASCII proto.
+      export_scope: Optional `string`. Name scope to remove.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1403,7 +1361,8 @@ class Saver(object):
         graph_def=ops.get_default_graph().as_graph_def(add_shapes=True),
         saver_def=self.saver_def,
         collection_list=collection_list,
-        as_text=as_text)
+        as_text=as_text,
+        export_scope=export_scope)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1421,11 +1380,16 @@ class Saver(object):
       save_path: Path where parameters were previously saved.
 
     Raises:
-      ValueError: If the given `save_path` does not point to a file.
+      ValueError: DEPRECATED, do not rely on this Error.  If the given
+        `save_path` does not point to a file.
     """
     if self._is_empty:
       return
 
+    # NOTE(zongheng): checking at the Python layer prevents the underlying
+    # restore Op to handle more than one checkpoint format, potentially.  This
+    # is a DEPRECATED error and might be removed in the future.
+    #
     # Performs this check only for V1, as the V2 restore op can read either a
     # V1 ckpt or a V2 ckpt, making this check invalid.
     if self.saver_def.version == saver_pb2.SaverDef.V1:
@@ -1438,14 +1402,16 @@ class Saver(object):
              {self.saver_def.filename_tensor_name: save_path})
 
   @staticmethod
-  def _add_collection_def(meta_graph_def, key):
+  def _add_collection_def(meta_graph_def, key, export_scope=None):
     """Adds a collection to MetaGraphDef protocol buffer.
 
     Args:
       meta_graph_def: MetaGraphDef protocol buffer.
       key: One of the GraphKeys or user-defined string.
+      export_scope: Optional `string`. Name scope to remove.
     """
-    _add_collection_def(meta_graph_def, key)
+    meta_graph.add_collection_def(meta_graph_def, key,
+                                  export_scope=export_scope)
 
 
 def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
@@ -1496,245 +1462,8 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
-def _get_kind_name(item):
-  """Returns the kind name in CollectionDef.
-
-  Args:
-    item: A data item.
-
-  Returns:
-    The string representation of the kind in CollectionDef.
-  """
-  if isinstance(item, (six.string_types, six.binary_type)):
-    kind = "bytes_list"
-  elif isinstance(item, six.integer_types):
-    kind = "int64_list"
-  elif isinstance(item, float):
-    kind = "float_list"
-  elif isinstance(item, Any):
-    kind = "any_list"
-  else:
-    kind = "node_list"
-  return kind
-
-
-def _add_collection_def(meta_graph_def, key):
-  """Adds a collection to MetaGraphDef protocol buffer.
-
-  Args:
-    meta_graph_def: MetaGraphDef protocol buffer.
-    key: One of the GraphKeys or user-defined string.
-  """
-  if not isinstance(key, six.string_types) and not isinstance(key, bytes):
-    logging.warning("Only collections with string type keys will be "
-                    "serialized. This key has %s", type(key))
-    return
-  collection_list = ops.get_collection(key)
-  if not collection_list:
-    return
-  try:
-    col_def = meta_graph_def.collection_def[key]
-    to_proto = ops.get_to_proto_function(key)
-    proto_type = ops.get_collection_proto_type(key)
-    if to_proto:
-      kind = "bytes_list"
-      for x in collection_list:
-        # Additional type check to make sure the returned proto is indeed
-        # what we expect.
-        proto = to_proto(x)
-        assert isinstance(proto, proto_type)
-        getattr(col_def, kind).value.append(proto.SerializeToString())
-    else:
-      kind = _get_kind_name(collection_list[0])
-      if kind == "node_list":
-        getattr(col_def, kind).value.extend([x.name for x in collection_list])
-      elif kind == "bytes_list":
-        # NOTE(opensource): This force conversion is to work around the fact
-        # that Python3 distinguishes between bytes and strings.
-        getattr(col_def, kind).value.extend(
-            [compat.as_bytes(x) for x in collection_list])
-      else:
-        getattr(col_def, kind).value.extend([x for x in collection_list])
-  except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Error encountered when serializing %s.\n"
-                    "Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s", key, str(e))
-    if key in meta_graph_def.collection_def:
-      del meta_graph_def.collection_def[key]
-    return
-
-
-def _as_meta_graph_def(meta_info_def=None,
-                       graph_def=None,
-                       saver_def=None,
-                       collection_list=None):
-  """Construct and returns a `MetaGraphDef` protocol buffer.
-
-  Args:
-    meta_info_def: `MetaInfoDef` protocol buffer.
-    graph_def: `GraphDef` protocol buffer.
-    saver_def: `SaverDef` protocol buffer.
-    collection_list: List of string keys to collect.
-
-  Returns:
-    MetaGraphDef protocol buffer.
-
-  Raises:
-    TypeError: If the arguments are not of the correct proto buffer type.
-  """
-  # Type check.
-  if meta_info_def and not isinstance(meta_info_def,
-                                      meta_graph_pb2.MetaGraphDef.MetaInfoDef):
-    raise TypeError("meta_info_def must be of type MetaInfoDef, not %s",
-                    type(meta_info_def))
-  if graph_def and not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError("graph_def must be of type GraphDef, not %s",
-                    type(graph_def))
-  if saver_def and not isinstance(saver_def, saver_pb2.SaverDef):
-    raise TypeError("saver_def must be of type SaverDef, not %s",
-                    type(saver_def))
-
-  # Creates a MetaGraphDef proto.
-  meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  # Adds meta_info_def.
-  if meta_info_def:
-    meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
-
-  # Adds graph_def or the default.
-  if not graph_def:
-    meta_graph_def.graph_def.MergeFrom(ops.get_default_graph().as_graph_def(
-        add_shapes=True))
-  else:
-    meta_graph_def.graph_def.MergeFrom(graph_def)
-
-  # Fills in meta_info_def.stripped_op_list using the ops from graph_def.
-  # pylint: disable=g-explicit-length-test
-  if len(meta_graph_def.meta_info_def.stripped_op_list.op) == 0:
-    meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-        stripped_op_list_for_graph(meta_graph_def.graph_def))
-  # pylint: enable=g-explicit-length-test
-
-  # Adds saver_def.
-  if saver_def:
-    meta_graph_def.saver_def.MergeFrom(saver_def)
-
-  # Adds collection_list.
-  if collection_list:
-    clist = collection_list
-  else:
-    clist = ops.get_all_collection_keys()
-  for ctype in clist:
-    _add_collection_def(meta_graph_def, ctype)
-  return meta_graph_def
-
-
-def read_meta_graph_file(filename):
-  """Reads a file containing `MetaGraphDef` and returns the protocol buffer.
-
-  Args:
-    filename: `meta_graph_def` filename including the path.
-
-  Returns:
-    A `MetaGraphDef` protocol buffer.
-
-  Raises:
-    IOError: If the file doesn't exist, or cannot be successfully parsed.
-  """
-  meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  if not file_io.file_exists(filename):
-    raise IOError("File %s does not exist." % filename)
-  # First try to read it as a binary file.
-  file_content = file_io.read_file_to_string(filename)
-  try:
-    meta_graph_def.ParseFromString(file_content)
-    return meta_graph_def
-  except Exception:  # pylint: disable=broad-except
-    pass
-
-  # Next try to read it as a text file.
-  try:
-    text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
-  except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
-
-  return meta_graph_def
-
-
-def _import_meta_graph_def(meta_graph_def, clear_devices):
-  """Recreates a Graph saved in a `MetaGraphDef` proto.
-
-  This function adds all the nodes from the meta graph def proto to the current
-  graph, recreates all the collections, and returns a saver from saver_def.
-
-  Args:
-    meta_graph_def: `MetaGraphDef` protocol buffer.
-    clear_devices: Boolean which controls whether to clear device information
-        from graph_def.
-
-  Returns:
-    A saver constructed from `saver_def` in `meta_graph_def` or None.
-
-    A None value is returned if no variables exist in the `meta_graph_def`
-    (i.e., no variables to restore).
-  """
-  # Gathers the list of nodes we are interested in.
-  producer_op_list = None
-  if meta_graph_def.meta_info_def.HasField("stripped_op_list"):
-    producer_op_list = meta_graph_def.meta_info_def.stripped_op_list
-  input_graph_def = meta_graph_def.graph_def
-  # Remove all the explicit device specifications for this node. This helps to
-  # make the graph more portable.
-  if clear_devices:
-    for node in input_graph_def.node:
-      node.device = ""
-  importer.import_graph_def(
-      input_graph_def, name="", producer_op_list=producer_op_list)
-
-  # Restores all the other collections.
-  for key, col_def in meta_graph_def.collection_def.items():
-    kind = col_def.WhichOneof("kind")
-    if kind is None:
-      logging.error("Cannot identify data type for collection %s. Skipping.",
-                    key)
-      continue
-    from_proto = ops.get_from_proto_function(key)
-    if from_proto:
-      assert kind == "bytes_list"
-      proto_type = ops.get_collection_proto_type(key)
-      for value in col_def.bytes_list.value:
-        proto = proto_type()
-        proto.ParseFromString(value)
-        ops.add_to_collection(key, from_proto(proto))
-    else:
-      field = getattr(col_def, kind)
-      if kind == "node_list":
-        for value in field.value:
-          col_op = ops.get_default_graph().as_graph_element(value)
-          ops.add_to_collection(key, col_op)
-      elif kind == "int64_list":
-        # NOTE(opensource): This force conversion is to work around the fact
-        # that Python2 distinguishes between int and long, while Python3 has
-        # only int.
-        for value in field.value:
-          ops.add_to_collection(key, int(value))
-      else:
-        for value in field.value:
-          ops.add_to_collection(key, value)
-
-  if meta_graph_def.HasField("saver_def"):
-    return Saver(saver_def=meta_graph_def.saver_def)
-  else:
-    if variables._all_saveable_objects():  # pylint: disable=protected-access
-      # Return the default saver instance for all graph variables.
-      return Saver()
-    else:
-      # If not graph variables exist, then a Saver cannot be constructed.
-      logging.info("Saver not created because there are no variables in the"
-                   " graph to restore")
-      return None
-
-
-def import_meta_graph(meta_graph_or_file, clear_devices=False):
+def import_meta_graph(meta_graph_or_file, clear_devices=False,
+                      import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
@@ -1788,8 +1517,11 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False):
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
-    clear_devices: Boolean which controls whether to clear device information
-      from graph_def. Default false.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during import.
+    import_scope: Optional `string`. Name scope to add. Only used when
+      initializing from protocol buffer.
+    **kwargs: Optional keyed arguments.
 
   Returns:
     A saver constructed from `saver_def` in `MetaGraphDef` or None.
@@ -1797,11 +1529,26 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False):
     A None value is returned if no variables exist in the `MetaGraphDef`
     (i.e., there are no variables to restore).
   """
-  if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
-    return _import_meta_graph_def(meta_graph_or_file, clear_devices)
+  if not isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
+    meta_graph_def = meta_graph.read_meta_graph_file(meta_graph_or_file)
   else:
-    return _import_meta_graph_def(
-        read_meta_graph_file(meta_graph_or_file), clear_devices)
+    meta_graph_def = meta_graph_or_file
+
+  meta_graph.import_scoped_meta_graph(meta_graph_def,
+                                      clear_devices=clear_devices,
+                                      import_scope=import_scope,
+                                      **kwargs)
+  if meta_graph_def.HasField("saver_def"):
+    return Saver(saver_def=meta_graph_def.saver_def, name=import_scope)
+  else:
+    if variables._all_saveable_objects():  # pylint: disable=protected-access
+      # Return the default saver instance for all graph variables.
+      return Saver()
+    else:
+      # If no graph variables exist, then a Saver cannot be constructed.
+      logging.info("Saver not created because there are no variables in the"
+                   " graph to restore")
+      return None
 
 
 def export_meta_graph(filename=None,
@@ -1809,7 +1556,10 @@ def export_meta_graph(filename=None,
                       graph_def=None,
                       saver_def=None,
                       collection_list=None,
-                      as_text=False):
+                      as_text=False,
+                      graph=None,
+                      export_scope=None,
+                      **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
   This function exports the graph, saver, and collection objects into
@@ -1825,22 +1575,92 @@ def export_meta_graph(filename=None,
     saver_def: `SaverDef` protocol buffer.
     collection_list: List of string keys to collect.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+    graph: The `Graph` to import into. If `None`, use the default graph.
+    export_scope: Optional `string`. Name scope under which to extract
+      the subgraph. The scope name will be striped from the node definitions
+      for easy import later into new name scopes. If `None`, the whole graph
+      is exported. graph_def and export_scope cannot both be specified.
+    **kwargs: Optional keyed arguments.
 
   Returns:
     A `MetaGraphDef` proto.
+
+  Raises:
+    ValueError: When the `GraphDef` is larger than 2GB.
   """
-  meta_graph_def = _as_meta_graph_def(
+  meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+      filename=filename,
       meta_info_def=meta_info_def,
       graph_def=graph_def,
       saver_def=saver_def,
-      collection_list=collection_list)
-  if filename:
-    training_util.write_graph(
-        meta_graph_def,
-        os.path.dirname(filename),
-        os.path.basename(filename),
-        as_text=as_text)
+      collection_list=collection_list,
+      as_text=as_text,
+      graph=graph,
+      export_scope=export_scope,
+      **kwargs)
   return meta_graph_def
+
+
+def checkpoint_exists(checkpoint_prefix):
+  """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
+
+  This is the recommended way to check if a checkpoint exists, since it takes
+  into account the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefix: the prefix of a V1 or V2 checkpoint, with V2 taking
+      priority.  Typically the result of `Saver.save()` or that of
+      `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
+      V1/V2.
+  Returns:
+    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+  """
+  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                        saver_pb2.SaverDef.V2)
+  if file_io.get_matching_files(pathname):
+    return True
+  elif file_io.get_matching_files(checkpoint_prefix):
+    return True
+  else:
+    return False
+
+
+def get_checkpoint_mtimes(checkpoint_prefixes):
+  """Returns the mtimes (modification timestamps) of the checkpoints.
+
+  Globs for the checkpoints pointed to by `checkpoint_prefixes`.  If the files
+  exist, collect their mtime.  Both V2 and V1 checkpoints are considered, in
+  that priority.
+
+  This is the recommended way to get the mtimes, since it takes into account
+  the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefixes: a list of checkpoint paths, typically the results of
+      `Saver.save()` or those of `tf.train.latest_checkpoint()`, regardless of
+      sharded/non-sharded or V1/V2.
+  Returns:
+    A list of mtimes (in microseconds) of the found checkpoints.
+  """
+  mtimes = []
+
+  def match_maybe_append(pathname):
+    fnames = file_io.get_matching_files(pathname)
+    if fnames:
+      mtimes.append(file_io.stat(fnames[0]).mtime_nsec / 1e9)
+      return True
+    return False
+
+  for checkpoint_prefix in checkpoint_prefixes:
+    # Tries V2's metadata file first.
+    pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                          saver_pb2.SaverDef.V2)
+    if match_maybe_append(pathname):
+      continue
+    # Otherwise, tries V1, where the prefix is the complete pathname.
+    match_maybe_append(checkpoint_prefix)
+
+  return mtimes
 
 
 ops.register_proto_function(

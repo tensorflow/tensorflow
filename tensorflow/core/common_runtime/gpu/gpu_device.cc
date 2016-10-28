@@ -219,13 +219,13 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
 #endif
 
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
-                             Bytes memory_limit, BusAdjacency bus_adjacency,
+                             Bytes memory_limit, const DeviceLocality& locality,
                              int gpu_id, const string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
                              bool sync_every_op, int32 max_streams)
-    : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_GPU, memory_limit, bus_adjacency,
-                               physical_device_desc),
+    : LocalDevice(options,
+                  Device::BuildDeviceAttributes(name, DEVICE_GPU, memory_limit,
+                                                locality, physical_device_desc),
                   gpu_allocator),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
@@ -683,26 +683,17 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
 
   Bytes allocated_bytes = static_cast<Bytes>(allocated_memory);
 
-  // Get GPU BusAdjacency from its reported NUMA affinity.
-  // Because GPUs are virtualized in some environments, we can't just
-  // use the GPU id.
-  BusAdjacency bus_adjacency = BUS_ANY;
-  switch (numa_node) {
-    case 0:
-      bus_adjacency = BUS_0;
-      break;
-    case 1:
-      bus_adjacency = BUS_1;
-      break;
-    default:
-      bus_adjacency = BUS_ANY;
-  }
-  VLOG(1) << "GPUDevice id " << gpu_id << " on bus " << bus_adjacency
+  // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
+  // virtualized in some environments, we can't just use the GPU id.
+  // NUMA locales are indexed from 0, buses are indexed from 1.
+  DeviceLocality dev_locality;
+  dev_locality.set_bus_id(numa_node + 1);
+  VLOG(1) << "GPUDevice id " << gpu_id << " on bus " << dev_locality.bus_id()
           << " numa: " << numa_node << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
   *out_device = CreateGPUDevice(
-      options, name, allocated_bytes, bus_adjacency, gpu_id,
+      options, name, allocated_bytes, dev_locality, gpu_id,
       GetShortDeviceDescription(gpu_id, desc),
       process_state->GetGPUAllocator(options.config.gpu_options(), gpu_id,
                                      allocated_memory),
@@ -882,7 +873,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   if (visible_device_list.empty()) {
     visible_gpu_order.resize(gpu_manager->VisibleDeviceCount());
     // By default, visible to virtual mapping is unchanged.
-    std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
+    int deviceNo = 0;
+    std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
+	              [&deviceNo]{ return deviceNo++; });
   } else {
     std::vector<string> order_str = str_util::Split(visible_device_list, ',');
     for (int i = 0; i < order_str.size(); ++i) {

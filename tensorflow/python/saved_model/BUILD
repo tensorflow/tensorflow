@@ -16,6 +16,18 @@ py_library(
 )
 
 py_library(
+    name = "signature_constants",
+    srcs = ["signature_constants.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "tag_constants",
+    srcs = ["tag_constants.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "builder",
     srcs = ["builder.py"],
     srcs_version = "PY2AND3",
@@ -53,6 +65,7 @@ py_test(
     deps = [
         ":builder",
         ":loader",
+        ":tag_constants",
         ":utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",

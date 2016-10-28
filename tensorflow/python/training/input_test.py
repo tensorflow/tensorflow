@@ -701,37 +701,37 @@ class BatchTest(tf.test.TestCase):
 
   def testBatchedSparseTensorInferredShape(self):
     sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
-    self.assertAllEqual(sparse.shape.get_shape().as_list(), [1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.batch([sparse], batch_size=2)
-    self.assertAllEqual(batched.shape.get_shape().as_list(), [2])
+    self.assertAllEqual((2,), batched.shape.get_shape().as_list())
 
   def testBatchedSparseTensorInferredShapeEnqueueMany(self):
     sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
-    self.assertAllEqual(sparse.shape.get_shape().as_list(), [1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
-    self.assertAllEqual(batched.shape.get_shape().as_list(), [1])
+    self.assertAllEqual((1,), batched.shape.get_shape().as_list())
 
   def testBatchedSparseTensorInferredShapeUnknownRank(self):
     sparse = tf.SparseTensor(
         indices=tf.placeholder(tf.int64),
         values=tf.placeholder(tf.float32),
         shape=tf.placeholder(tf.int64))
-    self.assertIs(sparse.shape.get_shape().num_elements(), None)
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
     batched = tf.train.batch([sparse], batch_size=2)
-    self.assertIs(batched.shape.get_shape().num_elements(), None)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
 
   def testBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
     sparse = tf.SparseTensor(
         indices=tf.placeholder(tf.int64),
         values=tf.placeholder(tf.float32),
         shape=tf.placeholder(tf.int64))
-    self.assertIs(sparse.shape.get_shape().num_elements(), None)
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
-    self.assertIs(batched.shape.get_shape().num_elements(), None)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
 
   def testSingleElementDict(self):
     x = tf.train.batch({"c": [12, 12]}, batch_size=8)
-    self.assertEqual([8, 2], x["c"].get_shape().as_list())
+    self.assertAllEqual((8, 2), x["c"].get_shape().as_list())
 
 
 class BatchJoinTest(tf.test.TestCase):
@@ -771,6 +771,17 @@ class BatchJoinTest(tf.test.TestCase):
              [ninety_nine, sparse_ninety_nine, "b"]],
             batch_size=batch_size)
         batched_fetch = batched
+
+      # Shapes.
+      self.assertEqual(3, len(batched_fetch))
+      self.assertAllEqual((batch_size,), batched_fetch[0].get_shape().as_list())
+      self.assertAllEqual(
+          (None, 2), batched_fetch[1].indices.get_shape().as_list())
+      self.assertAllEqual(
+          (None,), batched_fetch[1].values.get_shape().as_list())
+      self.assertAllEqual((2,), batched_fetch[1].shape.get_shape().as_list())
+      self.assertAllEqual((batch_size,), batched_fetch[2].get_shape().as_list())
+
       tf.initialize_all_variables().run()
       tf.initialize_local_variables().run()
       threads = tf.train.start_queue_runners()
@@ -782,9 +793,9 @@ class BatchJoinTest(tf.test.TestCase):
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
         results = sess.run(batched_fetch)
-        tf.logging.info("Batch %d: %s", i, results[0])
-        self.assertEqual(len(results[0]), batch_size)
-        self.assertEqual(len(results[2]), batch_size)
+        self.assertEqual(3, len(results))
+        self.assertEqual(batch_size, len(results[0]))
+        self.assertEqual(batch_size, len(results[2]))
         self.assertAllEqual(results[0], results[1].values)
         self.assertAllEqual(
             results[1].indices,
@@ -846,6 +857,12 @@ class BatchJoinTest(tf.test.TestCase):
           [[counter, a],
            [ninety_nine, b]],
           batch_size=batch_size, dynamic_pad=True)
+
+      # Shapes.
+      self.assertEqual(2, len(batched))
+      self.assertAllEqual((batch_size,), batched[0].get_shape().as_list())
+      self.assertAllEqual((batch_size, None), batched[1].get_shape().as_list())
+
       tf.initialize_all_variables().run()
       tf.initialize_local_variables().run()
       threads = tf.train.start_queue_runners()
@@ -858,7 +875,7 @@ class BatchJoinTest(tf.test.TestCase):
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
         results = sess.run(batched)
-        tf.logging.info("Batch %d: %s", i, results[0])
+        self.assertEqual(2, len(results))
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[1]), batch_size)
         for s in results[1]:
@@ -919,6 +936,14 @@ class BatchJoinTest(tf.test.TestCase):
            [ninety_nine, sparse_ninety_nine, "b"]],
           batch_size=batch_size,
           allow_smaller_final_batch=True)
+
+      # Shapes.
+      self.assertEqual(3, len(batched))
+      self.assertAllEqual((None,), batched[0].get_shape().as_list())
+      self.assertAllEqual((None, 2), batched[1].indices.get_shape().as_list())
+      self.assertAllEqual((None,), batched[1].values.get_shape().as_list())
+      self.assertAllEqual((2,), batched[1].shape.get_shape().as_list())
+      self.assertAllEqual((None,), batched[2].get_shape().as_list())
 
       tf.initialize_all_variables().run()
       tf.initialize_local_variables().run()
@@ -1003,6 +1028,12 @@ class BatchJoinTest(tf.test.TestCase):
           batch_size=batch_size,
           dynamic_pad=True,
           allow_smaller_final_batch=True)
+
+      # Shapes.
+      self.assertEqual(2, len(batched))
+      self.assertAllEqual((None,), batched[0].get_shape().as_list())
+      self.assertAllEqual((None, None), batched[1].get_shape().as_list())
+
       tf.initialize_all_variables().run()
       tf.initialize_local_variables().run()
       threads = tf.train.start_queue_runners()
@@ -1075,6 +1106,11 @@ class BatchJoinTest(tf.test.TestCase):
           [[counter, "string"]], batch_size=batch_size,
           shared_name="SHARED_NAME_XYZ", name="Q")
 
+      # Shapes.
+      self.assertEqual(2, len(batched))
+      self.assertAllEqual((batch_size,), batched[0].get_shape().as_list())
+      self.assertAllEqual((batch_size,), batched[1].get_shape().as_list())
+
       self.assertProtoEquals(
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
@@ -1087,7 +1123,7 @@ class BatchJoinTest(tf.test.TestCase):
 
   def testSingleElementDict(self):
     x = tf.train.batch_join([{"c": [12, 12]}], batch_size=8)
-    self.assertEqual([8, 2], x["c"].get_shape().as_list())
+    self.assertAllEqual((8, 2), x["c"].get_shape().as_list())
 
 
 class ShuffleBatchTest(tf.test.TestCase):
@@ -1356,6 +1392,16 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
             min_after_dequeue=16, seed=223607)
         batched_fetch = batched
 
+      # Shapes.
+      self.assertEqual(3, len(batched_fetch))
+      self.assertAllEqual((batch_size,), batched_fetch[0].get_shape().as_list())
+      self.assertAllEqual(
+          (None, 2), batched_fetch[1].indices.get_shape().as_list())
+      self.assertAllEqual(
+          (None,), batched_fetch[1].values.get_shape().as_list())
+      self.assertAllEqual((2,), batched_fetch[1].shape.get_shape().as_list())
+      self.assertAllEqual((batch_size,), batched_fetch[2].get_shape().as_list())
+
       tf.initialize_all_variables().run()
       tf.initialize_local_variables().run()
       threads = tf.train.start_queue_runners()
@@ -1367,7 +1413,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
         results = sess.run(batched_fetch)
-        tf.logging.info("Batch %d: %s", i, results[0])
+        self.assertEqual(3, len(results))
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[2]), batch_size)
         self.assertAllEqual(results[0], results[1].values)
@@ -1435,6 +1481,14 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
            [ninety_nine, sparse_ninety_nine, "b"]],
           batch_size=batch_size, capacity=32,
           min_after_dequeue=16, seed=223607, allow_smaller_final_batch=True)
+
+      # Shapes.
+      self.assertEqual(3, len(batched))
+      self.assertAllEqual((None,), batched[0].get_shape().as_list())
+      self.assertAllEqual((None, 2), batched[1].indices.get_shape().as_list())
+      self.assertAllEqual((None,), batched[1].values.get_shape().as_list())
+      self.assertAllEqual((2,), batched[1].shape.get_shape().as_list())
+      self.assertAllEqual((None,), batched[2].get_shape().as_list())
 
       tf.initialize_all_variables().run()
       tf.initialize_local_variables().run()
@@ -1517,6 +1571,11 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
           capacity=32,
           min_after_dequeue=10,
           shared_name="SHARED_NAME_XYZ", name="Q")
+
+      # Shapes.
+      self.assertEqual(2, len(batched))
+      self.assertAllEqual((batch_size,), batched[0].get_shape().as_list())
+      self.assertAllEqual((batch_size,), batched[1].get_shape().as_list())
 
       self.assertProtoEquals(
           "s: 'SHARED_NAME_XYZ'",

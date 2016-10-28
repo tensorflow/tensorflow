@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
+#include "tensorflow/cc/saved_model/signature_constants.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
@@ -32,6 +35,8 @@ constexpr char kSessionBundlePath[] =
     "session_bundle/example/half_plus_two/00000123";
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
+constexpr char kSavedModelBundlePath[] =
+    "contrib/session_bundle/testdata/saved_model_half_plus_two";
 
 string MakeSerializedExample(float x) {
   tensorflow::Example example;
@@ -56,6 +61,32 @@ void ValidateHalfPlusTwo(const SavedModelBundle& saved_model_bundle,
   ASSERT_EQ(outputs.size(), 1);
   test::ExpectTensorEqual<float>(
       outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
+}
+
+void LoadAndValidateSavedModelBundle(const string& export_dir,
+                                     const std::unordered_set<string>& tags,
+                                     const string& signature_def_key) {
+  SessionOptions session_options;
+  RunOptions run_options;
+  SavedModelBundle saved_model_bundle;
+  TF_ASSERT_OK(LoadSessionBundleOrSavedModelBundle(
+      session_options, run_options, export_dir, tags, &saved_model_bundle));
+  const MetaGraphDef meta_graph_def = saved_model_bundle.meta_graph_def;
+  const auto& signature_def_map = meta_graph_def.signature_def();
+  EXPECT_EQ(1, signature_def_map.size());
+
+  const auto& regression_entry = signature_def_map.find(signature_def_key);
+  SignatureDef regression_signature_def = regression_entry->second;
+
+  EXPECT_EQ(1, regression_signature_def.inputs_size());
+  TensorInfo input_tensor_info =
+      regression_signature_def.inputs().find(kRegressInputs)->second;
+  EXPECT_EQ(1, regression_signature_def.outputs_size());
+
+  TensorInfo output_tensor_info =
+      regression_signature_def.outputs().find(kRegressOutputs)->second;
+  ValidateHalfPlusTwo(saved_model_bundle, input_tensor_info.name(),
+                      output_tensor_info.name());
 }
 
 // Checks that the input map in a signature def is populated correctly.
@@ -117,10 +148,10 @@ TEST(BundleShimTest, DefaultSignatureRegression) {
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
-                             .find(kSignatureInputs)
+                             .find(kRegressInputs)
                              ->second.name());
   EXPECT_EQ("foo-output", actual_signature_def->second.outputs()
-                              .find(kSignatureOutputs)
+                              .find(kRegressOutputs)
                               ->second.name());
   EXPECT_EQ(kRegressMethodName, actual_signature_def->second.method_name());
 }
@@ -145,7 +176,7 @@ TEST(BundleShimTest, DefaultSignatureClassification) {
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
-                             .find(kSignatureInputs)
+                             .find(kClassifyInputs)
                              ->second.name());
   EXPECT_EQ("foo-classes", actual_signature_def->second.outputs()
                                .find(kClassifyOutputClasses)
@@ -167,8 +198,8 @@ TEST(BundleShimTest, DefaultSignatureGeneric) {
   Signatures signatures;
   GenericSignature* generic_signature =
       signatures.mutable_default_signature()->mutable_generic_signature();
-  generic_signature->mutable_map()->insert({kSignatureInputs, input_binding});
-  generic_signature->mutable_map()->insert({kSignatureOutputs, output_binding});
+  generic_signature->mutable_map()->insert({kPredictInputs, input_binding});
+  generic_signature->mutable_map()->insert({kPredictOutputs, output_binding});
 
   MetaGraphDef meta_graph_def;
   (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
@@ -183,12 +214,12 @@ TEST(BundleShimTest, NamedSignatureWrongType) {
   Signatures signatures;
 
   RegressionSignature* inputs_regression_signature =
-      (*signatures.mutable_named_signatures())[kSignatureInputs]
+      (*signatures.mutable_named_signatures())[kRegressInputs]
           .mutable_regression_signature();
   inputs_regression_signature->mutable_input()->set_tensor_name("foo-input");
 
   RegressionSignature* outputs_regression_signature =
-      (*signatures.mutable_named_signatures())[kSignatureOutputs]
+      (*signatures.mutable_named_signatures())[kRegressOutputs]
           .mutable_regression_signature();
   outputs_regression_signature->mutable_output()->set_tensor_name("foo-output");
 
@@ -212,12 +243,12 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
 
   Signatures signatures;
   GenericSignature* input_generic_signature =
-      (*signatures.mutable_named_signatures())[kSignatureInputs]
+      (*signatures.mutable_named_signatures())[kPredictInputs]
           .mutable_generic_signature();
   input_generic_signature->mutable_map()->insert({"foo-input", input_binding});
 
   GenericSignature* output_generic_signature =
-      (*signatures.mutable_named_signatures())[kSignatureOutputs]
+      (*signatures.mutable_named_signatures())[kPredictOutputs]
           .mutable_generic_signature();
   output_generic_signature->mutable_map()->insert(
       {"foo-output", output_binding});
@@ -253,8 +284,8 @@ TEST(BundleShimTest, NamedSignatureGenericNoInputsOrOutputs) {
   GenericSignature* generic_signature =
       (*signatures.mutable_named_signatures())["unknown"]
           .mutable_generic_signature();
-  generic_signature->mutable_map()->insert({kSignatureInputs, input_binding});
-  generic_signature->mutable_map()->insert({kSignatureOutputs, output_binding});
+  generic_signature->mutable_map()->insert({kPredictInputs, input_binding});
+  generic_signature->mutable_map()->insert({kPredictOutputs, output_binding});
 
   MetaGraphDef meta_graph_def;
   (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
@@ -273,7 +304,7 @@ TEST(BundleShimTest, NamedSignatureGenericOnlyInput) {
 
   Signatures signatures;
   GenericSignature* input_generic_signature =
-      (*signatures.mutable_named_signatures())[kSignatureInputs]
+      (*signatures.mutable_named_signatures())[kPredictInputs]
           .mutable_generic_signature();
   input_generic_signature->mutable_map()->insert({"foo-input", input_binding});
 
@@ -286,32 +317,32 @@ TEST(BundleShimTest, NamedSignatureGenericOnlyInput) {
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
 }
 
-// Checks a basic up conversion for half plus two.
-TEST(BundleShimTest, BasicExport) {
+// Checks a basic up conversion for half plus two for SessionBundle.
+TEST(BundleShimTest, BasicExportSessionBundle) {
   const string session_bundle_export_dir =
       test_util::TestSrcDirPath(kSessionBundlePath);
+  LoadAndValidateSavedModelBundle(session_bundle_export_dir, {"tag"},
+                                  kDefaultSignatureDefKey);
+}
+
+// Checks a basic load for half plus two for SavedModelBundle.
+TEST(BundleShimTest, BasicExportSavedModel) {
+  const string saved_model_bundle_export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kSavedModelBundlePath);
+  LoadAndValidateSavedModelBundle(saved_model_bundle_export_dir,
+                                  {kSavedModelTagServe}, kRegressMethodName);
+}
+
+// Checks a basic load fails with an invalid export path.
+TEST(BundleShimTest, InvalidPath) {
+  const string invalid_export_dir = testing::TensorFlowSrcRoot();
   SessionOptions session_options;
   RunOptions run_options;
   SavedModelBundle saved_model_bundle;
-  TF_ASSERT_OK(LoadSavedModelFromLegacySessionBundlePath(
-      session_options, run_options, session_bundle_export_dir,
-      &saved_model_bundle));
-  const MetaGraphDef meta_graph_def = saved_model_bundle.meta_graph_def;
-  const auto& signature_def_map = meta_graph_def.signature_def();
-  EXPECT_EQ(1, signature_def_map.size());
-
-  const auto& regression_entry =
-      signature_def_map.find(kDefaultSignatureDefKey);
-  SignatureDef regression_signature_def = regression_entry->second;
-  EXPECT_EQ(kRegressMethodName, regression_signature_def.method_name());
-  EXPECT_EQ(1, regression_signature_def.inputs_size());
-  TensorInfo input_tensor_info =
-      regression_signature_def.inputs().find(kSignatureInputs)->second;
-  EXPECT_EQ(1, regression_signature_def.outputs_size());
-  TensorInfo output_tensor_info =
-      regression_signature_def.outputs().find(kSignatureOutputs)->second;
-  ValidateHalfPlusTwo(saved_model_bundle, input_tensor_info.name(),
-                      output_tensor_info.name());
+  Status status = LoadSessionBundleOrSavedModelBundle(
+      session_options, run_options, invalid_export_dir, {kSavedModelTagServe},
+      &saved_model_bundle);
+  EXPECT_EQ(error::Code::NOT_FOUND, status.code());
 }
 
 }  // namespace

@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 
-#include <dlfcn.h>
 #include <map>
 #include <stdint.h>
 #include <stdlib.h>
 #include <set>
-#include "tensorflow/stream_executor/platform/port.h"
 
+#include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/lib/casts.h"
@@ -38,6 +37,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
+
+#if defined(PLATFORM_WINDOWS)
+// TODO: in windows ARRAYSIZE is defined in winnt.h but including it
+//  here creates a conflict with cuda.h - for now define it here.
+#define ARRAYSIZE(a) \
+  ((sizeof(a) / sizeof(*(a))) / \
+  static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
+#endif
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -61,11 +68,17 @@ namespace dynload {
       static auto status = internal::CachedDsoLoader::GetLibcudaDsoHandle(); \
       return status.ValueOrDie();                                            \
     }                                                                        \
-    static FuncPointerT DynLoad() {                                          \
-      static void *f = dlsym(GetDsoHandle(), kName);                         \
-      CHECK(f != nullptr) << "could not find " << kName                      \
-                          << "in libcuda DSO; dlerror: " << dlerror();       \
+    static FuncPointerT LoadOrDie() {                                        \
+      void *f;                                                               \
+      port::Status s = port::Env::Default()->GetSymbolFromLibrary(           \
+          GetDsoHandle(), kName, &f);                                        \
+      CHECK(s.ok()) << "could not find " << kName                            \
+                    << " in libcuda DSO; dlerror: " << s.error_message();    \
       return reinterpret_cast<FuncPointerT>(f);                              \
+    }                                                                        \
+    static FuncPointerT DynLoad() {                                          \
+      static FuncPointerT f = LoadOrDie();                                   \
+      return f;                                                              \
     }                                                                        \
     template <typename... Args>                                              \
     CUresult operator()(Args... args) {                                      \

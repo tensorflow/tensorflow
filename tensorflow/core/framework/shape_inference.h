@@ -41,6 +41,7 @@ class Dimension {
   const int64 value_;
 
   friend class InferenceContext;
+  friend class ShapeManager;
   TF_DISALLOW_COPY_AND_ASSIGN(Dimension);
 };
 
@@ -61,6 +62,7 @@ class DimensionHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
+  friend class ShapeManager;
 
   // Intentionally copyable.
 };
@@ -76,6 +78,7 @@ class Shape {
   const std::vector<DimensionHandle> dims_;
 
   friend class InferenceContext;
+  friend class ShapeManager;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
 };
@@ -95,6 +98,7 @@ class ShapeHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
+  friend class ShapeManager;
 
   // Intentionally copyable.
 };
@@ -117,12 +121,11 @@ struct DimensionOrConstant {
   DimensionOrConstant();
 };
 
-// Note: This is experimental support for op shape inference in C++.  Shape
-// inference functions are not ready to be implemented yet.
-//
-// An InferenceContext is created by the framework and passed to a shape
-// inference function.  The shape inference function calls functions on the
-// context, and should call set_output() to set the shape on all outputs.
+// Shape inference functions registered on ops in REGISTER_OP implement
+// their shape functions in terms of this InferenceContext.  An InferenceContext
+// is created by the framework and passed to a shape inference function.  The
+// shape inference function calls functions on the context, and should call
+// set_output() to set the shape on all outputs.
 //
 // All Shape* and Dimension* returned by functions of InferenceContext are owned
 // by the InferenceContext.
@@ -133,43 +136,33 @@ class InferenceContext {
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
-  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
+  // Elements of <input_tensors_as_shapes> are used for when a shape function
+  // makes a call to MakeShapeFromShapeTensor; in particular, when the
+  // input_tensors[i] is nullptr but the shape represented by it is partially
+  // known from analysis of the graph.
+  // <input_tensors_as_shapes> can have fewer elements than <input_shapes>.
+  // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
-  // TODO(vrv): Remove 'input_shapes_string' once we can move the
-  // creation of Shapes from strings out of this class (or hide it).
+  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
-                   const std::vector<string>& input_shapes_string,
                    const std::vector<ShapeHandle>& input_shapes,
-                   const std::vector<const Tensor*>& input_tensors);
+                   const std::vector<const Tensor*>& input_tensors,
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
-  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
+  // Elements of <input_tensors_as_shapes> are used for when a shape function
+  // makes a call to MakeShapeFromShapeTensor; in particular, when the
+  // input_tensors[i] is nullptr but the shape represented by it is partially
+  // known from analysis of the graph.
+  // <input_tensors_as_shapes> can have fewer elements than <input_shapes>.
+  // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
-  // TODO(cwhipkey): Remove 'input_shapes_string' once we can move the creation
-  // of Shapes from strings out of this class (or hide it).
+  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
-                   const std::vector<string>& input_shapes_string,
                    const std::vector<TensorShapeProto>& input_shapes,
-                   const std::vector<const Tensor*>& input_tensors);
-
-  // This is a temporary constructor used for initial testing.
-  //
-  // TODO(cwhipkey): remove this temporary constructor.
-  //
-  // Each input shape describes the input shape as follows:
-  // * "?" : the shape's rank and dimensions are unknown
-  // * "[1,?,3]" : the shape's rank is known, and dimensions can be known or
-  //               unknown (? for unknown #1 - multiple dimensions can be
-  //               labeled with the same unknown number, and are deduplicated to
-  //               the same Dimension*.
-  //
-  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
-  //
-  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
-                   const std::vector<string>& input_shapes,
-                   const std::vector<const Tensor*>& input_tensors);
+                   const std::vector<const Tensor*>& input_tensors,
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
 
   ~InferenceContext();
 
@@ -203,8 +196,19 @@ class InferenceContext {
     return requested_input_tensor_[idx];
   }
 
+  // Returns true if MakeShapeFromInputTensor was called but the constant
+  // input_tensor was not present.
+  bool requested_input_tensor_as_partial_shape(int idx) const {
+    return requested_input_tensor_as_partial_shape_[idx];
+  }
+
   void set_input_tensors(const std::vector<const Tensor*>& input_tensors) {
     input_tensors_ = input_tensors;
+  }
+
+  void set_input_tensors_as_shapes(
+      const std::vector<ShapeHandle>& input_tensors_as_shapes) {
+    input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
@@ -340,13 +344,9 @@ class InferenceContext {
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
   inline DimensionHandle MakeDim(DimensionOrConstant d) {
-    if (d.dim.IsSet()) {
-      return d.dim;
-    } else {
-      all_dims_.push_back(new Dimension(d.val));
-      return all_dims_.back();
-    }
+    return shape_manager_.MakeDim(d);
   }
+
   inline DimensionHandle UnknownDim() { return MakeDim(kUnknownDim); }
 
   // Returns a new dimension whose value is given by a scalar input tensor.
@@ -363,8 +363,8 @@ class InferenceContext {
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or if <evenly_divisible>
   // and <divisor> does not evenly divide <dividend>.
-  Status Divide(DimensionHandle dividend, int64 divisor, bool evenly_divisible,
-                DimensionHandle* out);
+  Status Divide(DimensionHandle dividend, DimensionOrConstant divisor,
+                bool evenly_divisible, DimensionHandle* out);
 
   // Returns in <out> the sum of <first> and <second>.
   Status Add(DimensionHandle first, DimensionOrConstant second,
@@ -435,15 +435,53 @@ class InferenceContext {
     return Status::OK();
   }
 
+  // Note that shape functions should usually call MakeShapeFromShapeTensor,
+  // as it does more analysis to provide partial shapes.
+  //
+  // Returns in <out> a new shape whose dimension sizes come from tensor <t>.
+  // The tensor must be a 1-dimensional int32 or int64 tensor.  If <t> is NULL,
+  // then an unknown shape is returned.
+  Status MakeShapeFromTensor(const Tensor* t, ShapeHandle tensor_shape,
+                             ShapeHandle* out);
+
  private:
+  // Creates and stores shapes for use in InferenceContext.
+  class ShapeManager {
+   public:
+    ShapeManager();
+    ~ShapeManager();
+
+    // Returns a new shape with the given dims. The returned value is owned by
+    // this class.
+    ShapeHandle MakeShape(const std::vector<DimensionHandle>& dims);
+
+    // Returns a new unknown shape.
+    ShapeHandle UnknownShape();
+
+    // Returns a new dimension of the given size.  The returned value
+    // is owned by this class.
+    inline DimensionHandle MakeDim(DimensionOrConstant d) {
+      if (d.dim.IsSet()) {
+        return d.dim;
+      } else {
+        all_dims_.push_back(new Dimension(d.val));
+        return all_dims_.back();
+      }
+    }
+
+   private:
+    std::vector<Shape*> all_shapes_;    // values are owned.
+    std::vector<Dimension*> all_dims_;  // values are owned.
+  };
+
+  friend class ShapeInferenceTestutil;  // For testing shapes.
+
   // Shared initialization across the two constructors.  Remove
   // once we get rid of one of them.
   void PreInputInit(const OpDef& op_def,
-                    const std::vector<const Tensor*>& input_tensors);
+                    const std::vector<const Tensor*>& input_tensors,
+                    const std::vector<ShapeHandle>& input_tensors_as_shapes);
   void PostInputInit();
-
-  // Returns a shape from 'shape_string'.
-  Status MakeShapeFromString(const string& shape_string, ShapeHandle* output);
 
   DimensionHandle GetDimension(const DimensionOrConstant& d);
 
@@ -460,14 +498,17 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
-  std::vector<Shape*> all_shapes_;    // values are owned.
-  std::vector<Dimension*> all_dims_;  // values are owned.
+  ShapeManager shape_manager_;
 
-  // inputs_ and outputs_ refer to values from all_shapes_.
+  // inputs_, outputs_, and input_tensors_as_shapes_ refer to values from
+  // `shape_manager_`.
   std::vector<ShapeHandle> inputs_;
   std::vector<const Tensor*> input_tensors_;
   std::vector<bool> requested_input_tensor_;
   std::vector<ShapeHandle> outputs_;
+  // Can have fewer elements than inputs_.
+  std::vector<ShapeHandle> input_tensors_as_shapes_;
+  std::vector<bool> requested_input_tensor_as_partial_shape_;
 
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;

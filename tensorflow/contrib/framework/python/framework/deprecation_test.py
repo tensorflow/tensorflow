@@ -245,11 +245,10 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
-  def test_prop_wrong_order(self, mock_warning):
-
+  def test_prop_wrong_order(self):
     with self.assertRaisesRegexp(
-        ValueError, "apply @deprecated after @property"):
+        ValueError,
+        "make sure @property appears before @deprecated in your source code"):
       # pylint: disable=unused-variable
 
       class _Object(object):
@@ -357,8 +356,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, "argument"):
       deprecation.deprecated_args(date, instructions)
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
-  def test_deprecated_missing_args(self, mock_warning):
+  def test_deprecated_missing_args(self):
     date = "2016-07-04"
     instructions = "This is how you update..."
 

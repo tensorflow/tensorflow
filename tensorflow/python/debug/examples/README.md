@@ -50,8 +50,8 @@ wrapper:
 
 ```python
 if FLAGS.debug:
-  sess = local_cli.LocalCLIDebugWrapperSession(sess)
-  sess.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
+  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+  sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 ```
 
 This wrapper has the same interface as Session, so debugging requires no other
@@ -143,6 +143,7 @@ Try the following commands at the `tfdbg>` prompt:
 | Command example    | Explanation           |
 | ------------- |:--------------------- |
 | `pt hidden/Relu:0` | Print the value of the tensor `hidden/Relu:0`. |
+| `pt hidden/Relu:0[:, 1]` | Print a subarray of the tensor `hidden/Relu:0`, using numpy-style array slicing. |
 | `ni -a hidden/Relu` | Displays information about the node `hidden/Relu`, including node attributes. |
 | `li -r hidden/Relu:0` | List the inputs to the node `hidden/Relu`, recursively, i.e., the input tree. |
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively, i.e., the output recipient tree. |
@@ -298,3 +299,8 @@ Frequently-asked questions:
        model, check out
        [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
        and other profiling tools for TensorFlow.
+
+*   **Q**: How do I link tfdbg against my Session in Bazel?<br />
+**A**: In your BUILD rule, declare the dependency: `"//tensorflow:tensorflow_py"`.
+       In your Python file, do:
+         `from tensorflow.python import debug import tf_debug`

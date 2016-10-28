@@ -53,7 +53,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None, feature_engineering_fn=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -66,9 +66,9 @@ Initializes a `DNNRegressor` instance.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
-    be used to load checkpoints from the directory into a estimator to continue
-    training a previously saved model.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
+    also be used to load checkpoints from the directory into a estimator to
+    continue training a previously saved model.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -176,7 +176,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds toa
+        key into the features dict returned by `input_fn` that corresponds to a
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).

@@ -635,6 +635,22 @@ class VariableScopeTest(tf.test.TestCase):
         self.assertEqual(variable_scope.get_local_variable("w", []).name,
                          "outer/w:0")
 
+  def testGetVarWithDevice(self):
+    g = tf.Graph()
+    varname_type = []
+
+    def device_func(op):
+      if op.type == "Variable":
+        varname_type.append((op.name, op.get_attr("dtype")))
+      return "/gpu:0"
+
+    with g.as_default():
+      with tf.device(device_func):
+        _ = tf.get_variable("x", (100, 200))
+        _ = tf.get_variable("y", dtype=tf.int64, initializer=numpy.arange(73))
+    self.assertEqual(varname_type[0], ("x", tf.float32))
+    self.assertEqual(varname_type[1], ("y", tf.int64))
+
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
   part = [1] * len(shape)

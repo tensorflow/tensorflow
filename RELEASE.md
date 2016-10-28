@@ -1,3 +1,11 @@
+# Changes since the last release
+
+## Breaking Changes to the API
+
+* `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
+indexing now starts from 1 instead of 0, and bus_id==0 is used where previously
+BUS_ANY was used.
+
 # Release 0.11.0
 
 ## Major Features and Improvements
@@ -76,7 +84,7 @@ Snyder, @jpangburn, Jules Gagnon-Marchand, Karen Brems, @kborer, Kirill Bobyrev,
 Laurent Mazare, Longqi Yang, Malith Yapa, Maniteja Nandana, Martin Englund,
 Matthias Winkelmann, @mecab, Mu-Ik Jeon, Nand Dalal, Niels Ole Salscheider,
 Nikhil Mishra, Park Jiin, Pieter De Rijk, @raix852, Ritwik Gupta, Sahil Sharma,
-@Sangheum, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
+Sangheum Hwang, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
 Tiago Jorge, Tijmen Tieleman, @tvn, @tyfkda, Wang Yang, Wei-Ting Kuo, Wenjian
 Huang, Yan Chen, @YenChenLin, Yuan (Terry) Tang, Yuncheng Li, Yunfeng Wang, Zack
 Polizzi, @zhongzyd, Ziming Dong, @perhapszzy

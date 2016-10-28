@@ -27,8 +27,31 @@ import (
 )
 
 // DataType holds the type for a scalar value.  E.g., one slot in a tensor.
-// The values here are identical to corresponding values in types.proto.
 type DataType C.TF_DataType
+
+// Types of scalar values in the TensorFlow type system.
+const (
+	Float      DataType = C.TF_FLOAT
+	Double     DataType = C.TF_DOUBLE
+	Int32      DataType = C.TF_INT32
+	Uint8      DataType = C.TF_UINT8
+	Int16      DataType = C.TF_INT16
+	Int8       DataType = C.TF_INT8
+	String     DataType = C.TF_STRING
+	Complex64  DataType = C.TF_COMPLEX64
+	Complex    DataType = C.TF_COMPLEX
+	Int64      DataType = C.TF_INT64
+	Bool       DataType = C.TF_BOOL
+	Qint8      DataType = C.TF_QINT8
+	Quint8     DataType = C.TF_QUINT8
+	Qint32     DataType = C.TF_QINT32
+	Bfloat16   DataType = C.TF_BFLOAT16
+	Qint16     DataType = C.TF_QINT16
+	Quint16    DataType = C.TF_QUINT16
+	Uint16     DataType = C.TF_UINT16
+	Complex128 DataType = C.TF_COMPLEX128
+	Half       DataType = C.TF_HALF
+)
 
 // Tensor holds a multi-dimensional array of elements of a single data type.
 type Tensor struct {
@@ -144,6 +167,7 @@ var types = []struct {
 	{reflect.TypeOf(false), C.TF_BOOL},
 	{reflect.TypeOf(uint16(0)), C.TF_UINT16},
 	{reflect.TypeOf(complex(float64(0), float64(0))), C.TF_COMPLEX128},
+	// TODO(apassos): support DT_RESOURCE representation in go.
 }
 
 // dimsAndDataTypeOf returns the data type and dimensions of a Go type for use

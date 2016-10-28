@@ -19,12 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -54,7 +54,7 @@ def _get_saver():
     else:
       saver = None
   if saver is None and variables.all_variables():
-    saver = tf_saver.Saver()
+    saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
 
@@ -296,7 +296,7 @@ def _export_estimator(estimator,
       features, _ = input_fn()
       examples = None
       if input_feature_key is not None:
-        examples = features[input_feature_key]
+        examples = features.pop(input_feature_key)
 
     if not features and not examples:
       raise ValueError('Either features or examples must be defined.')
@@ -312,21 +312,10 @@ def _export_estimator(estimator,
                                                                predictions)
     else:
       try:
-        # Some estimators provide a target_column of known type
-        target_column = estimator._get_target_column()
-        problem_type = target_column.problem_type
-
-        if problem_type == layers.ProblemType.CLASSIFICATION:
-          signature_fn = classification_signature_fn
-        elif problem_type == layers.ProblemType.LINEAR_REGRESSION:
-          signature_fn = regression_signature_fn
-        elif problem_type == layers.ProblemType.LOGISTIC_REGRESSION:
-          signature_fn = logistic_regression_signature_fn
-        else:
-          raise ValueError(
-              'signature_fn must be provided because the TargetColumn is a %s, '
-              'which does not have a standard problem type and so cannot use a '
-              'standard export signature.' % type(target_column).__name__)
+        # Some estimators provide a signature function.
+        # TODO(zakaria): check if the estimator has this function,
+        #   raise helpful error if not
+        signature_fn = estimator._create_signature_fn()
 
         default_signature, named_graph_signatures = (
             signature_fn(examples, features, predictions))

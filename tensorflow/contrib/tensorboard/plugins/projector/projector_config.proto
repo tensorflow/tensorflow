@@ -20,6 +20,7 @@ package tensorflow;
 message EmbeddingInfo {
   string tensor_name = 1;
   string metadata_path = 2;
+  string bookmarks_path = 3;
 }
 
 message ProjectorConfig {

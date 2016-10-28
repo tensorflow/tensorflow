@@ -609,9 +609,6 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
     dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
-    sequence_length: An int32/int64 vector, size `[batch_size]`,
-      containing the actual lengths for each of the sequences.
       either of the initial states are not provided.
     scope: VariableScope for the created subgraph; defaults to "BiRNN"
 

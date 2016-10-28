@@ -100,13 +100,13 @@ class LRDecayTest(test_util.TensorFlowTestCase):
 
   def testPiecewiseConstantEdgeCases(self):
     with self.test_session():
+      x_int = variables.Variable(0, dtype=variables.dtypes.int32)
+      boundaries, values = [-1.0, 1.0], [1, 2, 3]
       with self.assertRaises(ValueError):
-        x_int = variables.Variable(0, dtype=variables.dtypes.int32)
-        boundaries, values = [-1.0, 1.0], [1, 2, 3]
         learning_rate_decay.piecewise_constant(x_int, boundaries, values)
+      x = variables.Variable(0.0)
+      boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
       with self.assertRaises(ValueError):
-        x = variables.Variable(0.0)
-        boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
         learning_rate_decay.piecewise_constant(x, boundaries, values)
 
 

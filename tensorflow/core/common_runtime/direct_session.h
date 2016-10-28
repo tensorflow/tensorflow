@@ -164,7 +164,8 @@ class DirectSession : public Session {
 
   // Initializes the base execution state given the 'graph',
   // if not already initialized.
-  void MaybeInitializeExecutionState(const GraphDef& graph)
+  Status MaybeInitializeExecutionState(const GraphDef& graph,
+                                       bool* out_already_initialized)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
 
   // Retrieves an already existing set of executors to run 'inputs' and
@@ -290,7 +291,7 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
-  // EXPERIMENTAL: debugger (tfdb) related
+  // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;
 };
 

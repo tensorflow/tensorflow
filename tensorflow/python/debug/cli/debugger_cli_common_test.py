@@ -22,6 +22,20 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
+class CommandLineExitTest(test_util.TensorFlowTestCase):
+
+  def testConstructionWithoutToken(self):
+    exit_exc = debugger_cli_common.CommandLineExit()
+
+    self.assertTrue(isinstance(exit_exc, Exception))
+
+  def testConstructionWithToken(self):
+    exit_exc = debugger_cli_common.CommandLineExit(exit_token={"foo": "bar"})
+
+    self.assertTrue(isinstance(exit_exc, Exception))
+    self.assertEqual({"foo": "bar"}, exit_exc.exit_token)
+
+
 class RichTextLinesTest(test_util.TensorFlowTestCase):
 
   def testRichTextLinesConstructorComplete(self):
@@ -38,6 +52,8 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(screen_output.font_attr_segs[0]))
     self.assertEqual(1, len(screen_output.font_attr_segs[1]))
     self.assertEqual(2, len(screen_output.annotations))
+
+    self.assertEqual(2, screen_output.num_lines())
 
   def testRichTextLinesConstructorWithInvalidType(self):
     with self.assertRaisesRegexp(ValueError, "Unexpected type in lines"):
@@ -102,6 +118,16 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     return debugger_cli_common.RichTextLines(
         ["cols = %d" % screen_info["cols"]])
 
+  def _exiting_handler(self, argv, screen_info=None):
+    """A handler that exits with an exit token."""
+
+    if argv:
+      exit_token = argv[0]
+    else:
+      exit_token = None
+
+    raise debugger_cli_common.CommandLineExit(exit_token=exit_token)
+
   def testRegisterEmptyCommandPrefix(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
 
@@ -128,6 +154,22 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     # Empty command prefix should trigger an exception.
     with self.assertRaisesRegexp(ValueError, "Prefix is empty"):
       registry.dispatch_command("", [])
+
+  def testExitingHandler(self):
+    """Test that exit exception is correctly raised."""
+
+    registry = debugger_cli_common.CommandHandlerRegistry()
+    registry.register_command_handler("exit", self._exiting_handler, "")
+
+    self.assertTrue(registry.is_registered("exit"))
+
+    exit_token = None
+    try:
+      registry.dispatch_command("exit", ["foo"])
+    except debugger_cli_common.CommandLineExit as e:
+      exit_token = e.exit_token
+
+    self.assertEqual("foo", exit_token)
 
   def testInvokeHandlerWithScreenInfo(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
@@ -478,6 +520,52 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "Invalid type of input cols"):
       debugger_cli_common.wrap_rich_text_lines(
           debugger_cli_common.RichTextLines(["foo", "bar"]), "12")
+
+
+class SliceRichTextLinesText(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self._original = debugger_cli_common.RichTextLines(
+        ["Roses are red", "Violets are blue"],
+        font_attr_segs={0: [(0, 5, "red")],
+                        1: [(0, 7, "blue")]},
+        annotations={
+            0: "longer wavelength",
+            1: "shorter wavelength",
+            "foo_metadata": "bar"
+        })
+
+  def testSliceBeginning(self):
+    sliced = self._original.slice(0, 1)
+
+    self.assertEqual(["Roses are red"], sliced.lines)
+    self.assertEqual({0: [(0, 5, "red")]}, sliced.font_attr_segs)
+
+    # Non-line-number metadata should be preseved.
+    self.assertEqual({
+        0: "longer wavelength",
+        "foo_metadata": "bar"
+    }, sliced.annotations)
+
+    self.assertEqual(1, sliced.num_lines())
+
+  def testSliceEnd(self):
+    sliced = self._original.slice(1, 2)
+
+    self.assertEqual(["Violets are blue"], sliced.lines)
+
+    # The line index should have changed from 1 to 0.
+    self.assertEqual({0: [(0, 7, "blue")]}, sliced.font_attr_segs)
+    self.assertEqual({
+        0: "shorter wavelength",
+        "foo_metadata": "bar"
+    }, sliced.annotations)
+
+    self.assertEqual(1, sliced.num_lines())
+
+  def testAttemptSliceWithNegativeIndex(self):
+    with self.assertRaisesRegexp(ValueError, "Encountered negative index"):
+      self._original.slice(0, -1)
 
 
 class TabCompletionRegistryTest(test_util.TensorFlowTestCase):

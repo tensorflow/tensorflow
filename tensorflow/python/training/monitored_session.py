@@ -21,11 +21,14 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import summary
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
@@ -123,26 +126,38 @@ class Scaffold(object):
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
     if self._init_op is None:
+      def default_init_op():
+        return control_flow_ops.group(
+            variables.initialize_all_variables(),
+            resources.initialize_resources(resources.shared_resources()))
       self._init_op = Scaffold.get_or_default(
-          'init_op', ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
+          'init_op',
+          ops.GraphKeys.INIT_OP,
+          default_init_op)
     if self._ready_op is None:
+      def default_ready_op():
+        return array_ops.concat(
+            0,
+            [variables.report_uninitialized_variables(),
+             resources.report_uninitialized_resources()])
       self._ready_op = Scaffold.get_or_default(
           'ready_op', ops.GraphKeys.READY_OP,
-          variables.report_uninitialized_variables)
+          default_ready_op)
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
           Scaffold._default_local_init_op)
     if self._summary_op is None:
-      self._summary_op = Scaffold.get_or_default(
-          'summary_op', ops.GraphKeys.SUMMARY_OP,
-          logging_ops.merge_all_summaries)
+      self._summary_op = Scaffold.get_or_default('summary_op',
+                                                 ops.GraphKeys.SUMMARY_OP,
+                                                 summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
       self._saver = Scaffold.get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True, allow_empty=True))
+          lambda: training_saver.Saver(sharded=True, allow_empty=True,
+                                       write_version=saver_pb2.SaverDef.V2))
     # pylint: enable=g-long-lambda
     self._saver.build()
 
@@ -243,7 +258,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     hooks.extend([
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir),
         basic_session_run_hooks.SummarySaverHook(
-            scaffold=scaffold, output_dir=checkpoint_dir),
+            scaffold=scaffold, save_steps=100, output_dir=checkpoint_dir),
         basic_session_run_hooks.CheckpointSaverHook(
             checkpoint_dir, save_secs=600, scaffold=scaffold),
     ])
@@ -370,6 +385,7 @@ class MonitoredSession(object):
 
 
   Exit: At the `close()`, the monitored session does following things in order:
+
   * calls `hook.end()`
   * closes the queue runners and the session
   * surpresses `OutOfRange` error which indicates that all inputs have been

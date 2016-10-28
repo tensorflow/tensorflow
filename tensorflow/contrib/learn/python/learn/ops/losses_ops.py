@@ -33,7 +33,7 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
     if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
       predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
-    return predictions, loss_ops.sum_of_squares(predictions, labels)
+    return predictions, loss_ops.mean_squared_error(predictions, labels)
 
 
 def softmax_classifier(tensor_in,
@@ -44,9 +44,15 @@ def softmax_classifier(tensor_in,
                        name=None):
   """Returns prediction and loss for softmax classifier.
 
+  This function returns "probabilities" and a cross entropy loss. To obtain
+  predictions, use `tf.argmax` on the returned probabilities.
+
+  This function requires labels to be passed in one-hot encoding.
+
   Args:
     tensor_in: Input tensor, [batch_size, feature_size], features.
-    labels: Tensor, [batch_size, n_classes], labels of the output classes.
+    labels: Tensor, [batch_size, n_classes], one-hot labels of the output
+      classes.
     weights: Tensor, [batch_size, feature_size], linear transformation
       matrix.
     biases: Tensor, [batch_size], biases.
@@ -55,7 +61,7 @@ def softmax_classifier(tensor_in,
     name: Operation name.
 
   Returns:
-    Prediction and loss tensors.
+    `tuple` of softmax predictions and loss `Tensor`s.
   """
   with ops.name_scope(name, "softmax_classifier", [tensor_in, labels]):
     logits = nn.xw_plus_b(tensor_in, weights, biases)

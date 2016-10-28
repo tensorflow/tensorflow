@@ -31,6 +31,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import compat
 
 
 def _make_argname_from_tensor_name(name):
@@ -56,8 +58,8 @@ def _add_input_array(op, start, limit, dtype, func):
   node.op = "_ListToArray"
   ret_name = op.name + "_L2A_" + str(start)
   node.ret.extend([ret_name])
-  node.arg.extend([_make_argname_from_tensor_name(x.name)
-                   for x in op.inputs[start:limit]])
+  node.arg.extend(
+      [_make_argname_from_tensor_name(x.name) for x in op.inputs[start:limit]])
   num = limit - start
   node.attr["Tin"].CopyFrom(
       attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
@@ -159,14 +161,16 @@ def _add_op_node(op, func):
       inp_index += num
     elif arg_def.type_list_attr:
       num = len(attrs[arg_def.type_list_attr].list.type)
-      node.arg.extend([_make_argname_from_tensor_name(op.inputs[i].name)
-                       for i in range(inp_index, inp_index + num)])
+      node.arg.extend([
+          _make_argname_from_tensor_name(op.inputs[i].name)
+          for i in range(inp_index, inp_index + num)
+      ])
       inp_index += num
     else:
       node.arg.append(_make_argname_from_tensor_name(op.inputs[inp_index].name))
       inp_index += 1
-  node.dep.extend([_make_argname_from_tensor_name(x.name)
-                   for x in op.control_inputs])
+  node.dep.extend(
+      [_make_argname_from_tensor_name(x.name) for x in op.control_inputs])
   for k, v in _get_node_def_attr(op).items():
     node.attr[k].CopyFrom(v)
   func.node.extend([node])
@@ -300,21 +304,108 @@ class _FuncGraph(ops.Graph):
   def __init__(self, *args, **kwargs):
     super(_FuncGraph, self).__init__(*args, **kwargs)
     self._building_function = True
-    self.captured = {}
+    self._outer_graph = ops.get_default_graph()
+    self._vscope = vs.get_variable_scope()
+    self._old_custom_getter = self._vscope.custom_getter
+    self._captured = {}
+    self.extra_inputs = []
+    self.extra_args = []
+    self.extra_vars = []
+
+  def getvar(self,
+             name,
+             shape=None,
+             dtype=None,
+             initializer=None,
+             trainable=True,
+             collections=None,
+             **kwargs):
+    """A custom variable getter."""
+    # Here, we switch the default graph to the outer graph and ask the
+    # variable scope in which the function is defined to give us the
+    # variable. The variable is stashed in extra_vars and returned to
+    # the caller.
+    #
+    # We capture these variables so that the variable definition is
+    # hoisted upward to the outer most graph.
+    with self._outer_graph.as_default():
+      # pylint: disable=protected-access
+      var = self._vscope.get_variable(
+          vs._get_default_variable_store(),
+          name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          trainable=trainable,
+          collections=collections)
+      self.extra_vars.append(var)
+      return var
 
   def create_op(self, op_type, inputs, data_types, **kwargs):
     for i, x in enumerate(inputs):
       if x.graph is not self:
         # Referring to a tensor from other graph.
-        if x in self.captured:
+        if x in self._captured:
           # Captured already.
-          inputs[i] = self.captured[x]
+          inputs[i] = self._captured[x]
         else:
           # Substitute with a placeholder.
-          inputs[i] = array_ops.placeholder(x.dtype)
-          self.captured[x] = inputs[i]
+          self.extra_inputs.append(x)
+          ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
+          inputs[i] = ph
+          self._captured[x] = ph
+          self.extra_args.append(ph)
     return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
                                              **kwargs)
+
+
+def get_extra_vars():
+  """Returns the captured variables by the function.
+
+  Returns:
+    If the default graph is being used to define a function, the
+    returned list of variables are those created inside the function
+    body so far. Otherwise, returns an empty list.
+  """
+  g = ops.get_default_graph()
+  if isinstance(g, _FuncGraph):
+    return g.extra_vars
+  else:
+    return []
+
+
+def get_extra_inputs():
+  """Returns the captured input tensors by the function.
+
+  Returns:
+    If the default graph is being used to define a function, the
+    returned list of tensors are those accessed inside the function body
+    but defined outside the function body so far. Otherwise, returns an
+    empty list.
+
+  """
+  g = ops.get_default_graph()
+  if isinstance(g, _FuncGraph):
+    return g.extra_inputs
+  else:
+    return []
+
+
+def get_extra_args():
+  """Returns the corresponding function arguments for the captured inputs.
+
+  Returns:
+    If the default graph is being used to define a function, the
+    returned list of place holders are those used inside the function
+    body corresponding those returned by get_extra_inputs(). Otherwise,
+    returns an empty list.
+
+  """
+  g = ops.get_default_graph()
+  if isinstance(g, _FuncGraph):
+    return g.extra_args
+  else:
+    return []
 
 
 class _DefinedFunction(object):
@@ -383,6 +474,12 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     return self._definition
 
+  def set_grad_func(self, grad_func):
+    """Specifies the gradient function of this function."""
+    assert not self._grad_func
+    assert isinstance(grad_func, _DefinedFunction)
+    self._grad_func = grad_func
+
   @property
   def grad_func_name(self):
     """Its gradient function's name."""
@@ -392,6 +489,16 @@ class _DefinedFunction(object):
   def python_grad_func(self):
     """Python gradient function callable."""
     return self._python_grad_func
+
+  @property
+  def declared_input_types(self):
+    """Returns the list of data types of explicit declared inputs."""
+    return self._input_types
+
+  @property
+  def captured_inputs(self):
+    """Returns the list of implicitly captured inputs."""
+    return self._extra_inputs
 
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
@@ -408,7 +515,8 @@ class _DefinedFunction(object):
         argholder = array_ops.placeholder(argtype, name=argname)
         inputs.append(argholder)
       # Call func and gather the output tensors.
-      outputs = self._func(*inputs)
+      with vs.variable_scope("", custom_getter=temp_graph.getvar):
+        outputs = self._func(*inputs)
       # If func only returned one value, make it a tuple.
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
@@ -416,19 +524,46 @@ class _DefinedFunction(object):
         raise ValueError("Function can not return None.")
       # Ensures each output is a Tensor.
       outputs = [ops.convert_to_tensor(_) for _ in outputs]
-    self._extra_args = list(temp_graph.captured.keys())
-    inputs.extend([temp_graph.captured[arg] for arg in self._extra_args])
+    self._extra_inputs = temp_graph.extra_inputs
+    inputs.extend(temp_graph.extra_args)
 
     # Build the FunctionDef
     self._definition = _graph_to_function_def(temp_graph, inputs, outputs)
 
     # Hash the definition and its dependencies.
     hasher = hashlib.sha1()
-    hasher.update(self._definition.SerializeToString())
+
+    def _hash_func_def():
+      """Hash the function definition agnostic to node/map ordering."""
+
+      def update_num(n):
+        hasher.update(compat.as_bytes("%x" % n))
+
+      def update_str(s):
+        update_num(len(s))
+        hasher.update(compat.as_bytes(s))
+
+      def update_strs(slist):
+        update_num(len(slist))
+        for s in slist:
+          update_str(s)
+
+      for n in sorted(self._definition.node, key=lambda n: n.ret[0]):
+        update_strs(n.ret)
+        update_str(n.op)
+        update_strs(n.arg)
+        update_strs(n.dep)
+        update_num(len(n.attr))
+        # NOTE: protobuf map serialization does not guarantee ordering.
+        for k in sorted(n.attr):
+          update_str(k)
+          update_str(n.attr[k].SerializeToString())
+
+    _hash_func_def()
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     for subname in sorted(self._sub_functions.keys()):
-      hasher.update(self._sub_functions[subname]._hash_str.encode("utf-8"))
+      hasher.update(compat.as_bytes(self._sub_functions[subname]._hash_str))
     # pylint: enable=protected-access
 
     # Uses the first 8 bytes sha1 hash digest as the __hash__.
@@ -471,13 +606,12 @@ class _DefinedFunction(object):
 
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
-    args = [ops.convert_to_tensor(_) for _ in args] + self._extra_args
+    args = [ops.convert_to_tensor(_) for _ in args] + self._extra_inputs
     if self._extra_kwargs:
       for k in self._extra_kwargs:
         if k not in kwargs:
           kwargs[k] = self._extra_kwargs[k]
     return _call(self._definition.signature, *args, **kwargs)
-
 
 # NOTE: The list needs to be extended when more data types are added.
 _DTYPE_TO_STR = {
@@ -551,8 +685,16 @@ class _OverloadedFunction(object):
     self._extra_kwargs = kwargs
     self._overload = {}
 
-  def _instantiate(self, input_types):
-    """Instantiate this function given input argument types."""
+  def instantiate(self, input_types):
+    """Instantiate this function given input argument types.
+
+    Args:
+      input_types: A list of data types for the inputs.
+
+    Returns:
+      _DefinedFunction for the given input types.
+
+    """
     # Stringify the type list.
     key = _type_list_to_str(input_types)
     defined = self._overload.get(key)
@@ -561,18 +703,21 @@ class _OverloadedFunction(object):
       name = self._func_name
       if name is not None:
         name = "_".join([name, key])
-      defined = _DefinedFunction(self._func, self._argnames, input_types,
-                                 name, None, self._python_grad_func,
+      defined = _DefinedFunction(self._func, self._argnames, input_types, name,
+                                 None, self._python_grad_func,
                                  **self._extra_kwargs)
+      _ = defined.name  # Fully instantiate the function definition.
       if self._grad_func:
         # If _grad_func is given, it is another
         # _OverloadedFunction. We need to instantiate it with the
         # right input types.
-        output_types = [dtypes.DType(_.type)
-                        for _ in defined.definition.signature.output_arg]
+        output_types = [
+            dtypes.DType(_.type)
+            for _ in defined.definition.signature.output_arg
+        ]
         # pylint: disable=protected-access
-        defined._grad_func = self._grad_func._instantiate(input_types +
-                                                          output_types)
+        defined._grad_func = self._grad_func.instantiate(input_types +
+                                                         output_types)
         # pylint: enable=protected-access
       self._overload[key] = defined
     return defined
@@ -586,7 +731,7 @@ class _OverloadedFunction(object):
         raise ValueError("Expect a Tensor but get ", x)
       input_types.append(x.dtype)
       args[i] = x
-    return self._instantiate(input_types)(*args, **kwargs)
+    return self.instantiate(input_types)(*args, **kwargs)
 
 
 class Defun(object):

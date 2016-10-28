@@ -50,7 +50,7 @@ class MasterSession {
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
   //
-  // The callee may clear "def".
+  // After this method returns, `def` will no longer be valid.
   Status Create(GraphDef* def);
 
   // Returns the session handle.

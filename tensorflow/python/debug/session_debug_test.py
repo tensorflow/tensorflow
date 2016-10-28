@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -30,6 +31,7 @@ from tensorflow.python.debug import debug_data
 from tensorflow.python.debug import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -128,6 +130,72 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           dump.get_rel_timestamps("%s/read" % u_name, 0, "DebugIdentity")[0], 0)
       self.assertGreaterEqual(
           dump.get_rel_timestamps("%s/read" % v_name, 0, "DebugIdentity")[0], 0)
+
+  def testDifferentWatchesOnDifferentRuns(self):
+    """Test watching different tensors on different runs of the same graph."""
+
+    with session.Session() as sess:
+      u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
+      v_init_val = np.array([[2.0], [-1.0]])
+
+      # Use node names with overlapping namespace (i.e., parent directory) to
+      # test concurrent, non-racing directory creation.
+      u_name = "diff_Watch/u"
+      v_name = "diff_Watch/v"
+
+      u_init = constant_op.constant(u_init_val, shape=[2, 2])
+      u = variables.Variable(u_init, name=u_name)
+      v_init = constant_op.constant(v_init_val, shape=[2, 1])
+      v = variables.Variable(v_init, name=v_name)
+
+      w = math_ops.matmul(u, v, name="diff_Watch/matmul")
+
+      u.initializer.run()
+      v.initializer.run()
+
+      for i in xrange(2):
+        run_options = config_pb2.RunOptions(output_partition_graphs=True)
+
+        run_dump_root = os.path.join(self._dump_root, "run_%d" % i)
+        debug_url = "file://%s" % run_dump_root
+
+        if i == 0:
+          # First debug run: Add debug tensor watch for u.
+          self._addDebugTensorWatch(
+              run_options, "%s/read" % u_name, 0, debug_urls=[debug_url])
+        else:
+          # Second debug run: Add debug tensor watch for v.
+          self._addDebugTensorWatch(
+              run_options, "%s/read" % v_name, 0, debug_urls=[debug_url])
+
+        run_metadata = config_pb2.RunMetadata()
+
+        # Invoke Session.run().
+        sess.run(w, options=run_options, run_metadata=run_metadata)
+
+        self.assertEqual(self._expected_partition_graph_count,
+                         len(run_metadata.partition_graphs))
+
+        dump = debug_data.DebugDumpDir(
+            run_dump_root, partition_graphs=run_metadata.partition_graphs)
+
+        # Each run should have generated only one dumped tensor, not two.
+        self.assertEqual(1, dump.size)
+
+        if i == 0:
+          self.assertAllClose([u_init_val],
+                              dump.get_tensors("%s/read" % u_name, 0,
+                                               "DebugIdentity"))
+          self.assertGreaterEqual(
+              dump.get_rel_timestamps("%s/read" % u_name, 0,
+                                      "DebugIdentity")[0], 0)
+        else:
+          self.assertAllClose([v_init_val],
+                              dump.get_tensors("%s/read" % v_name, 0,
+                                               "DebugIdentity"))
+          self.assertGreaterEqual(
+              dump.get_rel_timestamps("%s/read" % v_name, 0,
+                                      "DebugIdentity")[0], 0)
 
   def testDumpStringTensorsToFileSystem(self):
     with session.Session() as sess:
@@ -643,6 +711,158 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           self._dump_root,
           partition_graphs=run_metadata.partition_graphs,
           validate=False)
+
+  def testWatchingOutputSlotWithoutOutgoingEdge(self):
+    """Test watching output slots not attached to any outgoing edges."""
+
+    with session.Session() as sess:
+      u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
+      u = constant_op.constant(u_init_val, shape=[2, 2], name="u")
+
+      # Create a control edge from a node with an output: From u to z.
+      # Node u will get executed only because of the control edge. The output
+      # tensor u:0 is not attached to any outgoing edge in the graph. This test
+      # checks that the debugger can watch such a tensor.
+      with ops.control_dependencies([u]):
+        z = control_flow_ops.no_op(name="z")
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity"],
+          debug_urls="file://%s" % self._dump_root)
+
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(z, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+
+      # Assert that the DebugIdentity watch on u works properly.
+      self.assertEqual(1, len(dump.dumped_tensor_data))
+      datum = dump.dumped_tensor_data[0]
+      self.assertEqual("u", datum.node_name)
+      self.assertEqual(0, datum.output_slot)
+      self.assertEqual("DebugIdentity", datum.debug_op)
+      self.assertAllClose([[5.0, 3.0], [-1.0, 0.0]], datum.get_tensor())
+
+  def testWatchingVariableUpdateOps(self):
+    """Watch output slots on Variable-updating ops, with no emitted edges."""
+
+    with session.Session() as sess:
+      u_init = constant_op.constant(10.0)
+      u = variables.Variable(u_init, name="gdo/u")
+      v_init = constant_op.constant(20.0)
+      v = variables.Variable(v_init, name="gdo/v")
+
+      w = math_ops.mul(u, v, name="gdo/w")
+      # gdo stands for GradientDescentOptimizer.
+
+      train_op = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(
+          w, name="gdo/train")
+
+      u.initializer.run()
+      v.initializer.run()
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity"],
+          debug_urls="file://%s" % self._dump_root)
+
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(train_op, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+
+      update_u_data = dump.watch_key_to_data(
+          "gdo/train/update_gdo/u/ApplyGradientDescent:0:DebugIdentity")
+      self.assertEqual(1, len(update_u_data))
+
+      # Gradient descent on u: w = u * v, so dw / du = v.
+      # Updated value of u should be:
+      #   10.0 - learning_rate * v = 10.0 - 0.1 * 20.0 = 8.0
+      self.assertAllClose(8.0, update_u_data[0].get_tensor())
+
+      update_v_data = dump.watch_key_to_data(
+          "gdo/train/update_gdo/v/ApplyGradientDescent:0:DebugIdentity")
+      self.assertEqual(1, len(update_v_data))
+
+      # Gradient descent on u: w = u * v, so dw / dv = u.
+      # Updated value of u should be:
+      #   20.0 - learning_rate * u = 20.0 - 0.1 * 10.0 = 19.0
+      self.assertAllClose(19.0, update_v_data[0].get_tensor())
+
+      # Verify that the Variables u and v are updated properly.
+      self.assertAllClose(8.0, sess.run(u))
+      self.assertAllClose(19.0, sess.run(v))
+
+  def testWatchingUnconnectedOutputTensor(self):
+    """Watch an output slot not emitting any edges.
+
+    (Not even control edges from the node.)
+    """
+
+    with session.Session() as sess:
+      x_init = constant_op.constant([2, 2, 3, 5, 5])
+      x = variables.Variable(x_init, name="unconnected/x")
+
+      # The UniqueOp (tf.unique) has two output slots. Use only slot 0 in the
+      # graph. Let the debugger watch the unused slot 1.
+      unique_x, _ = tf.unique(x, name="unconnected/unique_x")
+      y = tf.add(unique_x, [0, 1, 2], name="unconnected/y")
+
+      x.initializer.run()
+
+      # Verify that only slot 0 of unique_x has recipients, while slot 1 of the
+      # same node does not have recipients.
+      unique_x_slot_0_recipients = []
+      unique_x_slot_1_recipients = []
+      for op in sess.graph.get_operations():
+        for inp in op.inputs:
+          if inp.name == "unconnected/unique_x:0":
+            unique_x_slot_0_recipients.append(op.name)
+          elif inp.name == "unconnected/unique_x:1":
+            unique_x_slot_1_recipients.append(op.name)
+
+      self.assertEqual(["unconnected/y"], unique_x_slot_0_recipients)
+      self.assertEqual([], unique_x_slot_1_recipients)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity"],
+          debug_urls="file://%s" % self._dump_root)
+
+      run_metadata = config_pb2.RunMetadata()
+      result = sess.run(y, options=run_options, run_metadata=run_metadata)
+      self.assertAllClose([2, 4, 7], result)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+
+      # Assert that the connected slot (slot 0) is dumped properly.
+      unique_x_slot_0_dumps = dump.watch_key_to_data(
+          "unconnected/unique_x:0:DebugIdentity")
+      self.assertEqual(1, len(unique_x_slot_0_dumps))
+      self.assertEqual("unconnected/unique_x",
+                       unique_x_slot_0_dumps[0].node_name)
+      self.assertEqual(0, unique_x_slot_0_dumps[0].output_slot)
+      self.assertAllClose([2, 3, 5], unique_x_slot_0_dumps[0].get_tensor())
+
+      # Assert that the unconnected slot (slot 1) is dumped properly.
+      unique_x_slot_1_dumps = dump.watch_key_to_data(
+          "unconnected/unique_x:1:DebugIdentity")
+      self.assertEqual(1, len(unique_x_slot_1_dumps))
+      self.assertEqual("unconnected/unique_x",
+                       unique_x_slot_1_dumps[0].node_name)
+      self.assertEqual(1, unique_x_slot_1_dumps[0].output_slot)
+      self.assertAllClose([0, 0, 1, 2, 2],
+                          unique_x_slot_1_dumps[0].get_tensor())
 
 
 if __name__ == "__main__":

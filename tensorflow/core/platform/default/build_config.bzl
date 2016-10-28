@@ -46,6 +46,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       srcs = srcs + tf_deps(deps, "_proto_srcs"),
       deps = deps + ["@protobuf//:cc_wkt_protos"],
       cc_libs = cc_libs + ["@protobuf//:protobuf"],
+      copts = ["-Wno-unused-but-set-variable", "-Wno-sign-compare"],
       protoc = "@protobuf//:protoc",
       default_runtime = "@protobuf//:protobuf",
       use_grpc_plugin = use_grpc_plugin,
@@ -90,17 +91,31 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
   )
 
-def tf_additional_lib_hdrs():
-  return [
-      "platform/default/*.h",
-      "platform/posix/*.h",
-  ]
+def tf_additional_lib_hdrs(exclude = []):
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/default/*.h",
+        "platform/windows/*.h",
+        "platform/posix/error.h",
+      ], exclude = exclude),
+    "//conditions:default" : native.glob([
+        "platform/default/*.h",
+        "platform/posix/*.h",
+      ], exclude = exclude),
+  })
 
-def tf_additional_lib_srcs():
-  return [
-      "platform/default/*.cc",
-      "platform/posix/*.cc",
-  ]
+def tf_additional_lib_srcs(exclude = []):
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/default/*.cc",
+        "platform/windows/*.cc",
+        "platform/posix/error.cc",
+      ], exclude = exclude),
+    "//conditions:default" : native.glob([
+        "platform/default/*.cc",
+        "platform/posix/*.cc",
+      ], exclude = exclude),
+  })
 
 def tf_additional_minimal_lib_srcs():
   return [

@@ -114,6 +114,13 @@ class FunctionalOpsTest(tf.test.TestCase):
       r = tf.map_fn(lambda x: tf.mul(tf.add(x, 3), 2), elems)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
+  def testMapSparseTensor(self):
+    with self.test_session():
+      with self.assertRaises(TypeError):
+        tf.map_fn(lambda x: x, tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0]],
+                                               values=tf.constant([0, 1, 2]),
+                                               shape=[2, 2]))
+
   def testMap_Scoped(self):
     with self.test_session() as sess:
 

@@ -23,11 +23,12 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python import summary as _summary
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -268,7 +269,7 @@ class Supervisor(object):
         The directory will be created if it does not exist.
       summary_op: An `Operation` that returns a Summary for the event logs.
         Used by chief supervisors if a `logdir` was specified.  Defaults to the
-        operation returned from merge_all_summaries().  If `None`, summaries are
+        operation returned from summary.merge_all().  If `None`, summaries are
         not computed automatically.
       saver: A Saver object.  Used by chief supervisors if a `logdir` was
         specified.  Defaults to the saved returned by Saver().
@@ -314,6 +315,9 @@ class Supervisor(object):
       self._init_summary_op(summary_op=summary_op)
       self._init_global_step(global_step=global_step)
     self._graph = graph
+    self._meta_graph_def = meta_graph.create_meta_graph_def(
+        graph_def=graph.as_graph_def(add_shapes=True),
+        saver_def=self._saver.saver_def if self._saver else None)
     self._is_chief = is_chief
     self._coord = coordinator.Coordinator()
     self._recovery_wait_secs = recovery_wait_secs
@@ -467,7 +471,7 @@ class Supervisor(object):
     if summary_op is Supervisor.USE_DEFAULT:
       summary_op = self._get_first_op_from_collection(ops.GraphKeys.SUMMARY_OP)
       if summary_op is None:
-        summary_op = logging_ops.merge_all_summaries()
+        summary_op = _summary.merge_all()
         if summary_op is not None:
           ops.add_to_collection(ops.GraphKeys.SUMMARY_OP, summary_op)
     self._summary_op = summary_op
@@ -620,6 +624,7 @@ class Supervisor(object):
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer and not self._graph_added_to_summary:
       self._summary_writer.add_graph(self._graph)
+      self._summary_writer.add_meta_graph(self._meta_graph_def)
       self._graph_added_to_summary = True
 
   def start_standard_services(self, sess):

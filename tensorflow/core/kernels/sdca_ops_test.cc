@@ -77,6 +77,12 @@ Node* Ones(Graph* const g, const int n) {
   return test::graph::Constant(g, data);
 }
 
+Node* SparseIndices(Graph* const g, const int sparse_features_per_group) {
+  Tensor data(DT_INT64, TensorShape({sparse_features_per_group}));
+  test::FillFn<int64>(&data, [&](const int i) { return i; });
+  return test::graph::Constant(g, data);
+}
+
 Node* SparseExampleIndices(Graph* const g, const int sparse_features_per_group,
                            const int num_examples) {
   const int x_size = num_examples * 4;
@@ -150,8 +156,11 @@ void GetGraphs(const int32 num_examples, const int32 num_sparse_feature_groups,
     std::vector<Node*> dense_weight_nodes =
         VarVector(g, num_dense_feature_groups, dense_features_per_group);
 
+    std::vector<NodeBuilder::NodeOut> sparse_indices;
     std::vector<NodeBuilder::NodeOut> sparse_weights;
     for (Node* n : sparse_weight_nodes) {
+      sparse_indices.push_back(
+          NodeBuilder::NodeOut(SparseIndices(g, sparse_features_per_group)));
       sparse_weights.push_back(NodeBuilder::NodeOut(n));
     }
     std::vector<NodeBuilder::NodeOut> dense_weights;
@@ -187,7 +196,7 @@ void GetGraphs(const int32 num_examples, const int32 num_sparse_feature_groups,
 
     Node* sdca = nullptr;
     TF_CHECK_OK(
-        NodeBuilder(g->NewName("sdca"), "DistributedSdcaLargeBatchSolver")
+        NodeBuilder(g->NewName("sdca"), "SdcaOptimizer")
             .Attr("loss_type", "logistic_loss")
             .Attr("num_sparse_features", num_sparse_feature_groups)
             .Attr("num_sparse_features_with_values", num_sparse_feature_groups)
@@ -202,6 +211,7 @@ void GetGraphs(const int32 num_examples, const int32 num_sparse_feature_groups,
             .Input(dense_features)
             .Input(weights)
             .Input(labels)
+            .Input(sparse_indices)
             .Input(sparse_weights)
             .Input(dense_weights)
             .Input(example_state_data)
@@ -222,6 +232,17 @@ void BM_SDCA(const int iters, const int num_examples) {
   test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
 }
 
+void BM_SDCA_LARGE_DENSE(const int iters, const int num_examples) {
+  testing::StopTiming();
+  Graph* init = nullptr;
+  Graph* train = nullptr;
+  GetGraphs(num_examples, 0 /* sparse feature groups */,
+            0 /* sparse features per group */, 5 /* dense feature groups*/,
+            200000 /* dense features per group */, &init, &train);
+  testing::StartTiming();
+  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
+}
+
 void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
   testing::StopTiming();
   Graph* init = nullptr;
@@ -232,10 +253,10 @@ void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
   testing::StartTiming();
   test::Benchmark("cpu", train, GetMultiThreadedOptions(), init).Run(iters);
 }
-
 }  // namespace
 
 BENCHMARK(BM_SDCA)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
+BENCHMARK(BM_SDCA_LARGE_DENSE)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
 BENCHMARK(BM_SDCA_LARGE_SPARSE)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
 
 }  // namespace tensorflow

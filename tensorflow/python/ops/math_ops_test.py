@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -115,7 +116,9 @@ class RoundTest(test_util.TensorFlowTestCase):
 
   def testRounding(self):
     x = [0.49, 0.7, -0.3, -0.8]
-    for dtype in [np.float32, np.double]:
+    # TODO(nolivia): Remove this when RoundOp is forwards compatible
+    # x = np.arange(-5.0, 5.0, .25)
+    for dtype in [np.float32, np.double, np.int32]:
       x_np = np.array(x, dtype=dtype)
       with self.test_session(use_gpu=True):
         x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -218,6 +221,64 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
+
+
+class DivAndModTest(test_util.TensorFlowTestCase):
+  # TODO(aselle): Test more types before exposing new division operators.
+
+  def intTestData(self):
+    nums = np.arange(-10, 10, 1).reshape(20, 1)
+    divs = np.arange(-3, 4, 2).reshape(1, 4)
+    return nums, divs
+
+  def floatTestData(self):
+    nums = np.arange(-10, 10, .25).reshape(80, 1)
+    divs = np.arange(-3, 0, .25).reshape(1, 12)
+    return nums, divs
+
+  def testFloorModInt(self):
+    nums, divs = self.intTestData()
+    with self.test_session():
+      # TODO(aselle): Change test to use % after switch
+      # tf_result = math_ops.floor_mod(nums, divs).eval()
+      tf_result = gen_math_ops.floor_mod(nums, divs).eval()
+      np_result = nums % divs
+      self.assertAllEqual(tf_result, np_result)
+
+  def testFloorModFloat(self):
+    nums, divs = self.floatTestData()
+    with self.test_session():
+      tf_result = math_ops.floor_mod(nums, divs).eval()
+      np_result = nums % divs
+      self.assertAllEqual(tf_result, np_result)
+      # TODO(aselle): put this test in once % switched to floormod
+      # tf2_result = (array_ops.constant(nums)
+      #               % array_ops.constant(divs)).eval()
+      # self.assertAllEqual(tf2_result, tf_result)
+
+  def testDivideInt(self):
+    nums, divs = self.intTestData()
+    with self.test_session():
+      tf_result = math_ops.floor_div(nums, divs).eval()
+      np_result = nums // divs
+      self.assertAllEqual(tf_result, np_result)
+      # TODO(aselle): Put this test in once // is switched to floordiv
+      # tf2_result = (array_ops.constant(nums)
+      #               // array_ops.constant(divs)).eval()
+      # self.assertAllEqual(tf2_result, tf_result)
+
+  def testConsistent(self):
+    nums, divs = self.intTestData()
+    with self.test_session():
+      tf_result = (
+          math_ops.floor_div(nums, divs) * divs + math_ops.floor_mod(nums, divs)
+      ).eval()
+      tf_nums = array_ops.constant(nums)
+      tf_divs = array_ops.constant(divs)
+      tf2_result = (tf_nums // tf_divs * tf_divs + tf_nums % tf_divs).eval()
+      np_result = (nums // divs) * divs + (nums % divs)
+      self.assertAllEqual(tf_result, np_result)
+      self.assertAllEqual(tf_result, tf2_result)
 
 
 if __name__ == "__main__":

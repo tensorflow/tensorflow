@@ -19,14 +19,63 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import shutil
 import tempfile
 import time
 
 import tensorflow as tf
 
+from tensorflow.contrib import testing
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
+
+
+class SecondOrStepTimerTest(tf.test.TestCase):
+
+  def test_raise_in_both_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      basic_session_run_hooks._SecondOrStepTimer(every_secs=2.0, every_steps=10)
+
+  def test_raise_in_none_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      basic_session_run_hooks._SecondOrStepTimer()
+
+  def test_every_secs(self):
+    timer = basic_session_run_hooks._SecondOrStepTimer(every_secs=1.0)
+    self.assertTrue(timer.should_trigger_for_step(1))
+
+    timer.update_last_triggered_step(1)
+    self.assertFalse(timer.should_trigger_for_step(1))
+    self.assertFalse(timer.should_trigger_for_step(2))
+
+    time.sleep(1.0)
+    self.assertFalse(timer.should_trigger_for_step(1))
+    self.assertTrue(timer.should_trigger_for_step(2))
+
+  def test_every_steps(self):
+    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=3)
+    self.assertTrue(timer.should_trigger_for_step(1))
+
+    timer.update_last_triggered_step(1)
+    self.assertFalse(timer.should_trigger_for_step(1))
+    self.assertFalse(timer.should_trigger_for_step(2))
+    self.assertFalse(timer.should_trigger_for_step(3))
+    self.assertTrue(timer.should_trigger_for_step(4))
+
+  def test_update_last_triggered_step(self):
+    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=1)
+
+    elapsed_secs, elapsed_steps = timer.update_last_triggered_step(1)
+    self.assertEqual(None, elapsed_secs)
+    self.assertEqual(None, elapsed_steps)
+
+    elapsed_secs, elapsed_steps = timer.update_last_triggered_step(5)
+    self.assertLess(0, elapsed_secs)
+    self.assertEqual(4, elapsed_steps)
+
+    elapsed_secs, elapsed_steps = timer.update_last_triggered_step(7)
+    self.assertLess(0, elapsed_secs)
+    self.assertEqual(2, elapsed_steps)
 
 
 class StopAtStepTest(tf.test.TestCase):
@@ -139,6 +188,15 @@ class CheckpointSaverHookTest(tf.test.TestCase):
   def tearDown(self):
     shutil.rmtree(self.model_dir, ignore_errors=True)
 
+  def test_raise_when_saver_and_scaffold_both_missing(self):
+    with self.assertRaises(ValueError):
+      tf.train.CheckpointSaverHook(self.model_dir)
+
+  def test_raise_when_saver_and_scaffold_both_present(self):
+    with self.assertRaises(ValueError):
+      tf.train.CheckpointSaverHook(
+          self.model_dir, saver=self.scaffold.saver, scaffold=self.scaffold)
+
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
       tf.train.CheckpointSaverHook(self.model_dir, save_secs=10, save_steps=20)
@@ -244,6 +302,182 @@ class CheckpointSaverHookTest(tf.test.TestCase):
         hook.end(sess)
         self.assertEqual(2, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
+
+
+class StepCounterHookTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.log_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    shutil.rmtree(self.log_dir, ignore_errors=True)
+
+  def test_step_counter_every_n_steps(self):
+    with tf.Graph().as_default() as g, tf.Session() as sess:
+      global_step = tf.contrib.framework.get_or_create_global_step()
+      train_op = tf.assign_add(global_step, 1)
+      summary_writer = testing.FakeSummaryWriter(self.log_dir, g)
+      hook = tf.train.StepCounterHook(
+          summary_writer=summary_writer, every_n_steps=10)
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(30):
+        time.sleep(0.01)
+        mon_sess.run(train_op)
+      hook.end(sess)
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertItemsEqual([11, 21], summary_writer.summaries.keys())
+      for step in [11, 21]:
+        summary_value = summary_writer.summaries[step][0].value[0]
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
+
+  def test_step_counter_every_n_secs(self):
+    with tf.Graph().as_default() as g, tf.Session() as sess:
+      global_step = tf.contrib.framework.get_or_create_global_step()
+      train_op = tf.assign_add(global_step, 1)
+      summary_writer = testing.FakeSummaryWriter(self.log_dir, g)
+      hook = tf.train.StepCounterHook(
+          summary_writer=summary_writer, every_n_steps=None, every_n_secs=0.1)
+
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      mon_sess.run(train_op)
+      time.sleep(0.2)
+      mon_sess.run(train_op)
+      time.sleep(0.2)
+      mon_sess.run(train_op)
+      hook.end(sess)
+
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertTrue(summary_writer.summaries, 'No summaries were created.')
+      self.assertItemsEqual([2, 3], summary_writer.summaries.keys())
+      for summary in summary_writer.summaries.values():
+        summary_value = summary[0].value[0]
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
+
+
+class SummarySaverHookTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.test.TestCase.setUp(self)
+
+    self.log_dir = 'log/dir'
+    self.summary_writer = testing.FakeSummaryWriter(self.log_dir)
+
+    var = tf.Variable(0.0)
+    tensor = tf.assign_add(var, 1.0)
+    self.summary_op = tf.summary.scalar('my_summary', tensor)
+
+    global_step = tf.contrib.framework.get_or_create_global_step()
+    self.train_op = tf.assign_add(global_step, 1)
+
+  def test_raise_when_scaffold_and_summary_op_both_missing(self):
+    with self.assertRaises(ValueError):
+      tf.train.SummarySaverHook()
+
+  def test_raise_when_scaffold_and_summary_op_both_present(self):
+    with self.assertRaises(ValueError):
+      tf.train.SummarySaverHook(scaffold=tf.train.Scaffold(),
+                                summary_op=self.summary_op)
+
+  def test_raise_in_both_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      tf.train.SummarySaverHook(
+          save_secs=10,
+          save_steps=20,
+          summary_writer=self.summary_writer)
+
+  def test_raise_in_none_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      tf.train.SummarySaverHook(
+          save_secs=None,
+          save_steps=None,
+          summary_writer=self.summary_writer)
+
+  def test_save_steps(self):
+    hook = tf.train.SummarySaverHook(
+        save_steps=8,
+        summary_writer=self.summary_writer,
+        summary_op=self.summary_op)
+
+    with self.test_session() as sess:
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(30):
+        mon_sess.run(self.train_op)
+      hook.end(sess)
+
+    self.summary_writer.assert_summaries(
+        test_case=self,
+        expected_logdir=self.log_dir,
+        expected_summaries={
+            1: {'my_summary': 1.0},
+            9: {'my_summary': 2.0},
+            17: {'my_summary': 3.0},
+            25: {'my_summary': 4.0},
+        })
+
+  def test_save_secs_saving_once_every_step(self):
+    hook = tf.train.SummarySaverHook(
+        save_secs=0.5,
+        summary_writer=self.summary_writer,
+        summary_op=self.summary_op)
+
+    with self.test_session() as sess:
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(4):
+        mon_sess.run(self.train_op)
+        time.sleep(0.5)
+      hook.end(sess)
+
+    self.summary_writer.assert_summaries(
+        test_case=self,
+        expected_logdir=self.log_dir,
+        expected_summaries={
+            1: {'my_summary': 1.0},
+            2: {'my_summary': 2.0},
+            3: {'my_summary': 3.0},
+            4: {'my_summary': 4.0},
+        })
+
+  def test_save_secs_saving_once_every_three_steps(self):
+    hook = tf.train.SummarySaverHook(
+        save_secs=0.9,
+        summary_writer=self.summary_writer,
+        summary_op=self.summary_op)
+
+    with self.test_session() as sess:
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(8):
+        mon_sess.run(self.train_op)
+        time.sleep(0.3)
+      hook.end(sess)
+
+    self.summary_writer.assert_summaries(
+        test_case=self,
+        expected_logdir=self.log_dir,
+        expected_summaries={
+            1: {'my_summary': 1.0},
+            4: {'my_summary': 2.0},
+            7: {'my_summary': 3.0},
+        })
 
 
 if __name__ == '__main__':

@@ -47,7 +47,7 @@ class LookupInterface : public ResourceBase {
   //   fails.
   // - In addition, other implementations may provide another non-OK status
   //   specific to their failure modes.
-  virtual Status Find(const Tensor& keys, Tensor* values,
+  virtual Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
                       const Tensor& default_value) = 0;
 
   // Inserts elements into the table. Each element of the key tensor is
@@ -61,20 +61,25 @@ class LookupInterface : public ResourceBase {
   // - InvalidArgument: if any of the preconditions on the lookup key or value
   //   fails.
   // - Unimplemented: if the table does not support insertions.
-  virtual Status Insert(const Tensor& keys, const Tensor& values) = 0;
+  virtual Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                        const Tensor& values) = 0;
 
   // Returns the number of elements in the table.
   virtual size_t size() const = 0;
 
-  virtual Status ExportValues(OpKernelContext* context) = 0;
+  virtual Status ExportValues(OpKernelContext* ctx) = 0;
 
-  virtual Status ImportValues(const Tensor& keys, const Tensor& values) = 0;
+  virtual Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                              const Tensor& values) = 0;
 
   // Returns the data type of the key.
   virtual DataType key_dtype() const = 0;
 
   // Returns the data type of the value.
   virtual DataType value_dtype() const = 0;
+
+  // Returns the shape of a key in the table.
+  virtual TensorShape key_shape() const = 0;
 
   // Returns the shape of a value in the table.
   virtual TensorShape value_shape() const = 0;
@@ -105,6 +110,9 @@ class LookupInterface : public ResourceBase {
 
  protected:
   virtual ~LookupInterface() = default;
+
+ private:
+  Status CheckKeyAndValueTypes(const Tensor& keys, const Tensor& values);
 };
 
 }  // namespace lookup

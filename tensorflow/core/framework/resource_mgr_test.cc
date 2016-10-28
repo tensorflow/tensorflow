@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -27,7 +28,7 @@ class Resource : public ResourceBase {
   explicit Resource(const string& label) : label_(label) {}
   ~Resource() override {}
 
-  string DebugString() { return strings::StrCat("R/", label_); }
+  string DebugString() override { return strings::StrCat("R/", label_); }
 
  private:
   string label_;
@@ -38,7 +39,7 @@ class Other : public ResourceBase {
   explicit Other(const string& label) : label_(label) {}
   ~Other() override {}
 
-  string DebugString() { return strings::StrCat("O/", label_); }
+  string DebugString() override { return strings::StrCat("O/", label_); }
 
  private:
   string label_;
@@ -193,6 +194,104 @@ TEST(ContainerInfo, Error) {
 
   // Invalid shared name.
   HasError(WrongPolicy("", "_foo", false), "shared_name cannot start with '_'");
+}
+
+// Stub DeviceBase subclass which only sets a device name, for testing resource
+// handles.
+class StubDevice : public DeviceBase {
+ public:
+  StubDevice(const string& name) : DeviceBase(nullptr) { attr_.set_name(name); }
+
+  Allocator* GetAllocator(AllocatorAttributes) override {
+    return cpu_allocator();
+  }
+
+  const DeviceAttributes& attributes() const override { return attr_; }
+
+ private:
+  DeviceAttributes attr_;
+};
+
+// Empty stub resource for testing resource handles.
+class StubResource : public ResourceBase {
+ public:
+  string DebugString() override { return ""; }
+  int value_{0};
+};
+
+TEST(ResourceHandleTest, CRUD) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 0);
+
+  ResourceHandle p =
+      MakeResourceHandle<StubResource>(&ctx, "container", "name");
+
+  {
+    auto* r = new StubResource();
+    r->value_ = 42;
+    TF_EXPECT_OK(CreateResource(&ctx, p, r));
+  }
+  {
+    StubResource* r = nullptr;
+    TF_ASSERT_OK(LookupResource(&ctx, p, &r));
+    ASSERT_TRUE(r != nullptr);
+    EXPECT_EQ(r->value_, 42);
+    r->Unref();
+  }
+  {
+    TF_EXPECT_OK(DeleteResource<StubResource>(&ctx, p));
+    StubResource* unused = nullptr;
+    EXPECT_FALSE(LookupResource(&ctx, p, &unused).ok());
+  }
+}
+
+TEST(ResourceHandleTest, DifferentDevice) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 0);
+
+  ResourceHandle p =
+      MakeResourceHandle<StubResource>(&ctx, "container", "name");
+
+  ResourceMgr other_resource_mgr("");
+  OpKernelContext::Params other_params;
+  other_params.resource_manager = &other_resource_mgr;
+  StubDevice other_device("other_device_name");
+  other_params.device = &other_device;
+  OpKernelContext other_ctx(&other_params, 0);
+
+  auto* r = new StubResource();
+  ASSERT_FALSE(CreateResource(&other_ctx, p, r).ok());
+  r->Unref();
+}
+
+// Other stub resource to test type-checking of resource handles.
+class OtherStubResource : public ResourceBase {
+ public:
+  string DebugString() override { return ""; }
+};
+
+TEST(ResourceHandleTest, DifferentType) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 0);
+
+  ResourceHandle p =
+      MakeResourceHandle<StubResource>(&ctx, "container", "name");
+
+  auto* r = new OtherStubResource;
+  ASSERT_FALSE(CreateResource(&ctx, p, r).ok());
+  r->Unref();
 }
 
 }  // end namespace tensorflow

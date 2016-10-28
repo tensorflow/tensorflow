@@ -73,6 +73,7 @@ HOST_INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+  -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -136,7 +137,7 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
-OPTFLAGS := -O0
+OPTFLAGS := -O2
 CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
@@ -146,6 +147,7 @@ INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -229,6 +231,8 @@ ifeq ($(TARGET),ANDROID)
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
 -march=armv7-a \
+-mfloat-abi=softfp \
+-mfpu=neon \
 -fPIE
 
 	INCLUDES = \
@@ -238,6 +242,7 @@ ifeq ($(TARGET),ANDROID)
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
@@ -293,7 +298,6 @@ ifeq ($(TARGET),IOS)
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -316,7 +320,6 @@ ifeq ($(TARGET),IOS)
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -338,7 +341,6 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -360,7 +362,6 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
@@ -382,7 +383,6 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}

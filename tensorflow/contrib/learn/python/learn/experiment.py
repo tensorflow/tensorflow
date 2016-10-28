@@ -223,6 +223,7 @@ class Experiment(object):
       logging.info("Waiting %f secs before starting eval.", delay_secs)
       time.sleep(delay_secs)
 
+    last_fitted_error_time = 0
     while True:
       start = time.time()
       try:
@@ -231,7 +232,13 @@ class Experiment(object):
                                  metrics=self._eval_metrics,
                                  name=name)
       except NotFittedError:
-        logging.warning("Estimator is not fitted yet, skipping evaluation.")
+        # Print warning message every 10 mins.
+        if time.time() - last_fitted_error_time > 600:
+          logging.warning(
+              "Estimator is not fitted yet. "
+              "Will start an evaluation when a checkpoint will be ready.")
+          last_fitted_error_time = time.time()
+
       duration = time.time() - start
       if duration < throttle_delay_secs:
         difference = throttle_delay_secs - duration

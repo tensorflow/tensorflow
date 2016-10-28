@@ -513,13 +513,17 @@ class Tensor(object):
       # ...
     ```
 
+    This disallows ambiguities between testing the Python value vs testing the
+    dynamic condition of the `Tensor`.
+
     Raises:
       `TypeError`.
     """
     raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use the logical TensorFlow ops "
-                    "to test the value of a tensor.")
+                    "tensor is defined, and use TensorFlow ops such as "
+                    "tf.cond to execute subgraphs conditioned on the value of "
+                    "a tensor.")
 
   def __nonzero__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
@@ -531,8 +535,9 @@ class Tensor(object):
     """
     raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use the logical TensorFlow ops "
-                    "to test the value of a tensor.")
+                    "tensor is defined, and use TensorFlow ops such as "
+                    "tf.cond to execute subgraphs conditioned on the value of "
+                    "a tensor.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
@@ -2125,8 +2130,8 @@ class Graph(object):
   def graph_def_versions(self):
     """The GraphDef version information of this graph.
 
-    For details on the meaning of each version, see [`GraphDef`]
-    (https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+    For details on the meaning of each version, see
+    [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
     Returns:
       A `VersionDef`.
@@ -2156,6 +2161,16 @@ class Graph(object):
     when using a [`QueueRunner`](../../api_docs/python/train.md#QueueRunner).
     """
     self._finalized = True
+
+  def _unsafe_unfinalize(self):
+    """Opposite of `finalize`. Internal interface.
+
+    NOTE: Unfinalizing a graph could have negative impact on performance,
+    especially in a multi-threaded environment.  Unfinalizing a graph
+    when it is in use by a Session may lead to undefined behavior. Ensure
+    that all sessions using a graph are closed before calling this method.
+    """
+    self._finalized = False
 
   def _get_control_flow_context(self):
     """Returns the current control flow context.
@@ -4024,6 +4039,12 @@ class GraphKeys(object):
   LOSSES = "losses"
   # Key to collect BaseSaverBuilder.SaveableObject instances for checkpointing.
   SAVEABLE_OBJECTS = "saveable_objects"
+  # Key to collect all shared resources used by the graph which need to be
+  # initialized once per cluster.
+  RESOURCES = "resources"
+  # Key to collect all shared resources used in this graph which need to be
+  # initialized once per session.
+  LOCAL_RESOURCES = "local_resources"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
@@ -4032,6 +4053,7 @@ class GraphKeys(object):
   READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
+  TRAIN_OP = "train_op"
 
   # Key for control flow context.
   COND_CONTEXT = "cond_context"
@@ -4163,6 +4185,45 @@ def name_scope(name, default_name=None, values=None):
   with g.as_default(), g.name_scope(n) as scope:
     yield scope
 # pylint: enable=g-doc-return-or-yield
+
+
+def strip_name_scope(name, export_scope):
+  """Removes name scope from a name.
+
+  Args:
+    name: A `string` name.
+    export_scope: Optional `string`. Name scope to remove.
+
+  Returns:
+    Name with name scope removed, or the original name if export_scope
+    is None.
+  """
+  if export_scope:
+    # Strips export_scope/, export_scope///,
+    # ^export_scope/, loc:@export_scope/.
+    str_to_replace = r"([\^]|loc:@|^)" + export_scope + r"[\/]+(.*)"
+    return re.sub(str_to_replace, r"\1\2", compat.as_str(name), count=1)
+  else:
+    return name
+
+
+def prepend_name_scope(name, import_scope):
+  """Prepends name scope to a name.
+
+  Args:
+    name: A `string` name.
+    import_scope: Optional `string`. Name scope to add.
+
+  Returns:
+    Name with name scope added, or the original name if import_scope
+    is None.
+  """
+  if import_scope:
+    str_to_replace = r"([\^]|loc:@|^)(.*)"
+    return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",
+                  compat.as_str(name))
+  else:
+    return name
 
 
 # pylint: disable=g-doc-return-or-yield

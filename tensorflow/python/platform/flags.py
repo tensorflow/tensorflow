@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
+import argparse as _argparse
 
-_global_parser = argparse.ArgumentParser()
+from tensorflow.python.util.all_util import remove_undocumented
+
+_global_parser = _argparse.ArgumentParser()
 
 class _FlagValues(object):
 
@@ -29,8 +31,8 @@ class _FlagValues(object):
     self.__dict__['__flags'] = {}
     self.__dict__['__parsed'] = False
 
-  def _parse_flags(self):
-    result, unparsed = _global_parser.parse_known_args()
+  def _parse_flags(self, args=None):
+    result, unparsed = _global_parser.parse_known_args(args=args)
     for flag_name, val in vars(result).items():
       self.__dict__['__flags'][flag_name] = val
     self.__dict__['__parsed'] = True
@@ -124,3 +126,14 @@ def DEFINE_float(flag_name, default_value, docstring):
     docstring: A helpful message explaining the use of the flag.
   """
   _define_helper(flag_name, default_value, docstring, float)
+
+_allowed_symbols = [
+    # We rely on gflags documentation.
+    'DEFINE_bool',
+    'DEFINE_boolean',
+    'DEFINE_float',
+    'DEFINE_integer',
+    'DEFINE_string',
+    'FLAGS',
+]
+remove_undocumented(__name__, _allowed_symbols)

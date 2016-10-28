@@ -15,15 +15,15 @@ mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
 sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
 
 with sg.value_type(sg.SampleAndReshapeValue(n=2)):
-  dt = sg.DistributionTensor(
+  st = sg.StochasticTensor(
       distributions.Normal, mu=mu, sigma=sigma)
 
 # sample(2) creates a (2, 2, 3) tensor, and the two outermost dimensions
 # are reshaped into one: the final value is a (4, 3) tensor.
-dt_value = dt.value()
-assertEqual(dt_value.get_shape(), (4, 3))
+st_value = st.value()
+assertEqual(st_value.get_shape(), (4, 3))
 
-dt_value_val = sess.run([dt_value])[0]  # or e.g. run([tf.identity(dt)])[0]
+dt_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
 assertEqual(dt_value_val.shape, (4, 3))
 ```
 - - -

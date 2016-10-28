@@ -113,10 +113,12 @@ class Binomial(distribution.Distribution):
       logits: Floating point tensor representing the log-odds of a
         positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
         the same dtype as `n`. Each entry represents logits for the probability
-        of success for independent Binomial distributions.
+        of success for independent Binomial distributions. Only one of
+        `logits` or `p` should be passed in.
       p:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
-        probability of success for independent Binomial distributions.
+        probability of success for independent Binomial distributions. Only one
+        of `logits` or `p` should be passed in.
       validate_args: `Boolean`, default `False`.  Whether to assert valid values
         for parameters `n`, `p`, and `x` in `prob` and `log_prob`.
         If `False` and inputs are invalid, correct behavior is not guaranteed.
@@ -137,8 +139,8 @@ class Binomial(distribution.Distribution):
     ```
 
     """
-    self._logits, self._p = distribution_util.get_logits_and_prob(
-        name=name, logits=logits, p=p, validate_args=validate_args)
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[n]) as ns:
       with ops.control_dependencies([
           check_ops.assert_non_negative(
@@ -147,14 +149,17 @@ class Binomial(distribution.Distribution):
               n, message="n has non-integer components."),
       ] if validate_args else []):
         self._n = array_ops.identity(n, name="n")
-        super(Binomial, self).__init__(
-            dtype=self._p.dtype,
-            parameters={"n": self._n, "p": self._p, "logits": self._logits},
-            is_continuous=False,
-            is_reparameterized=False,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+        self._logits, self._p = distribution_util.get_logits_and_prob(
+            name=name, logits=logits, p=p, validate_args=validate_args)
+    super(Binomial, self).__init__(
+        dtype=self._p.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._n, self._p, self._logits],
+        name=ns)
 
   @property
   def n(self):
@@ -163,7 +168,7 @@ class Binomial(distribution.Distribution):
 
   @property
   def logits(self):
-    """Log-odds."""
+    """Log-odds of success."""
     return self._logits
 
   @property

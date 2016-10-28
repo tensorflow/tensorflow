@@ -147,10 +147,12 @@ type and representation (RGB or HSV).
 @@adjust_hue
 @@random_hue
 
+@@adjust_gamma
+
 @@adjust_saturation
 @@random_saturation
 
-@@per_image_whitening
+@@per_image_standardization
 
 ## Working with Bounding Boxes
 
@@ -163,6 +165,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -737,12 +740,9 @@ def resize_images(images,
 
   `method` can be one of:
 
-  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.]
-      (https://en.wikipedia.org/wiki/Bilinear_interpolation)
-  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.]
-      (https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.]
-      (https://en.wikipedia.org/wiki/Bicubic_interpolation)
+  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](https://en.wikipedia.org/wiki/Bilinear_interpolation)
+  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](https://en.wikipedia.org/wiki/Bicubic_interpolation)
   *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
 
   Args:
@@ -827,7 +827,7 @@ def resize_images(images,
   return images
 
 
-def per_image_whitening(image):
+def per_image_standardization(image):
   """Linearly scales `image` to have zero mean and unit norm.
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
@@ -837,16 +837,11 @@ def per_image_whitening(image):
   `stddev` is the standard deviation of all values in `image`. It is capped
   away from zero to protect against division by 0 when handling uniform images.
 
-  Note that this implementation is limited:
-
-  *  It only whitens based on the statistics of an individual image.
-  *  It does not take into account the covariance structure.
-
   Args:
     image: 3-D tensor of shape `[height, width, channels]`.
 
   Returns:
-    The whitened image with same shape as `image`.
+    The standardized image with same shape as `image`.
 
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
@@ -871,6 +866,11 @@ def per_image_whitening(image):
   image = math_ops.sub(image, pixel_value_offset)
   image = math_ops.div(image, pixel_value_scale)
   return image
+
+
+# TODO(skye): remove once users switch to per_image_standardization()
+def per_image_whitening(image):
+  return per_image_standardization(image)
 
 
 def random_brightness(image, max_delta, seed=None):
@@ -1004,6 +1004,46 @@ def adjust_contrast(images, contrast_factor):
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
+
+def adjust_gamma(image, gamma=1, gain=1):
+  """Performs Gamma Correction on the input image.
+    Also known as Power Law Transform. This function transforms the 
+    input image pixelwise according to the equation Out = In**gamma 
+    after scaling each pixel to the range 0 to 1.
+
+  Args:
+    image : A Tensor.
+    gamma : A scalar. Non negative real number.
+    gain  : A scalar. The constant multiplier. 
+
+  Returns:
+    A Tensor. Gamma corrected output image.
+
+  Notes:
+    For gamma greater than 1, the histogram will shift towards left and
+    the output image will be darker than the input image.
+    For gamma less than 1, the histogram will shift towards right and
+    the output image will be brighter than the input image.
+
+  References:
+    [1] http://en.wikipedia.org/wiki/Gamma_correction
+  """
+
+  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma') as name:
+    # Convert pixel value to DT_FLOAT for computing adjusted image
+    img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
+    # Keep image dtype for computing the scale of corresponding dtype
+    image = ops.convert_to_tensor(image, name='image')
+
+    if gamma < 0:
+      raise ValueError("Gamma should be a non-negative real number")
+    # scale = max(dtype) - min(dtype)
+    scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
+    # According to the definition of gamma correction
+    adjusted_img = (img / scale) ** gamma * scale * gain
+
+    return adjusted_img
+    
 
 ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('AdjustContrastv2')(common_shapes.call_cpp_shape_fn)
@@ -1340,3 +1380,6 @@ ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)
 __all__ = make_all(__name__)
 # ResizeMethod is not documented, but is documented in functions that use it.
 __all__.append('ResizeMethod')
+# TODO(skye): per_image_whitening() will be removed once all callers switch to
+# per_image_standardization()
+__all__.append('per_image_whitening')

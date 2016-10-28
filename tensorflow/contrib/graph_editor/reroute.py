@@ -188,11 +188,16 @@ def _reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
   if can_modify is not None:
     can_modify = frozenset(util.make_list_of_op(can_modify))
   nb_update_inputs = 0
+  precomputed_consumers = []
+  # precompute consumers to avoid issue with repeated tensors:
   for t0, t1 in zip(ts0, ts1):
-    if t0 is t1:
-      continue  # Silently ignore identical tensors.
     consumers0 = set(t0.consumers())
     consumers1 = set(t1.consumers())
+    precomputed_consumers.append((consumers0, consumers1))
+  for t0, t1, consumers in zip(ts0, ts1, precomputed_consumers):
+    if t0 is t1:
+      continue  # Silently ignore identical tensors.
+    consumers0, consumers1 = consumers
     if a2b:
       nb_update_inputs += _reroute_t(t0, t1, consumers1, can_modify,
                                      cannot_modify)

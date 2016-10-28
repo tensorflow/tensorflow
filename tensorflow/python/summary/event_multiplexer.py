@@ -23,6 +23,7 @@ import threading
 
 import six
 
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import directory_watcher
@@ -73,6 +74,7 @@ class EventMultiplexer(object):
   @@RunPaths
   @@Scalars
   @@Graph
+  @@MetaGraph
   @@Histograms
   @@CompressedHistograms
   @@Images
@@ -251,10 +253,26 @@ class EventMultiplexer(object):
       ValueError: If the run does not have an associated graph.
 
     Returns:
-      The `graph_def` protobuf data structure.
+      The `GraphDef` protobuf data structure.
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def MetaGraph(self, run):
+    """Retrieve the metagraph associated with the provided run.
+
+    Args:
+      run: A string name of a run to load the graph for.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run does not have an associated graph.
+
+    Returns:
+      The `MetaGraphDef` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.MetaGraph()
 
   def RunMetadata(self, run, tag):
     """Get the session.run() metadata associated with a TensorFlow run and tag.
@@ -350,7 +368,7 @@ class EventMultiplexer(object):
                   scalarValues: [tagA, tagB, tagC],
                   histograms: [tagX, tagY, tagZ],
                   compressedHistograms: [tagX, tagY, tagZ],
-                  graph: true}}
+                  graph: true, meta_graph: true}}
     ```
     """
     with self._accumulators_mutex:
@@ -369,7 +387,7 @@ class EventMultiplexer(object):
 
 def GetLogdirSubdirectories(path):
   """Returns subdirectories with event files on path."""
-  if io_wrapper.Exists(path) and not io_wrapper.IsDirectory(path):
+  if gfile.Exists(path) and not gfile.IsDirectory(path):
     raise ValueError('GetLogdirSubdirectories: path exists and is not a '
                      'directory, %s' % path)
 

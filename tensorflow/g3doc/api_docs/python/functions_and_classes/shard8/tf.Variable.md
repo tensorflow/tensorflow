@@ -89,7 +89,7 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None, dtype=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None, dtype=None, expected_shape=None, import_scope=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
@@ -132,6 +132,10 @@ variable to its initial value.
 *  <b>`dtype`</b>: If set, initial_value will be converted to the given type.
     If `None`, either the datatype will be kept (if `initial_value` is
     a Tensor), or `convert_to_tensor` will decide.
+*  <b>`expected_shape`</b>: A TensorShape. If set, initial_value is expected
+    to have this shape.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to add to the
+    `Variable.` Only used when initializing from protocol buffer.
 
 ##### Raises:
 
@@ -1069,7 +1073,7 @@ x ^ y = (x | y) & ~(x & y).
 
 - - -
 
-#### `tf.Variable.from_proto(variable_def)` {#Variable.from_proto}
+#### `tf.Variable.from_proto(variable_def, import_scope=None)` {#Variable.from_proto}
 
 Returns a `Variable` object created from `variable_def`.
 
@@ -1111,13 +1115,19 @@ variable.
 
 - - -
 
-#### `tf.Variable.to_proto()` {#Variable.to_proto}
+#### `tf.Variable.to_proto(export_scope=None)` {#Variable.to_proto}
 
 Converts a `Variable` to a `VariableDef` protocol buffer.
 
+##### Args:
+
+
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+
 ##### Returns:
 
-  A `VariableDef` protocol buffer.
+  A `VariableDef` protocol buffer, or `None` if the `Variable` is not
+  in the specified name scope.
 
 
 - - -

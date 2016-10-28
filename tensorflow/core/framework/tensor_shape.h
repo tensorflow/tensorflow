@@ -31,8 +31,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+// START_SKIP_DOXYGEN
 class TensorShapeIter;  // Declared below
+// END_SKIP_DOXYGEN
 
+/// Represents the shape of a Tensor.
+///
+/// A tensor's shape is denoted by its number of dimensions and a size for each
+/// dimension.  For example, a Tensor represented by a 3 x 4 matrix would have
+/// a shape of 2-D, [3,4].
+///
+/// If you know the exact shape of your Tensor when you create the TensorShape
+/// object, you can specify it then, or you can create a TensorShape with
+/// zero dimensions and one element, and call AddDim() to add dimensions later.
 class TensorShape {
  public:
   /// \brief Construct a `TensorShape` from the provided sizes.
@@ -220,11 +231,13 @@ class TensorShape {
   int64 num_elements_;
 };
 
+/// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {
   explicit TensorShapeDim(int64 s) : size(s) {}
   int64 size;
 };
 
+// START_SKIP_DOXYGEN
 class TensorShapeIter {
  public:
   TensorShapeIter(const TensorShape* shape, int d) : shape_(shape), d_(d) {}
@@ -243,6 +256,7 @@ class TensorShapeIter {
   const TensorShape* shape_;
   int d_;
 };
+// END_SKIP_DOXYGEN
 
 /// \brief Static helper routines for `TensorShape`. Includes a few common
 /// predicates on a tensor shape.
@@ -275,7 +289,11 @@ class TensorShapeUtils {
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 
-  static bool StartsWith(const TensorShape& shape0, const TensorShape& shape1);
+  /// \brief Returns true iff `shape` starts with `prefix`.
+  static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
+
+  /// \brief Returns true iff `shape` ends with `suffix`.
+  static bool EndsWith(const TensorShape& shape, const TensorShape& suffix);
 };
 
 // ----------------------------------------------------------------------------

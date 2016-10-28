@@ -219,12 +219,9 @@ the same as `size`.  To avoid distortions see
 
 `method` can be one of:
 
-*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.]
-    (https://en.wikipedia.org/wiki/Bilinear_interpolation)
-*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.]
-    (https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.]
-    (https://en.wikipedia.org/wiki/Bicubic_interpolation)
+*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](https://en.wikipedia.org/wiki/Bilinear_interpolation)
+*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](https://en.wikipedia.org/wiki/Bicubic_interpolation)
 *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
 
 ##### Args:
@@ -1122,6 +1119,38 @@ picked in the interval `[-max_delta, max_delta]`.
 
 - - -
 
+### `tf.image.adjust_gamma(image, gamma=1, gain=1)` {#adjust_gamma}
+
+Performs Gamma Correction on the input image.
+  Also known as Power Law Transform. This function transforms the
+  input image pixelwise according to the equation Out = In**gamma
+  after scaling each pixel to the range 0 to 1.
+
+##### Args:
+
+  image : A Tensor.
+  gamma : A scalar. Non negative real number.
+  gain  : A scalar. The constant multiplier.
+
+##### Returns:
+
+  A Tensor. Gamma corrected output image.
+
+##### Notes:
+
+  For gamma greater than 1, the histogram will shift towards left and
+  the output image will be darker than the input image.
+  For gamma less than 1, the histogram will shift towards right and
+  the output image will be brighter than the input image.
+
+##### References:
+
+  [1] http://en.wikipedia.org/wiki/Gamma_correction
+
+
+
+- - -
+
 ### `tf.image.adjust_saturation(image, saturation_factor, name=None)` {#adjust_saturation}
 
 Adjust saturation of an RGB image.
@@ -1181,7 +1210,7 @@ picked in the interval `[lower, upper]`.
 
 - - -
 
-### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+### `tf.image.per_image_standardization(image)` {#per_image_standardization}
 
 Linearly scales `image` to have zero mean and unit norm.
 
@@ -1192,11 +1221,6 @@ of all values in image, and
 `stddev` is the standard deviation of all values in `image`. It is capped
 away from zero to protect against division by 0 when handling uniform images.
 
-Note that this implementation is limited:
-
-*  It only whitens based on the statistics of an individual image.
-*  It does not take into account the covariance structure.
-
 ##### Args:
 
 
@@ -1204,7 +1228,7 @@ Note that this implementation is limited:
 
 ##### Returns:
 
-  The whitened image with same shape as `image`.
+  The standardized image with same shape as `image`.
 
 ##### Raises:
 
@@ -1386,5 +1410,14 @@ false and no bounding boxes are supplied, an error is raised.
     `tf.slice`.
 *  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+
+
 
 

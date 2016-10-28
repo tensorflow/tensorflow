@@ -125,6 +125,7 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -327,8 +328,9 @@ def evaluate_once(master,
 
   global_step = variables.get_or_create_global_step()
 
-  saver = tf_saver.Saver(variables_to_restore or
-                         variables.get_variables_to_restore())
+  saver = tf_saver.Saver(
+      variables_to_restore or variables.get_variables_to_restore(),
+      write_version=saver_pb2.SaverDef.V1)
 
   summary_writer = summary_io.SummaryWriter(logdir)
 
@@ -379,7 +381,8 @@ def evaluation_loop(master,
                     variables_to_restore=None,
                     eval_interval_secs=60,
                     max_number_of_evaluations=None,
-                    session_config=None):
+                    session_config=None,
+                    timeout=None):
   """Runs TF-Slim's Evaluation Loop.
 
   Args:
@@ -406,6 +409,8 @@ def evaluation_loop(master,
       If the value is left as 'None', the evaluation continues indefinitely.
     session_config: An instance of `tf.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
+    timeout: The maximum amount of time to wait between checkpoints. If left as
+      `None`, then the process will wait indefinitely.
 
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
@@ -429,7 +434,8 @@ def evaluation_loop(master,
 
   number_of_evaluations = 0
   for checkpoint_path in checkpoints_iterator(checkpoint_dir,
-                                              eval_interval_secs):
+                                              eval_interval_secs,
+                                              timeout):
     logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                            time.gmtime()))
 
@@ -457,7 +463,8 @@ def evaluation_loop(master,
         number_of_evaluations >= max_number_of_evaluations):
       logging.info('Reached max_number_of_evaluations=%s. Exit',
                    max_number_of_evaluations)
-      break
+      return final_op_value
 
+  logging.info(
+      'Timed-out waiting for new checkpoint file. Exiting evaluation loop.')
   return final_op_value
-

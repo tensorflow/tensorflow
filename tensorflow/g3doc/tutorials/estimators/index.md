@@ -22,7 +22,7 @@ different activation functions for each neural network layer. Or maybe you're
 implementing a ranking or recommendation system, and neither a classifier nor a
 regressor is appropriate for generating predictions.
 
-This tutorial covers how to create your own Estimator using the building blocks
+This tutorial covers how to create your own `Estimator` using the building blocks
 provided in `tf.contrib.learn`, which will predict the ages of
 [abalones](https://en.wikipedia.org/wiki/Abalone) based on their physical
 measurements. You'll learn how to do the following:
@@ -237,9 +237,8 @@ nn = tf.contrib.learn.Estimator(
     that will be passed into the `model_fn`.
 
 NOTE: Just like `tf.contrib.learn`'s predefined regressors and classifiers, the
-`Estimator` initializer also accepts the following general configuration
-arguments, all of which are optional: `model_dir`, `config`, and
-`weight_column_name`.
+`Estimator` initializer also accepts the general configuration
+arguments `model_dir` and `config`.
 
 For the abalone age predictor, the model will accept one hyperparameter:
 learning rate. Define `LEARNING_RATE` as a constant at the beginning of your

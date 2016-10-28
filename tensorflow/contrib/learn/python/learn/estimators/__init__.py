@@ -14,14 +14,11 @@
 # ==============================================================================
 
 """Estimators."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowBaseTransformer
-from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator
 from tensorflow.contrib.learn.python.learn.estimators.classifier import Classifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
@@ -32,12 +29,12 @@ from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import ModeKeys
+from tensorflow.contrib.learn.python.learn.estimators.head import MetricKey
+from tensorflow.contrib.learn.python.learn.estimators.head import PredictionKey
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor
 from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestEstimator
-from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossMonitor
-from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNClassifier
-from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNRegressor
+from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossHook
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
 from tensorflow.contrib.learn.python.learn.estimators.svm import SVM

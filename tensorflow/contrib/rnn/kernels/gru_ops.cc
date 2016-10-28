@@ -15,10 +15,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
-#include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/rnn/kernels/gru_ops.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -151,14 +147,9 @@ class GRUCellBlockOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
-    perftools::gputools::Stream* stream =
-        std::is_same<Device, GPUDevice>::value
-            ? ctx->op_device_context()->stream()
-            : nullptr;
-
     functor::GRUBlockCellFprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                       cell_size)(
-        ctx, stream, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
+        ctx, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
         w_ru_tensor->matrix<T>(), w_c_tensor->matrix<T>(),
         b_ru_tensor->vec<T>(), b_c_tensor->vec<T>(), r_u_bar_tensor.matrix<T>(),
         r_tensor->matrix<T>(), u_tensor->matrix<T>(), c_tensor->matrix<T>(),
@@ -362,14 +353,10 @@ class GRUBlockCellGradOp : public OpKernel {
                             &d_x_component_2_h_prevr));
 
     const Device& device = ctx->eigen_device<Device>();
-    perftools::gputools::Stream* stream =
-        std::is_same<Device, GPUDevice>::value
-            ? ctx->op_device_context()->stream()
-            : nullptr;
 
     functor::GRUBlockCellBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                       cell_size)(
-        ctx, stream, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
+        ctx, device, x_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
         w_ru_tensor->matrix<T>(), w_c_tensor->matrix<T>(),
         b_ru_tensor->vec<T>(), b_c_tensor->vec<T>(), r_tensor->matrix<T>(),
         u_tensor->matrix<T>(), c_tensor->matrix<T>(), d_h_tensor->matrix<T>(),
@@ -400,8 +387,8 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                   \
   template <>                                                                 \
   void GRUBlockCellFprop<GPUDevice, T, true>::operator()(                     \
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,              \
-      const GPUDevice& d, typename TTypes<T>::ConstMatrix x,                  \
+      OpKernelContext* ctx, const GPUDevice& d,                               \
+      typename TTypes<T>::ConstMatrix x,                                      \
       typename TTypes<T>::ConstMatrix h_prev,                                 \
       typename TTypes<T>::ConstMatrix w_ru,                                   \
       typename TTypes<T>::ConstMatrix w_c, typename TTypes<T>::ConstVec b_ru, \
@@ -430,9 +417,9 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
   template <>                                                                  \
   void GRUBlockCellBprop<GPUDevice, T, true>::operator()(                      \
-      OpKernelContext* ctx, perftools::gputools::Stream* stream,               \
-      const GPUDevice& d, typename TTypes<T>::ConstMatrix x,                   \
-      typename TTypes<T>::ConstMatrix h, typename TTypes<T>::ConstMatrix w_ru, \
+      OpKernelContext* ctx, const GPUDevice& d,                                \
+      typename TTypes<T>::ConstMatrix x, typename TTypes<T>::ConstMatrix h,    \
+      typename TTypes<T>::ConstMatrix w_ru,                                    \
       typename TTypes<T>::ConstMatrix w_c, typename TTypes<T>::ConstVec b_ru,  \
       typename TTypes<T>::ConstVec b_c, typename TTypes<T>::ConstMatrix r,     \
       typename TTypes<T>::ConstMatrix u, typename TTypes<T>::ConstMatrix c,    \

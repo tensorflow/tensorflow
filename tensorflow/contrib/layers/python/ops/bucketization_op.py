@@ -17,13 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import load_library
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
-_bucketization_op = load_library.load_op_library(
+_bucketization_op = loader.load_op_library(
     resource_loader.get_path_to_datafile("_bucketization_op.so"))
-assert _bucketization_op, "Could not load _bucketization_op.so."
 
 
 def bucketize(input_tensor, boundaries, name=None):

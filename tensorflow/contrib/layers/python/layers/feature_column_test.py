@@ -19,9 +19,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import os
 
+import numpy as np
 import tensorflow as tf
+import tensorflow.contrib.layers.python.layers.feature_column as fc
+
+
+def _sparse_id_tensor(shape, vocab_size, seed=112123):
+  # Returns a arbitrary `SparseTensor` with given shape and vocab size.
+  np.random.seed(seed)
+  indices = np.array(list(itertools.product(*[range(s) for s in shape])))
+
+  # In order to create some sparsity, we include a value outside the vocab.
+  values = np.random.randint(0, vocab_size + 1, size=np.prod(shape))
+
+  # Remove entries outside the vocabulary.
+  keep = values < vocab_size
+  indices = indices[keep]
+  values = values[keep]
+
+  return tf.SparseTensor(indices=indices, values=values, shape=shape)
 
 
 class FeatureColumnTest(tf.test.TestCase):
@@ -118,6 +137,35 @@ class FeatureColumnTest(tf.test.TestCase):
     for i in range(len(d1_value)):
       self.assertAllClose(d1_value[i], e1_value[i])
 
+  def testSharedEmbeddingColumnDeterminism(self):
+    # Tests determinism in auto-generated shared_embedding_name.
+    sparse_id_columns = tuple([
+        tf.contrib.layers.sparse_column_with_keys(k, ["foo", "bar"])
+        for k in ["07", "02", "00", "03", "05", "01", "09", "06", "04", "08"]
+    ])
+    output = tf.contrib.layers.shared_embedding_columns(
+        sparse_id_columns, dimension=2, combiner="mean")
+    self.assertEqual(len(output), 10)
+    for x in output:
+      self.assertEqual(x.shared_embedding_name,
+                       "00_01_02_plus_7_others_shared_embedding")
+
+  def testSharedEmbeddingColumnErrors(self):
+    # Tries passing in a string.
+    with self.assertRaises(TypeError):
+      invalid_string = "Invalid string."
+      tf.contrib.layers.shared_embedding_columns(
+          invalid_string, dimension=2, combiner="mean")
+
+    # Tries passing in a set of sparse columns.
+    with self.assertRaises(TypeError):
+      invalid_set = set([
+          tf.contrib.layers.sparse_column_with_keys("a", ["foo", "bar"]),
+          tf.contrib.layers.sparse_column_with_keys("b", ["foo", "bar"]),
+      ])
+      tf.contrib.layers.shared_embedding_columns(
+          invalid_set, dimension=2, combiner="mean")
+
   def testOneHotColumn(self):
     a = tf.contrib.layers.sparse_column_with_keys("a", ["a", "b", "c", "d"])
     onehot_a = tf.contrib.layers.one_hot_column(a)
@@ -129,6 +177,27 @@ class FeatureColumnTest(tf.test.TestCase):
     onehot_b = tf.contrib.layers.one_hot_column(b)
     self.assertEqual(onehot_b.sparse_id_column.name, "b")
     self.assertEqual(onehot_b.length, 100)
+
+  def testOneHotReshaping(self):
+    """Tests reshaping behavior of `OneHotColumn`."""
+    id_tensor_shape = [3, 2, 4, 5]
+
+    sparse_column = tf.contrib.layers.sparse_column_with_keys(
+        "animals", ["squirrel", "moose", "dragon", "octopus"])
+    one_hot = tf.contrib.layers.one_hot_column(sparse_column)
+
+    vocab_size = len(sparse_column.lookup_config.keys)
+    id_tensor = _sparse_id_tensor(id_tensor_shape, vocab_size)
+
+    for output_rank in range(1, len(id_tensor_shape) + 1):
+      with tf.variable_scope("output_rank_{}".format(output_rank)):
+        one_hot_output = one_hot._to_dnn_input_layer(
+            id_tensor, output_rank=output_rank)
+      with self.test_session() as sess:
+        one_hot_value = sess.run(one_hot_output)
+        expected_shape = (
+            id_tensor_shape[:output_rank - 1] + [vocab_size])
+        self.assertEquals(expected_shape, list(one_hot_value.shape))
 
   def testRealValuedColumn(self):
     a = tf.contrib.layers.real_valued_column("aaa")
@@ -229,6 +298,28 @@ class FeatureColumnTest(tf.test.TestCase):
     self.assertFalse("normalizer" in g1.key)
     self.assertFalse("normalizer" in g2.key)
     self.assertFalse("normalizer" in h1.key)
+
+  def testRealValuedColumnReshaping(self):
+    """Tests reshaping behavior of `RealValuedColumn`."""
+    batch_size = 4
+    sequence_length = 8
+    dimensions = [3, 4, 5]
+
+    np.random.seed(2222)
+    input_shape = [batch_size, sequence_length] + dimensions
+    real_valued_input = np.random.rand(*input_shape)
+    real_valued_column = tf.contrib.layers.real_valued_column("values")
+
+    for output_rank in range(1, 3 + len(dimensions)):
+      with tf.variable_scope("output_rank_{}".format(output_rank)):
+        real_valued_output = real_valued_column._to_dnn_input_layer(
+            tf.constant(real_valued_input, dtype=tf.float32),
+            output_rank=output_rank)
+      with self.test_session() as sess:
+        real_valued_eval = sess.run(real_valued_output)
+      expected_shape = (input_shape[:output_rank - 1] +
+                        [np.prod(input_shape[output_rank - 1:])])
+      self.assertEquals(expected_shape, list(real_valued_eval.shape))
 
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = tf.contrib.layers.bucketized_column(
@@ -369,20 +460,37 @@ class FeatureColumnTest(tf.test.TestCase):
                            real_valued_col1, real_valued_col2,
                            bucketized_col1, bucketized_col2,
                            cross_col])
-    config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
-    self.assertDictEqual({
+    expected_config = {
         "sparse_column": tf.VarLenFeature(tf.string),
-        "sparse_column_for_embedding": tf.VarLenFeature(tf.string),
+        "sparse_column_for_embedding":
+            tf.VarLenFeature(tf.string),
         "id_column": tf.VarLenFeature(tf.string),
         "id_weights_column": tf.VarLenFeature(tf.float32),
-        "real_valued_column1": tf.FixedLenFeature([1], dtype=tf.float32),
-        "real_valued_column2": tf.FixedLenFeature([5], dtype=tf.float32),
+        "real_valued_column1": tf.FixedLenFeature(
+            [1], dtype=tf.float32),
+        "real_valued_column2": tf.FixedLenFeature(
+            [5], dtype=tf.float32),
         "real_valued_column_for_bucketization1":
-            tf.FixedLenFeature([1], dtype=tf.float32),
+            tf.FixedLenFeature(
+                [1], dtype=tf.float32),
         "real_valued_column_for_bucketization2":
-            tf.FixedLenFeature([4], dtype=tf.float32),
+            tf.FixedLenFeature(
+                [4], dtype=tf.float32),
         "cross_aaa": tf.VarLenFeature(tf.string),
-        "cross_bbb": tf.VarLenFeature(tf.string)}, config)
+        "cross_bbb": tf.VarLenFeature(tf.string)
+    }
+
+    config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
+    self.assertDictEqual(expected_config, config)
+
+    # Test that the same config is parsed out if we pass a dictionary.
+    feature_columns_dict = {
+        str(i): val
+        for i, val in enumerate(feature_columns)
+    }
+    config = tf.contrib.layers.create_feature_spec_for_parsing(
+        feature_columns_dict)
+    self.assertDictEqual(expected_config, config)
 
   def testCreateFeatureSpec_RealValuedColumnWithDefaultValue(self):
     real_valued_col1 = tf.contrib.layers.real_valued_column(
@@ -409,6 +517,40 @@ class FeatureColumnTest(tf.test.TestCase):
         "real_valued_column4":
             tf.FixedLenFeature([3], dtype=tf.float32,
                                default_value=[1., 0., 6.])}, config)
+
+  def testCreateSequenceFeatureSpec(self):
+    sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "sparse_column", hash_bucket_size=100)
+    embedding_col = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket(
+            "sparse_column_for_embedding",
+            hash_bucket_size=10),
+        dimension=4)
+    sparse_id_col = tf.contrib.layers.sparse_column_with_keys(
+        "id_column", ["marlo", "omar", "stringer"])
+    weighted_id_col = tf.contrib.layers.weighted_sparse_column(
+        sparse_id_col, "id_weights_column")
+    real_valued_col1 = tf.contrib.layers.real_valued_column(
+        "real_valued_column", dimension=2)
+    real_valued_col2 = tf.contrib.layers.real_valued_column(
+        "real_valued_default_column", dimension=5, default_value=3.0)
+
+    feature_columns = set([sparse_col, embedding_col, weighted_id_col,
+                           real_valued_col1, real_valued_col2])
+
+    feature_spec = fc._create_sequence_feature_spec_for_parsing(feature_columns)
+
+    expected_feature_spec = {
+        "sparse_column": tf.VarLenFeature(tf.string),
+        "sparse_column_for_embedding": tf.VarLenFeature(tf.string),
+        "id_column": tf.VarLenFeature(tf.string),
+        "id_weights_column": tf.VarLenFeature(tf.float32),
+        "real_valued_column": tf.FixedLenSequenceFeature(
+            shape=[2], dtype=tf.float32, allow_missing=False),
+        "real_valued_default_column": tf.FixedLenSequenceFeature(
+            shape=[5], dtype=tf.float32, allow_missing=True)}
+
+    self.assertDictEqual(expected_feature_spec, feature_spec)
 
   def testMakePlaceHolderTensorsForBaseFeatures(self):
     sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(

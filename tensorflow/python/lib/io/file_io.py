@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import uuid
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -114,7 +115,8 @@ class FileIO(object):
     """Seeks to the position in the file."""
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      return pywrap_tensorflow.SeekInStream(self._read_buf, position, status)
+      ret_status = self._read_buf.Seek(position)
+      pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
@@ -168,12 +170,16 @@ class FileIO(object):
     """
     if self._writable_file:
       with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.FlushWritableFile(self._writable_file, status)
+        ret_status = self._writable_file.Flush()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def close(self):
     """Closes FileIO. Should be called for the WritableFile to be flushed."""
     self._read_buf = None
-    self.flush()
+    if self._writable_file:
+      with errors.raise_exception_on_not_ok_status() as status:
+        ret_status = self._writable_file.Close()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
 
@@ -318,6 +324,24 @@ def rename(oldname, newname, overwrite=False):
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
 
 
+def atomic_write_string_to_file(filename, contents):
+  """Writes to `filename` atomically.
+
+  This means that when `filename` appears in the filesystem, it will contain
+  all of `contents`. With write_string_to_file, it is possible for the file
+  to appear in the filesystem with `contents` only partially written.
+
+  Accomplished by writing to a temp file and then renaming it.
+
+  Args:
+    filename: string, pathname for a file
+    contents: string, contents that need to be written to the file
+  """
+  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+  write_string_to_file(temp_pathname, contents)
+  rename(temp_pathname, filename, overwrite=True)
+
+
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.
 
@@ -339,12 +363,12 @@ def is_directory(dirname):
 
   Returns:
     True, if the path is a directory; False otherwise
-
-  Raises:
-    errors.OpError: If the path doesn't exist or other errors
   """
-  status = pywrap_tensorflow.TF_NewStatus()
-  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
+    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 def list_directory(dirname):

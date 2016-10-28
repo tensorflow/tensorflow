@@ -57,6 +57,7 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
 REGISTER_KERNEL(GPU, Eigen::half);
+REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -154,6 +155,9 @@ class FillOp : public OpKernel {
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
+// TODO(b/28917570): Add a test for this. Currently python 3 is not happy about
+// the conversion from uint8 to quint8.
+REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
@@ -205,6 +209,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
@@ -245,10 +250,14 @@ class PlaceholderOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
+                        PlaceholderOp);
 // The following GPU kernel registration is used to address the situation that
 // a placeholder is added in a GPU device context and soft placement is false.
 // Since a placeholder should never be executed, adding these GPU kernels has
 // no effect on graph execution.
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
+                        PlaceholderOp);
 
 }  // namespace tensorflow

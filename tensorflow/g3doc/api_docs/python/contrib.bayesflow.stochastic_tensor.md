@@ -122,8 +122,8 @@ reparameterized distributions; it will also return None if the value type is
 *  <b>`dist_value_type`</b>: a `_StochasticValueType`, which will determine what the
       `value` of this `StochasticTensor` will be. If not provided, the
       value type set with the `value_type` context manager will be used.
-*  <b>`loss_fn`</b>: callable that takes `(dt, dt.value(), influenced_loss)`, where
-      `dt` is this `StochasticTensor`, and returns a `Tensor` loss. By
+*  <b>`loss_fn`</b>: callable that takes `(st, st.value(), influenced_loss)`, where
+      `st` is this `StochasticTensor`, and returns a `Tensor` loss. By
       default, `loss_fn` is the `score_function`, or more precisely, the
       integral of the score function, such that when the gradient is taken,
       the score function results. See the `stochastic_gradient_estimators`
@@ -275,10 +275,10 @@ Example:
 mu = tf.zeros((2,3))
 sigma = tf.ones((2, 3))
 with sg.value_type(sg.SampleValue(n=4)):
-  dt = sg.DistributionTensor(
+  st = sg.StochasticTensor(
     distributions.Normal, mu=mu, sigma=sigma)
 # draws 4 samples each with shape (2, 3) and concatenates
-assertEqual(dt.value().get_shape(), (4, 2, 3))
+assertEqual(st.value().get_shape(), (4, 2, 3))
 ```
 - - -
 
@@ -351,15 +351,15 @@ mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
 sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
 
 with sg.value_type(sg.SampleAndReshapeValue(n=2)):
-  dt = sg.DistributionTensor(
+  st = sg.StochasticTensor(
       distributions.Normal, mu=mu, sigma=sigma)
 
 # sample(2) creates a (2, 2, 3) tensor, and the two outermost dimensions
 # are reshaped into one: the final value is a (4, 3) tensor.
-dt_value = dt.value()
-assertEqual(dt_value.get_shape(), (4, 3))
+st_value = st.value()
+assertEqual(st_value.get_shape(), (4, 3))
 
-dt_value_val = sess.run([dt_value])[0]  # or e.g. run([tf.identity(dt)])[0]
+dt_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
 assertEqual(dt_value_val.shape, (4, 3))
 ```
 - - -
@@ -423,10 +423,10 @@ Typical usage:
 
 ```
 with sg.value_type(sg.MeanValue(stop_gradients=True)):
-  dt = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
+  st = sg.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
 ```
 
-In the example above, `dt.value()` (or equivalently, `tf.identity(dt)`) will
+In the example above, `st.value()` (or equivalently, `tf.identity(st)`) will
 be the mean value of the Normal distribution, i.e., `mu` (possibly
 broadcasted to the shape of `sigma`).  Furthermore, because the `MeanValue`
 was marked with `stop_gradients=True`, this value will have been wrapped
@@ -3606,6 +3606,186 @@ in a `stop_gradients` call to disable any possible backpropagation.
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.WishartFullTensor.value_type` {#WishartFullTensor.value_type}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor` {#beta_aaTensor}
+
+`beta_aaTensor` is a `StochasticTensor` backed by the distribution `beta_aa`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#beta_aaTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.clone(name=None, **dist_args)` {#beta_aaTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.distribution` {#beta_aaTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.dtype` {#beta_aaTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.entropy(name='entropy')` {#beta_aaTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.graph` {#beta_aaTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.input_dict` {#beta_aaTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.loss(final_loss, name='Loss')` {#beta_aaTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.mean(name='mean')` {#beta_aaTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.name` {#beta_aaTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.value(name='value')` {#beta_aaTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_aaTensor.value_type` {#beta_aaTensor.value_type}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor` {#beta_bbTensor}
+
+`beta_bbTensor` is a `StochasticTensor` backed by the distribution `beta_bb`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#beta_bbTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.clone(name=None, **dist_args)` {#beta_bbTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.distribution` {#beta_bbTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.dtype` {#beta_bbTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.entropy(name='entropy')` {#beta_bbTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.graph` {#beta_bbTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.input_dict` {#beta_bbTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.loss(final_loss, name='Loss')` {#beta_bbTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.mean(name='mean')` {#beta_bbTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.name` {#beta_bbTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.value(name='value')` {#beta_bbTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.beta_bbTensor.value_type` {#beta_bbTensor.value_type}
 
 
 
