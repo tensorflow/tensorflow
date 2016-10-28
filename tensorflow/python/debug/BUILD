@@ -89,6 +89,7 @@ py_library(
     deps = [
         ":command_parser",
         ":debugger_cli_common",
+        ":tensor_format",
     ],
 )
 
@@ -180,6 +181,7 @@ py_test(
     deps = [
         ":curses_ui",
         ":debugger_cli_common",
+        ":tensor_format",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],

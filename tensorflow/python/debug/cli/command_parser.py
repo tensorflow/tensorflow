@@ -77,11 +77,11 @@ def parse_tensor_name_with_slicing(in_str):
   Args:
     in_str: (str) Input name of the tensor, potentially followed by a slicing
       string. E.g.: Without slicing string: "hidden/weights/Variable:0", with
-      slicing string: "hidden/weights/Varaible:0[1, :]"
+      slicing string: "hidden/weights/Variable:0[1, :]"
 
   Returns:
     (str) name of the tensor
-    (str) sliciing string, if any. If no slicing string is present, return "".
+    (str) slicing string, if any. If no slicing string is present, return "".
   """
 
   if in_str.count("[") == 1 and in_str.endswith("]"):
@@ -108,3 +108,27 @@ def validate_slicing_string(slicing_string):
   """
 
   return bool(re.search(r"^\[(\d|,|\s|:)+\]$", slicing_string))
+
+
+def parse_indices(indices_string):
+  """Parse a string representing indices.
+
+  For example, if the input is "[1, 2, 3]", the return value will be a list of
+  indices: [1, 2, 3]
+
+  Args:
+    indices_string: (str) a string representing indices. Can optionally be
+      surrounded by a pair of brackets.
+
+  Returns:
+    (list of int): Parsed indices.
+  """
+
+  # Strip whitespace.
+  indices_string = re.sub(r"\s+", "", indices_string)
+
+  # Strip any brackets at the two ends.
+  if indices_string.startswith("[") and indices_string.endswith("]"):
+    indices_string = indices_string[1:-1]
+
+  return [int(element) for element in indices_string.split(",")]
