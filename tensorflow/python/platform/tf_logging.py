@@ -44,6 +44,14 @@ except AttributeError:
   # Even now, we may be in an interactive shell with `python -i`.
   _interactive = _sys.flags.interactive
 
+# Determine whether we are in an interactive environment
+try:
+  # This is only defined in interactive shells
+  if sys.ps1: _interactive = True
+except AttributeError:
+  # Even now, we may be in an interactive shell with `python -i`.
+  _interactive = sys.flags.interactive
+
 # Scope the tensorflow logger to not conflict with users' loggers
 _logger = _logging.getLogger('tensorflow')
 
