@@ -113,6 +113,16 @@ class SubstrOpTest(tf.test.TestCase):
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
+    # Test 1D broadcast
+    test_string = b"thirteen"
+    position = np.array([1, 5, 7], dtype)
+    length = np.array([3, 2, 1], dtype)
+    expected_value = [b"hir", b"ee", b"n"]
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
   def _testBadBroadcast(self, dtype):
     test_string = [[b"ten", b"eleven", b"twelve"],
                    [b"thirteen", b"fourteen", b"fifteen"],

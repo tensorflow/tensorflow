@@ -42,9 +42,12 @@ class SubstrOp : public OpKernel {
       const TensorShape input_shape = input_tensor.shape();
       const TensorShape pos_shape = pos_tensor.shape();
       const TensorShape len_shape = len_tensor.shape();
-              
-      if (TensorShapeUtils::IsScalar(pos_shape)) {
-        // Perform Op with scalar pos/len
+
+      bool is_scalar = TensorShapeUtils::IsScalar(pos_shape);
+      
+      if (is_scalar || input_shape == pos_shape) {
+        // pos/len are either scalar or match the shape of input_tensor
+        // Do not need to do broadcasting
 
         // Reshape input 
         auto input = input_tensor.flat<string>();
@@ -54,43 +57,38 @@ class SubstrOp : public OpKernel {
                        context->allocate_output("output", input_tensor.shape(),
                                                 &output_tensor));
         auto output = output_tensor->flat<string>();
-
-        T pos = pos_tensor.scalar<T>()();
-        T len = len_tensor.scalar<T>()();
-        for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
-          // Make sure pos won't cause a runtime error
-          OP_REQUIRES(context, pos >= 0 && pos < input(i).size(),
-                      errors::InvalidArgument("pos ", pos, 
-                                              " out of range for string b'", 
-                                              input(i), "' at index ", i));
-          output(i) = input(i).substr(pos, len);
-        }
-      } else if (input_shape == pos_shape) {
-        // Perform Op element-wise
-
-        // Reshape input 
-        auto input = input_tensor.flat<string>();
-        // Allocate output
-        Tensor* output_tensor = nullptr;
-        OP_REQUIRES_OK(context,
-                       context->allocate_output("output", input_tensor.shape(),
-                                                &output_tensor));
-        auto output = output_tensor->flat<string>();
-
-        auto pos = pos_tensor.flat<T>();
-        auto len = len_tensor.flat<T>();
-        for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
-          // Make sure pos won't cause a runtime error
-          OP_REQUIRES(context, pos(i) >= 0 && pos(i) < input(i).size(),
-                      errors::InvalidArgument("pos ", pos(i), 
-                                              " out of range for string b'", 
-                                              input(i), "' at index ", i));
-          output(i) = input(i).substr(pos(i), len(i));
+        if (is_scalar) {
+          // Perform Op with scalar pos/len
+          T pos = pos_tensor.scalar<T>()();
+          T len = len_tensor.scalar<T>()();
+          for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
+            // Make sure pos won't cause a runtime error
+            OP_REQUIRES(context, pos >= 0 && pos < input(i).size(),
+                        errors::InvalidArgument("pos ", pos, 
+                                                " out of range for string b'", 
+                                                input(i), "' at index ", i));
+            output(i) = input(i).substr(pos, len);
+          }
+        } else {
+          // Perform Op element-wise with tensor pos/len
+          auto pos = pos_tensor.flat<T>();
+          auto len = len_tensor.flat<T>();
+          for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
+            // Make sure pos won't cause a runtime error
+            OP_REQUIRES(context, pos(i) >= 0 && pos(i) < input(i).size(),
+                        errors::InvalidArgument("pos ", pos(i), 
+                                                " out of range for string b'", 
+                                                input(i), "' at index ", i));
+            output(i) = input(i).substr(pos(i), len(i));
+          }
         }
       } else {
-        // TODO: Use ternary broadcasting for parallel operation 
-        //       (once available in Eigen)
+        // Perform op with broadcasting
+        // TODO: Use ternary broadcasting for once available in Eigen. Current
+        //       implementation iterates through broadcasted ops element-wise;
+        //       this should be parallelized.
 
+        // Create BCast helper with shape of input and pos/len
         BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
         OP_REQUIRES(context, bcast.IsValid(), 
                     errors::InvalidArgument("Incompatible shapes: ", 
@@ -103,46 +101,100 @@ class SubstrOp : public OpKernel {
                        context->allocate_output("output", output_shape,
                                                 &output_tensor));
         switch (ndims) {
-          case 2: {
-            auto input_reshaped = input_tensor.shaped<string, 2>(bcast.x_reshape());
-            auto pos_reshaped = pos_tensor.shaped<T, 2>(bcast.y_reshape());
-            auto len_reshaped = len_tensor.shaped<T, 2>(bcast.y_reshape());
-            auto output = output_tensor->shaped<string, 2>(bcast.result_shape());
+          case 1: {
+            // Reshape tensors according to BCast results
+            auto input = input_tensor.shaped<string,1>(bcast.x_reshape());
+            auto output = output_tensor->shaped<string,1>(bcast.result_shape());
+            auto pos = pos_tensor.shaped<T,1>(bcast.y_reshape());
+            auto len = len_tensor.shaped<T,1>(bcast.y_reshape());
             
+            // Allocate temporary buffer for broadcasted input tensor
             Tensor input_buffer;
             OP_REQUIRES_OK(context, 
                            context->allocate_temp(DT_STRING,
                                                   output_shape, 
                                                   &input_buffer));
-            typename TTypes<string, 2>::Tensor input_bcast = input_buffer.shaped<string, 2>(bcast.result_shape());
-            input_bcast = input_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
+            typename TTypes<string,1>::Tensor input_bcast = 
+                            input_buffer.shaped<string,1>(bcast.result_shape());
+            input_bcast = input.broadcast(
+                                   BCast::ToIndexArray<1>(bcast.x_bcast()));
             
+            // Allocate temporary buffer for broadcasted position tensor
             Tensor pos_buffer;
             OP_REQUIRES_OK(context,
                            context->allocate_temp(DataTypeToEnum<T>::v(),
                                                   output_shape,
                                                   &pos_buffer));
-            typename TTypes<T, 2>::Tensor pos_bcast = pos_buffer.shaped<T, 2>(bcast.result_shape());
-            pos_bcast = pos_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            typename TTypes<T,1>::Tensor pos_bcast = pos_buffer.shaped<T,1>(
+                                                          bcast.result_shape());
+            pos_bcast = pos.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
             
+            // Allocate temporary buffer for broadcasted length tensor
             Tensor len_buffer;
             OP_REQUIRES_OK(context,
                            context->allocate_temp(DataTypeToEnum<T>::v(),
                                                   output_shape,
                                                   &len_buffer));
-            typename TTypes<T, 2>::Tensor len_bcast = len_buffer.shaped<T, 2>(bcast.result_shape());
-            len_bcast = len_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            typename TTypes<T,1>::Tensor len_bcast = len_buffer.shaped<T,1>(
+                                                          bcast.result_shape());
+            len_bcast = len.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
             
+            // Iterate through broadcasted tensors and perform substr
+            for (int i = 0; i < output_shape.dim_size(0); ++i) {              
+              output(i) = input_bcast(i).substr(pos_bcast(i), len_bcast(i));
+            }
+            break;
+          }
+          case 2: {
+            // Reshape tensors according to BCast results
+            auto input = input_tensor.shaped<string,2>(bcast.x_reshape());
+            auto output = output_tensor->shaped<string,2>(bcast.result_shape());
+            auto pos = pos_tensor.shaped<T,2>(bcast.y_reshape());
+            auto len = len_tensor.shaped<T,2>(bcast.y_reshape());
+            
+            // Allocate temporary buffer for broadcasted input tensor
+            Tensor input_buffer;
+            OP_REQUIRES_OK(context, 
+                           context->allocate_temp(DT_STRING,
+                                                  output_shape, 
+                                                  &input_buffer));
+            typename TTypes<string,2>::Tensor input_bcast = 
+                            input_buffer.shaped<string,2>(bcast.result_shape());
+            input_bcast = input.broadcast(
+                                   BCast::ToIndexArray<2>(bcast.x_bcast()));
+            
+            // Allocate temporary buffer for broadcasted position tensor
+            Tensor pos_buffer;
+            OP_REQUIRES_OK(context,
+                           context->allocate_temp(DataTypeToEnum<T>::v(),
+                                                  output_shape,
+                                                  &pos_buffer));
+            typename TTypes<T,2>::Tensor pos_bcast = pos_buffer.shaped<T,2>(
+                                                          bcast.result_shape());
+            pos_bcast = pos.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            
+            // Allocate temporary buffer for broadcasted length tensor
+            Tensor len_buffer;
+            OP_REQUIRES_OK(context,
+                           context->allocate_temp(DataTypeToEnum<T>::v(),
+                                                  output_shape,
+                                                  &len_buffer));
+            typename TTypes<T,2>::Tensor len_bcast = len_buffer.shaped<T,2>(
+                                                          bcast.result_shape());
+            len_bcast = len.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            
+            // Iterate through broadcasted tensors and perform substr
             for (int i = 0; i < output_shape.dim_size(0); ++i) {              
               for (int j = 0; j < output_shape.dim_size(1); ++j) {
-                output(i, j) = input_bcast(i, j).substr(pos_bcast(i, j), len_bcast(i, j));
+                output(i, j) = input_bcast(i, j).substr(pos_bcast(i, j), 
+                                                        len_bcast(i, j));
               }
             }
             break;
           }
           default: {
-            context->SetStatus(errors::InvalidArgument(
-                    "Broadcast rank not supported: ", ndims));
+            context->SetStatus(errors::Unimplemented(
+                "Substr broadcast not implemented for ", ndims, " dimensions"));
           }
         }
       }
@@ -156,5 +208,4 @@ class SubstrOp : public OpKernel {
                           SubstrOp<type>);
 REGISTER_SUBSTR(int32);
 REGISTER_SUBSTR(int64);
-
 }  // namespace tensorflow
