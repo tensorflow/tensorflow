@@ -12,3 +12,9 @@ node_modules
 *.pyc
 __pycache__
 *.swp
+.gradle
+.idea
+*.iml
+gradleBuild
+local.properties
+.externalNativeBuild
