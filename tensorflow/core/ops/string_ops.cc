@@ -305,7 +305,7 @@ REGISTER_OP("Substr")
     return shape_inference::BroadcastBinaryOpShapeFn(c);
   })
   .Doc(R"doc(
-Return substrings from input strings.
+Return substrings from `Tensor` of strings.
 
 For each string in the input `Tensor`, creates a substring starting at index 
 `pos` with a total length of `len`. 
@@ -319,13 +319,14 @@ strings, then an `InvalidArgumentError` is thrown.
 `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 Op creation.
 
-The output `Tensor` shape matches that of the input, with each substring's index
-matching up with its parent string.
+*NOTE*: `Substr` supports broadcasting up to two dimensions. More about 
+broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 input: Tensor of strings 
 pos: Scalar defining the position of first character in each substring
 len: Scalar defining the number of characters to include in each substring
-output: Tensor of substrings; matches the dimension of the input tensor
+output: Tensor of substrings
 )doc");
 
 }  // namespace tensorflow
