@@ -256,7 +256,8 @@ def inference(images):
     local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
     _activation_summary(local4)
 
-  # softmax, i.e. softmax(WX + b)
+  # linear layer(WX + b),
+  # no softmax ops here because tf.nn.sparse_softmax_cross_entropy_with_logits() only accept unscaled logits.
   with tf.variable_scope('softmax_linear') as scope:
     weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
                                           stddev=1/192.0, wd=0.0)
