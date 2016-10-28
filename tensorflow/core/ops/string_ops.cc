@@ -302,6 +302,8 @@ REGISTER_OP("Substr")
                                        c->DebugString(len_shape));
       }
     }
+    // c->input(0) is the ShapeHandle to input strings
+    // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
     return shape_inference::BroadcastBinaryOpShapeFn(c);
   })
   .Doc(R"doc(
