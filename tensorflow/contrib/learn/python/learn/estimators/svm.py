@@ -129,8 +129,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         supported. Reserved for future use for non-linear SVMs.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Raises:

@@ -27,20 +27,20 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.ops import math_ops
 
 
-def _targets_streaming_mean(unused_predictions, targets):
-  return metrics_lib.streaming_mean(targets)
+def _labels_streaming_mean(unused_predictions, labels):
+  return metrics_lib.streaming_mean(labels)
 
 
-def _predictions_streaming_mean(predictions, unused_targets):
+def _predictions_streaming_mean(predictions, unused_labels):
   return metrics_lib.streaming_mean(predictions)
 
 
 def _make_streaming_with_threshold(streaming_metrics_fn, threshold):
 
-  def _streaming_metrics(predictions, targets):
+  def _streaming_metrics(predictions, labels):
     return streaming_metrics_fn(predictions=math_ops.to_float(
         math_ops.greater_equal(predictions, threshold)),
-                                labels=targets)
+                                labels=labels)
 
   return _streaming_metrics
 
@@ -63,8 +63,8 @@ class LogisticRegressor(estimator.Estimator):
         continue training a previously saved model.
       config: A RunConfig configuration object.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
     """
     if thresholds is None:
@@ -81,8 +81,8 @@ class LogisticRegressor(estimator.Estimator):
   # Metrics string keys.
   AUC = "auc"
   PREDICTION_MEAN = "labels/prediction_mean"
-  TARGET_MEAN = "labels/actual_target_mean"
-  ACCURACY_BASELINE = "accuracy/baseline_target_mean"
+  TARGET_MEAN = "labels/actual_label_mean"
+  ACCURACY_BASELINE = "accuracy/baseline_label_mean"
   ACCURACY_MEAN = "accuracy/threshold_%f_mean"
   PRECISION_MEAN = "precision/positive_threshold_%f_mean"
   RECALL_MEAN = "recall/positive_threshold_%f_mean"
@@ -103,10 +103,10 @@ class LogisticRegressor(estimator.Estimator):
 
     metrics = {}
     metrics[cls.PREDICTION_MEAN] = _predictions_streaming_mean
-    metrics[cls.TARGET_MEAN] = _targets_streaming_mean
+    metrics[cls.TARGET_MEAN] = _labels_streaming_mean
     # Also include the streaming mean of the label as an accuracy baseline, as
     # a reminder to users.
-    metrics[cls.ACCURACY_BASELINE] = _targets_streaming_mean
+    metrics[cls.ACCURACY_BASELINE] = _labels_streaming_mean
 
     metrics[cls.AUC] = metrics_lib.streaming_auc
 
@@ -137,7 +137,7 @@ class LogisticRegressor(estimator.Estimator):
 
     Args:
       x: features.
-      y: targets.
+      y: labels.
       input_fn: Input function.
       feed_fn: Function creating a feed dict every time it is called.
       batch_size: minibatch size to use on the input.

@@ -101,7 +101,7 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
 def get_model_fn(params, graph_builder_class, device_assigner,
                  weights_name=None, keys_name=None):
   """Return a model function given a way to construct a graph builder."""
-  def _model_fn(features, targets):
+  def _model_fn(features, labels):
     """Function that returns predictions, training loss, and training op."""
     weights = None
     keys = None
@@ -111,9 +111,9 @@ def get_model_fn(params, graph_builder_class, device_assigner,
       keys = features.pop(keys_name)
     processed_features, spec = data_ops.ParseDataTensorOrDict(features)
     _assert_float32(processed_features)
-    if targets is not None:
-      targets = data_ops.ParseLabelTensorOrDict(targets)
-      _assert_float32(targets)
+    if labels is not None:
+      labels = data_ops.ParseLabelTensorOrDict(labels)
+      _assert_float32(labels)
 
     graph_builder = graph_builder_class(params, device_assigner=device_assigner)
     inference = {eval_metrics.INFERENCE_PROB_NAME:
@@ -125,17 +125,17 @@ def get_model_fn(params, graph_builder_class, device_assigner,
     if keys:
       inference[KEYS_NAME] = keys
 
-    # targets might be None if we're doing prediction (which brings up the
+    # labels might be None if we're doing prediction (which brings up the
     # question of why we force everything to adhere to a single model_fn).
     training_loss = None
     training_graph = None
-    if targets is not None:
-      training_loss = graph_builder.training_loss(processed_features, targets,
+    if labels is not None:
+      training_loss = graph_builder.training_loss(processed_features, labels,
                                                   data_spec=spec,
                                                   name=LOSS_NAME)
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
-              processed_features, targets, data_spec=spec,
+              processed_features, labels, data_spec=spec,
               input_weights=weights),
           state_ops.assign_add(contrib_framework.get_global_step(), 1))
     # Put weights back in

@@ -48,7 +48,7 @@ class MockTargetColumn(object):
   def __init__(self, num_label_columns=None):
     self._num_label_columns = num_label_columns
 
-  def get_eval_ops(self, features, activations, targets, metrics):
+  def get_eval_ops(self, features, activations, labels, metrics):
     raise NotImplementedError(
         'MockTargetColumn.get_eval_ops called unexpectedly.')
 
@@ -56,7 +56,7 @@ class MockTargetColumn(object):
     raise NotImplementedError(
         'MockTargetColumn.logits_to_predictions called unexpectedly.')
 
-  def loss(self, activations, targets, features):
+  def loss(self, activations, labels, features):
     raise NotImplementedError('MockTargetColumn.loss called unexpectedly.')
 
   @property
@@ -207,27 +207,27 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
                               'Mismatch on row {}. Got {}; expected {}.'.format(
                                   i, actual_mask, expected_mask))
 
-  def testMaskActivationsAndTargets(self):
-    """Test `_mask_activations_and_targets`."""
+  def testMaskActivationsAndLabels(self):
+    """Test `_mask_activations_and_labels`."""
     batch_size = 4
     padded_length = 6
     num_classes = 4
     np.random.seed(1234)
     sequence_length = np.random.randint(0, padded_length + 1, batch_size)
     activations = np.random.rand(batch_size, padded_length, num_classes)
-    targets = np.random.randint(0, num_classes, [batch_size, padded_length])
+    labels = np.random.randint(0, num_classes, [batch_size, padded_length])
     (activations_masked_t,
-     targets_masked_t) = dynamic_rnn_estimator._mask_activations_and_targets(
+     labels_masked_t) = dynamic_rnn_estimator._mask_activations_and_labels(
          tf.constant(
              activations, dtype=tf.float32),
          tf.constant(
-             targets, dtype=tf.int32),
+             labels, dtype=tf.int32),
          tf.constant(
              sequence_length, dtype=tf.int32))
 
     with tf.Session() as sess:
-      activations_masked, targets_masked = sess.run(
-          [activations_masked_t, targets_masked_t])
+      activations_masked, labels_masked = sess.run(
+          [activations_masked_t, labels_masked_t])
 
     expected_activations_shape = [sum(sequence_length), num_classes]
     np.testing.assert_equal(
@@ -235,10 +235,10 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
         'Wrong activations shape. Expected {}; got {}.'.format(
             expected_activations_shape, activations_masked.shape))
 
-    expected_targets_shape = [sum(sequence_length)]
-    np.testing.assert_equal(expected_targets_shape, targets_masked.shape,
-                            'Wrong targets shape. Expected {}; got {}.'.format(
-                                expected_targets_shape, targets_masked.shape))
+    expected_labels_shape = [sum(sequence_length)]
+    np.testing.assert_equal(expected_labels_shape, labels_masked.shape,
+                            'Wrong labels shape. Expected {}; got {}.'.format(
+                                expected_labels_shape, labels_masked.shape))
     masked_index = 0
     for i in range(batch_size):
       for j in range(sequence_length[i]):
@@ -251,14 +251,14 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
             '  Expected {}; got {}.'.format(i, j, expected_activations,
                                             actual_activations))
 
-        actual_targets = targets_masked[masked_index]
-        expected_targets = targets[i, j]
+        actual_labels = labels_masked[masked_index]
+        expected_labels = labels[i, j]
         np.testing.assert_almost_equal(
-            expected_targets,
-            actual_targets,
+            expected_labels,
+            actual_labels,
             err_msg='Unexpected logit value at index [{}, {}].'
-            ' Expected {}; got {}.'.format(i, j, expected_targets,
-                                           actual_targets))
+            ' Expected {}; got {}.'.format(i, j, expected_labels,
+                                           actual_labels))
         masked_index += 1
 
   def testActivationsToPredictions(self):

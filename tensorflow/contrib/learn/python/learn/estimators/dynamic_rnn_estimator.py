@@ -56,12 +56,12 @@ def _padding_mask(sequence_lengths, padded_length):
                        array_ops.expand_dims(sequence_lengths, 1))
 
 
-def _mask_activations_and_targets(activations, targets, sequence_lengths):
+def _mask_activations_and_labels(activations, labels, sequence_lengths):
   """Remove entries outside `sequence_lengths` and returned flattened results.
 
   Args:
     activations: output of the RNN, shape `[batch_size, padded_length, k]`.
-    targets: target values, shape `[batch_size, padded_length]`.
+    labels: label values, shape `[batch_size, padded_length]`.
     sequence_lengths: a `Tensor` of shape `[batch_size]` with the unpadded
       length of each sequence. If `None`, then each sequence is unpadded.
 
@@ -70,25 +70,25 @@ def _mask_activations_and_targets(activations, targets, sequence_lengths):
     removed for each batch. Batches are then concatenated. Shape
       `[tf.sum(sequence_lengths), k]` if `sequence_lengths` is not `None` and
       shape `[batch_size * padded_length, k]` otherwise.
-    targets_masked: target values after removing unneeded entries. Shape
+    labels_masked: label values after removing unneeded entries. Shape
       `[tf.sum(sequence_lengths)]` if `sequence_lengths` is not `None` and shape
       `[batch_size * padded_length]` otherwise.
   """
-  with ops.name_scope('mask_activations_and_targets',
-                      values=[activations, targets, sequence_lengths]):
-    targets_shape = array_ops.shape(targets)
-    batch_size = targets_shape[0]
-    padded_length = targets_shape[1]
+  with ops.name_scope('mask_activations_and_labels',
+                      values=[activations, labels, sequence_lengths]):
+    labels_shape = array_ops.shape(labels)
+    batch_size = labels_shape[0]
+    padded_length = labels_shape[1]
     if sequence_lengths is None:
       flattened_dimension = padded_length * batch_size
       activations_masked = array_ops.reshape(activations,
                                              [flattened_dimension, -1])
-      targets_masked = array_ops.reshape(targets, [flattened_dimension])
+      labels_masked = array_ops.reshape(labels, [flattened_dimension])
     else:
       mask = _padding_mask(sequence_lengths, padded_length)
       activations_masked = array_ops.boolean_mask(activations, mask)
-      targets_masked = array_ops.boolean_mask(targets, mask)
-    return activations_masked, targets_masked
+      labels_masked = array_ops.boolean_mask(labels, mask)
+    return activations_masked, labels_masked
 
 
 def _select_last_activations(activations, sequence_lengths):
@@ -222,8 +222,8 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
         to CPU.
       name: Optional name for the `Estimator`.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
     Raises:
       ValueError: `sequence_feature_columns` is `None` or [].
@@ -247,7 +247,7 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
     self._name = name or 'DynamicRnnEstimator'
     self._feature_engineering_fn = (
         feature_engineering_fn or
-        (lambda features, targets: (features, targets)))
+        (lambda features, labels: (features, labels)))
 
   def _get_model_input(self, features, weight_collections=None, scope=None):
     # TODO(jamieas): add option to use context to construct initial state rather
@@ -313,22 +313,22 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
       return activations, final_state
 
   @abc.abstractmethod
-  def _activations_to_loss(self, features, activations, targets):
-    """Map `activations` and `targets` to a loss `Tensor`.
+  def _activations_to_loss(self, features, activations, labels):
+    """Map `activations` and `labels` to a loss `Tensor`.
 
     `activations` has shape `[batch_size, padded_length,
      self._target_column.num_label_columns]`. It is the output of
     `_construct_rnn`.
 
-    `targets` is a `Tensor` of shape `[batch_size, padded_length]`. The type
-    of `targets` depends on what type of `TargetColumn` is being used.
+    `labels` is a `Tensor` of shape `[batch_size, padded_length]`. The type
+    of `labels` depends on what type of `TargetColumn` is being used.
 
     Args:
       features: a `dict` containing the input and (optionally) sequence length
         information and initial state. This is the same `features` passed to
         `_construct_rnn`.
       activations: a `Tensor` of activations representing the output of the RNN.
-      targets: a `Tensor` of target values.
+      labels: a `Tensor` of label values.
 
     Returns:
       loss: A scalar `Tensor` representing the aggregated loss for the batch.
@@ -376,7 +376,7 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
           processed_gradients, global_step=global_step)
 
   @abc.abstractmethod
-  def _activations_to_eval_ops(self, features, activations, targets, metrics):
+  def _activations_to_eval_ops(self, features, activations, labels, metrics):
     """Map `activations` to eval operations.
 
     `activations` has shape [batch_size, time, num_labels]. `TargetColumn`s
@@ -387,7 +387,7 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
       features: a `dict` containing the input and (optionally) sequence length
         information and initial state.
       activations: logit values returned by `_construct_rnn`.
-      targets: a `Tensor` of target values.
+      labels: a `Tensor` of label values.
       metrics: a list of `Metric`s to evaluate. Possibly `None`.
 
     Returns:
@@ -395,21 +395,21 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
     """
     raise NotImplementedError()
 
-  def _get_train_ops(self, features, targets):
+  def _get_train_ops(self, features, labels):
     with ops.name_scope(self._name):
-      features, targets = self._feature_engineering_fn(features, targets)
+      features, labels = self._feature_engineering_fn(features, labels)
       initial_state, sequence_input = self._get_model_input(features)
       activations, _ = self._construct_rnn(initial_state, sequence_input)
-      loss = self._activations_to_loss(features, activations, targets)
+      loss = self._activations_to_loss(features, activations, labels)
       train_op = self._loss_to_train_op(loss)
       return train_op, loss
 
-  def _get_eval_ops(self, features, targets, metrics):
+  def _get_eval_ops(self, features, labels, metrics):
     with ops.name_scope(self._name):
-      features, targets = self._feature_engineering_fn(features, targets)
+      features, labels = self._feature_engineering_fn(features, labels)
       initial_state, sequence_input = self._get_model_input(features)
       activations, _ = self._construct_rnn(initial_state, sequence_input)
-      return self._activations_to_eval_ops(features, activations, targets,
+      return self._activations_to_eval_ops(features, activations, labels,
                                            metrics)
 
   def _get_predict_ops(self, features):
@@ -424,14 +424,14 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
 class _MultiValueRNNEstimator(_DynamicRNNEstimator):
   """An `Estimator` that maps sequences of inputs to sequences of outputs."""
 
-  def _activations_to_loss(self, features, activations, targets):
+  def _activations_to_loss(self, features, activations, labels):
     sequence_length = features.get(self._sequence_length_key)
-    # Mask the activations and targets past `sequence_length`. Note that the
-    # `Tensor`s returned by `_mask_activations_and_targets` are flattened.
+    # Mask the activations and labels past `sequence_length`. Note that the
+    # `Tensor`s returned by `_mask_activations_and_labels` are flattened.
     with ops.name_scope('activations_to_loss'):
-      activations_masked, targets_masked = _mask_activations_and_targets(
-          activations, targets, sequence_length)
-      return self._target_column.loss(activations_masked, targets_masked,
+      activations_masked, labels_masked = _mask_activations_and_labels(
+          activations, labels, sequence_length)
+      return self._target_column.loss(activations_masked, labels_masked,
                                       features)
 
   def _activations_to_predictions(self, unused_features, activations):
@@ -445,25 +445,25 @@ class _MultiValueRNNEstimator(_DynamicRNNEstimator):
           predictions, [activations_shape[0], activations_shape[1], -1])
       return array_ops.squeeze(reshaped_predictions, [2])
 
-  def _activations_to_eval_ops(self, features, activations, targets, metrics):
+  def _activations_to_eval_ops(self, features, activations, labels, metrics):
     with ops.name_scope('activations_to_eval_ops'):
-      activations_masked, targets_masked = _mask_activations_and_targets(
-          activations, targets, features.get(self._sequence_length_key))
+      activations_masked, labels_masked = _mask_activations_and_labels(
+          activations, labels, features.get(self._sequence_length_key))
 
       return self._target_column.get_eval_ops(features=features,
                                               logits=activations_masked,
-                                              targets=targets_masked,
+                                              labels=labels_masked,
                                               metrics=metrics)
 
 
 class _SingleValueRNNEstimator(_DynamicRNNEstimator):
   """An `Estimator` that maps sequences of inputs to single outputs."""
 
-  def _activations_to_loss(self, features, activations, targets):
+  def _activations_to_loss(self, features, activations, labels):
     with ops.name_scope('activations_to_loss'):
       sequence_lengths = features.get(self._sequence_length_key)
       last_activations = _select_last_activations(activations, sequence_lengths)
-      return self._target_column.loss(last_activations, targets, features)
+      return self._target_column.loss(last_activations, labels, features)
 
   def _activations_to_predictions(self, features, activations):
     with ops.name_scope('activations_to_predictions'):
@@ -472,13 +472,13 @@ class _SingleValueRNNEstimator(_DynamicRNNEstimator):
       return self._target_column.logits_to_predictions(
           last_activations, proba=False)
 
-  def _activations_to_eval_ops(self, features, activations, targets, metrics):
+  def _activations_to_eval_ops(self, features, activations, labels, metrics):
     with ops.name_scope('activations_to_eval_ops'):
       sequence_lengths = features.get(self._sequence_length_key)
       last_activations = _select_last_activations(activations, sequence_lengths)
       return self._target_column.get_eval_ops(features=features,
                                               logits=last_activations,
-                                              targets=targets,
+                                              labels=labels,
                                               metrics=metrics)
 
 

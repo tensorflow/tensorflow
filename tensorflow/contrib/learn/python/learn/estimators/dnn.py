@@ -90,13 +90,13 @@ def _centered_bias(num_label_columns):
   return centered_bias
 
 
-def _centered_bias_step(targets, loss_fn, num_label_columns):
+def _centered_bias_step(labels, loss_fn, num_label_columns):
   centered_bias = ops.get_collection(_CENTERED_BIAS)
-  batch_size = array_ops.shape(targets)[0]
+  batch_size = array_ops.shape(labels)[0]
   logits = array_ops.reshape(
       array_ops.tile(centered_bias[0], [batch_size]),
       [batch_size, num_label_columns])
-  loss = loss_fn(logits, targets)
+  loss = loss_fn(logits, labels)
   return train.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
 
 
@@ -110,16 +110,16 @@ def _get_weight_tensor(features, weight_column_name):
         shape=(-1,))
 
 
-def _reshape_targets(targets):
-  """"Reshapes targets into [batch_size, 1] to be compatible with logits."""
+def _reshape_labels(labels):
+  """"Reshapes labels into [batch_size, 1] to be compatible with logits."""
   check_shape_op = control_flow_ops.Assert(
-      math_ops.less_equal(array_ops.rank(targets), 2),
-      ["targets shape should be either [batch_size, 1] or [batch_size]"])
+      math_ops.less_equal(array_ops.rank(labels), 2),
+      ["labels shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
-    targets = array_ops.reshape(targets,
-                                shape=[array_ops.shape(targets)[0], 1])
+    labels = array_ops.reshape(labels,
+                               shape=[array_ops.shape(labels)[0], 1])
 
-  return targets
+  return labels
 
 
 def _rescale_eval_loss(loss, weights):
@@ -156,12 +156,12 @@ def _predictions(logits, n_classes):
   return predictions
 
 
-def _dnn_classifier_model_fn(features, targets, mode, params):
+def _dnn_classifier_model_fn(features, labels, mode, params):
   """Deep Neural Net model_fn.
 
   Args:
     features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
-    targets: `Tensor` of shape [batch_size, 1] or [batch_size] target labels of
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -170,7 +170,7 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
       * hidden_units: List of hidden units per layer.
       * feature_columns: An iterable containing all the feature columns used by
           the model.
-      * n_classes: number of target classes.
+      * n_classes: number of label classes.
       * weight_column_name: A string defining the weight feature column, or
           None if there are no weights.
       * optimizer: string, `Optimizer` object, or callable that defines the
@@ -260,10 +260,10 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
 
   if mode == estimator.ModeKeys.TRAIN:
-    targets = _reshape_targets(targets)
-    weight = _get_weight_tensor(features, weight_column_name)
-    training_loss = loss_fn(logits, targets, weight=weight)
-    loss = _rescale_eval_loss(training_loss, weight)
+    labels = _reshape_labels(labels)
+    weights = _get_weight_tensor(features, weight_column_name)
+    training_loss = loss_fn(logits, labels, weights=weights)
+    loss = _rescale_eval_loss(training_loss, weights)
 
     train_ops = [optimizers.optimize_loss(
         loss=training_loss,
@@ -275,7 +275,7 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
         # Empty summaries to prevent optimizers from logging the training_loss.
         summaries=[])]
     if enable_centered_bias:
-      train_ops.append(_centered_bias_step(targets, loss_fn, num_label_columns))
+      train_ops.append(_centered_bias_step(labels, loss_fn, num_label_columns))
 
     logging_ops.scalar_summary("loss", loss)
 
@@ -284,10 +284,10 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
   elif mode == estimator.ModeKeys.EVAL:
     predictions = _predictions(logits=logits, n_classes=n_classes)
 
-    targets = _reshape_targets(targets)
-    weight = _get_weight_tensor(features, weight_column_name)
-    training_loss = loss_fn(logits, targets, weight=weight)
-    loss = _rescale_eval_loss(training_loss, weight)
+    labels = _reshape_labels(labels)
+    weights = _get_weight_tensor(features, weight_column_name)
+    training_loss = loss_fn(logits, labels, weights=weights)
+    loss = _rescale_eval_loss(training_loss, weights)
 
     return predictions, loss, []
 
@@ -378,7 +378,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model.
-      n_classes: number of target classes. Default is binary classification.
+      n_classes: number of label classes. Default is binary classification.
         It must be greater than 1.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
@@ -397,8 +397,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Returns:
@@ -710,8 +710,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Returns:
