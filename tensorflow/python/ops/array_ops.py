@@ -71,6 +71,7 @@ or join multiple tensors together.
 @@gather
 @@gather_nd
 @@unique_with_counts
+@@scatter_nd
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
@@ -2461,3 +2462,50 @@ def _QuantizedReshapeShape(op):
 ops.RegisterShape("QuantizeV2")(None)
 ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
 ops.RegisterShape("QuantizedConcat")(None)
+
+
+@ops.RegisterShape("ScatterNd")
+def _ScatterNdShape(op):
+  """Shape function for the ScatterNd op.
+
+  The shape of the ouput is defined as a parameter on the Operation.
+
+  Args:
+    op: A ScatterNd Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: if the arguments have invalid rank
+  """
+  indices_shape = op.inputs[0].get_shape()
+  updates_shape = op.inputs[1].get_shape()
+  shape = op.inputs[2]
+
+  output_shape = tensor_util.constant_value_as_shape(shape)
+  if output_shape.num_elements() == 0 and not (
+      indices_shape.num_elements() in
+      (None, 0) and updates_shape.num_elements() in (None, 0)):
+    raise ValueError("Indices and updates specified for empty output shape")
+
+  if indices_shape.ndims is not None and shape is not None:
+    outer_dims = len(indices_shape) - 1
+    ixdim = indices_shape[-1].value or 0
+
+    if not indices_shape[:outer_dims].is_compatible_with(
+        updates_shape[:outer_dims]):
+      raise ValueError("The outer %d dimensions of indices.shape=%s must " \
+                       "match the outer %d dimensions of updates.shape=%s" % (
+                           outer_dims, indices_shape, outer_dims,
+                           updates_shape))
+    if output_shape.ndims is not None:
+      if not output_shape[ixdim:].is_compatible_with(updates_shape[
+          outer_dims:]):
+        raise ValueError("The inner %d dimensions of output.shape=%s must " \
+                         "match the inner %d dimensions of updates.shape=%s" % (
+                             len(output_shape)-ixdim, output_shape,
+                             len(updates_shape)-outer_dims, updates_shape))
+
+    return [output_shape]
+  return [None]

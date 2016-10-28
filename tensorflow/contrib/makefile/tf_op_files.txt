@@ -184,3 +184,4 @@ tensorflow/core/ops/control_flow_ops.cc
 tensorflow/core/ops/candidate_sampling_ops.cc
 tensorflow/core/ops/array_ops.cc
 tensorflow/core/ops/array_grad.cc
+tensorflow/core/ops/scatter_nd_op.cc

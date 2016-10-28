@@ -95,6 +95,11 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@scatter_mul
 @@scatter_div
+@@scatter_nd_update
+@@scatter_nd_add
+@@scatter_nd_sub
+@@scatter_nd_mul
+@@scatter_nd_div
 @@sparse_mask
 @@IndexedSlices
 
@@ -209,3 +214,34 @@ ops.RegisterShape("ScatterDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScatterMul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScatterSub")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScatterUpdate")(common_shapes.call_cpp_shape_fn)
+
+
+@ops.RegisterShape("ScatterNdAdd")
+@ops.RegisterShape("ScatterNdSub")
+@ops.RegisterShape("ScatterNdMul")
+@ops.RegisterShape("ScatterNdDiv")
+@ops.RegisterShape("ScatterNdUpdate")
+def scatter_nd_update_shape(op):
+  """Shape function for the ScatterNd update ops."""
+  ref_shape = op.inputs[0].get_shape()
+  indices_shape = op.inputs[1].get_shape()
+  updates_shape = op.inputs[2].get_shape()
+
+  if indices_shape.ndims is not None and ref_shape.ndims is not None:
+    outer_dims = len(indices_shape) - 1
+    ixdim = indices_shape[-1].value or 0
+
+    if not indices_shape[:outer_dims].is_compatible_with(
+        updates_shape[:outer_dims]):
+      raise ValueError("The outer %d dimensions of indices.shape=%s must " \
+                       "match the outer %d dimensions of updates.shape=%s" % (
+                           outer_dims, indices_shape, outer_dims,
+                           updates_shape))
+
+    if not ref_shape[ixdim:].is_compatible_with(updates_shape[outer_dims:]):
+      raise ValueError("The inner %d dimensions of ref.shape=%s must match " \
+                       "the inner %d dimensions of updates.shape=%s" % (
+                           len(ref_shape)-ixdim, ref_shape,
+                           len(updates_shape)-outer_dims, updates_shape))
+
+  return [ref_shape]
