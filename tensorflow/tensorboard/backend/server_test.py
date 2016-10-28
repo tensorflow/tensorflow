@@ -243,26 +243,20 @@ class TensorboardServerTest(tf.test.TestCase):
       return
 
     info_json = self._getJson('/data/plugin/projector/info?run=run1')
-    self.assertEqual(info_json['tensors'], {
-        'var1': {
-            'shape': [1, 2],
-            'name': 'var1',
-            'metadataFile': None,
-            'bookmarksFile': None,
+    self.assertSameElements(info_json['embeddings'], [
+        {
+            'tensorShape': [1, 2],
+            'tensorName': 'var1'
         },
-        'var2': {
-            'shape': [10, 10],
-            'name': 'var2',
-            'metadataFile': None,
-            'bookmarksFile': None,
+        {
+            'tensorShape': [10, 10],
+            'tensorName': 'var2'
         },
-        'var3': {
-            'shape': [100, 100],
-            'name': 'var3',
-            'metadataFile': None,
-            'bookmarksFile': None,
+        {
+            'tensorShape': [100, 100],
+            'tensorName': 'var3'
         }
-    })
+    ])
 
   def testProjectorTensor(self):
     """Test the format of /tensor endpoint in projector."""

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 
-import six
+from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.contrib.tensorboard.plugins.projector import PROJECTOR_FILENAME
 from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
@@ -123,9 +123,9 @@ class ProjectorPlugin(TBPlugin):
       return tensor_name
 
   def _get_embedding_info_for_tensor(self, tensor_name, config):
-    if not config.embedding:
+    if not config.embeddings:
       return None
-    for info in config.embedding:
+    for info in config.embeddings:
       if (self._canonical_tensor_name(info.tensor_name) ==
           self._canonical_tensor_name(tensor_name)):
         return info
@@ -144,24 +144,22 @@ class ProjectorPlugin(TBPlugin):
     if run not in self.configs:
       self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
+
     config = self.configs[run]
     reader = self._get_reader_for_run(run)
     var_map = reader.get_variable_to_shape_map()
-    metadata_file = lambda t: self._get_metadata_file_for_tensor(t, config)
-    bookmarks_file = lambda t: self._get_bookmarks_file_for_tensor(t, config)
-    self.handler.respond({
-        'checkpointFile':
-            config.model_checkpoint_path,
-        'tensors': {
-            name: {
-                'name': name,
-                'shape': shape,
-                'metadataFile': metadata_file(name),
-                'bookmarksFile': bookmarks_file(name)
-            }
-            for name, shape in six.iteritems(var_map) if len(shape) == 2
-        }
-    }, 'application/json')
+
+    for tensor_name, tensor_shape in var_map.items():
+      if len(tensor_shape) != 2:
+        continue
+      info = self._get_embedding_info_for_tensor(tensor_name, config)
+      if not info:
+        info = config.embeddings.add()
+        info.tensor_name = tensor_name
+      if not info.tensor_shape:
+        info.tensor_shape.extend(tensor_shape)
+
+    self.handler.respond(json_format.MessageToDict(config), 'application/json')
 
   def _serve_metadata(self, query_params):
     run = query_params.get('run')

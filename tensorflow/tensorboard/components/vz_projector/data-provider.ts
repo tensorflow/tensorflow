@@ -23,22 +23,29 @@ const NUM_COLORS_COLOR_MAP = 20;
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';
 
-/** Information associated with a tensor. */
-export interface TensorInfo {
-  /** Name of the tensor. */
-  name: string;
-  /** The shape of the tensor. */
-  shape: [number, number];
-  /** The path to the metadata file associated with the tensor. */
-  metadataFile: string;
-  /** The path to the bookmarks file associated with the tensor. */
-  bookmarksFile: string;
+/** Matches the json format of `projector_config.proto` */
+export interface SpriteMetadata {
+  imagePath: string;
+  singleImageDim: [number, number];
 }
 
-/** Information for the model checkpoint. */
+/** Matches the json format of `projector_config.proto` */
+export interface EmbeddingInfo {
+  /** Name of the tensor. */
+  tensorName: string;
+  /** The shape of the tensor. */
+  tensorShape: [number, number];
+  /** The path to the metadata file associated with the tensor. */
+  metadataPath?: string;
+  /** The path to the bookmarks file associated with the tensor. */
+  bookmarksPath?: string;
+  sprite?: SpriteMetadata;
+}
+
+/** Matches the json format of `projector_config.proto` */
 export interface CheckpointInfo {
-  tensors: {[name: string]: TensorInfo};
-  checkpointFile: string;
+  embeddings: EmbeddingInfo[];
+  modelCheckpointPath: string;
 }
 
 export type ServingMode = 'demo' | 'server' | 'proto';

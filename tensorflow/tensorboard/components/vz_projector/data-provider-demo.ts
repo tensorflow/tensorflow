@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {DataSet, DatasetMetadata, MetadataInfo, State} from './data';
-import {CheckpointInfo, DataProvider, fetchImage, METADATA_MSG_ID, parseMetadata, parseTensors, TensorInfo, TENSORS_MSG_ID} from './data-provider';
+import {CheckpointInfo, DataProvider, fetchImage, METADATA_MSG_ID, parseMetadata, parseTensors, EmbeddingInfo, TENSORS_MSG_ID} from './data-provider';
 import * as logging from './logging';
 
 
@@ -82,22 +82,22 @@ export class DemoDataProvider implements DataProvider {
 
   retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void)
       : void {
-    let tensorsInfo: {[name: string]: TensorInfo} = {};
+    let tensorsInfo: EmbeddingInfo[] = [];
     for (let name in DemoDataProvider.DEMO_DATASETS) {
       if (!DemoDataProvider.DEMO_DATASETS.hasOwnProperty(name)) {
         continue;
       }
       let demoInfo = DemoDataProvider.DEMO_DATASETS[name];
-      tensorsInfo[name] = {
-        name: name,
-        shape: demoInfo.shape,
-        metadataFile: demoInfo.metadata_path,
-        bookmarksFile: demoInfo.bookmarks_path
-      };
+      tensorsInfo.push({
+        tensorName: name,
+        tensorShape: demoInfo.shape,
+        metadataPath: demoInfo.metadata_path,
+        bookmarksPath: demoInfo.bookmarks_path
+      });
     }
     callback({
-      tensors: tensorsInfo,
-      checkpointFile: 'Demo datasets',
+      embeddings: tensorsInfo,
+      modelCheckpointPath: 'Demo datasets',
     });
   }
 

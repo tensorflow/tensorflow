@@ -32,7 +32,7 @@ export class ServerDataProvider implements DataProvider {
 
   retrieveRuns(callback: (runs: string[]) => void): void {
     let msgId = logging.setModalMessage('Fetching runs...');
-    d3.json(`${this.routePrefix}/runs`, (err, runs) => {
+    d3.json(`${this.routePrefix}/runs`, (err, runs: string[]) => {
       if (err) {
         logging.setModalMessage('Error: ' + err.responseText);
         return;
@@ -50,7 +50,8 @@ export class ServerDataProvider implements DataProvider {
     }
 
     let msgId = logging.setModalMessage('Fetching checkpoint info...');
-    d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
+    d3.json(`${this.routePrefix}/info?run=${run}`, (err,
+        checkpointInfo: CheckpointInfo) => {
       if (err) {
         logging.setModalMessage('Error: ' + err.responseText);
         return;
@@ -93,12 +94,12 @@ export class ServerDataProvider implements DataProvider {
 
   getDefaultTensor(run: string, callback: (tensorName: string) => void) {
     this.retrieveCheckpointInfo(run, checkpointInfo => {
-      let tensorNames = Object.keys(checkpointInfo.tensors);
+      let tensorNames = checkpointInfo.embeddings.map(e => e.tensorName);
       // Return the first tensor that has metadata.
       for (let i = 0; i < tensorNames.length; i++) {
-        let tensorName = tensorNames[i];
-        if (checkpointInfo.tensors[tensorName].metadataFile) {
-          callback(tensorName);
+        let e = checkpointInfo.embeddings[i];
+        if (e.metadataPath) {
+          callback(e.tensorName);
           return;
         }
       }
@@ -111,10 +112,10 @@ export class ServerDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching bookmarks...');
     d3.json(
         `${this.routePrefix}/bookmarks?run=${run}&name=${tensorName}`,
-        (err, bookmarks) => {
+        (err, bookmarks: State[]) => {
           logging.setModalMessage(null, msgId);
           if (!err) {
-            callback(bookmarks as State[]);
+            callback(bookmarks);
           }
         });
   }

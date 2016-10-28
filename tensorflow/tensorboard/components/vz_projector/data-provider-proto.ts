@@ -30,15 +30,12 @@ export class ProtoDataProvider implements DataProvider {
 
   retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void) {
     callback({
-      tensors: {
-        'proto': {
-          name: 'proto',
-          shape: this.dataProto.shape,
-          metadataFile: 'proto',
-          bookmarksFile: null
-        }
-      },
-      checkpointFile: 'proto'
+      modelCheckpointPath: 'proto',
+      embeddings: [{
+        tensorName: 'proto',
+        tensorShape: this.dataProto.shape,
+        metadataPath: 'proto'
+      }]
     });
   }
 
