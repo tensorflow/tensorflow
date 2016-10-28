@@ -1180,11 +1180,11 @@ class ControlFlowState(object):
     if IsLoopSwitch(op): return None
     dead_branch = IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt is None:
+    grad_state = self._map.get(forward_ctxt)
+    if grad_state is None:
       # op is not in a while loop that is part of gradients().
       return ZerosLikeOutsideLoop(op, index)
     op_ctxt = op._get_control_flow_context()
-    grad_state = self._map.get(forward_ctxt)
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
     shape = val.get_shape()
     if shape.is_fully_defined():
