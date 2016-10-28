@@ -1537,7 +1537,6 @@ py_library(
         ":random_ops",
         ":sparse_ops",
         ":state_ops",
-        ":string_ops",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
