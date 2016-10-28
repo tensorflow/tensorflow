@@ -136,7 +136,8 @@ class FinishedNodesTest(test_util.TensorFlowTestCase):
           dominate_method='bootstrap',
           regression=False,
           num_split_after_samples=10,
-          min_split_samples=5)
+          min_split_samples=5,
+          random_seed=1)
 
       self.assertAllEqual([4], finished.eval())
       self.assertAllEqual([], stale.eval())
