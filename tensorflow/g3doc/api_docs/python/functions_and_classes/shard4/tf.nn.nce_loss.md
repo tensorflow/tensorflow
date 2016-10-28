@@ -42,7 +42,8 @@ with an otherwise unused class.
       where a sampled class equals one of the target classes.  If set to
       `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
       learning to generate log-odds instead of log probabilities.  See
-      our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf).
+      our [Candidate Sampling Algorithms Reference]
+      (../../extras/candidate_sampling.pdf).
       Default is False.
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
       if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
