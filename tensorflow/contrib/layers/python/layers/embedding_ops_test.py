@@ -356,5 +356,21 @@ class HashedEmbeddingLookupTest(tf.test.TestCase):
                           0.5 * (embedding_lookup_result[0] +
                                  embedding_lookup_result[3]))
 
+  def test_embedding_lookup_unique(self):
+    d_embed = 5
+    n_embed = 10
+    idx_shape = (2, 3, 4)
+    embeds = np.random.randn(n_embed, d_embed)
+    idx = np.random.randint(0, n_embed, idx_shape)
+
+    with self.test_session():
+      embedded_np = embeds[idx]
+      embedded_tf = tf.contrib.layers.embedding_lookup_unique(
+          embeds, idx).eval()
+
+    self.assertEqual(embedded_np.shape, embedded_tf.shape)
+    np.testing.assert_almost_equal(embedded_np, embedded_tf)
+
+
 if __name__ == "__main__":
   tf.test.main()
