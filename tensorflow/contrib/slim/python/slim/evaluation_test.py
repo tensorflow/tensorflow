@@ -123,8 +123,11 @@ class EvaluationTest(tf.test.TestCase):
     accuracy1, update_op1 = tf.contrib.metrics.streaming_accuracy(
         predictions+1, labels)
 
-    names_to_values = {'Accuracy': accuracy0, 'Another accuracy': accuracy1}
-    names_to_updates = {'Accuracy': update_op0, 'Another accuracy': update_op1}
+    names_to_values = {'Accuracy': accuracy0, 'Another_accuracy': accuracy1}
+    names_to_updates = {
+        'Accuracy': update_op0,
+        'Another_accuracy': update_op1
+    }
     return names_to_values, names_to_updates
 
   def _verify_summaries(self, output_dir, names_to_values):
@@ -159,7 +162,7 @@ class EvaluationTest(tf.test.TestCase):
 
     for k in names_to_metrics:
       v = names_to_metrics[k]
-      tf.scalar_summary(k, v)
+      tf.summary.scalar(k, v)
 
     summary_writer = tf.train.SummaryWriter(output_dir)
 
@@ -172,7 +175,7 @@ class EvaluationTest(tf.test.TestCase):
           sess,
           initial_op=initial_op,
           eval_op=eval_op,
-          summary_op=tf.merge_all_summaries(),
+          summary_op=tf.summary.merge_all(),
           summary_writer=summary_writer,
           global_step=self._global_step)
 
@@ -190,7 +193,7 @@ class EvaluationTest(tf.test.TestCase):
 
     for k in names_to_metrics:
       v = names_to_metrics[k]
-      tf.scalar_summary(k, v)
+      tf.summary.scalar(k, v)
 
     summary_writer = tf.train.SummaryWriter(output_dir)
 
@@ -203,7 +206,7 @@ class EvaluationTest(tf.test.TestCase):
           sess,
           initial_op=initial_op,
           eval_op=eval_op,
-          summary_op=tf.merge_all_summaries(),
+          summary_op=tf.summary.merge_all(),
           summary_writer=summary_writer)
 
       names_to_values = {name: names_to_metrics[name].eval()

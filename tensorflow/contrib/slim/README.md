@@ -583,7 +583,7 @@ with g.as_default():
   slim.losses.softmax_cross_entropy(predictions, labels)
 
   total_loss = slim.losses.get_total_loss()
-  tf.scalar_summary('losses/total loss', total_loss)
+  tf.summary.scalar('losses/total loss', total_loss)
 
   # Specify the optimization scheme:
   optimizer = tf.train.GradientDescentOptimizer(learning_rate=.001)
@@ -884,7 +884,7 @@ names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
 # Create the summary ops such that they also print out to std output:
 summary_ops = []
 for metric_name, metric_value in metrics_to_values.iteritems():
-  op = tf.scalar_summary(metric_name, metric_value)
+  op = tf.summary.scalar(metric_name, metric_value)
   op = tf.Print(op, [metric_value], metric_name)
   summary_ops.append(op)
 
