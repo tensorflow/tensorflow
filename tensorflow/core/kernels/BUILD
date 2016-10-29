@@ -2114,13 +2114,11 @@ tf_kernel_libraries(
         "count_up_to_op",
         "dense_update_ops",
         "scatter_op",
-        "scatter_nd_op",
         "variable_ops",
     ],
     deps = [
         ":assign_op",
         ":bounds_check",
-        ":fill_functor",
         ":scatter_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2134,7 +2132,6 @@ tf_cc_test(
     size = "small",
     srcs = ["scatter_op_test.cc"],
     deps = [
-        ":fill_functor",
         ":ops_testutil",
         ":ops_util",
         ":scatter_op",

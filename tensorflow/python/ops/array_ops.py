@@ -73,7 +73,6 @@ or join multiple tensors together.
 @@gather
 @@gather_nd
 @@unique_with_counts
-@@scatter_nd
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
