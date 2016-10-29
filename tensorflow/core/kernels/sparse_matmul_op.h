@@ -18,6 +18,22 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
+#ifdef _MSC_VER
+#define _mm_load_pd1 _mm_load1_pd
+static inline int
+_mm256_extract_epi32(__m256i a, const int i)
+{
+  return a.m256i_i32[i & 7];
+}
+
+static inline __m256i
+_mm256_insert_epi32(__m256i a, int b, const int i)
+{
+  __m256i c = a;
+  c.m256i_i32[i & 7] = b;
+  return c;
+}
+#endif
 
 namespace Eigen {
 namespace internal {

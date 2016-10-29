@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_DEBUG_OP_H_
 #define TENSORFLOW_KERNELS_DEBUG_OP_H_
 
+#include <type_traits>
+
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -127,7 +130,16 @@ class DebugNanCountOp : public OpKernel {
       const T* input_flat = input.template flat<T>().data();
 
       for (int64 i = 0; i < input_shape.num_elements(); ++i) {
-        if (Eigen::numext::isnan(input_flat[i])) {
+#ifdef _MSC_VER
+        // VC complains about ambiguous resolution when isnan is called
+        // with integral values, so we explicitly convert an integral value to
+        // double before calling isnan.
+        typedef std::conditional<std::is_integral<T>::value, double, T>::type R;
+        R value = static_cast<R>(input_flat[i]);
+#else
+        T& value = input_flat[i];
+#endif
+        if (Eigen::numext::isnan(value)) {
           nan_count++;
         }
       }

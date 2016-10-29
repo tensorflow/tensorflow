@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef PLATFORM_WINDOWS
+#include <Windows.h>
+#endif
+
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX_ANDROID) || \
@@ -37,7 +41,14 @@ string TmpDir() {
   if (env && env[0] != '\0') {
     return env;
   }
+#ifdef PLATFORM_WINDOWS
+  char buffer[MAX_PATH + 1];
+  buffer[0] = '\0';
+  ::GetTempPath(sizeof(buffer), buffer);
+  return buffer;
+#else
   return "/tmp";
+#endif
 }
 string SrcDir() {
   // Bazel makes data dependencies available via a relative path.
