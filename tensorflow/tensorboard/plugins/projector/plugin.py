@@ -170,7 +170,7 @@ class ProjectorPlugin(TBPlugin):
       if not info.tensor_shape:
         info.tensor_shape.extend(tensor_shape)
 
-    self.handler.respond(json_format.MessageToDict(config), 'application/json')
+    self.handler.respond(json_format.MessageToJson(config), 'application/json')
 
   def _serve_metadata(self, query_params):
     run = query_params.get('run')
