@@ -1959,7 +1959,9 @@ class WhileContext(ControlFlowContext):
       context_def.pivot_name = ops.strip_name_scope(
           self._pivot.name, export_scope)
       if self._loop_exits:
-        context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
+        context_def.loop_exit_names.extend(
+            [ops.strip_name_scope(l.name, export_scope)
+             for l in self._loop_exits])
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_proto(
               export_scope=export_scope))
