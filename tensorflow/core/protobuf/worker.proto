@@ -175,6 +175,8 @@ message RunGraphRequest {
 
   // True if the RunGraphRequest is a partial run request.
   bool is_partial = 6;
+  // True if this is the last partial run request in a sequence of requests.
+  bool is_last_partial_run = 7;
 }
 
 message RunGraphResponse {
