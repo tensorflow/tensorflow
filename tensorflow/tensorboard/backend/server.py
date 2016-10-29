@@ -96,11 +96,13 @@ def ReloadMultiplexer(multiplexer, path_to_run):
       name is interpreted as a run name equal to the path.
   """
   start = time.time()
+  logging.info('TensorBoard reload process beginning')
   for (path, name) in six.iteritems(path_to_run):
     multiplexer.AddRunsFromDirectory(path, name)
+  logging.info('TensorBoard reload process: Reload the whole Multiplexer')
   multiplexer.Reload()
   duration = time.time() - start
-  logging.info('Multiplexer done loading. Load took %0.1f secs', duration)
+  logging.info('TensorBoard done reloading. Load took %0.3f secs', duration)
 
 
 def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):

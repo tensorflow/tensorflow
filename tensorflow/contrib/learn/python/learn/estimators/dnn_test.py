@@ -75,8 +75,8 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
     self.assertLess(scores['loss'], 0.3)
 
-  def testLogisticRegression_MatrixData_Target1D(self):
-    """Same as the last test, but target shape is [100] instead of [100, 1]."""
+  def testLogisticRegression_MatrixData_Labels1D(self):
+    """Same as the last test, but label shape is [100] instead of [100, 1]."""
     def _input_fn():
       iris = _prepare_iris_data_for_logistic_regression()
       return {
@@ -159,8 +159,8 @@ class DNNClassifierTest(tf.test.TestCase):
               indices=[[0, 0], [0, 1], [2, 0]],
               shape=[3, 2])
       }
-      target = tf.constant([[0.8], [0.], [0.2]], dtype=tf.float32)
-      return features, target
+      labels = tf.constant([[0.8], [0.], [0.2]], dtype=tf.float32)
+      return features, labels
 
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -180,7 +180,7 @@ class DNNClassifierTest(tf.test.TestCase):
     predict_input_fn = functools.partial(_input_fn_float_label, num_epochs=1)
     predictions_proba = list(
         classifier.predict_proba(input_fn=predict_input_fn, as_iterable=True))
-    # Prediction probabilities mirror the target column, which proves that the
+    # Prediction probabilities mirror the labels column, which proves that the
     # classifier learns from float input.
     self.assertAllClose(
         predictions_proba, [[0.2, 0.8], [1., 0.], [0.8, 0.2]], atol=0.05)
@@ -205,8 +205,8 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertGreater(scores['accuracy'], 0.8)
     self.assertLess(scores['loss'], 0.3)
 
-  def testMultiClass_MatrixData_Target1D(self):
-    """Same as the last test, but target shape is [150] instead of [150, 1]."""
+  def testMultiClass_MatrixData_Labels1D(self):
+    """Same as the last test, but label shape is [150] instead of [150, 1]."""
     def _input_fn():
       iris = tf.contrib.learn.datasets.load_iris()
       return {
@@ -248,11 +248,11 @@ class DNNClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=2,
@@ -271,21 +271,21 @@ class DNNClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # 4 rows, with different weights.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[7.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNClassifier(
         weight_column_name='w',
@@ -306,21 +306,21 @@ class DNNClassifierTest(tf.test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # First row has more weight than others. Model should fit (y=x) better
       # than (y=Not(x)) due to the relative higher weight of the first row.
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[100.], [3.], [2.], [2.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # Create 4 rows (y = x)
-      target = tf.constant([[1], [1], [1], [1]])
+      labels = tf.constant([[1], [1], [1], [1]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNClassifier(
         weight_column_name='w',
@@ -417,20 +417,20 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests custom evaluation metrics."""
     def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.train.limit_epochs(
               tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
       }
-      return features, target
+      return features, labels
 
-    def _my_metric_op(predictions, targets):
+    def _my_metric_op(predictions, labels):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
-      targets = tf.to_float(targets)
+      labels = tf.to_float(labels)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
-      targets = math_ops.cast(targets, predictions.dtype)
-      return tf.reduce_sum(tf.mul(predictions, targets))
+      labels = math_ops.cast(labels, predictions.dtype)
+      return tf.reduce_sum(tf.mul(predictions, labels))
 
     classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -615,8 +615,8 @@ class DNNRegressorTest(tf.test.TestCase):
     scores = regressor.evaluate(input_fn=_iris_input_logistic_fn, steps=1)
     self.assertLess(scores['loss'], 0.3)
 
-  def testRegression_MatrixData_Target1D(self):
-    """Same as the last test, but target shape is [100] instead of [100, 1]."""
+  def testRegression_MatrixData_Labels1D(self):
+    """Same as the last test, but label shape is [100] instead of [100, 1]."""
     def _input_fn():
       iris = _prepare_iris_data_for_logistic_regression()
       return {
@@ -687,11 +687,11 @@ class DNNRegressorTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -709,21 +709,21 @@ class DNNRegressorTest(tf.test.TestCase):
     def _input_fn_train():
       # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # 4 rows, with different weights.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[7.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNRegressor(
         weight_column_name='w',
@@ -743,21 +743,21 @@ class DNNRegressorTest(tf.test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # First row has more weight than others. Model should fit (y=x) better
       # than (y=Not(x)) due to the relative higher weight of the first row.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[100.], [3.], [2.], [2.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # Create 4 rows (y = x)
-      target = tf.constant([[1.], [1.], [1.], [1.]])
+      labels = tf.constant([[1.], [1.], [1.], [1.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNRegressor(
         weight_column_name='w',
@@ -773,7 +773,7 @@ class DNNRegressorTest(tf.test.TestCase):
 
   def testPredict_AsIterableFalse(self):
     """Tests predict method with as_iterable=False."""
-    target = [1., 0., 0.2]
+    labels = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
           'age': tf.train.limit_epochs(
@@ -784,7 +784,7 @@ class DNNRegressorTest(tf.test.TestCase):
               indices=[[0, 0], [0, 1], [2, 0]],
               shape=[3, 2])
       }
-      return features, tf.constant(target, dtype=tf.float32)
+      return features, tf.constant(labels, dtype=tf.float32)
 
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -803,11 +803,11 @@ class DNNRegressorTest(tf.test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertLess(scores['loss'], 0.2)
     predictions = regressor.predict(input_fn=_input_fn, as_iterable=False)
-    self.assertAllClose(predictions, target, atol=0.2)
+    self.assertAllClose(labels, predictions, atol=0.2)
 
   def testPredict_AsIterable(self):
     """Tests predict method with as_iterable=True."""
-    target = [1., 0., 0.2]
+    labels = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
           'age': tf.train.limit_epochs(
@@ -818,7 +818,7 @@ class DNNRegressorTest(tf.test.TestCase):
               indices=[[0, 0], [0, 1], [2, 0]],
               shape=[3, 2])
       }
-      return features, tf.constant(target, dtype=tf.float32)
+      return features, tf.constant(labels, dtype=tf.float32)
 
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -839,21 +839,21 @@ class DNNRegressorTest(tf.test.TestCase):
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(
         regressor.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertAllClose(predictions, target, atol=0.2)
+    self.assertAllClose(labels, predictions, atol=0.2)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
     def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.train.limit_epochs(
               tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
       }
-      return features, target
+      return features, labels
 
-    def _my_metric_op(predictions, targets):
-      return tf.reduce_sum(tf.mul(predictions, targets))
+    def _my_metric_op(predictions, labels):
+      return tf.reduce_sum(tf.mul(predictions, labels))
 
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -1000,8 +1000,8 @@ class DNNRegressorTest(tf.test.TestCase):
 def boston_input_fn():
   boston = tf.contrib.learn.datasets.load_boston()
   features = tf.cast(tf.reshape(tf.constant(boston.data), [-1, 13]), tf.float32)
-  target = tf.cast(tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
-  return features, target
+  labels = tf.cast(tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
+  return features, labels
 
 
 class FeatureColumnTest(tf.test.TestCase):

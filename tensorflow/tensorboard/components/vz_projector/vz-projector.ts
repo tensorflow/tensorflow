@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, DataPoint, DataProto, DataSet, MetadataInfo, PointAccessor, PointMetadata, Projection, State, stateGetAccessorDimensions} from './data';
-import {DataProvider, ServingMode, TensorInfo} from './data-provider';
+import {DataProvider, ServingMode, EmbeddingInfo} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
 import {ProtoDataProvider} from './data-provider-proto';
 import {ServerDataProvider} from './data-provider-server';
@@ -152,7 +152,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     container.style('height', container.property('clientHeight') + 'px');
   }
 
-  setSelectedTensor(run: string, tensorInfo: TensorInfo) {
+  setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
     this.bookmarkPanel.setSelectedTensor(run, tensorInfo);
   }
 
@@ -307,7 +307,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
 
-    this.scatterPlot.setDataSet(this.dataSet, this.originalDataSet.spriteImage);
+    this.scatterPlot.setCameraParametersForNextCameraCreation(null, true);
+    this.scatterPlot.setDataSet(this.dataSet);
     this.updateScatterPlot();
   }
 
@@ -457,7 +458,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     this.scatterPlot.recreateScene();
-    this.scatterPlot.setCameraDefForNextCameraCreation(null);
+    this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
   }
 
   notifyProjectionsUpdated() {
@@ -506,7 +507,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
     this.selectedLabelOption = state.selectedLabelOption;
-    this.scatterPlot.setCameraDefForNextCameraCreation(state.cameraDef);
+    this.scatterPlot.setCameraParametersForNextCameraCreation(
+        state.cameraDef, false);
     {
       const dimensions = stateGetAccessorDimensions(state);
       const accessors =

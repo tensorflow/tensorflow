@@ -407,6 +407,10 @@ class RegexFindTest(test_util.TensorFlowTestCase):
     self.assertEqual([(6, 9, "yellow")], new_screen_output.font_attr_segs[0])
     self.assertEqual([(8, 11, "yellow")], new_screen_output.font_attr_segs[1])
 
+    # Check field in annotations carrying a list of matching line indices.
+    self.assertEqual([0, 1], new_screen_output.annotations[
+        debugger_cli_common.REGEX_MATCH_LINES_KEY])
+
   def testRegexFindWithExistingFontAttrSegs(self):
     # Add a font attribute segment first.
     self._orig_screen_output.font_attr_segs[0] = [(9, 12, "red")]
@@ -418,6 +422,21 @@ class RegexFindTest(test_util.TensorFlowTestCase):
 
     self.assertEqual([(6, 9, "yellow"), (9, 12, "red")],
                      new_screen_output.font_attr_segs[0])
+
+    self.assertEqual([0, 1], new_screen_output.annotations[
+        debugger_cli_common.REGEX_MATCH_LINES_KEY])
+
+  def testRegexFindWithNoMatches(self):
+    new_screen_output = debugger_cli_common.regex_find(self._orig_screen_output,
+                                                       "infrared", "yellow")
+
+    self.assertEqual({}, new_screen_output.font_attr_segs)
+    self.assertEqual([], new_screen_output.annotations[
+        debugger_cli_common.REGEX_MATCH_LINES_KEY])
+
+  def testInvalidRegex(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid regular expression"):
+      debugger_cli_common.regex_find(self._orig_screen_output, "[", "yellow")
 
 
 class WrapScreenOutputTest(test_util.TensorFlowTestCase):
@@ -445,6 +464,9 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
   def testWrappingWithAttrCutoff(self):
     out = debugger_cli_common.wrap_rich_text_lines(self._orig_screen_output, 11)
 
+    # Add non-row-index field to out.
+    out.annotations["metadata"] = "foo"
+
     # Check wrapped text.
     self.assertEqual(5, len(out.lines))
     self.assertEqual("Folk song:", out.lines[0])
@@ -467,6 +489,9 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     self.assertFalse(2 in out.annotations)
     self.assertEqual("shorter wavelength", out.annotations[3])
     self.assertFalse(4 in out.annotations)
+
+    # Chec that the non-row-index field is present in output.
+    self.assertEqual("foo", out.annotations["metadata"])
 
   def testWrappingWithMultipleAttrCutoff(self):
     self._orig_screen_output = debugger_cli_common.RichTextLines(

@@ -1180,11 +1180,11 @@ class ControlFlowState(object):
     if IsLoopSwitch(op): return None
     dead_branch = IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt is None:
+    grad_state = self._map.get(forward_ctxt)
+    if grad_state is None:
       # op is not in a while loop that is part of gradients().
       return ZerosLikeOutsideLoop(op, index)
     op_ctxt = op._get_control_flow_context()
-    grad_state = self._map.get(forward_ctxt)
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
     shape = val.get_shape()
     if shape.is_fully_defined():
@@ -1959,7 +1959,9 @@ class WhileContext(ControlFlowContext):
       context_def.pivot_name = ops.strip_name_scope(
           self._pivot.name, export_scope)
       if self._loop_exits:
-        context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
+        context_def.loop_exit_names.extend(
+            [ops.strip_name_scope(l.name, export_scope)
+             for l in self._loop_exits])
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_proto(
               export_scope=export_scope))

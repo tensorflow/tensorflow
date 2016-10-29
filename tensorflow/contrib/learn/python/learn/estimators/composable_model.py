@@ -56,7 +56,7 @@ class _ComposableModel(object):
     """Common initialization for all _ComposableModel objects.
 
     Args:
-      num_label_columns: The number of label/target columns.
+      num_label_columns: The number of label columns.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the model. If `None`, will use a FTRL optimizer.
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
@@ -151,7 +151,7 @@ class LinearComposableModel(_ComposableModel):
     """Initializes LinearComposableModel objects.
 
     Args:
-      num_label_columns: The number of label/target columns.
+      num_label_columns: The number of label columns.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the model. If `None`, will use a FTRL optimizer.
       _joint_weights: If True use a single (possibly partitioned) variable
@@ -259,7 +259,7 @@ class DNNComposableModel(_ComposableModel):
     """Initializes DNNComposableModel objects.
 
     Args:
-      num_label_columns: The number of label/target columns.
+      num_label_columns: The number of label columns.
       hidden_units: List of hidden units per layer. All layers are fully
         connected.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to

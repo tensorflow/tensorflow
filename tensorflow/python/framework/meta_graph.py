@@ -40,6 +40,10 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
+# Prefix to be added to unbound input names so they are easily identifiable.
+_UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
+
+
 def _node_def(from_node_def, export_scope, unbound_inputs):
   """Create a `NodeDef` proto with export_scope stripped.
 
@@ -57,7 +61,8 @@ def _node_def(from_node_def, export_scope, unbound_inputs):
         not node_def.input[i].lstrip("^").startswith(export_scope)):
       # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
       # identifiable.
-      node_def.input[i] = re.sub(r"([\^]|^)(.*)", r"\1$unbound_inputs_\2",
+      node_def.input[i] = re.sub(r"([\^]|^)(.*)",
+                                 r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
                                  compat.as_str(v))
       unbound_inputs.append(node_def.input[i])
     else:
@@ -210,6 +215,31 @@ def _get_kind_name(item):
   return kind
 
 
+def _should_include_node(node_or_node_name, export_scope):
+  """Returns `True` if a node should be included.
+
+  Args:
+    node_or_node_name: A node or `string` node name.
+    export_scope: `string`. Name scope under which to extract the subgraph. The
+      scope name will be striped from the node definitions for easy import later
+      into new name scopes.
+
+  Returns:
+    `True` if the node should be included.
+  """
+  if not isinstance(node_or_node_name, six.string_types):
+    try:
+      node_name = node_or_node_name.name
+    except AttributeError:
+      # Keep the object that we don't know how to process.
+      return True
+  else:
+    node_name = node_or_node_name
+
+  return (node_name.startswith(_UNBOUND_INPUT_PREFIX) or
+          (not export_scope or node_name.startswith(export_scope)))
+
+
 def add_collection_def(meta_graph_def, key, graph=None,
                        export_scope=None):
   """Adds a collection to MetaGraphDef protocol buffer.
@@ -232,6 +262,9 @@ def add_collection_def(meta_graph_def, key, graph=None,
   graph = graph or ops.get_default_graph()
 
   collection_list = graph.get_collection(key)
+  # Remove nodes that should not be exported from the collection list.
+  collection_list = [x for x in collection_list if
+                     _should_include_node(x, export_scope)]
   if not collection_list:
     return
 
@@ -555,7 +588,7 @@ def export_scoped_meta_graph(filename=None,
     graph_def.versions.CopyFrom(graph._graph_def_versions)
     bytesize = 0
     for key in sorted(graph._nodes_by_name):
-      if key.startswith(export_scope):
+      if _should_include_node(key, export_scope):
         value = graph._nodes_by_name[key]
     # pylint: enable=protected-access
         graph_def.node.extend([_node_def(value.node_def, export_scope,
@@ -572,6 +605,8 @@ def export_scoped_meta_graph(filename=None,
     # If we would like such information included in the exported meta_graph,
     # add them to a special unbound_inputs collection.
     if unbound_inputs_col_name:
+      # Clears the unbound_inputs collections.
+      graph.clear_collection(unbound_inputs_col_name)
       for k in unbound_inputs:
         graph.add_to_collection(unbound_inputs_col_name, k)
 
@@ -579,7 +614,8 @@ def export_scoped_meta_graph(filename=None,
   variables = graph.get_collection(ops.GraphKeys.VARIABLES,
                                    scope=export_scope)
   for v in variables:
-    var_list[ops.strip_name_scope(v.name, export_scope)] = v
+    if _should_include_node(v, export_scope):
+      var_list[ops.strip_name_scope(v.name, export_scope)] = v
 
   scoped_meta_graph_def = create_meta_graph_def(
       graph_def=graph_def,

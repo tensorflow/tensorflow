@@ -354,7 +354,6 @@ TEST(Tensor_Scalar, Basics) {
     auto Tt = t.scalar<bool>();
     EXPECT_EQ(1, Tt.size());
     EXPECT_EQ(0, Tt.rank());
-    EXPECT_FALSE(Tt());
     t.scalar<bool>()() = true;
     EXPECT_TRUE(Tt());
   }

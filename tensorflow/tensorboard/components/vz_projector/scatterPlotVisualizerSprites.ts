@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {DataSet} from './data';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
@@ -156,18 +156,18 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
 
     let canvas = document.createElement('canvas');
     let image = this.image || canvas;
-    // TODO(b/31390553): Pass sprite dim to the renderer.
-    let spriteDim = 28.0;
     let tex = createTexture(image);
     let pointSize = (this.sceneIs3D ? this.pointSize3D : this.pointSize2D);
+    let imageDim = [0, 0];
     if (this.image) {
       pointSize = IMAGE_SIZE;
+      imageDim = this.dataSet.metadataInfo.spriteMetadata.singleImageDim;
     }
 
     this.uniforms = {
       texture: {type: 't', value: tex},
-      imageWidth: {type: 'f', value: image.width / spriteDim},
-      imageHeight: {type: 'f', value: image.height / spriteDim},
+      imageWidth: {type: 'f', value: image.width / imageDim[0]},
+      imageHeight: {type: 'f', value: image.height / imageDim[1]},
       fogColor: {type: 'c', value: this.fog.color},
       fogNear: {type: 'f', value: this.fog.near},
       fogFar: {type: 'f', value: this.fog.far},
@@ -291,9 +291,9 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     scene.remove(this.points);
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
+  onDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
-    this.image = spriteImage;
+    this.image = this.dataSet.metadataInfo.spriteImage;
     this.points = null;
     if (this.geometry) {
       this.geometry.dispose();

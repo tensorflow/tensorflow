@@ -741,6 +741,19 @@ Returns True iff this graph represents a function.
 
 - - -
 
+#### `tf.Graph.clear_collection(name)` {#Graph.clear_collection}
+
+Clears all values in a collection.
+
+##### Args:
+
+
+*  <b>`name`</b>: The key for the collection. The `GraphKeys` class contains many
+    standard names for collections.
+
+
+- - -
+
 #### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}
 
 Returns a context manager that specifies an op to colocate with.

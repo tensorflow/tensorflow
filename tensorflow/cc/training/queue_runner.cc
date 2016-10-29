@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -47,8 +48,8 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
     }
   }
 
-  thread_pool_.reset(
-      new thread::ThreadPool(Env::Default(), queue_name_, runs_));
+  thread_pool_.reset(new thread::ThreadPool(
+      Env::Default(), SanitizeThreadSuffix(queue_name_), runs_));
   should_stop_ = false;
   return Status::OK();
 }

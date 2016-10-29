@@ -8,36 +8,37 @@ Ops for building neural network losses.
 ## Other Functions and Classes
 - - -
 
-### `tf.contrib.losses.absolute_difference(predictions, targets, weight=1.0, scope=None)` {#absolute_difference}
+### `tf.contrib.losses.absolute_difference(*args, **kwargs)` {#absolute_difference}
 
-Adds an Absolute Difference loss to the training procedure.
+Adds an Absolute Difference loss to the training procedure. (deprecated arguments)
 
-`weight` acts as a coefficient for the loss. If a scalar is provided, then the
-loss is simply scaled by the given value. If `weight` is a tensor of size
-[batch_size], then the total loss for each sample of the batch is rescaled
-by the corresponding element in the `weight` vector. If the shape of
-`weight` matches the shape of `predictions`, then the loss of each
-measurable element of `predictions` is scaled by the corresponding value of
-`weight`.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
-##### Args:
+  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
+  loss is simply scaled by the given value. If `weight` is a tensor of size
+  [batch_size], then the total loss for each sample of the batch is rescaled
+  by the corresponding element in the `weight` vector. If the shape of
+  `weight` matches the shape of `predictions`, then the loss of each
+  measurable element of `predictions` is scaled by the corresponding value of
+  `weight`.
 
+  Args:
+    predictions: The predicted outputs.
+    labels: The ground truth output tensor, same dimensions as 'predictions'.
+    weights: Coefficients for the loss a scalar, a tensor of shape
+      [batch_size] or a tensor whose shape matches `predictions`.
+    scope: The scope for the operations performed in computing the loss.
+    targets: Deprecated alias for `labels`.
+    weight: Deprecated alias for `weights`.
 
-*  <b>`predictions`</b>: The predicted outputs.
-*  <b>`targets`</b>: The ground truth output tensor, same dimensions as 'predictions'.
-*  <b>`weight`</b>: Coefficients for the loss a scalar, a tensor of shape
-    [batch_size] or a tensor whose shape matches `predictions`.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
+  Returns:
+    A scalar `Tensor` representing the loss value.
 
-##### Returns:
-
-  A scalar `Tensor` representing the loss value.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid.
+  Raises:
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weight` is invalid.
 
 
 - - -
@@ -55,57 +56,57 @@ Adds a externally defined loss to the collection of losses.
 
 - - -
 
-### `tf.contrib.losses.compute_weighted_loss(losses, weight=1.0)` {#compute_weighted_loss}
+### `tf.contrib.losses.compute_weighted_loss(*args, **kwargs)` {#compute_weighted_loss}
 
-Computes the weighted loss.
+Computes the weighted loss. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`weight` is being deprecated, use `weights`.
 
+  Args:
+    losses: A tensor of size [batch_size, d1, ... dN].
+    weights: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
+    weight: Deprecated alias for `weights`.
 
-*  <b>`losses`</b>: A tensor of size [batch_size, d1, ... dN].
-*  <b>`weight`</b>: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
+  Returns:
+    A scalar `Tensor` that returns the weighted loss.
 
-##### Returns:
-
-  A scalar `Tensor` that returns the weighted loss.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the weight is None or the shape is not compatible with the
-    losses shape or if the number of dimensions (rank) of either losses or
-    weight is missing.
+  Raises:
+    ValueError: If `weights` is `None` or the shape is not compatible with
+      `losses`, or if the number of dimensions (rank) of either `losses` or
+      `weights` is missing.
 
 
 - - -
 
-### `tf.contrib.losses.cosine_distance(predictions, targets, dim, weight=1.0, scope=None)` {#cosine_distance}
+### `tf.contrib.losses.cosine_distance(*args, **kwargs)` {#cosine_distance}
 
-Adds a cosine-distance loss to the training procedure.
+Adds a cosine-distance loss to the training procedure. (deprecated arguments)
 
-Note that the function assumes that the predictions and targets are already
-unit-normalized.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
-##### Args:
+  Note that the function assumes that `predictions` and `labels` are already
+  unit-normalized.
 
+  Args:
+    predictions: An arbitrary matrix.
+    labels: A `Tensor` whose shape matches 'predictions'
+    dim: The dimension along which the cosine distance is computed.
+    weights: Coefficients for the loss a scalar, a tensor of shape
+      [batch_size] or a tensor whose shape matches `predictions`.
+    scope: The scope for the operations performed in computing the loss.
+    targets: Deprecated alias for `labels`.
+    weight: Deprecated alias for `weights`.
 
-*  <b>`predictions`</b>: An arbitrary matrix.
-*  <b>`targets`</b>: A `Tensor` whose shape matches 'predictions'
-*  <b>`dim`</b>: The dimension along which the cosine distance is computed.
-*  <b>`weight`</b>: Coefficients for the loss a scalar, a tensor of shape
-    [batch_size] or a tensor whose shape matches `predictions`.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
+  Returns:
+    A scalar `Tensor` representing the loss value.
 
-##### Returns:
-
-  A scalar `Tensor` representing the loss value.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If predictions.shape doesn't match targets.shape, if the ignore
-              mask is provided and its shape doesn't match targets.shape or if
-              the ignore mask is not boolean valued.
+  Raises:
+    ValueError: If `predictions` shape doesn't match `labels` shape, or
+      `weights` is `None`.
 
 
 - - -
@@ -168,248 +169,252 @@ Notice that the function adds the given losses to the regularization losses.
 
 - - -
 
-### `tf.contrib.losses.hinge_loss(logits, target, scope=None)` {#hinge_loss}
+### `tf.contrib.losses.hinge_loss(*args, **kwargs)` {#hinge_loss}
 
-Method that returns the loss tensor for hinge loss.
+Method that returns the loss tensor for hinge loss. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`target` is being deprecated, use `labels`.
 
+  Args:
+    logits: The logits, a float tensor.
+    labels: The ground truth output tensor. Its shape should match the shape of
+      logits. The values of the tensor are expected to be 0.0 or 1.0.
+    scope: The scope for the operations performed in computing the loss.
+    target: Deprecated alias for `labels`.
 
-*  <b>`logits`</b>: The logits, a float tensor.
-*  <b>`target`</b>: The ground truth output tensor. Its shape should match the shape of
-    logits. The values of the tensor are expected to be 0.0 or 1.0.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
+  Returns:
+    A `Tensor` of same shape as logits and target representing the loss values
+      across the batch.
 
-##### Returns:
-
-  A `Tensor` of same shape as logits and target representing the loss values
-    across the batch.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the shapes of `logits` and `target` don't match.
-
-
-- - -
-
-### `tf.contrib.losses.log_loss(predictions, targets, weight=1.0, epsilon=1e-07, scope=None)` {#log_loss}
-
-Adds a Log Loss term to the training procedure.
-
-`weight` acts as a coefficient for the loss. If a scalar is provided, then the
-loss is simply scaled by the given value. If `weight` is a tensor of size
-[batch_size], then the total loss for each sample of the batch is rescaled
-by the corresponding element in the `weight` vector. If the shape of
-`weight` matches the shape of `predictions`, then the loss of each
-measurable element of `predictions` is scaled by the corresponding value of
-`weight`.
-
-##### Args:
-
-
-*  <b>`predictions`</b>: The predicted outputs.
-*  <b>`targets`</b>: The ground truth output tensor, same dimensions as 'predictions'.
-*  <b>`weight`</b>: Coefficients for the loss a scalar, a tensor of shape
-    [batch_size] or a tensor whose shape matches `predictions`.
-*  <b>`epsilon`</b>: A small increment to add to avoid taking a log of zero.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
-
-##### Returns:
-
-  A scalar `Tensor` representing the loss value.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid.
+  Raises:
+    ValueError: If the shapes of `logits` and `labels` don't match.
 
 
 - - -
 
-### `tf.contrib.losses.mean_pairwise_squared_error(predictions, targets, weight=1.0, scope=None)` {#mean_pairwise_squared_error}
+### `tf.contrib.losses.log_loss(*args, **kwargs)` {#log_loss}
 
-Adds a pairwise-errors-squared loss to the training procedure.
+Adds a Log Loss term to the training procedure. (deprecated arguments)
 
-Unlike `mean_squared_error`, which is a measure of the differences between
-corresponding elements of `predictions` and `targets`,
-`mean_pairwise_squared_error` is a measure of the differences between pairs of
-corresponding elements of `predictions` and `targets`.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
-For example, if `targets`=[a, b, c] and `predictions`=[x, y, z], there are
-three pairs of differences are summed to compute the loss:
-  loss = [ ((a-b) - (x-y)).^2 + ((a-c) - (x-z)).^2 + ((b-c) - (y-z)).^2 ] / 3
+  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
+  loss is simply scaled by the given value. If `weight` is a tensor of size
+  [batch_size], then the total loss for each sample of the batch is rescaled
+  by the corresponding element in the `weight` vector. If the shape of
+  `weight` matches the shape of `predictions`, then the loss of each
+  measurable element of `predictions` is scaled by the corresponding value of
+  `weight`.
 
-Note that since the inputs are of size [batch_size, d0, ... dN], the
-corresponding pairs are computed within each batch sample but not across
-samples within a batch. For example, if `predictions` represents a batch of
-16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
-is drawn from each image, but not across images.
+  Args:
+    predictions: The predicted outputs.
+    labels: The ground truth output tensor, same dimensions as 'predictions'.
+    weights: Coefficients for the loss a scalar, a tensor of shape
+      [batch_size] or a tensor whose shape matches `predictions`.
+    epsilon: A small increment to add to avoid taking a log of zero.
+    scope: The scope for the operations performed in computing the loss.
+    targets: Deprecated alias for `labels`.
+    weight: Deprecated alias for `weights`.
 
-`weight` acts as a coefficient for the loss. If a scalar is provided, then the
-loss is simply scaled by the given value. If `weight` is a tensor of size
-[batch_size], then the total loss for each sample of the batch is rescaled
-by the corresponding element in the `weight` vector.
+  Returns:
+    A scalar `Tensor` representing the loss value.
 
-##### Args:
-
-
-*  <b>`predictions`</b>: The predicted outputs, a tensor of size [batch_size, d0, .. dN]
-    where N+1 is the total number of dimensions in `predictions`.
-*  <b>`targets`</b>: The ground truth output tensor, whose shape must match the shape of
-    the `predictions` tensor.
-*  <b>`weight`</b>: Coefficients for the loss a scalar, a tensor of shape [batch_size]
-    or a tensor whose shape matches `predictions`.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
-
-##### Returns:
-
-  A scalar `Tensor` representing the loss value.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid.
+  Raises:
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weight` is invalid.
 
 
 - - -
 
-### `tf.contrib.losses.mean_squared_error(predictions, targets, weight=1.0, scope=None)` {#mean_squared_error}
+### `tf.contrib.losses.mean_pairwise_squared_error(*args, **kwargs)` {#mean_pairwise_squared_error}
 
-Adds a Sum-of-Squares loss to the training procedure.
+Adds a pairwise-errors-squared loss to the training procedure. (deprecated arguments)
 
-`weight` acts as a coefficient for the loss. If a scalar is provided, then the
-loss is simply scaled by the given value. If `weight` is a tensor of size
-[batch_size], then the total loss for each sample of the batch is rescaled
-by the corresponding element in the `weight` vector. If the shape of
-`weight` matches the shape of `predictions`, then the loss of each
-measurable element of `predictions` is scaled by the corresponding value of
-`weight`.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
-##### Args:
+  Unlike `mean_squared_error`, which is a measure of the differences between
+  corresponding elements of `predictions` and `labels`,
+  `mean_pairwise_squared_error` is a measure of the differences between pairs of
+  corresponding elements of `predictions` and `labels`.
 
+  For example, if `labels`=[a, b, c] and `predictions`=[x, y, z], there are
+  three pairs of differences are summed to compute the loss:
+    loss = [ ((a-b) - (x-y)).^2 + ((a-c) - (x-z)).^2 + ((b-c) - (y-z)).^2 ] / 3
 
-*  <b>`predictions`</b>: The predicted outputs.
-*  <b>`targets`</b>: The ground truth output tensor, same dimensions as 'predictions'.
-*  <b>`weight`</b>: Coefficients for the loss a scalar, a tensor of shape
-    [batch_size] or a tensor whose shape matches `predictions`.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
+  Note that since the inputs are of size [batch_size, d0, ... dN], the
+  corresponding pairs are computed within each batch sample but not across
+  samples within a batch. For example, if `predictions` represents a batch of
+  16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
+  is drawn from each image, but not across images.
 
-##### Returns:
+  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
+  loss is simply scaled by the given value. If `weight` is a tensor of size
+  [batch_size], then the total loss for each sample of the batch is rescaled
+  by the corresponding element in the `weight` vector.
 
-  A scalar `Tensor` representing the loss value.
+  Args:
+    predictions: The predicted outputs, a tensor of size [batch_size, d0, .. dN]
+      where N+1 is the total number of dimensions in `predictions`.
+    labels: The ground truth output tensor, whose shape must match the shape of
+      the `predictions` tensor.
+    weights: Coefficients for the loss a scalar, a tensor of shape [batch_size]
+      or a tensor whose shape matches `predictions`.
+    scope: The scope for the operations performed in computing the loss.
+    targets: Deprecated alias for `labels`.
+    weight: Deprecated alias for `weights`.
 
-##### Raises:
+  Returns:
+    A scalar `Tensor` representing the loss value.
 
-
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid.
-
-
-- - -
-
-### `tf.contrib.losses.sigmoid_cross_entropy(logits, multi_class_labels, weight=1.0, label_smoothing=0, scope=None)` {#sigmoid_cross_entropy}
-
-Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
-
-`weight` acts as a coefficient for the loss. If a scalar is provided,
-then the loss is simply scaled by the given value. If `weight` is a
-tensor of size [`batch_size`], then the loss weights apply to each
-corresponding sample.
-
-If `label_smoothing` is nonzero, smooth the labels towards 1/2:
-
-    new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
-                            + 0.5 * label_smoothing
-
-##### Args:
-
-
-*  <b>`logits`</b>: [batch_size, num_classes] logits outputs of the network .
-*  <b>`multi_class_labels`</b>: [batch_size, num_classes] target labels in (0, 1).
-*  <b>`weight`</b>: Coefficients for the loss. The tensor must be a scalar, a tensor of
-    shape [batch_size] or shape [batch_size, num_classes].
-*  <b>`label_smoothing`</b>: If greater than 0 then smooth the labels.
-*  <b>`scope`</b>: The scope for the operations performed in computing the loss.
-
-##### Returns:
-
-  A scalar `Tensor` representing the loss value.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid or if `weight` is None.
+  Raises:
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weight` is invalid.
 
 
 - - -
 
-### `tf.contrib.losses.softmax_cross_entropy(logits, onehot_labels, weight=1.0, label_smoothing=0, scope=None)` {#softmax_cross_entropy}
+### `tf.contrib.losses.mean_squared_error(*args, **kwargs)` {#mean_squared_error}
 
-Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
+Adds a Sum-of-Squares loss to the training procedure. (deprecated arguments)
 
-`weight` acts as a coefficient for the loss. If a scalar is provided,
-then the loss is simply scaled by the given value. If `weight` is a
-tensor of size [`batch_size`], then the loss weights apply to each
-corresponding sample.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
-If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
-    new_onehot_labels = onehot_labels * (1 - label_smoothing)
-                        + label_smoothing / num_classes
+  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
+  loss is simply scaled by the given value. If `weight` is a tensor of size
+  [batch_size], then the total loss for each sample of the batch is rescaled
+  by the corresponding element in the `weight` vector. If the shape of
+  `weight` matches the shape of `predictions`, then the loss of each
+  measurable element of `predictions` is scaled by the corresponding value of
+  `weight`.
 
-##### Args:
+  Args:
+    predictions: The predicted outputs.
+    labels: The ground truth output tensor, same dimensions as 'predictions'.
+    weights: Coefficients for the loss a scalar, a tensor of shape
+      [batch_size] or a tensor whose shape matches `predictions`.
+    scope: The scope for the operations performed in computing the loss.
+    targets: Deprecated alias for `labels`.
+    weight: Deprecated alias for `weights`.
 
+  Returns:
+    A scalar `Tensor` representing the loss value.
 
-*  <b>`logits`</b>: [batch_size, num_classes] logits outputs of the network .
-*  <b>`onehot_labels`</b>: [batch_size, num_classes] target one_hot_encoded labels.
-*  <b>`weight`</b>: Coefficients for the loss. The tensor must be a scalar or a tensor
-    of shape [batch_size].
-*  <b>`label_smoothing`</b>: If greater than 0 then smooth the labels.
-*  <b>`scope`</b>: the scope for the operations performed in computing the loss.
-
-##### Returns:
-
-  A scalar `Tensor` representing the loss value.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the shape of `logits` doesn't match that of `onehot_labels`
-    or if the shape of `weight` is invalid or if `weight` is None.
+  Raises:
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weight` is invalid.
 
 
 - - -
 
-### `tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels, weight=1.0, scope=None)` {#sparse_softmax_cross_entropy}
+### `tf.contrib.losses.sigmoid_cross_entropy(*args, **kwargs)` {#sigmoid_cross_entropy}
 
-Cross-entropy loss using tf.nn.sparse_softmax_cross_entropy_with_logits.
+Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits. (deprecated arguments)
 
-`weight` acts as a coefficient for the loss. If a scalar is provided,
-then the loss is simply scaled by the given value. If `weight` is a
-tensor of size [`batch_size`], then the loss weights apply to each
-corresponding sample.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`weight` is being deprecated, use `weights`
 
-##### Args:
+  `weight` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weight` is a
+  tensor of size [`batch_size`], then the loss weights apply to each
+  corresponding sample.
+
+  If `label_smoothing` is nonzero, smooth the labels towards 1/2:
+
+      new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
+                              + 0.5 * label_smoothing
+
+  Args:
+    logits: [batch_size, num_classes] logits outputs of the network .
+    multi_class_labels: [batch_size, num_classes] target labels in (0, 1).
+    weights: Coefficients for the loss. The tensor must be a scalar, a tensor of
+      shape [batch_size] or shape [batch_size, num_classes].
+    label_smoothing: If greater than 0 then smooth the labels.
+    scope: The scope for the operations performed in computing the loss.
+    weight: Deprecated alias for `weights`.
+
+  Returns:
+    A scalar `Tensor` representing the loss value.
+
+  Raises:
+    ValueError: If the shape of `logits` doesn't match that of
+      `multi_class_labels` or if the shape of `weight` is invalid, or if
+      `weight` is None.
 
 
-*  <b>`logits`</b>: [batch_size, num_classes] logits outputs of the network .
-*  <b>`labels`</b>: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
-    `int64` in the range `[0, num_classes)`.
-*  <b>`weight`</b>: Coefficients for the loss. The tensor must be a scalar or a tensor
-    of shape [batch_size] or [batch_size, 1].
-*  <b>`scope`</b>: the scope for the operations performed in computing the loss.
+- - -
 
-##### Returns:
+### `tf.contrib.losses.softmax_cross_entropy(*args, **kwargs)` {#softmax_cross_entropy}
 
-  A scalar `Tensor` representing the loss value.
+Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits. (deprecated arguments)
 
-##### Raises:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`weight` is being deprecated, use `weights`
+
+  `weight` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weight` is a
+  tensor of size [`batch_size`], then the loss weights apply to each
+  corresponding sample.
+
+  If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
+      new_onehot_labels = onehot_labels * (1 - label_smoothing)
+                          + label_smoothing / num_classes
+
+  Args:
+    logits: [batch_size, num_classes] logits outputs of the network .
+    onehot_labels: [batch_size, num_classes] target one_hot_encoded labels.
+    weights: Coefficients for the loss. The tensor must be a scalar or a tensor
+      of shape [batch_size].
+    label_smoothing: If greater than 0 then smooth the labels.
+    scope: the scope for the operations performed in computing the loss.
+    weight: Deprecated alias for `weights`.
+
+  Returns:
+    A scalar `Tensor` representing the loss value.
+
+  Raises:
+    ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
+      or if the shape of `weight` is invalid or if `weight` is None.
 
 
-*  <b>`ValueError`</b>: If the shapes of logits, labels, and weight are incompatible, or
-    if `weight` is None.
+- - -
+
+### `tf.contrib.losses.sparse_softmax_cross_entropy(*args, **kwargs)` {#sparse_softmax_cross_entropy}
+
+Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`weight` is being deprecated, use `weights`
+
+  `weight` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weight` is a
+  tensor of size [`batch_size`], then the loss weights apply to each
+  corresponding sample.
+
+  Args:
+    logits: [batch_size, num_classes] logits outputs of the network .
+    labels: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
+      `int64` in the range `[0, num_classes)`.
+    weights: Coefficients for the loss. The tensor must be a scalar or a tensor
+      of shape [batch_size] or [batch_size, 1].
+    scope: the scope for the operations performed in computing the loss.
+    weight: Deprecated alias for `weights`.
+
+  Returns:
+    A scalar `Tensor` representing the loss value.
+
+  Raises:
+    ValueError: If the shapes of logits, labels, and weight are incompatible, or
+      if `weight` is None.
 
 

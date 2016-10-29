@@ -69,7 +69,7 @@ Initializes a DNNClassifier instance.
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
     also be used to load checkpoints from the directory into a estimator to
     continue training a previously saved model.
-*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
+*  <b>`n_classes`</b>: number of label classes. Default is binary classification.
     It must be greater than 1.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
@@ -88,8 +88,8 @@ Initializes a DNNClassifier instance.
     residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 *  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
-                    targets which are the output of `input_fn` and
-                    returns features and targets which will be fed
+                    labels which are the output of `input_fn` and
+                    returns features and labels which will be fed
                     into the model.
 
 ##### Returns:

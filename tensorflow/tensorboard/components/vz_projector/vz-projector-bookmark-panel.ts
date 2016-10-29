@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 import {State} from './data';
-import {DataProvider, TensorInfo} from './data-provider';
+import {DataProvider, EmbeddingInfo} from './data-provider';
 import {Projector} from './vz-projector';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -45,11 +45,11 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
     this.dataProvider = dataProvider;
   }
 
-  setSelectedTensor(run: string, tensorInfo: TensorInfo) {
-    if (tensorInfo && tensorInfo.bookmarksFile) {
+  setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
+    if (tensorInfo && tensorInfo.bookmarksPath) {
       this.loadAllStates([]);
       // Get any bookmarks that may come when the projector starts up.
-      this.dataProvider.getBookmarks(run, tensorInfo.name, bookmarks => {
+      this.dataProvider.getBookmarks(run, tensorInfo.tensorName, bookmarks => {
         this.loadAllStates(bookmarks);
       });
     }

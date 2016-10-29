@@ -1509,7 +1509,6 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
-    tags = ["notsan"],
 )
 
 cuda_py_test(
@@ -1585,7 +1584,6 @@ cuda_py_test(
         ":lib",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["notsan"],
 )
 
 py_library(

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, ColumnStats, MetadataInfo} from './data';
-import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-provider';
+import {ProjectorConfig, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -51,7 +51,7 @@ export class DataPanel extends DataPanelPolymer {
   private tensorNames: {name: string, shape: number[]}[];
   private runNames: string[];
   private projector: Projector;
-  private checkpointInfo: CheckpointInfo;
+  private projectorConfig: ProjectorConfig;
   private colorLegendRenderInfo: ColorLegendRenderInfo;
 
   ready() {
@@ -166,7 +166,7 @@ export class DataPanel extends DataPanelPolymer {
     this.dataProvider.retrieveTensor(
         this.selectedRun, this.selectedTensor, ds => {
       let metadataFile =
-          this.checkpointInfo.tensors[this.selectedTensor].metadataFile;
+          this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
       if (metadataFile) {
         this.dataProvider.retrieveMetadata(
             this.selectedRun, this.selectedTensor, metadata => {
@@ -177,21 +177,21 @@ export class DataPanel extends DataPanelPolymer {
       }
     });
     this.projector.setSelectedTensor(
-        this.selectedRun, this.checkpointInfo.tensors[this.selectedTensor]);
+        this.selectedRun, this.getEmbeddingInfoByName(this.selectedTensor));
   }
 
   _selectedRunChanged() {
-    this.dataProvider.retrieveCheckpointInfo(this.selectedRun, info => {
-      this.checkpointInfo = info;
+    this.dataProvider.retrieveProjectorConfig(this.selectedRun, info => {
+      this.projectorConfig = info;
       let names =
-          Object.keys(this.checkpointInfo.tensors)
+          this.projectorConfig.embeddings.map(e => e.tensorName)
               .filter(name => {
-                let shape = this.checkpointInfo.tensors[name].shape;
+                let shape = this.getEmbeddingInfoByName(name).tensorShape;
                 return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
               })
               .sort((a, b) => {
-                let sizeA = this.checkpointInfo.tensors[a].shape[0];
-                let sizeB = this.checkpointInfo.tensors[b].shape[0];
+                let sizeA = this.getEmbeddingInfoByName(a).tensorShape[0];
+                let sizeB = this.getEmbeddingInfoByName(b).tensorShape[0];
                 if (sizeA === sizeB) {
                   // If the same dimension, sort alphabetically by tensor
                   // name.
@@ -201,11 +201,14 @@ export class DataPanel extends DataPanelPolymer {
                 return sizeB - sizeA;
               });
       this.tensorNames = names.map(name => {
-        return {name, shape: this.checkpointInfo.tensors[name].shape};
+        return {
+          name,
+          shape: this.getEmbeddingInfoByName(name).tensorShape
+        };
       });
       this.dom.select('#checkpoint-file')
-          .text(this.checkpointInfo.checkpointFile)
-          .attr('title', this.checkpointInfo.checkpointFile);
+          .text(this.projectorConfig.modelCheckpointPath)
+          .attr('title', this.projectorConfig.modelCheckpointPath);
       this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
         if (this.selectedTensor === defaultTensor) {
           // Explicitly call the observer. Polymer won't call it if the previous
@@ -267,6 +270,15 @@ export class DataPanel extends DataPanelPolymer {
     parseRawMetadata(rawContents, metadata => {
       this.projector.updateDataSet(this.projector.dataSet, metadata, fileName);
     });
+  }
+
+  private getEmbeddingInfoByName(tensorName: string): EmbeddingInfo {
+    for (let i = 0; i < this.projectorConfig.embeddings.length; i++) {
+      let e = this.projectorConfig.embeddings[i];
+      if (e.tensorName === tensorName) {
+        return e;
+      }
+    }
   }
 
   private setupUploadButtons() {

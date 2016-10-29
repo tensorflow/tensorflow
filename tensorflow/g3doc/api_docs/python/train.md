@@ -980,7 +980,7 @@ learning_step = (
     Must be positive.  See the decay computation above.
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
-*  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals
+*  <b>`staircase`</b>: Boolean.  If `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
     'ExponentialDecay'.
 
@@ -4461,21 +4461,25 @@ such as saving a last checkpoint.
 
 ### `class tf.train.LoggingTensorHook` {#LoggingTensorHook}
 
-Prints given tensors every N iteration.
+Prints the given tensors once every N local steps or once every N seconds.
 
 The tensors will be printed to the log, with `INFO` severity.
 - - -
 
-#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=100)` {#LoggingTensorHook.__init__}
+#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None)` {#LoggingTensorHook.__init__}
 
 Initializes a LoggingHook monitor.
 
 ##### Args:
 
 
-*  <b>`tensors`</b>: `dict` of tag to tensors/names or
-      `iterable` of tensors/names.
-*  <b>`every_n_iter`</b>: `int`, print every N iteration.
+*  <b>`tensors`</b>: `dict` that maps string-valued tags to tensors/tensor names,
+      or `iterable` of tensors/tensor names.
+*  <b>`every_n_iter`</b>: `int`, print the values of `tensors` once every N local
+      steps taken on the current worker.
+*  <b>`every_n_secs`</b>: `int` or `float`, print the values of `tensors` once every N
+      seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
+      provided.
 
 ##### Raises:
 

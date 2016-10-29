@@ -48,13 +48,13 @@ class _BaseEstimatorForTest(estimator.BaseEstimator):
     self._head = head
     self._feature_columns = feature_columns
 
-  def _get_train_ops(self, features, targets):
+  def _get_train_ops(self, features, labels):
     global_step = contrib_variables.get_global_step()
     assert global_step
 
     logits = self._model.build_model(
         features, self._feature_columns, is_training=True)
-    model_fn_ops = self._head.head_ops(features, targets,
+    model_fn_ops = self._head.head_ops(features, labels,
                                        tf.contrib.learn.ModeKeys.TRAIN,
                                        _noop_training_fn, logits=logits)
     train_step = self._model.get_train_step(model_fn_ops.loss)
@@ -63,10 +63,10 @@ class _BaseEstimatorForTest(estimator.BaseEstimator):
       with ops.get_default_graph().colocate_with(global_step):
         return state_ops.assign_add(global_step, 1).op, model_fn_ops.loss
 
-  def _get_eval_ops(self, features, targets, metrics=None):
+  def _get_eval_ops(self, features, labels, metrics=None):
     logits = self._model.build_model(
         features, self._feature_columns, is_training=False)
-    model_fn_ops = self._head.head_ops(features, targets,
+    model_fn_ops = self._head.head_ops(features, labels,
                                        tf.contrib.learn.ModeKeys.TRAIN,
                                        _noop_training_fn, logits=logits)
     return {'loss': metrics_lib.streaming_mean(model_fn_ops.loss)}

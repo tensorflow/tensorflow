@@ -53,7 +53,7 @@ def load_dataset(name, size='small', test_with_fake_data=False):
     test_with_fake_data: If true, load with fake dataset.
 
   Returns:
-    Features and targets for given dataset. Can be numpy or iterator.
+    Features and labels for given dataset. Can be numpy or iterator.
 
   Raises:
     ValueError: if `name` is not found.

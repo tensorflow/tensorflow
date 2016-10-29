@@ -1079,7 +1079,7 @@ REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 // persistent storage, as its implementation may change in the future.
 //
 // The current probability of at least one collision for 1B example_ids is
-// approximately 10^-11 (ie 2^60 / 2^97).
+// approximately 10^-21 (ie 2^60 / 2^129).
 class SdcaFprint : public OpKernel {
  public:
   explicit SdcaFprint(OpKernelConstruction* const context)
@@ -1087,26 +1087,26 @@ class SdcaFprint : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     const Tensor& input = context->input(0);
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
+                errors::InvalidArgument("Input must be a vector, got shape ",
+                                        input.shape().DebugString()));
     Tensor* out;
-    OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &out));
+    const int64 num_elements = input.NumElements();
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({num_elements, 2}), &out));
 
     const auto in_values = input.flat<string>();
-    auto out_values = out->flat<string>();
+    auto out_values = out->matrix<int64>();
 
-    for (int64 i = 0; i < in_values.size(); ++i) {
-      out_values(i) = Fp128ToBinaryString(Fingerprint128(in_values(i)));
+    for (int64 i = 0; i < num_elements; ++i) {
+      const Fprint128 fprint = Fingerprint128(in_values(i));
+      // Never return 0 or 1 as the first value of the hash to allow these to
+      // safely be used as sentinel values (e.g. dense hash table empty key).
+      out_values(i, 0) = TF_PREDICT_TRUE(fprint.low64 >= 2)
+                             ? fprint.low64
+                             : fprint.low64 + ~static_cast<uint64>(1);
+      out_values(i, 1) = fprint.high64;
     }
-  }
-
- private:
-  // Returns a 12 character binary string of the fprint.
-  // We use 12 of the 16 fingerprint bytes to save memory, in particular in
-  // string implementations that use a short string optimization.
-  static string Fp128ToBinaryString(const Fprint128& fprint) {
-    string result;
-    core::PutFixed64(&result, fprint.low64);
-    core::PutFixed32(&result, fprint.high64);
-    return result;
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaFprint").Device(DEVICE_CPU), SdcaFprint);
