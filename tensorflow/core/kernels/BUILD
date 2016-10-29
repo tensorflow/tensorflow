@@ -2025,13 +2025,11 @@ tf_kernel_libraries(
         "count_up_to_op",
         "dense_update_ops",
         "scatter_op",
-        "scatter_nd_op",
         "variable_ops",
     ],
     deps = [
         ":assign_op",
         ":bounds_check",
-        ":fill_functor",
         ":scatter_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2045,27 +2043,9 @@ tf_cc_test(
     size = "small",
     srcs = ["scatter_op_test.cc"],
     deps = [
-        ":fill_functor",
         ":ops_testutil",
         ":ops_util",
         ":scatter_op",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "scatter_nd_op_test",
-    size = "small",
-    srcs = ["scatter_nd_op_test.cc"],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":scatter_nd_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -2517,7 +2497,6 @@ filegroup(
             "debug_ops.*",
             # Ops excluded because they do not build correctly for Android.
             # See b/29213790
-            "scatter_nd_op.*",
             "sparse_matmul_op.*",
         ],
     ),

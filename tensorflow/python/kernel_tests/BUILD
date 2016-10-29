@@ -263,13 +263,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "scatter_nd_ops_test",
-    size = "medium",
-    srcs = ["scatter_nd_ops_test.py"],
-    additional_deps = ["//tensorflow:tensorflow_py"],
-)
-
-tf_py_test(
     name = "segment_reduction_ops_test",
     size = "small",
     srcs = ["segment_reduction_ops_test.py"],
