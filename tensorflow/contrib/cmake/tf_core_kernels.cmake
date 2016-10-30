@@ -90,8 +90,6 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/svd*.cc"
