@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.training import moving_averages
 
 
@@ -270,7 +270,9 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     with tf.device("/job:dev_v0"):
       v0 = tf.Variable(10.0, name="v0")
     with tf.device("/job:dev_v1"):
-      v1 = state_ops.variable_op(shape=[1], dtype=tf.float32, name="v1")
+      v1 = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="v1", container="", shared_name="")
+      v1.set_shape([1])
     tensor2 = v0 + v1
     ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
     with tf.device("/job:default"):

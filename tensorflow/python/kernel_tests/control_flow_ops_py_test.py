@@ -33,6 +33,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
@@ -430,7 +431,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testCondRef(self):
     with self.test_session():
-      x = state_ops.variable_op([1], tf.float32)
+      x = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="x", container="", shared_name="")
       true_fn = lambda: x
       false_fn = lambda: tf.constant([2.0])
       r = tf.cond(tf.constant(False), true_fn, false_fn)
@@ -438,7 +440,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
-      v = state_ops.variable_op([1], tf.float32)
+      v = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="v", container="", shared_name="")      
       inited = state_ops.is_variable_initialized(v)
       v_f, v_t = control_flow_ops.ref_switch(v, inited)
       # Both v_f and v_t are uninitialized references. However, an actual use
