@@ -243,7 +243,7 @@ class TensorboardServerTest(tf.test.TestCase):
       return
 
     info_json = self._getJson('/data/plugin/projector/info?run=run1')
-    self.assertSameElements(info_json['embeddings'], [
+    self.assertItemsEqual(info_json['embeddings'], [
         {
             'tensorShape': [1, 2],
             'tensorName': 'var1'
