@@ -64,31 +64,23 @@ class SubstrOp : public OpKernel {
           const T len = tensorflow::internal::SubtleMustCopy(len_tensor.scalar<T>()());
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
             // Make sure pos won't cause a runtime error
-            OP_REQUIRES(context, pos >= 0 && pos < input(i).size(),
-                        errors::InvalidArgument("pos ", pos, 
-                                                " out of range for string b'", 
-                                                input(i), "' at index ", i));
+            OP_REQUIRES(context, FastBoundsCheck(pos, input(i).size()),
+                errors::InvalidArgument("pos ", pos, " out of range for string", 
+                                        "b'", input(i), "' at index ", i));
             output(i) = input(i).substr(pos, len);
           }
         } else {
           // Perform Op element-wise with tensor pos/len
           auto pos_flat = pos_tensor.flat<T>();
           auto len_flat = len_tensor.flat<T>();
-          // Use SubtleMustCopy on pos/len to prevent async attacks
-          const size_t num_elements = pos_tensor.NumElements();
-          std::vector<T> pos(num_elements);
-          std::vector<T> len(num_elements);
-          for (size_t i = 0; i < num_elements; ++i) {
-            pos[i] = tensorflow::internal::SubtleMustCopy(pos_flat(i));
-            len[i] = tensorflow::internal::SubtleMustCopy(len_flat(i));
-          }
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
             // Make sure pos won't cause a runtime error
-            OP_REQUIRES(context, pos[i] >= 0 && pos[i] < input(i).size(),
-                        errors::InvalidArgument("pos ", pos[i], 
-                                                " out of range for string b'", 
-                                                input(i), "' at index ", i));
-            output(i) = input(i).substr(pos[i], len[i]);
+            const T pos = tensorflow::internal::SubtleMustCopy(pos_flat(i));
+            const T len = tensorflow::internal::SubtleMustCopy(len_flat(i));
+            OP_REQUIRES(context, FastBoundsCheck(pos, input(i).size()),
+                errors::InvalidArgument("pos ", pos, " out of range for string", 
+                                        "b'", input(i), "' at index ", i));
+            output(i) = input(i).substr(pos, len);
           }
         }
       } else {
@@ -149,8 +141,13 @@ class SubstrOp : public OpKernel {
             len_bcast = len.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
             
             // Iterate through broadcasted tensors and perform substr
-            for (int i = 0; i < output_shape.dim_size(0); ++i) {              
-              output(i) = input_bcast(i).substr(pos_bcast(i), len_bcast(i));
+            for (int i = 0; i < output_shape.dim_size(0); ++i) {
+              const T pos = tensorflow::internal::SubtleMustCopy(pos_bcast(i));
+              const T len = tensorflow::internal::SubtleMustCopy(len_bcast(i));
+              OP_REQUIRES(context, FastBoundsCheck(pos, input_bcast(i).size()),
+                errors::InvalidArgument("pos ", pos, " out of range for string", 
+                                        "b'", input_bcast(i), "' at index ",i));            
+              output(i) = input_bcast(i).substr(pos, len);
             }
             break;
           }
@@ -195,8 +192,18 @@ class SubstrOp : public OpKernel {
             // Iterate through broadcasted tensors and perform substr
             for (int i = 0; i < output_shape.dim_size(0); ++i) {              
               for (int j = 0; j < output_shape.dim_size(1); ++j) {
-                output(i, j) = input_bcast(i, j).substr(pos_bcast(i, j), 
-                                                        len_bcast(i, j));
+                const T pos = tensorflow::internal::SubtleMustCopy(
+                                                    pos_bcast(i, j));
+                const T len = tensorflow::internal::SubtleMustCopy(
+                                                    len_bcast(i, j));  
+                OP_REQUIRES(
+                  context, 
+                  FastBoundsCheck(pos, input_bcast(i, j).size()),
+                  errors::InvalidArgument("pos ", pos, " out of range for ",
+                                          "string b'", input_bcast(i, j), 
+                                          "' at index (", i, ", ", j, ")"));                                              
+                output(i, j) = input_bcast(i, j).substr(pos, len); 
+                                                        
               }
             }
             break;

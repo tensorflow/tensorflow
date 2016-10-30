@@ -137,6 +137,7 @@ class SubstrOpTest(tf.test.TestCase):
       substr_op = tf.substr(test_string, position, length)
 
   def _testOutOfRangeError(self, dtype):
+    # Scalar/Scalar
     test_string = b"Hello"
     position = np.array(7, dtype)
     length = np.array(3, dtype)
@@ -145,6 +146,7 @@ class SubstrOpTest(tf.test.TestCase):
       with self.assertRaises(tf.errors.InvalidArgumentError):
         substr = substr_op.eval()
 
+    # Vector/Scalar
     test_string = [b"good", b"good", b"bad", b"good"]
     position = np.array(3, dtype)
     length = np.array(1, dtype)
@@ -153,9 +155,35 @@ class SubstrOpTest(tf.test.TestCase):
       with self.assertRaises(tf.errors.InvalidArgumentError):
         substr = substr_op.eval()
 
+    # Negative pos
     test_string = b"Hello"
     position = np.array(-1, dtype)
     length = np.array(3, dtype)
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        substr = substr_op.eval()
+
+    # Matrix/Matrix
+    test_string = [[b"good", b"good", b"good"],
+                   [b"good", b"good", b"bad"],
+                   [b"good", b"good", b"good"]]
+    position = np.array([[1, 2, 3],
+                         [1, 2, 3],
+                         [1, 2, 3]], dtype)
+    length = np.array([[3, 2, 1],
+                       [1, 2, 3],
+                       [2, 2, 2]], dtype)
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        substr = substr_op.eval()
+
+    # Broadcast
+    test_string = [[b"good", b"good", b"good"],
+                   [b"good", b"good", b"bad"]]
+    position = np.array([1, 2, 3], dtype)
+    length = np.array([1, 2, 3], dtype)
     substr_op = tf.substr(test_string, position, length)
     with self.test_session():
       with self.assertRaises(tf.errors.InvalidArgumentError):
