@@ -64,10 +64,11 @@ class SubstrOp : public OpKernel {
           const T len = tensorflow::internal::SubtleMustCopy(len_tensor.scalar<T>()());
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
             // Make sure pos won't cause a runtime error
-            OP_REQUIRES(context, FastBoundsCheck(pos, input(i).size()),
+            string in = input(i);
+            OP_REQUIRES(context, FastBoundsCheck(pos, in.size()),
                 errors::InvalidArgument("pos ", pos, " out of range for string", 
-                                        "b'", input(i), "' at index ", i));
-            output(i) = input(i).substr(pos, len);
+                                        "b'", in, "' at index ", i));
+            output(i) = in.substr(pos, len);
           }
         } else {
           // Perform Op element-wise with tensor pos/len
@@ -77,10 +78,11 @@ class SubstrOp : public OpKernel {
             // Make sure pos won't cause a runtime error
             const T pos = tensorflow::internal::SubtleMustCopy(pos_flat(i));
             const T len = tensorflow::internal::SubtleMustCopy(len_flat(i));
-            OP_REQUIRES(context, FastBoundsCheck(pos, input(i).size()),
+            string in = input(i);
+            OP_REQUIRES(context, FastBoundsCheck(pos, in.size()),
                 errors::InvalidArgument("pos ", pos, " out of range for string", 
-                                        "b'", input(i), "' at index ", i));
-            output(i) = input(i).substr(pos, len);
+                                        "b'", in, "' at index ", i));
+            output(i) = in.substr(pos, len);
           }
         }
       } else {
@@ -106,8 +108,8 @@ class SubstrOp : public OpKernel {
             // Reshape tensors according to BCast results
             auto input = input_tensor.shaped<string,1>(bcast.x_reshape());
             auto output = output_tensor->shaped<string,1>(bcast.result_shape());
-            auto pos = pos_tensor.shaped<T,1>(bcast.y_reshape());
-            auto len = len_tensor.shaped<T,1>(bcast.y_reshape());
+            auto pos_shaped = pos_tensor.shaped<T,1>(bcast.y_reshape());
+            auto len_shaped = len_tensor.shaped<T,1>(bcast.y_reshape());
             
             // Allocate temporary buffer for broadcasted input tensor
             Tensor input_buffer;
@@ -128,7 +130,8 @@ class SubstrOp : public OpKernel {
                                                   &pos_buffer));
             typename TTypes<T,1>::Tensor pos_bcast = pos_buffer.shaped<T,1>(
                                                           bcast.result_shape());
-            pos_bcast = pos.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
+            pos_bcast = pos_shaped.broadcast(
+                                      BCast::ToIndexArray<1>(bcast.y_bcast()));
             
             // Allocate temporary buffer for broadcasted length tensor
             Tensor len_buffer;
@@ -138,16 +141,18 @@ class SubstrOp : public OpKernel {
                                                   &len_buffer));
             typename TTypes<T,1>::Tensor len_bcast = len_buffer.shaped<T,1>(
                                                           bcast.result_shape());
-            len_bcast = len.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
+            len_bcast = len_shaped.broadcast(
+                                      BCast::ToIndexArray<1>(bcast.y_bcast()));
             
             // Iterate through broadcasted tensors and perform substr
             for (int i = 0; i < output_shape.dim_size(0); ++i) {
               const T pos = tensorflow::internal::SubtleMustCopy(pos_bcast(i));
               const T len = tensorflow::internal::SubtleMustCopy(len_bcast(i));
+              string in = input_bcast(i);
               OP_REQUIRES(context, FastBoundsCheck(pos, input_bcast(i).size()),
                 errors::InvalidArgument("pos ", pos, " out of range for string", 
-                                        "b'", input_bcast(i), "' at index ",i));            
-              output(i) = input_bcast(i).substr(pos, len);
+                                        "b'", in, "' at index ", i));            
+              output(i) = in.substr(pos, len);
             }
             break;
           }
@@ -155,8 +160,8 @@ class SubstrOp : public OpKernel {
             // Reshape tensors according to BCast results
             auto input = input_tensor.shaped<string,2>(bcast.x_reshape());
             auto output = output_tensor->shaped<string,2>(bcast.result_shape());
-            auto pos = pos_tensor.shaped<T,2>(bcast.y_reshape());
-            auto len = len_tensor.shaped<T,2>(bcast.y_reshape());
+            auto pos_shaped = pos_tensor.shaped<T,2>(bcast.y_reshape());
+            auto len_shaped = len_tensor.shaped<T,2>(bcast.y_reshape());
             
             // Allocate temporary buffer for broadcasted input tensor
             Tensor input_buffer;
@@ -177,7 +182,8 @@ class SubstrOp : public OpKernel {
                                                   &pos_buffer));
             typename TTypes<T,2>::Tensor pos_bcast = pos_buffer.shaped<T,2>(
                                                           bcast.result_shape());
-            pos_bcast = pos.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            pos_bcast = pos_shaped.broadcast(
+                                      BCast::ToIndexArray<2>(bcast.y_bcast()));
             
             // Allocate temporary buffer for broadcasted length tensor
             Tensor len_buffer;
@@ -187,7 +193,8 @@ class SubstrOp : public OpKernel {
                                                   &len_buffer));
             typename TTypes<T,2>::Tensor len_bcast = len_buffer.shaped<T,2>(
                                                           bcast.result_shape());
-            len_bcast = len.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
+            len_bcast = len_shaped.broadcast(
+                                      BCast::ToIndexArray<2>(bcast.y_bcast()));
             
             // Iterate through broadcasted tensors and perform substr
             for (int i = 0; i < output_shape.dim_size(0); ++i) {              
@@ -195,14 +202,15 @@ class SubstrOp : public OpKernel {
                 const T pos = tensorflow::internal::SubtleMustCopy(
                                                     pos_bcast(i, j));
                 const T len = tensorflow::internal::SubtleMustCopy(
-                                                    len_bcast(i, j));  
+                                                    len_bcast(i, j));
+                string in = input_bcast(i, j);  
                 OP_REQUIRES(
                   context, 
-                  FastBoundsCheck(pos, input_bcast(i, j).size()),
+                  FastBoundsCheck(pos, in.size()),
                   errors::InvalidArgument("pos ", pos, " out of range for ",
-                                          "string b'", input_bcast(i, j), 
-                                          "' at index (", i, ", ", j, ")"));                                              
-                output(i, j) = input_bcast(i, j).substr(pos, len); 
+                                          "string b'", in, "' at index ("
+                                          , i, ", ", j, ")"));                                              
+                output(i, j) = in.substr(pos, len); 
                                                         
               }
             }
