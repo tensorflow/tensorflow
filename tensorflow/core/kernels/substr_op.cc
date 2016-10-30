@@ -63,7 +63,6 @@ class SubstrOp : public OpKernel {
           const T pos = tensorflow::internal::SubtleMustCopy(pos_tensor.scalar<T>()());
           const T len = tensorflow::internal::SubtleMustCopy(len_tensor.scalar<T>()());
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
-            // Make sure pos won't cause a runtime error
             string in = input(i);
             OP_REQUIRES(context, FastBoundsCheck(pos, in.size()),
                 errors::InvalidArgument("pos ", pos, " out of range for string", 
@@ -75,10 +74,9 @@ class SubstrOp : public OpKernel {
           auto pos_flat = pos_tensor.flat<T>();
           auto len_flat = len_tensor.flat<T>();
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
-            // Make sure pos won't cause a runtime error
+            string in = input(i);
             const T pos = tensorflow::internal::SubtleMustCopy(pos_flat(i));
             const T len = tensorflow::internal::SubtleMustCopy(len_flat(i));
-            string in = input(i);
             OP_REQUIRES(context, FastBoundsCheck(pos, in.size()),
                 errors::InvalidArgument("pos ", pos, " out of range for string", 
                                         "b'", in, "' at index ", i));
@@ -146,9 +144,9 @@ class SubstrOp : public OpKernel {
             
             // Iterate through broadcasted tensors and perform substr
             for (int i = 0; i < output_shape.dim_size(0); ++i) {
+              string in = input_bcast(i);
               const T pos = tensorflow::internal::SubtleMustCopy(pos_bcast(i));
               const T len = tensorflow::internal::SubtleMustCopy(len_bcast(i));
-              string in = input_bcast(i);
               OP_REQUIRES(context, FastBoundsCheck(pos, input_bcast(i).size()),
                 errors::InvalidArgument("pos ", pos, " out of range for string", 
                                         "b'", in, "' at index ", i));            
@@ -199,11 +197,11 @@ class SubstrOp : public OpKernel {
             // Iterate through broadcasted tensors and perform substr
             for (int i = 0; i < output_shape.dim_size(0); ++i) {              
               for (int j = 0; j < output_shape.dim_size(1); ++j) {
+                string in = input_bcast(i, j); 
                 const T pos = tensorflow::internal::SubtleMustCopy(
                                                     pos_bcast(i, j));
                 const T len = tensorflow::internal::SubtleMustCopy(
-                                                    len_bcast(i, j));
-                string in = input_bcast(i, j);  
+                                                    len_bcast(i, j)); 
                 OP_REQUIRES(
                   context, 
                   FastBoundsCheck(pos, in.size()),
