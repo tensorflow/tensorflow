@@ -72,15 +72,23 @@ class SubstrOp : public OpKernel {
           }
         } else {
           // Perform Op element-wise with tensor pos/len
-          auto pos = pos_tensor.flat<T>();
-          auto len = len_tensor.flat<T>();
+          auto pos_flat = pos_tensor.flat<T>();
+          auto len_flat = len_tensor.flat<T>();
+          // Use SubtleMustCopy on pos/len to prevent async attacks
+          const size_t num_elements = pos_tensor.NumElements();
+          std::vector<T> pos(num_elements);
+          std::vector<T> len(num_elements);
+          for (size_t i = 0; i < num_elements; ++i) {
+            pos[i] = tensorflow::internal::SubtleMustCopy(pos_flat(i));
+            len[i] = tensorflow::internal::SubtleMustCopy(len_flat(i));
+          }
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
             // Make sure pos won't cause a runtime error
-            OP_REQUIRES(context, pos(i) >= 0 && pos(i) < input(i).size(),
-                        errors::InvalidArgument("pos ", pos(i), 
+            OP_REQUIRES(context, pos[i] >= 0 && pos[i] < input(i).size(),
+                        errors::InvalidArgument("pos ", pos[i], 
                                                 " out of range for string b'", 
                                                 input(i), "' at index ", i));
-            output(i) = input(i).substr(pos(i), len(i));
+            output(i) = input(i).substr(pos[i], len[i]);
           }
         }
       } else {
