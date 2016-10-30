@@ -173,7 +173,11 @@ class BasicCPUAllocator : public SubAllocator {
   void* Alloc(size_t alignment, size_t num_bytes) override {
     return port::aligned_malloc(num_bytes, alignment);
   }
+#if defined(PLATFORM_WINDOWS)
+  void Free(void* ptr, size_t num_bytes)  override { _aligned_free(ptr); }
+#else
   void Free(void* ptr, size_t num_bytes) override { free(ptr); }
+#endif
 };
 
 // Allocator for pinned CPU RAM that is made known to CUDA for the

@@ -96,9 +96,9 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
 }
 
 ImmutableConstantOp::~ImmutableConstantOp() {}
-constexpr char ImmutableConstantOp::kDTypeAttr[];
-constexpr char ImmutableConstantOp::kShapeAttr[];
-constexpr char ImmutableConstantOp::kMemoryRegionNameAttr[];
+constexpr char* ImmutableConstantOp::kDTypeAttr;
+constexpr char* ImmutableConstantOp::kShapeAttr;
+constexpr char* ImmutableConstantOp::kMemoryRegionNameAttr;
 
 REGISTER_KERNEL_BUILDER(Name("ImmutableConst").Device(DEVICE_CPU),
                         ImmutableConstantOp);

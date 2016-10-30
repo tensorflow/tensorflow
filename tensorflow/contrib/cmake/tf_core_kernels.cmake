@@ -85,33 +85,34 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
       # not working on windows yet
-      "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
       "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/svd*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/avgpooling_op.*"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
 endif(WIN32)
 
-file(GLOB_RECURSE tf_core_gpu_kernels_srcs
-   "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
-   "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
-)
+if(WIN32 AND tensorflow_ENABLE_GPU)
+  file(GLOB_RECURSE tf_core_gpu_kernels_srcs
+     "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
+     "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
+  )
 
-if(WIN32)
   file(GLOB_RECURSE tf_core_gpu_kernels_exclude_srcs
       # not working on windows yet
       "${tensorflow_source_dir}/tensorflow/core/kernels/avgpooling_op_gpu.cu.cc"
   )
   list(REMOVE_ITEM tf_core_gpu_kernels_srcs ${tf_core_gpu_kernels_exclude_srcs})
-endif(WIN32)
+
+  # if we build for gpu include those  
+  list(APPEND tf_core_kernels_srcs 
+     "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.h"
+     "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.cc"
+  )
+endif(WIN32 AND tensorflow_ENABLE_GPU)
 
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)
