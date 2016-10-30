@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
-
+import {DataSet} from './data';
 
 /**
  * ScatterPlotVisualizer is an interface used by ScatterPlotContainer
@@ -39,7 +38,7 @@ export interface ScatterPlotVisualizer {
    * Called when the projector data set changes. Do any dataset-specific
    * initialization here.
    */
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement);
+  onDataSet(dataSet: DataSet);
   /**
    * Called when the label accessor (functor that maps point ids to text labels)
    * changes. The label accessor is also part of RenderContext, but visualizers

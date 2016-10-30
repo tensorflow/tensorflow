@@ -269,7 +269,9 @@ second variable called 'biases' is added to the result of the operation.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
+*  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
+    `[batch, height, width, in_channels]` for `NHWC` data format or
+    `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`num_outputs`</b>: integer, the number of output filters.
 *  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
@@ -277,6 +279,7 @@ second variable called 'biases' is added to the result of the operation.
     Can be an int if both strides are the same.  Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -304,6 +307,8 @@ second variable called 'biases' is added to the result of the operation.
 
 
 *  <b>`ValueError`</b>: if 'kernel_size' is not a list of length 2.
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: if `C` dimension of `inputs` is None.
 
 
 - - -
@@ -626,44 +631,49 @@ to produce the end result.
 
 - - -
 
-### `tf.contrib.layers.stack(inputs, layer, stack_args, **kwargs)` {#stack}
+### `tf.stack(values, axis=0, name='stack')` {#stack}
 
-Builds a stack of layers by applying layer repeatedly using stack_args.
+Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
-`stack` allows you to repeatedly apply the same operation with different
-arguments `stack_args[i]`. For each application of the layer, `stack` creates
-a new scope appended with an increasing number. For example:
+Packs the list of tensors in `values` into a tensor with rank one higher than
+each tensor in `values`, by packing them along the `axis` dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`;
 
-```python
-  y = stack(x, fully_connected, [32, 64, 128], scope='fc')
-  # It is equivalent to:
+if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+Etc.
 
-  x = fully_connected(x, 32, scope='fc/fc_1')
-  x = fully_connected(x, 64, scope='fc/fc_2')
-  y = fully_connected(x, 128, scope='fc/fc_3')
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
 ```
 
-If the `scope` argument is not given in `kwargs`, it is set to
-`layer.__name__`, or `layer.func.__name__` (for `functools.partial`
-objects). If neither `__name__` nor `func.__name__` is available, the
-layers are called with `scope='stack'`.
+This is the opposite of unstack.  The numpy equivalent is
+
+    tf.stack([x, y, z]) = np.asarray([x, y, z])
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: A `Tensor` suitable for layer.
-*  <b>`layer`</b>: A layer with arguments `(inputs, *args, **kwargs)`
-*  <b>`stack_args`</b>: A list/tuple of parameters for each call of layer.
-*  <b>`**kwargs`</b>: Extra kwargs for the layer.
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
+*  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
+    Supports negative indexes.
+*  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 
-  a `Tensor` result of applying the stacked layers.
+
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if the op is unknown or wrong.
+*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
 
 
 - - -

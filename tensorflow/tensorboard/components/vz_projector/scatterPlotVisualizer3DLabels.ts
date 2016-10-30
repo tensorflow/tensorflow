@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {DataSet} from './data';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
@@ -336,7 +336,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     this.onUpdate(this.dataSet);
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
+  onDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
     this.labelAccessor = null;
   }

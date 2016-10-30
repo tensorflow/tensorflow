@@ -40,7 +40,7 @@ struct SelectScalarFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat else_flat) {
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
-  Eigen::array<int, 2> rank1;
+  Eigen::array<int, 1> rank1{1};
 #else
   Eigen::IndexList<Eigen::type2index<1>> rank1;
 #endif

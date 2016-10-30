@@ -902,7 +902,56 @@ tf.pack(tensors, axis=axis)
 
 - - -
 
+### `tf.stack(values, axis=0, name='stack')` {#stack}
+
+Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+
+Packs the list of tensors in `values` into a tensor with rank one higher than
+each tensor in `values`, by packing them along the `axis` dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`;
+
+if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+Etc.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+```
+
+This is the opposite of unstack.  The numpy equivalent is
+
+    tf.stack([x, y, z]) = np.asarray([x, y, z])
+
+##### Args:
+
+
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
+*  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
+    Supports negative indexes.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
+
+
+- - -
+
 ### `tf.pack(values, axis=0, name='pack')` {#pack}
+
+DEPRECATED: Use stack.
 
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -949,7 +998,54 @@ This is the opposite of unpack.  The numpy equivalent is
 
 - - -
 
+### `tf.unstack(value, num=None, axis=0, name='unstack')` {#unstack}
+
+Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+
+Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
+If `num` is not specified (the default), it is inferred from `value`'s shape.
+If `value.shape[axis]` is not known, `ValueError` is raised.
+
+For example, given a tensor of shape `(A, B, C, D)`;
+
+If `axis == 0` then the i'th tensor in `output` is the slice
+  `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
+  (Note that the dimension unpacked along is gone, unlike `split`).
+
+If `axis == 1` then the i'th tensor in `output` is the slice
+  `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
+Etc.
+
+This is the opposite of pack.  The numpy equivalent is
+
+    tf.unstack(x, n) = list(x)
+
+##### Args:
+
+
+*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unstacked.
+*  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
+    if `None` (the default).
+*  <b>`axis`</b>: An `int`. The axis to unstack along. Defaults to the first
+    dimension. Supports negative indexes.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The list of `Tensor` objects unstacked from `value`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `num` is unspecified and cannot be inferred.
+*  <b>`ValueError`</b>: If `axis` is out of the range [-R, R).
+
+
+- - -
+
 ### `tf.unpack(value, num=None, axis=0, name='unpack')` {#unpack}
+
+DEPRECATED: Use unstack.
 
 Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
@@ -2142,6 +2238,92 @@ count ==> [2, 1, 3, 1, 2]
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
 *  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 *  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
+
+
+- - -
+
+### `tf.scatter_nd(indices, updates, shape, name=None)` {#scatter_nd}
+
+Creates a new tensor by applying sparse `updates` to individual values or slices within a zero tensor of the given `shape` tensor according to indices.
+
+This operator is the inverse of the [tf.gather_nd](#gather_nd) operator which extracts values or slices from a given tensor.
+
+TODO(simister): Add a link to Variable.__getitem__ documentation on slice syntax.
+
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `shape`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `shape`.
+
+`updates` is Tensor of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
+```
+
+The simplest form of scatter is to insert individual elements in a tensor by index. For example, say we want to insert 4 scattered elements in a rank-1 tensor with 8 elements.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/ScatterNd1.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    shape = tf.constant([8])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    with tf.Session() as sess:
+      print sess.run(scatter)
+
+The resulting tensor would look like this:
+
+    [0, 11, 0, 10, 9, 0, 0, 12]
+
+We can also, insert entire slices of a higher rank tensor all at once. For example, if we wanted to insert two slices in the first dimension of a rank-3 tensor with two matrices of new values.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/ScatterNd2.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+    indices = tf.constant([[0], [2]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    shape = tf.constant([4, 4, 4])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    with tf.Session() as sess:
+      print sess.run(scatter)
+
+The resulting tensor would look like this:
+
+    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+
+##### Args:
+
+
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`.
+    A Tensor. Must have the same type as tensor. A tensor of updated values to store in ref.
+*  <b>`shape`</b>: A `Tensor`. Must have the same type as `indices`.
+    A vector. The shape of the resulting tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `updates`.
+  A new tensor with the given shape and updates applied according to the indices.
 
 
 - - -

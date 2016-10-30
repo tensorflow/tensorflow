@@ -31,7 +31,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
-           "hashed_embedding_lookup_sparse"]
+           "hashed_embedding_lookup_sparse", "embedding_lookup_unique"]
 
 
 def safe_embedding_lookup_sparse(embedding_weights,
@@ -340,3 +340,37 @@ def hashed_embedding_lookup_sparse(params,
       raise ValueError("Combiner must be one of 'mean', 'sqrtn' or 'sum'.")
 
     return embeddings
+
+
+def embedding_lookup_unique(params, ids, name=None):
+  """Version of embedding_lookup that avoids duplicate lookups.
+
+  This can save communication in the case of repeated ids.
+  Same interface as embedding_lookup.
+
+  Args:
+    params: A list of tensors with the same shape and type, or a
+      `PartitionedVariable`.
+    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
+      the ids to be looked up in `params`.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as the tensors in `params`.
+
+  Raises:
+    ValueError: If `params` is empty.
+  """
+  with ops.name_scope(name, "EmbeddingLookupUnique", [params, ids]):
+    params = ops.convert_to_tensor(params)
+    ids = ops.convert_to_tensor(ids)
+    shape = array_ops.shape(ids)
+    ids_flat = array_ops.reshape(
+        ids, math_ops.reduce_prod(shape, keep_dims=True))
+    unique_ids, idx = array_ops.unique(ids_flat)
+    unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
+    embeds_flat = array_ops.gather(unique_embeddings, idx)
+    embed_shape = array_ops.concat(0, [shape, [-1]])
+    embeds = array_ops.reshape(embeds_flat, embed_shape)
+    embeds.set_shape(ids.get_shape().concatenate(params.get_shape()[1:]))
+    return embeds

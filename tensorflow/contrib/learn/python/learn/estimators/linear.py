@@ -72,23 +72,23 @@ def _as_iterable(preds, output):
 
 
 def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
-                     targets, columns_to_variables):
+                     labels, columns_to_variables):
   # TODO(b/31008490): Move definition to a common constants place.
   bias_column_name = "tf_virtual_bias_column"
   if any(col.name is bias_column_name for col in feature_columns):
     raise ValueError("%s is a reserved column name." % bias_column_name)
   bias_column = layers.real_valued_column(bias_column_name)
-  columns_to_tensors[bias_column] = array_ops.ones_like(targets,
+  columns_to_tensors[bias_column] = array_ops.ones_like(labels,
                                                         dtype=dtypes.float32)
   columns_to_variables[bias_column] = [bias_variable]
 
 
-def _linear_classifier_model_fn(features, targets, mode, params):
+def _linear_classifier_model_fn(features, labels, mode, params):
   """Linear classifier model_fn.
 
   Args:
     features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
-    targets: `Tensor` of shape [batch_size, 1] or [batch_size] target labels of
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -96,7 +96,7 @@ def _linear_classifier_model_fn(features, targets, mode, params):
       The following hyperparameters are expected:
       * feature_columns: An iterable containing all the feature columns used by
           the model.
-      * n_classes: number of target classes.
+      * n_classes: number of label classes.
       * weight_column_name: A string defining the weight feature column, or
           None if there are no weights.
       * optimizer: string, `Optimizer` object, or callable that defines the
@@ -170,15 +170,15 @@ def _linear_classifier_model_fn(features, targets, mode, params):
     return (optimizer.apply_gradients(
         zip(grads, my_vars), global_step=global_step))
 
-  return head.head_ops(features, targets, mode, _train_op_fn, logits)
+  return head.head_ops(features, labels, mode, _train_op_fn, logits)
 
 
-def sdca_classifier_model_fn(features, targets, mode, params):
+def sdca_classifier_model_fn(features, labels, mode, params):
   """Linear classifier model_fn that uses the SDCA optimizer.
 
   Args:
     features: A dict of `Tensor` keyed by column name.
-    targets: `Tensor` of shape [batch_size, 1] or [batch_size] target labels of
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -217,7 +217,7 @@ def sdca_classifier_model_fn(features, targets, mode, params):
           feature_columns=feature_columns,
           num_outputs=1))
 
-  _add_bias_column(feature_columns, features, bias, targets,
+  _add_bias_column(feature_columns, features, bias, labels,
                    columns_to_variables)
 
   if loss_type is "hinge_loss":
@@ -234,12 +234,12 @@ def sdca_classifier_model_fn(features, targets, mode, params):
     sdca_model, train_op = optimizer.get_train_step(columns_to_variables,
                                                     weight_column_name,
                                                     loss_type, features,
-                                                    targets, global_step)
+                                                    labels, global_step)
     if update_weights_hook is not None:
       update_weights_hook.set_parameters(sdca_model, train_op)
     return train_op
 
-  return head.head_ops(features, targets, mode, _train_op_fn, logits)
+  return head.head_ops(features, labels, mode, _train_op_fn, logits)
 
 
 # Ensures consistency with LinearComposableModel.
@@ -353,7 +353,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
-      n_classes: number of target classes. Default is binary classification.
+      n_classes: number of label classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -372,8 +372,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         sparse and use the 'sum' combiner.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Returns:
@@ -574,8 +574,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """Linear regressor model.
 
-  Train a linear regression model to predict target variable value given
-  observation of feature values.
+  Train a linear regression model to predict label value given observation of
+  feature values.
 
   Example:
 
@@ -623,7 +623,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                optimizer=None,
                gradient_clip_norm=None,
                enable_centered_bias=False,
-               target_dimension=1,
+               label_dimension=1,
                _joint_weights=False,
                config=None,
                feature_engineering_fn=None):
@@ -647,14 +647,14 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      target_dimension: dimension of the target for multilabels.
+      label_dimension: dimension of the label for multilabels.
       _joint_weights: If True use a single (possibly partitioned) variable to
         store the weights. It's faster, but requires all feature columns are
         sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Returns:
@@ -674,14 +674,14 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         _joint_linear_weights=_joint_weights,
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
-        target_dimension=target_dimension,
+        label_dimension=label_dimension,
         config=config,
         feature_engineering_fn=feature_engineering_fn)
 
-  def _get_train_ops(self, features, targets):
+  def _get_train_ops(self, features, labels):
     """See base class."""
     if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
-      return super(LinearRegressor, self)._get_train_ops(features, targets)
+      return super(LinearRegressor, self)._get_train_ops(features, labels)
     assert not self._joint_weights, ("_joint_weights is incompatible with"
                                      " SDCAOptimizer.")
     global_step = contrib_variables.get_or_create_global_step()
@@ -693,16 +693,16 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
             num_outputs=self._head.logits_dimension,
             weight_collections=[self._linear_model.get_scope_name()],
             scope=self._linear_model.get_scope_name()))
-    _add_bias_column(self._linear_feature_columns, features, bias, targets,
+    _add_bias_column(self._linear_feature_columns, features, bias, labels,
                      columns_to_variables)
 
     def _train_op_fn(unused_loss):
       sdca_model, train_op = self._linear_optimizer.get_train_step(
           columns_to_variables, self._weight_column_name,
-          self._loss_type(), features, targets, global_step)
+          self._loss_type(), features, labels, global_step)
       return sdca_model.update_weights(train_op)
 
-    model_fn_ops = self._head.head_ops(features, targets,
+    model_fn_ops = self._head.head_ops(features, labels,
                                        estimator.ModeKeys.TRAIN, _train_op_fn,
                                        logits=logits)
     return model_fn_ops.training_op, model_fn_ops.loss

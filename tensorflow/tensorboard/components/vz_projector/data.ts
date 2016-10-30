@@ -19,6 +19,7 @@ import * as scatterPlot from './scatterPlot';
 import {shuffle, getSearchPredicate, runAsyncTask} from './util';
 import * as logging from './logging';
 import * as vector from './vector';
+import {SpriteMetadata} from './data-provider';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
 export type PointAccessor = (index: number) => number;
@@ -53,7 +54,7 @@ export interface MetadataInfo {
   stats: ColumnStats[];
   pointsInfo: PointMetadata[];
   spriteImage?: HTMLImageElement;
-  datasetInfo?: DatasetMetadata;
+  spriteMetadata?: SpriteMetadata;
 }
 
 export interface DataPoint extends scatterPlot.DataPoint {
@@ -102,7 +103,7 @@ const TRACE_METADATA_ATTR = '__next__';
  * requires normalizing and shifting the vector space, we make a copy of the
  * data so we can still always create new subsets based on the original data.
  */
-export class DataSet implements scatterPlot.DataSet {
+export class DataSet {
   points: DataPoint[];
   traces: scatterPlot.DataTrace[];
 
@@ -119,18 +120,18 @@ export class DataSet implements scatterPlot.DataSet {
   tSNEShouldStop = true;
   dim = [0, 0];
   hasTSNERun: boolean = false;
-  spriteImage: HTMLImageElement;
-  datasetInfo: DatasetMetadata;
+  metadataInfo: MetadataInfo;
 
   private tsne: TSNE;
 
   /** Creates a new Dataset */
-  constructor(points: DataPoint[]) {
+  constructor(points: DataPoint[], metadataInfo?: MetadataInfo) {
     this.points = points;
     this.sampledDataIndices =
         shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
     this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
+    this.metadataInfo = metadataInfo;
   }
 
   private computeTraces(points: DataPoint[]) {
@@ -223,8 +224,7 @@ export class DataSet implements scatterPlot.DataSet {
         projections: {} as {[key: string]: number}
       };
     });
-
-    return new DataSet(points);
+    return new DataSet(points, this.metadataInfo);
   }
 
   /**
@@ -352,8 +352,7 @@ export class DataSet implements scatterPlot.DataSet {
           `Number of tensors (${this.points.length}) do not match` +
           ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
     }
-    this.spriteImage = metadata.spriteImage;
-    this.datasetInfo = metadata.datasetInfo;
+    this.metadataInfo = metadata;
     metadata.pointsInfo.slice(0, this.points.length)
         .forEach((m, i) => this.points[i].metadata = m);
   }
@@ -387,23 +386,6 @@ export class DataSet implements scatterPlot.DataSet {
     });
     return matches;
   }
-}
-
-export interface DatasetMetadata {
-  /**
-   * Metadata for an associated image sprite. The sprite should be a matrix
-   * of smaller images, filled in a row-by-row order.
-   *
-   * E.g. the image for the first data point should be in the upper-left
-   * corner, and to the right of it should be the image of the second data
-   * point.
-   */
-  image?: {
-    /** The file path pointing to the sprite image. */
-    sprite_fpath: string;
-    /** The dimensions of the image for a single data point. */
-    single_image_dim: [number, number];
-  };
 }
 
 export type Projection = 'tsne' | 'pca' | 'custom';

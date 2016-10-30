@@ -70,7 +70,7 @@ class Classifier(estimator.Estimator):
     """Constructor for Classifier.
 
     Args:
-      model_fn: (targets, predictions, mode) -> logits, loss, train_op
+      model_fn: (labels, predictions, mode) -> logits, loss, train_op
       n_classes: Number of classes
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
@@ -78,8 +78,8 @@ class Classifier(estimator.Estimator):
       config: Configuration object (optional)
       params: `dict` of hyper parameters that will be passed into `model_fn`.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
     """
     self._n_classes = n_classes
@@ -107,7 +107,7 @@ class Classifier(estimator.Estimator):
 
     Args:
       x: features.
-      y: targets.
+      y: labels.
       input_fn: Input function.
       feed_fn: Function creating a feed dict every time it is called.
       batch_size: minibatch size to use on the input.
@@ -194,13 +194,13 @@ class Classifier(estimator.Estimator):
     else:
       return predictions[Classifier.PROBABILITY_OUTPUT]
 
-  def _classifier_model(self, features, targets, mode):
+  def _classifier_model(self, features, labels, mode):
     return self._convert_to_estimator_model_result(
-        self._logits_fn(features, targets, mode))
+        self._logits_fn(features, labels, mode))
 
-  def _classifier_model_with_params(self, features, targets, mode, params):
+  def _classifier_model_with_params(self, features, labels, mode, params):
     return self._convert_to_estimator_model_result(
-        self._logits_fn(features, targets, mode, params))
+        self._logits_fn(features, labels, mode, params))
 
   def _convert_to_estimator_model_result(self, logits_fn_result):
     logits, loss, train_op = logits_fn_result

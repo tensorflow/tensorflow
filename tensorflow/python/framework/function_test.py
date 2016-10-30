@@ -166,6 +166,32 @@ class FunctionTest(tf.test.TestCase):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
+  def testSymGradAttr(self):
+    @function.Defun(noinline=True)
+    def Foo(x):
+      return x * 2
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.constant(3.0)
+      y = Foo(x)
+      dx, = tf.gradients(y, [x])
+
+    self.assertTrue(y.op.node_def.attr["_noinline"].b)
+    self.assertTrue(dx.op.node_def.attr['f'].func.attr['_noinline'].b)
+
+    cfg = tf.ConfigProto(graph_options=tf.GraphOptions(
+        optimizer_options=tf.OptimizerOptions(
+            opt_level=tf.OptimizerOptions.L0,
+            do_common_subexpression_elimination=True,
+            do_function_inlining=True,
+            do_constant_folding=True)))
+
+    with self.test_session(graph=g, config=cfg):
+      self.assertAllClose(y.eval(), 6.)
+      self.assertAllClose(dx.eval(), 2.)
+
+
   def testZNoDepOnY(self):
 
     @function.Defun(tf.float32, tf.float32)
