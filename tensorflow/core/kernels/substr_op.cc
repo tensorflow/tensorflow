@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -59,8 +60,8 @@ class SubstrOp : public OpKernel {
         auto output = output_tensor->flat<string>();
         if (is_scalar) {
           // Perform Op with scalar pos/len
-          T pos = pos_tensor.scalar<T>()();
-          T len = len_tensor.scalar<T>()();
+          const T pos = tensorflow::internal::SubtleMustCopy(pos_tensor.scalar<T>()());
+          const T len = tensorflow::internal::SubtleMustCopy(len_tensor.scalar<T>()());
           for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
             // Make sure pos won't cause a runtime error
             OP_REQUIRES(context, pos >= 0 && pos < input(i).size(),
