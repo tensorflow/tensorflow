@@ -67,7 +67,7 @@ class SparseOpsTest(tf.test.TestCase):
     self.assertEqual(result.values.dtype, np.object)
     self.assertEqual(result.shape.dtype, np.int64)
     self.assertAllEqual([[0], [2]], result.indices)
-    self.assertAllEqual(['qwe', 'ewq'], result.values)
+    self.assertAllEqual([b'qwe', b'ewq'], result.values)
     self.assertAllEqual([4], result.shape)
 
   def test_dense_to_sparse_tensor_1d_str_special_ignore(self):
@@ -79,7 +79,7 @@ class SparseOpsTest(tf.test.TestCase):
     self.assertEqual(result.values.dtype, np.object)
     self.assertEqual(result.shape.dtype, np.int64)
     self.assertAllEqual([[1], [2], [3]], result.indices)
-    self.assertAllEqual(['', 'ewq', ''], result.values)
+    self.assertAllEqual([b'', b'ewq', b''], result.values)
     self.assertAllEqual([4], result.shape)
 
   def test_dense_to_sparse_tensor_2d(self):
