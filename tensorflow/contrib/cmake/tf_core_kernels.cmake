@@ -87,11 +87,7 @@ if(WIN32)
       # not working on windows yet
       "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
       "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/svd*.cc"
