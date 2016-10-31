@@ -63,6 +63,9 @@ class QueueRunner : public RunnerInterface {
   // Returns the latest status.
   Status GetStatus();
 
+  // Returns the lastest status.
+  Status GetStatus();
+
  private:
   QueueRunner() : coord_(nullptr) {}
 
