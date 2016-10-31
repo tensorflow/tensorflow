@@ -19,18 +19,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-QueueRunner::QueueRunner() : started_(false) {}
-
-QueueRunner::QueueRunner(const QueueRunnerDef& queue_runner_def)
-    : started_(false) {
-  TF_CHECK_OK(Init(queue_runner_def));
+Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                        std::unique_ptr<QueueRunner>* result) {
+  result->reset(new QueueRunner());
+  return (*result)->Init(queue_runner_def);
 }
 
 Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
-  if (started_.load()) {
-    return Status(error::ALREADY_EXISTS, "QueueRunner is already running.");
-  }
   queue_name_ = queue_runner_def.queue_name();
+  enqueue_op_names_.clear();
   enqueue_op_names_.insert(enqueue_op_names_.end(),
                            queue_runner_def.enqueue_op_name().begin(),
                            queue_runner_def.enqueue_op_name().end());
@@ -61,12 +58,6 @@ QueueRunner::~QueueRunner() {
 }
 
 Status QueueRunner::Start(Session* sess) {
-  if (runs_ == 0) {
-    return Status(
-        error::INVALID_ARGUMENT,
-        "No enqueue ops to run. You may want to Init the QueueRunner first.");
-  }
-  started_ = true;
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
@@ -85,7 +76,6 @@ Status QueueRunner::Stop(Session* sess) {
 
 Status QueueRunner::Join() {
   thread_pool_.reset();
-  started_ = false;
   return status_;
 }
 
