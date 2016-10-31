@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -151,6 +153,21 @@ TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[];?;?", "in0");
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
+}
+
+TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
+  const char* op_name = "Identity";
+  ShapeInferenceTestOp op(op_name);
+  // Check that handle dtypes are preserved.
+  const OpRegistrationData* op_reg_data;
+  TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
+  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def,
+                                      {TensorShapeProto()}, {}, {}, {},
+                                      {DT_BOOL});
+  TF_ASSERT_OK(c.construction_status());
+  ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
+  TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
+  EXPECT_TRUE(c.output_handle_dtype(0) == DT_BOOL);
 }
 
 TEST(ArrayOpsTest, Diag_ShapeFn) {

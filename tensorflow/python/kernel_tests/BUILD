@@ -256,6 +256,16 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "resource_variable_ops_test",
+    size = "small",
+    srcs = ["resource_variable_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],

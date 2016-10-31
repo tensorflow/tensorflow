@@ -1031,6 +1031,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "resource_variable_ops",
+    srcs = ["resource_variable_ops.cc"],
+    deps = [
+        ":variable_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:resource_variable_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "fact_op",
     prefix = "fact_op",
     deps = [

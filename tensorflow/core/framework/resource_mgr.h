@@ -21,6 +21,7 @@ limitations under the License.
 #include <typeinfo>
 #include <unordered_map>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
