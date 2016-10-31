@@ -459,7 +459,7 @@ class GraphActionsTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       self._assert_summaries(self._output_dir)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
@@ -670,7 +670,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       self._assert_summaries(self._output_dir)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions.train(
@@ -691,7 +691,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       chief_exclusive_monitor = _BaseMonitorWrapper(False)
       all_workers_monitor = _BaseMonitorWrapper(True)
       loss = learn.graph_actions.train(
@@ -713,7 +713,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       global_step = tf.contrib.framework.create_global_step(g)
       train_op = tf.assign_add(global_step, 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       # Add explicit "local" init op to initialize all variables
       # as there's no chief to init here.
       init_op = variables.initialize_all_variables()

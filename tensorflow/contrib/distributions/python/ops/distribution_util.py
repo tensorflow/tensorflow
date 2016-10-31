@@ -442,7 +442,8 @@ class AppendDocstring(object):
     self._additional_note = additional_note
     if condition_kwargs_dict:
       bullets = []
-      for (key, value) in condition_kwargs_dict.items():
+      for key in sorted(condition_kwargs_dict.keys()):
+        value = condition_kwargs_dict[key]
         if any(x.isspace() for x in key):
           raise ValueError(
               "Parameter name \"%s\" contains whitespace." % key)

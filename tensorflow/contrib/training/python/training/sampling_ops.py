@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -426,7 +427,7 @@ def _conditional_batch(tensors, keep_input, batch_size, num_threads=10):
                                     shapes=shapes_list,
                                     dtypes=dtypes_list,
                                     name='batched_queue')
-  logging_ops.scalar_summary('queue/%s/size' % final_q.name, final_q.size())
+  summary.scalar('queue/%s/size' % final_q.name, final_q.size())
 
   # Conditionally enqueue.
   # Reshape enqueue op to match no_op's shape.

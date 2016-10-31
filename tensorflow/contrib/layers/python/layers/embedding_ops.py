@@ -346,23 +346,24 @@ def embedding_lookup_unique(params, ids, name=None):
   """Version of embedding_lookup that avoids duplicate lookups.
 
   This can save communication in the case of repeated ids.
-  Same interface as embedding_lookup.
+  Same interface as embedding_lookup. Except it supports multi-dimensional `ids`
+  which allows to not reshape input/output to fit gather.
 
   Args:
     params: A list of tensors with the same shape and type, or a
-      `PartitionedVariable`.
+      `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
     ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
-      the ids to be looked up in `params`.
+      the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
     name: A name for this operation (optional).
 
   Returns:
-    A `Tensor` with the same type as the tensors in `params`.
+    A `Tensor` with the same type as the tensors in `params` and dimension of
+    `[ids1, ids2, d1, d2, ...]`.
 
   Raises:
     ValueError: If `params` is empty.
   """
   with ops.name_scope(name, "EmbeddingLookupUnique", [params, ids]):
-    params = ops.convert_to_tensor(params)
     ids = ops.convert_to_tensor(ids)
     shape = array_ops.shape(ids)
     ids_flat = array_ops.reshape(
@@ -370,7 +371,9 @@ def embedding_lookup_unique(params, ids, name=None):
     unique_ids, idx = array_ops.unique(ids_flat)
     unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
     embeds_flat = array_ops.gather(unique_embeddings, idx)
-    embed_shape = array_ops.concat(0, [shape, [-1]])
+    embed_shape = array_ops.concat(
+        0, [shape, array_ops.shape(unique_embeddings)[1:]])
     embeds = array_ops.reshape(embeds_flat, embed_shape)
-    embeds.set_shape(ids.get_shape().concatenate(params.get_shape()[1:]))
+    embeds.set_shape(ids.get_shape().concatenate(
+        unique_embeddings.get_shape()[1:]))
     return embeds

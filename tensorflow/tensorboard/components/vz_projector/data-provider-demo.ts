@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, MetadataInfo, State} from './data';
+import {DataSet, SpriteAndMetadataInfo, State} from './data';
 import {ProjectorConfig, DataProvider, EmbeddingInfo, TENSORS_MSG_ID} from './data-provider';
 import * as dataProvider from './data-provider';
 import * as logging from './logging';
@@ -122,8 +122,8 @@ export class DemoDataProvider implements DataProvider {
     });
   }
 
-  retrieveMetadata(run: string, tensorName: string,
-      callback: (r: MetadataInfo) => void) {
+  retrieveSpriteAndMetadata(run: string, tensorName: string,
+      callback: (r: SpriteAndMetadataInfo) => void) {
     let embedding = this.getEmbeddingInfo(tensorName);
     let metadataPath = null;
     if (embedding.metadataPath) {
@@ -133,7 +133,7 @@ export class DemoDataProvider implements DataProvider {
     if (embedding.sprite && embedding.sprite.imagePath) {
       spriteImagePath = `${this.DEMO_FOLDER}/${embedding.sprite.imagePath}`;
     }
-    dataProvider.retrieveMetadataInfo(metadataPath, spriteImagePath,
+    dataProvider.retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath,
         embedding.sprite, callback);
   }
 

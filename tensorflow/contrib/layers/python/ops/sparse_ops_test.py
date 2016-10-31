@@ -61,7 +61,7 @@ class SparseOpsTest(tf.test.TestCase):
 
   def test_dense_to_sparse_tensor_1d_str(self):
     with self.test_session() as sess:
-      st = sparse_ops.dense_to_sparse_tensor(['qwe', '', 'ewq', ''])
+      st = sparse_ops.dense_to_sparse_tensor([b'qwe', b'', b'ewq', b''])
       result = sess.run(st)
     self.assertEqual(result.indices.dtype, np.int64)
     self.assertEqual(result.values.dtype, np.object)
@@ -73,7 +73,7 @@ class SparseOpsTest(tf.test.TestCase):
   def test_dense_to_sparse_tensor_1d_str_special_ignore(self):
     with self.test_session() as sess:
       st = sparse_ops.dense_to_sparse_tensor(
-          ['qwe', '', 'ewq', ''], ignore_value='qwe')
+          [b'qwe', b'', b'ewq', b''], ignore_value=b'qwe')
       result = sess.run(st)
     self.assertEqual(result.indices.dtype, np.int64)
     self.assertEqual(result.values.dtype, np.object)

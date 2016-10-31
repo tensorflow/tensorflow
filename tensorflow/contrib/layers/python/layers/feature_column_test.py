@@ -428,6 +428,11 @@ class FeatureColumnTest(tf.test.TestCase):
                                                                10,
                                                                dtype=tf.float32)
 
+  def testSparseColumnSingleBucket(self):
+    sc = tf.contrib.layers.sparse_column_with_integerized_feature("sc", 1)
+    self.assertDictEqual({"sc": tf.VarLenFeature(dtype=tf.int64)}, sc.config)
+    self.assertEqual(1, sc._wide_embedding_lookup_arguments(None).vocab_size)
+
   def testCreateFeatureSpec(self):
     sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(
         "sparse_column", hash_bucket_size=100)

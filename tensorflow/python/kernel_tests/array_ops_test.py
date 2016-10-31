@@ -892,5 +892,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
                                        [1.0, 0.0, 0.0, 0.0],
                                        [1.0, 1.0, 1.0, 1.0]])
 
+
 if __name__ == "__main__":
   tf.test.main()
