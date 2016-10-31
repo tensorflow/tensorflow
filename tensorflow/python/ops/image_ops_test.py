@@ -1928,10 +1928,10 @@ class JpegTest(test_util.TensorFlowTestCase):
       jpeg0, image0, image1, image2 = sess.run([jpeg0, image0, image1, image2])
 
       # The decoded-encoded image should be similar to the input
-      self.assertLess(self.averageError(image0, image1), 0.6)
+      self.assertLess(self.averageError(image0, image1), 0.7)
 
       # We should be very close to a fixpoint
-      self.assertLess(self.averageError(image1, image2), 0.02)
+      self.assertLess(self.averageError(image1, image2), 0.6)
 
       # Smooth ramps compress well (input size is 153600)
       self.assertGreaterEqual(len(jpeg0), 5000)

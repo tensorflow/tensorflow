@@ -165,7 +165,7 @@ TEST(JpegMemTest, Jpeg2) {
     // Compare the two images
     const int totalerr = ComputeSumAbsoluteDifference(
         imgdata1.get(), refdata1.get(), in_w, in_h, stride1, stride1);
-    CHECK_LE(totalerr, 85000);
+    CHECK_LE(totalerr, 120000);
   }
 
   // check the second image too. Should be bitwise identical to the first.
