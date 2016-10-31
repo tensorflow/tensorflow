@@ -57,6 +57,9 @@ class QueueRunner {
   // otherwise returns the first captured failure status.
   Status Join();
 
+  // Returns the lastest status.
+  Status GetStatus();
+
  private:
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
