@@ -9,8 +9,8 @@ Initializes a `SummarySaver` monitor.
 
 
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `scalar_summary` or
-      `merge_all_summaries`.
+      buffer, as output by TF summary methods like `summary.scalar` or
+      `summary.merge_all`.
 *  <b>`save_steps`</b>: `int`, save summaries every N steps. See `EveryN`.
 *  <b>`output_dir`</b>: `string`, the directory to save the summaries to. Only used
       if no `summary_writer` is supplied.
