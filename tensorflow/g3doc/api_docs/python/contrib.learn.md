@@ -1800,11 +1800,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
-    Returns:
-      The string path to the exported directory. NB: this functionality was
-      added ca. 2016/09/25; clients that depend on the return value may need
-      to handle the case where this function returns None because subclasses
-      are not returning a value.
+See BaseEstimator.export.
 
 
 - - -
@@ -1870,11 +1866,7 @@ Get parameters for this estimator.
 
 #### `tf.contrib.learn.LogisticRegressor.get_variable_names()` {#LogisticRegressor.get_variable_names}
 
-Returns list of all variable names in this model.
 
-##### Returns:
-
-  List of names.
 
 
 - - -
@@ -1955,7 +1947,7 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 #### `tf.contrib.learn.LogisticRegressor.predict(*args, **kwargs)` {#LogisticRegressor.predict}
 
-Returns predictions for given features. (deprecated arguments)
+Runs inference to determine the predicted class. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
 Instructions for updating:
