@@ -86,21 +86,13 @@ const FRAGMENT_SHADER = `
     if (isImage) {
       // Coordinates of the vertex within the entire sprite image.
       vec2 coords = (gl_PointCoord + xyIndex) / vec2(imageWidth, imageHeight);
-      // Determine the color of the spritesheet at the calculate spot.
-      vec4 fromTexture = texture2D(texture, coords);
-
-      // Finally, set the fragment color.
-      gl_FragColor = vec4(vColor, 1.0) * fromTexture;
+      gl_FragColor = vec4(vColor, 1.0) * texture2D(texture, coords);
     } else {
       // Discard pixels outside the radius so points are rendered as circles.
       vec2 uv = gl_PointCoord.xy - 0.5;
-      float uvLenSquared = dot(uv, uv);
-      if (uvLenSquared > (0.5 * 0.5)) {
-        discard;
-      }
-
-      // If the point is not an image, just color it.
-      gl_FragColor = vec4(vColor, 1.0);
+      float a = float(dot(uv, uv) < (0.5 * 0.5));
+      vec3 c = mix(vec3(1, 1, 1), vColor, a);
+      gl_FragColor = vec4(c, 1);
     }
     ${THREE.ShaderChunk['fog_fragment']}
   }`;
@@ -108,7 +100,6 @@ const FRAGMENT_SHADER = `
 const FRAGMENT_SHADER_PICKING = `
   varying vec2 xyIndex;
   varying vec3 vColor;
-
   uniform bool isImage;
 
   void main() {
@@ -116,12 +107,9 @@ const FRAGMENT_SHADER_PICKING = `
     if (isImage) {
       gl_FragColor = vec4(vColor, 1);
     } else {
-      vec2 pointCenterToHere = gl_PointCoord.xy - vec2(0.5, 0.5);
-      float lenSquared = dot(pointCenterToHere, pointCenterToHere);
-      if (lenSquared > (0.5 * 0.5)) {
-        discard;
-      }
-      gl_FragColor = vec4(vColor, 1);
+      vec2 uv = gl_PointCoord.xy - 0.5;
+      float a = float(dot(uv, uv) < (0.5 * 0.5));
+      gl_FragColor = vec4(vColor, a);
     }
   }`;
 
@@ -197,7 +185,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
       depthTest: true,
       depthWrite: true,
       fog: false,
-      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
+      blending: THREE.NormalBlending,
     });
 
     this.points = new THREE.Points(this.geometry, this.renderMaterial);
