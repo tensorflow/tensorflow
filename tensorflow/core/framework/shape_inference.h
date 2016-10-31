@@ -147,9 +147,7 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<ShapeHandle>& input_tensors_as_shapes,
-                   const std::vector<ShapeHandle>& input_handle_shapes,
-                   const std::vector<DataType>& input_handle_dtypes);
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
@@ -245,7 +243,7 @@ class InferenceContext {
   inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
-  inline bool ValueKnown(DimensionOrConstant d) const {
+  inline bool ValueKnown(DimensionOrConstant d) {
     return Value(d) != kUnknownDim;
   }
 
@@ -470,8 +468,7 @@ class InferenceContext {
   void PreInputInit(const OpDef& op_def,
                     const std::vector<const Tensor*>& input_tensors,
                     const std::vector<ShapeHandle>& input_tensors_as_shapes);
-  void PostInputInit(const std::vector<ShapeHandle>& input_handle_shapes,
-                     const std::vector<DataType>& input_handle_dtypes);
+  void PostInputInit();
 
   DimensionHandle GetDimension(const DimensionOrConstant& d);
 
@@ -499,11 +496,6 @@ class InferenceContext {
   // Can have fewer elements than inputs_.
   std::vector<ShapeHandle> input_tensors_as_shapes_;
   std::vector<bool> requested_input_tensor_as_partial_shape_;
-
-  std::vector<ShapeHandle> input_handle_shape_;
-  std::vector<DataType> input_handle_dtype_;
-  std::vector<ShapeHandle> output_handle_shape_;
-  std::vector<DataType> output_handle_dtype_;
 
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;

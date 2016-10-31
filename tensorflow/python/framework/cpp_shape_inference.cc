@@ -20,31 +20,11 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 #include "tensorflow/python/lib/core/py_func.h"
 
 namespace tensorflow {
 namespace swig {
 namespace {
-
-void ProtoFromShapeHandle(tensorflow::shape_inference::ShapeHandle s,
-                          tensorflow::shape_inference::InferenceContext* c,
-                          TensorShapeProto* out) {
-  if (c->RankKnown(s)) {
-    const int32 rank = c->Rank(s);
-    for (int i = 0; i < rank; ++i) {
-      shape_inference::DimensionHandle d = c->Dim(s, i);
-      auto* out_dim = out->add_dim();
-      if (c->ValueKnown(d)) {
-        out_dim->set_size(c->Value(d));
-      } else {
-        out_dim->set_size(-1);
-      }
-    }
-  } else {
-    out->set_unknown_rank(true);
-  }
-}
 
 Status RunCppShapeInferenceImpl(
     const string& serialized_node_def,
@@ -70,21 +50,12 @@ Status RunCppShapeInferenceImpl(
 
   // Convert input shapes.
   std::vector<TensorShapeProto> input_shapes;
-  std::vector<TensorShapeProto> input_handle_shapes;
-  std::vector<DataType> input_handle_dtypes;
   input_shapes.resize(input_serialized_shapes.size());
-  input_handle_shapes.resize(input_serialized_shapes.size());
-  input_handle_dtypes.resize(input_serialized_shapes.size());
-  CppShapeInferenceResult tmp;
   for (int i = 0; i < input_serialized_shapes.size(); ++i) {
-    tmp.Clear();
-    if (!tmp.ParseFromString(input_serialized_shapes[i])) {
+    if (!input_shapes[i].ParseFromString(input_serialized_shapes[i])) {
       return errors::InvalidArgument(
           "Error parsing shape proto during cpp shape inference");
     }
-    input_shapes[i].Swap(tmp.mutable_shape());
-    input_handle_dtypes[i] = tmp.handle_dtype();
-    input_handle_shapes[i].Swap(tmp.mutable_handle_shape());
   }
 
   // Convert input tensor values;
@@ -113,6 +84,7 @@ Status RunCppShapeInferenceImpl(
   }
 
   // Run shape inference.
+  // TODO(cwhipkey): pass a value for input_tensors_as_shapes.
   tensorflow::shape_inference::InferenceContext c(
       &node, op_reg_data->op_def, input_shapes, input_tensors,
       input_tensor_as_shapes_protos, input_handle_shapes, input_handle_dtypes);
@@ -122,13 +94,24 @@ Status RunCppShapeInferenceImpl(
 
   // Convert output shapes.
   output_tensor_shape_protos->resize(c.num_outputs());
-  CppShapeInferenceResult out;
+  TensorShapeProto out;
   for (int i = 0; i < c.num_outputs(); ++i) {
+    shape_inference::ShapeHandle s = c.output(i);
     out.Clear();
-    ProtoFromShapeHandle(c.output(i), &c, out.mutable_shape());
-    ProtoFromShapeHandle(c.output_handle_shape(i), &c,
-                         out.mutable_handle_shape());
-    out.set_handle_dtype(c.output_handle_dtype(i));
+    if (c.RankKnown(s)) {
+      const int32 rank = c.Rank(s);
+      for (int i = 0; i < rank; ++i) {
+        shape_inference::DimensionHandle d = c.Dim(s, i);
+        auto* out_dim = out.add_dim();
+        if (c.ValueKnown(d)) {
+          out_dim->set_size(c.Value(d));
+        } else {
+          out_dim->set_size(-1);
+        }
+      }
+    } else {
+      out.set_unknown_rank(true);
+    }
     CHECK(out.AppendToString(&(*output_tensor_shape_protos)[i]));
   }
 

@@ -32,8 +32,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -302,10 +300,6 @@ class Output(_TensorLike):
     # List of operations that use this Output as input.  We maintain this list
     # to easily navigate a computation graph.
     self._consumers = []
-
-    # Attributes used for C++ shape inference. Not inspected, only forwarded.
-    self._handle_shape = tensor_shape_pb2.TensorShapeProto()
-    self._handle_dtype = types_pb2.DT_INVALID
 
   @property
   def op(self):
@@ -1637,22 +1631,10 @@ def set_shapes_for_outputs(op):
   if shapes is None:
     raise RuntimeError(
         "Shape function for op %s did not return any shapes" % op)
-  elif isinstance(shapes, dict):
-    # Returned by call_cpp_shape_fn
-    shapes_dict = shapes
-    shapes = shapes_dict["shapes"]
-    handle_shapes = shapes_dict["handle_shapes"]
-    handle_dtypes = shapes_dict["handle_dtypes"]
-    for output, handle_shape, handle_dtype in zip(op.outputs, handle_shapes, handle_dtypes):
-      # pylint: disable=protected-access
-      output._handle_shape = handle_shape
-      output._handle_dtype = handle_dtype
-      # pylint: enable=protected-access
-
   if len(op.outputs) != len(shapes):
     raise RuntimeError(
-        "Shape function for op %s returned %d shapes but expected %d %s %s" %
-        (op, len(shapes), len(op.outputs), shape_func.__name__, str(shapes)))
+        "Shape function for op %s returned %d shapes but expected %d" %
+        (op, len(shapes), len(op.outputs)))
   for output, s in zip(op.outputs, shapes):
     output.set_shape(s)
 

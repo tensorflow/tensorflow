@@ -918,19 +918,6 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      // Merge handle shape and dtype if applicable.
-      if (c->input_handle_dtype(1) != c->input_handle_dtype(2)) {
-        // TODO(apassos) resolve this in the manner of b/32476923
-        return errors::InvalidArgument(
-            "Trying to merge handles pointing to different dtypes.");
-      }
-      c->set_output_handle_dtype(0, c->input_handle_dtype(1));
-      ShapeHandle output_handle_shape;
-      TF_RETURN_IF_ERROR(c->Merge(c->input_handle_shape(1),
-                                  c->input_handle_shape(2),
-                                  &output_handle_shape));
-      c->set_output_handle_shape(0, output_handle_shape);
-
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
       ShapeHandle other = c->input(2);
@@ -981,9 +968,8 @@ REGISTER_OP("Select")
       }
 
       c->set_output(0, data);
-
       return Status::OK();
-    })
+   })
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 

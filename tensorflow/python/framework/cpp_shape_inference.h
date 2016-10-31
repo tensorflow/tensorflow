@@ -36,7 +36,7 @@ namespace swig {
 // inference was successful.
 //
 // On success, <*output_shapes> is populated with the inferred output shapes (as
-// serialized CppShapeInferenceResult protos).
+// serialized TensorShapeProtos).
 // <*output_shapes> must be empty when this function is called.
 //
 // This is temporary code to be used during the migration
