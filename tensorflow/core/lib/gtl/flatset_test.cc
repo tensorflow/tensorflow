@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace gtl {
 namespace {
 
-typedef FlatSet<int64, HashInt64> NumSet;
+typedef FlatSet<int64> NumSet;
 
 // Returns true iff set has an entry for k.
 // Also verifies that find and count give consistent results.

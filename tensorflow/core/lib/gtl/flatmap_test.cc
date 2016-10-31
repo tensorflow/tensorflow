@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace gtl {
 namespace {
 
-typedef FlatMap<int64, int32, HashInt64> NumMap;
+typedef FlatMap<int64, int32> NumMap;
 
 // If map has an entry for k, return the corresponding value, else return def.
 int32 Get(const NumMap& map, int64 k, int32 def = -1) {
@@ -142,7 +142,7 @@ TEST(FlatMapTest, Emplace) {
 }
 
 TEST(FlatMapTest, EmplaceUniquePtr) {
-  FlatMap<int64, std::unique_ptr<string>, HashInt64> smap;
+  FlatMap<int64, std::unique_ptr<string>> smap;
   smap.emplace(1, std::unique_ptr<string>(new string("hello")));
 }
 
