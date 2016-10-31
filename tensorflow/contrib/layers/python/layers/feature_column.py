@@ -246,7 +246,7 @@ class _SparseColumn(_FeatureColumn,
     column_name: A string defining sparse column name.
     is_integerized: A bool if True means type of feature is an integer.
       Integerized means we can use the feature itself as id.
-    bucket_size: An int that is > 1. The number of buckets.
+    bucket_size: An int that is > 0. The number of buckets.
     lookup_config: A _SparseIdLookupConfig defining feature-to-id lookup
       configuration
     combiner: A string specifying how to reduce if the sparse column is
@@ -286,8 +286,8 @@ class _SparseColumn(_FeatureColumn,
       raise ValueError("one and only one of bucket_size or lookup_config "
                        "must be set. column_name: {}".format(column_name))
 
-    if bucket_size is not None and bucket_size < 2:
-      raise ValueError("bucket_size must be at least 2. "
+    if bucket_size is not None and bucket_size < 1:
+      raise ValueError("bucket_size must be at least 1. "
                        "bucket_size: {}, column_name: {}".format(bucket_size,
                                                                  column_name))
 
