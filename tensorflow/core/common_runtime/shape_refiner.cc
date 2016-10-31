@@ -42,6 +42,8 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // indexed by 'node's input.
   std::vector<Node*> input_nodes(node->num_inputs());
   std::vector<ShapeHandle> input_shapes(node->num_inputs());
+  std::vector<DataType> input_handle_dtypes(node->num_inputs());
+  std::vector<ShapeHandle> input_handle_shapes(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
@@ -57,6 +59,15 @@ Status ShapeRefiner::AddNode(const Node* node) {
     DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
+
+    // Only propagate handle xshape and dtype of edges which are carrying
+    // resource handles.
+    if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
+      input_handle_dtypes[e->dst_input()] =
+          c->output_handle_dtype(e->src_output());
+      input_handle_shapes[e->dst_input()] =
+          c->output_handle_shape(e->src_output());
+    }
   }
 
   // Get the shape function for this node
@@ -76,9 +87,9 @@ Status ShapeRefiner::AddNode(const Node* node) {
   std::vector<ShapeHandle> input_tensors_as_shapes;
 
   // Create the inference context for this node with the existing input shapes.
-  std::unique_ptr<InferenceContext> c(
-      new InferenceContext(&node->def(), node->op_def(), input_shapes,
-                           input_tensors, input_tensors_as_shapes));
+  std::unique_ptr<InferenceContext> c(new InferenceContext(
+      &node->def(), node->op_def(), input_shapes, input_tensors,
+      input_tensors_as_shapes, input_handle_shapes, input_handle_dtypes));
   if (!c->construction_status().ok()) {
     return c->construction_status();
   }

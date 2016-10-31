@@ -1312,7 +1312,12 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+      c->set_output_handle_shape(0, c->input_handle_shape(0));
+      return Status::OK();
+    })
     .Doc(R"Doc(
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
