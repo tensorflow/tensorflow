@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, MetadataInfo, State} from './data';
+import {DataSet, SpriteAndMetadataInfo, State} from './data';
 import {ProjectorConfig, DataProvider, TENSORS_MSG_ID, EmbeddingInfo} from './data-provider';
 import * as dataProvider from './data-provider';
 import * as logging from './logging';
@@ -78,7 +78,8 @@ export class ServerDataProvider implements DataProvider {
     });
   }
 
-  retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void) {
+  retrieveTensor(run: string, tensorName: string,
+      callback: (ds: DataSet) => void) {
     // Get the tensor.
     logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
     d3.text(
@@ -94,8 +95,8 @@ export class ServerDataProvider implements DataProvider {
         });
   }
 
-  retrieveMetadata(run: string, tensorName: string,
-      callback: (r: MetadataInfo) => void) {
+  retrieveSpriteAndMetadata(run: string, tensorName: string,
+      callback: (r: SpriteAndMetadataInfo) => void) {
     this.getEmbeddingInfo(run, tensorName, embedding => {
       let metadataPath = null;
       if (embedding.metadataPath) {
@@ -107,7 +108,7 @@ export class ServerDataProvider implements DataProvider {
         spriteImagePath =
             `${this.routePrefix}/sprite_image?run=${run}&name=${tensorName}`;
       }
-      dataProvider.retrieveMetadataInfo(metadataPath, spriteImagePath,
+      dataProvider.retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath,
           embedding.sprite, callback);
     });
   }

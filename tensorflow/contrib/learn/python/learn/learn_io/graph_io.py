@@ -19,13 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as var_ops
@@ -660,10 +660,10 @@ def queue_parsed_features(parsed_features,
     input_queue = data_flow_ops.FIFOQueue(feature_queue_capacity, queue_dtypes)
 
     # Add a summary op to debug if our feature queue is full or not.
-    logging_ops.scalar_summary('queue/parsed_features/%s/fraction_of_%d_full' %
-                               (input_queue.name, feature_queue_capacity),
-                               math_ops.cast(input_queue.size(), dtypes.float32)
-                               * (1. / feature_queue_capacity))
+    summary.scalar('queue/parsed_features/%s/fraction_of_%d_full' %
+                   (input_queue.name, feature_queue_capacity),
+                   math_ops.cast(input_queue.size(), dtypes.float32) *
+                   (1. / feature_queue_capacity))
 
     # Add multiple queue runners so that the queue is always full. Adding more
     # than two queue-runners may hog the cpu on the worker to fill up the queue.

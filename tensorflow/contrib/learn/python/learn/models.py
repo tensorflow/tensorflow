@@ -23,11 +23,11 @@ import functools
 
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
@@ -80,8 +80,8 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
   """
   with vs.variable_scope('linear_regression'):
     scope_name = vs.get_variable_scope().name
-    logging_ops.histogram_summary('%s.x' % scope_name, x)
-    logging_ops.histogram_summary('%s.y' % scope_name, y)
+    summary.histogram('%s.x' % scope_name, x)
+    summary.histogram('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     y_shape = y.get_shape()
     if len(y_shape) == 1:
@@ -102,8 +102,8 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
-    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
+    summary.histogram('%s.weights' % scope_name, weights)
+    summary.histogram('%s.bias' % scope_name, bias)
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
@@ -139,8 +139,8 @@ def logistic_regression(x,
   """
   with vs.variable_scope('logistic_regression'):
     scope_name = vs.get_variable_scope().name
-    logging_ops.histogram_summary('%s.x' % scope_name, x)
-    logging_ops.histogram_summary('%s.y' % scope_name, y)
+    summary.histogram('%s.x' % scope_name, x)
+    summary.histogram('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     # Set up the requested initialization.
     if init_mean is None:
@@ -157,8 +157,8 @@ def logistic_regression(x,
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
-    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
+    summary.histogram('%s.weights' % scope_name, weights)
+    summary.histogram('%s.bias' % scope_name, bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:

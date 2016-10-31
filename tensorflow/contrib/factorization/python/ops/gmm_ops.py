@@ -412,7 +412,7 @@ class GmmAlgorithm(object):
     self._ll_op = []
     for prior_probs in self._prior_probs:
       self._ll_op.append(tf.reduce_sum(tf.log(prior_probs)))
-    tf.scalar_summary('ll', tf.reduce_sum(self._ll_op))
+    tf.summary.scalar('ll', tf.reduce_sum(self._ll_op))
 
 
 def gmm(inp, initial_clusters, num_clusters, random_seed,

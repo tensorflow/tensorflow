@@ -23,6 +23,7 @@ import collections
 from six.moves import range
 
 from tensorflow.contrib.lookup import lookup_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -32,7 +33,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_sdca_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
@@ -381,9 +381,8 @@ class SdcaModel(object):
         # empty_key (that will never collide with actual payloads).
         empty_key=[0, 0])
 
-    logging_ops.scalar_summary('approximate_duality_gap',
-                               self.approximate_duality_gap())
-    logging_ops.scalar_summary('examples_seen', self._hashtable.size())
+    summary.scalar('approximate_duality_gap', self.approximate_duality_gap())
+    summary.scalar('examples_seen', self._hashtable.size())
 
   def _symmetric_l1_regularization(self):
     return self._options['symmetric_l1_regularization']

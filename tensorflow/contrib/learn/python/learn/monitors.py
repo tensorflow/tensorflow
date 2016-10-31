@@ -565,8 +565,8 @@ class SummarySaver(EveryN):
 
     Args:
       summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `scalar_summary` or
-          `merge_all_summaries`.
+          buffer, as output by TF summary methods like `summary.scalar` or
+          `summary.merge_all`.
       save_steps: `int`, save summaries every N steps. See `EveryN`.
       output_dir: `string`, the directory to save the summaries to. Only used
           if no `summary_writer` is supplied.

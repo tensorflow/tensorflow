@@ -132,4 +132,9 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   }
 }
 
+Status QueueRunner::GetStatus() {
+  mutex_lock l(mu_);
+  return status_;
+}
+
 }  // namespace tensorflow

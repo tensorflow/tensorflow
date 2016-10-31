@@ -28,10 +28,10 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.layers.python.layers import feature_column_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -318,9 +318,8 @@ class DNNComposableModel(_ComposableModel):
 
   def _add_hidden_layer_summary(self, value, tag):
     # TODO(zakaria): Move this code to tf.learn and add test.
-    logging_ops.scalar_summary("%s:fraction_of_zero_values" % tag,
-                               nn.zero_fraction(value))
-    logging_ops.histogram_summary("%s:activation" % tag, value)
+    summary.scalar("%s:fraction_of_zero_values" % tag, nn.zero_fraction(value))
+    summary.histogram("%s:activation" % tag, value)
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""

@@ -77,7 +77,7 @@ Various ways of passing optimizers, include:
       * `global_step` is an invalid type or shape.
       * `learning_rate` is an invalid type or value.
       * `optimizer` is wrong type.
-      * `clip_gradients' is not float or callable.
+      * `clip_gradients` is not float or callable.
       * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
         `global_step` is available.
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataPoint, DataProto, DataSet, MetadataInfo, PointAccessor, PointMetadata, Projection, State, stateGetAccessorDimensions} from './data';
+import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, SpriteAndMetadataInfo, PointAccessor, PointMetadata, Projection, State, stateGetAccessorDimensions} from './data';
 import {DataProvider, ServingMode, EmbeddingInfo} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
 import {ProtoDataProvider} from './data-provider-proto';
@@ -130,22 +130,28 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setCurrentDataSet(this.originalDataSet.getSubset());
   }
 
-  updateDataSet(ds: DataSet, metadata?: MetadataInfo, metadataFile?: string) {
+  updateDataSet(ds: DataSet, spriteAndMetadata?: SpriteAndMetadataInfo,
+      metadataFile?: string) {
     this.originalDataSet = ds;
     if (this.scatterPlot == null || this.originalDataSet == null) {
       // We are not ready yet.
       return;
     }
     this.normalizeData = this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
-    metadata = metadata || this.makeDefaultMetadata(ds.points);
-    ds.mergeMetadata(metadata);
+    spriteAndMetadata = spriteAndMetadata || {};
+    if (spriteAndMetadata.pointsInfo == null) {
+      let [pointsInfo, stats] = this.makeDefaultPointsInfoAndStats(ds.points);
+      spriteAndMetadata.pointsInfo = pointsInfo;
+      spriteAndMetadata.stats = stats;
+    }
+    ds.mergeMetadata(spriteAndMetadata);
     this.dataPanel.setNormalizeData(this.normalizeData);
     this.setCurrentDataSet(this.originalDataSet.getSubset());
     this.inspectorPanel.datasetChanged();
 
-    this.inspectorPanel.metadataChanged(metadata);
-    this.projectionsPanel.metadataChanged(metadata);
-    this.dataPanel.metadataChanged(metadata, metadataFile);
+    this.inspectorPanel.metadataChanged(spriteAndMetadata);
+    this.projectionsPanel.metadataChanged(spriteAndMetadata);
+    this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
     // Set the container to a fixed height, otherwise in Colab the
     // height can grow indefinitely.
     let container = this.dom.select('#container');
@@ -221,23 +227,22 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.initializeDataProvider(dataProto);
   }
 
-  private makeDefaultMetadata(points: DataPoint[]): MetadataInfo {
+  private makeDefaultPointsInfoAndStats(points: DataPoint[]):
+      [PointMetadata[], ColumnStats[]] {
     let pointsInfo: PointMetadata[] = [];
     points.forEach(p => {
       let pointInfo: PointMetadata = {};
       pointInfo[INDEX_METADATA_FIELD] = p.index;
       pointsInfo.push(pointInfo);
     });
-    return {
-      stats: [{
-        name: INDEX_METADATA_FIELD,
-        isNumeric: false,
-        tooManyUniqueValues: true,
-        min: 0,
-        max: pointsInfo.length - 1
-      }],
-      pointsInfo: pointsInfo
-    };
+    let stats: ColumnStats[] = [{
+      name: INDEX_METADATA_FIELD,
+      isNumeric: false,
+      tooManyUniqueValues: true,
+      min: 0,
+      max: pointsInfo.length - 1
+    }];
+    return [pointsInfo, stats];
   }
 
   private initializeDataProvider(dataProto?: DataProto) {
@@ -279,6 +284,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private get3DLabelMode(): boolean {
     const label3DModeButton = this.get3DLabelModeButton();
     return (label3DModeButton as any).active;
+  }
+
+  private getSpriteImageMode(): boolean {
+    return this.dataSet &&
+        this.dataSet.spriteAndMetadataInfo &&
+        this.dataSet.spriteAndMetadataInfo.spriteImage != null;
   }
 
   adjustSelectionAndHover(selectedPointIndices: number[], hoverIndex?: number) {
@@ -393,7 +404,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     const pointColors =
         this.projectorScatterPlotAdapter.generatePointColorArray(
             dataSet, pointColorer, selectedSet, neighbors, hoverIndex,
-            this.get3DLabelMode());
+            this.get3DLabelMode(), this.getSpriteImageMode());
     const pointScaleFactors =
         this.projectorScatterPlotAdapter.generatePointScaleFactorArray(
             dataSet, selectedSet, neighbors, hoverIndex);
