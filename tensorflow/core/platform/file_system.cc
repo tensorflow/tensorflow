@@ -27,11 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
-
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
 
 namespace tensorflow {
 
