@@ -24,8 +24,10 @@ operators to your graph.
 @@add
 @@sub
 @@mul
+@@multiply
 @@scalar_mul
 @@div
+@@divide
 @@truediv
 @@floordiv
 @@mod
@@ -39,6 +41,7 @@ mathematical functions to your graph.
 @@add_n
 @@abs
 @@neg
+@@negative
 @@sign
 @@inv
 @@square
@@ -273,6 +276,11 @@ def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
   with ops.name_scope(name, "Divide", [x]) as name:
     return x / y
+
+# Make Python Aliases
+multiply = gen_math_ops.mul
+subtract = gen_math_ops.sub
+negative = gen_math_ops.neg
 
 
 def neg(x, name=None):
