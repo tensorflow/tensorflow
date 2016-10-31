@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module includes reference datasets and utilities to load datasets."""
+"""Module includes reference datasets and utilities to load datasets. It also 
+includes methods to generate synthetic data
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,6 +28,7 @@ import numpy as np
 
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.datasets import mnist
+from tensorflow.contrib.learn.python.learn.datasets import synthetic
 from tensorflow.contrib.learn.python.learn.datasets import text_datasets
 
 # Export load_iris and load_boston.
@@ -64,3 +67,11 @@ def load_dataset(name, size='small', test_with_fake_data=False):
     return DATASETS[name](size, test_with_fake_data)
   else:
     return DATASETS[name]()
+
+# List of all synthetic datasets
+SYNTHETIC = {
+  # All of these will return ['data', 'target'] -> base.Dataset
+  'circles': synthetic.circles
+}
+
+def make_synthetic(name, n_samples, )
