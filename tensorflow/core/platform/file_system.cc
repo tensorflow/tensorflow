@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 namespace tensorflow {
 
 namespace {
