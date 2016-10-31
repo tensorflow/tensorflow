@@ -1,16 +1,18 @@
 {
-  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "37C0B04FE2B526AC7966FFF6E912F2018C46109E",
+  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "EDCF6A5551B23AB0B554B6CCE7A44261C938EDC1",
   "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
 
   },
   "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
-    "DEF827AEE61008D72BA753A95234A28088662AAB" : 9223372036854775807,
-    "37C0B04FE2B526AC7966FFF6E912F2018C46109E" : 9223372036854775807
+    "EDCF6A5551B23AB0B554B6CCE7A44261C938EDC1" : 9223372036854775807,
+    "37C0B04FE2B526AC7966FFF6E912F2018C46109E" : 9223372036854775807,
+    "DEF827AEE61008D72BA753A95234A28088662AAB" : 9223372036854775807
   },
   "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "57A5C418-3918-4398-86DA-B2BF55123AEA",
   "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
-    "DEF827AEE61008D72BA753A95234A28088662AAB" : "..\/..",
-    "37C0B04FE2B526AC7966FFF6E912F2018C46109E" : "TensorFlow\/"
+    "EDCF6A5551B23AB0B554B6CCE7A44261C938EDC1" : "swift\/",
+    "37C0B04FE2B526AC7966FFF6E912F2018C46109E" : "TensorFlow\/",
+    "DEF827AEE61008D72BA753A95234A28088662AAB" : ".."
   },
   "DVTSourceControlWorkspaceBlueprintNameKey" : "TensorFlow",
   "DVTSourceControlWorkspaceBlueprintVersion" : 204,
@@ -25,6 +27,11 @@
       "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "github.com:rxwei\/tensorflow",
       "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
       "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "DEF827AEE61008D72BA753A95234A28088662AAB"
+    },
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "github.com:rxwei\/tensorflow-swift.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "EDCF6A5551B23AB0B554B6CCE7A44261C938EDC1"
     }
   ]
 }

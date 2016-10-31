@@ -1,5 +1,7 @@
 CFLAGS := -I../..
-LDFLAGS := -L/usr/local/lib/tensorflow
+# LDFLAGS := -L/usr/local/lib/tensorflow
+# LDFLAGS := -L../../bazel-bin/tensorflow
+LDFLAGS := -L../../bazel-out/local-fastbuild/bin/tensorflow
 
 SFLAGS=-Xcc $(CFLAGS) -Xlinker $(LDFLAGS)
 

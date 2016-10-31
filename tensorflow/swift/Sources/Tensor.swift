@@ -15,40 +15,75 @@
 
 import CTensorFlow
 
-public protocol TensorDataUnit { }
+public enum TensorDataType : UInt32 {
+    case float = 1
+    case double = 2
+    case int32 = 3
+    case int16 = 5
+    case int8 = 6
+    case int64 = 9
+}
 
-extension Int8 : TensorDataUnit {}
-extension Int16 : TensorDataUnit {}
-extension Int32 : TensorDataUnit {}
-extension Int64 : TensorDataUnit {}
-extension Int : TensorDataUnit {}
-extension Float : TensorDataUnit {}
-extension Double : TensorDataUnit {}
+public protocol TensorDataProtocol {
+    static var dataType: TensorDataType { get }
+}
 
-public class Tensor<DataType: TensorDataUnit> {
+extension TensorDataProtocol {
+    static var cType: TF_DataType {
+        return TF_DataType(Self.dataType.rawValue)
+    }
+}
 
-    /// Type selection
-    /// If we use safe type, namely generic tensor, we'll have
-    /// to compare the dynamic type at run time.
-    /// Consider replacing `TensorDataUnit` with a enum 
-    /// and sacrifice type safety
-    private var dataType: TF_DataType {
-        if DataType.self == Int.self { return TF_INT64 }
-        else if DataType.self == Float.self { return TF_FLOAT }
-        else if DataType.self == Double.self { return TF_DOUBLE }
-        else if DataType.self == Int8.self { return TF_INT8 }
-        else if DataType.self == Int16.self { return TF_INT16 }
-        else if DataType.self == Int32.self { return TF_INT32 }
-        else if DataType.self == Int64.self { return TF_INT64 }
-        else {
-            fatalError("Unsupported type")
-        }
+extension Int8 : TensorDataProtocol {
+    public static var dataType: TensorDataType {
+        return .int8
+    }
+}
+
+extension Int16 : TensorDataProtocol {
+    public static var dataType: TensorDataType {
+        return .int16
     }
 
-    init(shape: Shape, data: [DataType]) {
+}
+
+extension Int32 : TensorDataProtocol {
+    public static var dataType: TensorDataType {
+        return .int32
+    }
+}
+
+extension Int64 : TensorDataProtocol {
+    public static var dataType: TensorDataType {
+        return .int64
+    }
+}
+
+extension Int : TensorDataProtocol {
+    public static var dataType: TensorDataType {
+        return .int64
+    }
+}
+
+extension Float : TensorDataProtocol {
+    public static var dataType: TensorDataType {
+        return .float
+    }
+}
+
+extension Double : TensorDataProtocol {
+
+    public static var dataType: TensorDataType {
+        return .double
+    }
+}
+
+public class Tensor<Element: TensorDataProtocol> {
+
+    init(shape: Shape, data: [Element]) {
         var dims = shape.components.map{Int64($0)}
         var data = data
-        TF_NewTensor(self.dataType, &dims, Int32(dims.count), &data, data.count, nil, nil)
+        TF_NewTensor(Element.cType, &dims, Int32(dims.count), &data, data.count, nil, nil)
     }
-    
+
 }
