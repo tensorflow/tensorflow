@@ -71,19 +71,19 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 #### `tf.train.QueueRunner.create_threads(sess, coord=None, daemon=False, start=False)` {#QueueRunner.create_threads}
 
-Create threads to run the enqueue ops.
+Create threads to run the enqueue ops for the given session.
 
 This method requires a session in which the graph was launched.  It creates
 a list of threads, optionally starting them.  There is one thread for each
 op passed in `enqueue_ops`.
 
-The `coord` argument is an optional coordinator, that the threads will use
+The `coord` argument is an optional coordinator that the threads will use
 to terminate together and report exceptions.  If a coordinator is given,
 this method starts an additional thread to close the queue when the
 coordinator requests a stop.
 
-This method may be called again as long as all threads from a previous call
-have stopped.
+If previously created threads for the given session are still running, no
+new threads will be created.
 
 ##### Args:
 
@@ -98,12 +98,6 @@ have stopped.
 ##### Returns:
 
   A list of threads.
-
-##### Raises:
-
-
-*  <b>`RuntimeError`</b>: If threads from a previous call to `create_threads()` are
-  still running.
 
 
 - - -

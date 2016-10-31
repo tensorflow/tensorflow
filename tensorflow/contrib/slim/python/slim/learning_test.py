@@ -410,7 +410,7 @@ class TrainTest(tf.test.TestCase):
       tf_predictions = LogisticClassifier(tf_inputs)
       slim.losses.log_loss(tf_predictions, tf_labels)
       total_loss = slim.losses.get_total_loss()
-      tf.scalar_summary('total_loss', total_loss)
+      tf.summary.scalar('total_loss', total_loss)
 
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
 
@@ -437,12 +437,12 @@ class TrainTest(tf.test.TestCase):
       tf_predictions = LogisticClassifier(tf_inputs)
       slim.losses.log_loss(tf_predictions, tf_labels)
       total_loss = slim.losses.get_total_loss()
-      tf.scalar_summary('total_loss', total_loss)
+      tf.summary.scalar('total_loss', total_loss)
 
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
 
       train_op = slim.learning.create_train_op(total_loss, optimizer)
-      summary_op = tf.merge_all_summaries()
+      summary_op = tf.summary.merge_all()
 
       with self.assertRaises(ValueError):
         slim.learning.train(

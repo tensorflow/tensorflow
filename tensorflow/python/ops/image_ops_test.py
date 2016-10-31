@@ -581,14 +581,14 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
 
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
-      y = image_ops.per_image_whitening(x)
+      y = image_ops.per_image_standardization(x)
       y_tf = y.eval()
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
   def testUniformImage(self):
     im_np = np.ones([19, 19, 3]).astype(np.float32) * 249
     im = constant_op.constant(im_np)
-    whiten = image_ops.per_image_whitening(im)
+    whiten = image_ops.per_image_standardization(im)
     with self.test_session(use_gpu=True):
       whiten_np = whiten.eval()
       self.assertFalse(np.any(np.isnan(whiten_np)))

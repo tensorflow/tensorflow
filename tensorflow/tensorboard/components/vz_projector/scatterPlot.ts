@@ -156,7 +156,8 @@ export class ScatterPlot {
     this.zScale = d3.scale.linear();
 
     this.scene = new THREE.Scene();
-    this.renderer = new THREE.WebGLRenderer();
+    this.renderer =
+        new THREE.WebGLRenderer({alpha: true, premultipliedAlpha: false});
     this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);

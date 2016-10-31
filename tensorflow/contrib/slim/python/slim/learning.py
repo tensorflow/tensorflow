@@ -253,6 +253,7 @@ import time
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import summary
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
@@ -262,7 +263,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
@@ -360,10 +360,11 @@ def add_gradients_summaries(grads_and_vars):
         grad_values = grad.values
       else:
         grad_values = grad
-      summaries.append(logging_ops.histogram_summary(
-          var.op.name + ':gradient', grad_values))
-      summaries.append(logging_ops.histogram_summary(
-          var.op.name + ':gradient_norm', clip_ops.global_norm([grad_values])))
+      summaries.append(
+          summary.histogram(var.op.name + ':gradient', grad_values))
+      summaries.append(
+          summary.histogram(var.op.name + ':gradient_norm',
+                            clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
@@ -698,7 +699,7 @@ def train(train_op,
             data_flow_ops.initialize_all_tables())
 
     if summary_op == _USE_DEFAULT:
-      summary_op = logging_ops.merge_all_summaries()
+      summary_op = summary.merge_all()
 
     if summary_writer == _USE_DEFAULT:
       summary_writer = supervisor.Supervisor.USE_DEFAULT
