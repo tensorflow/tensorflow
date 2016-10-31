@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sys/stat.h>
+#include <algorithm>
 #include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -28,11 +29,31 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 namespace tensorflow {
 
 namespace {
 
-constexpr int32 kNumThreads = 8;
+constexpr int kNumThreads = 8;
+
+// Run a function in parallel using a ThreadPool, but skip the ThreadPool
+// on the iOS platform due to its problems with more than a few threads.
+void ForEach(int first, int last, std::function<void(int)> f) {
+#if defined(__ANDROID__) || defined(TARGET_OS_IPHONE)
+  for (int i = first; i < last; i++) {
+    f(i);
+  }
+#else
+  int num_threads = std::min(kNumThreads, last - first);
+  thread::ThreadPool threads(Env::Default(), "ForEach", num_threads);
+  for (int i = first; i < last; i++) {
+    threads.Schedule([f, i] { f(i); });
+  }
+#endif
+}
 
 }  // anonymous namespace
 
@@ -121,16 +142,12 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
     ret.Update(s);
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
-    thread::ThreadPool* children_threads =
-        new thread::ThreadPool(Env::Default(), "TraverseChildren", kNumThreads);
     children_dir_status.resize(children.size());
-    for (int i = 0; i < children.size(); ++i) {
-      const string child_path = io::JoinPath(current_dir, children[i]);
-      children_threads->Schedule([this, child_path, i, &children_dir_status] {
-        children_dir_status[i] = this->IsDirectory(child_path).ok();
-      });
-    }
-    delete children_threads;
+    ForEach(0, children.size(),
+            [this, &current_dir, &children, &children_dir_status](int i) {
+              const string child_path = io::JoinPath(current_dir, children[i]);
+              children_dir_status[i] = IsDirectory(child_path).ok();
+            });
     for (int i = 0; i < children.size(); ++i) {
       const string child_path = io::JoinPath(current_dir, children[i]);
       // In case the child_path doesn't start with the fixed_prefix then we bail
