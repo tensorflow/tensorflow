@@ -147,7 +147,9 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes,
+                   const std::vector<ShapeHandle>& input_handle_shapes,
+                   const std::vector<DataType>& input_handle_dtypes);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
@@ -162,7 +164,9 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes,
+                   const std::vector<TensorShapeProto>& input_handle_shapes,
+                   const std::vector<DataType>& input_handle_dtypes);
 
   ~InferenceContext();
 
@@ -231,12 +235,12 @@ class InferenceContext {
     }
     return s->dims_[idx];
   }
-  int32 Rank(ShapeHandle s) { return s->rank_; }
-  bool RankKnown(ShapeHandle s) { return Rank(s) != kUnknownRank; }
-  inline int64 Value(DimensionOrConstant d) {
+  int32 Rank(ShapeHandle s) const { return s->rank_; }
+  bool RankKnown(ShapeHandle s) const { return Rank(s) != kUnknownRank; }
+  inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
-  inline bool ValueKnown(DimensionOrConstant d) {
+  inline bool ValueKnown(DimensionOrConstant d) const {
     return Value(d) != kUnknownDim;
   }
 
@@ -391,6 +395,30 @@ class InferenceContext {
 
   Status construction_status() const { return construction_status_; }
 
+  // Methods to propagate shape and dtype on edges of handles. Handles are the
+  // dtype DT_RESOURCE which can be used to access state stored in a
+  // ResourceManager. When ops (such as variables) consume these handles to
+  // produce tensors they might need to know side-information about the shapes
+  // and dtypes of tensors which can be accessed via the handle. These methods
+  // propagate that information. Output handle dtypes and shapes are ignored if
+  // the output tensor is not of type DT_RESOURCE.
+  ShapeHandle input_handle_shape(int idx);
+  DataType input_handle_dtype(int idx) const {
+    return input_handle_dtype_[idx];
+  }
+  void set_output_handle_shape(int idx, ShapeHandle shape) {
+    output_handle_shape_[idx] = shape;
+  }
+  void set_output_handle_dtype(int idx, DataType dtype) {
+    output_handle_dtype_[idx] = dtype;
+  }
+  ShapeHandle output_handle_shape(int idx) const {
+    return output_handle_shape_[idx];
+  }
+  DataType output_handle_dtype(int idx) const {
+    return output_handle_dtype_[idx];
+  }
+
   // Validates the 3 component tensors of a sparse tensor have the proper
   // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
   Status ValidateSparseTensor(ShapeHandle indices_shape,
@@ -481,7 +509,8 @@ class InferenceContext {
   void PreInputInit(const OpDef& op_def,
                     const std::vector<const Tensor*>& input_tensors,
                     const std::vector<ShapeHandle>& input_tensors_as_shapes);
-  void PostInputInit();
+  void PostInputInit(const std::vector<ShapeHandle>& input_handle_shapes,
+                     const std::vector<DataType>& input_handle_dtypes);
 
   DimensionHandle GetDimension(const DimensionOrConstant& d);
 
@@ -509,6 +538,11 @@ class InferenceContext {
   // Can have fewer elements than inputs_.
   std::vector<ShapeHandle> input_tensors_as_shapes_;
   std::vector<bool> requested_input_tensor_as_partial_shape_;
+
+  std::vector<ShapeHandle> input_handle_shape_;
+  std::vector<DataType> input_handle_dtype_;
+  std::vector<ShapeHandle> output_handle_shape_;
+  std::vector<DataType> output_handle_dtype_;
 
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
