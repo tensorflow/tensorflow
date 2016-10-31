@@ -23,7 +23,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import gen_state_ops
 
 
 class TensorUtilTest(tf.test.TestCase):
@@ -552,7 +552,8 @@ class ConstantValueTest(tf.test.TestCase):
     self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
   def testUnknown(self):
-    tf_val = state_ops.variable_op(shape=[3, 4, 7], dtype=tf.float32)
+    tf_val = gen_state_ops._variable(shape=[3, 4, 7], dtype=tf.float32, 
+        name="tf_val", container="", shared_name="")
     self.assertIs(None, tf.contrib.util.constant_value(tf_val))
 
   def testShape(self):
