@@ -899,7 +899,7 @@ class Saver(object):
                builder=None,
                defer_build=False,
                allow_empty=False,
-               write_version=saver_pb2.SaverDef.V1,
+               write_version=saver_pb2.SaverDef.V2,
                pad_step_number=False):
     """Creates a `Saver`.
 

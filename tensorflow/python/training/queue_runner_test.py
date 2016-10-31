@@ -173,6 +173,21 @@ class QueueRunnerTest(tf.test.TestCase):
       # the queue to be closed and the enqueue to terminate.
       coord.join(stop_grace_period_secs=0.05)
 
+  def testMultipleSessions(self):
+    with self.test_session() as sess:
+      with tf.Session() as other_sess:
+        zero64 = tf.constant(0, dtype=tf.int64)
+        var = tf.Variable(zero64)
+        count_up_to = var.count_up_to(3)
+        queue = tf.FIFOQueue(10, tf.float32)
+        tf.initialize_all_variables().run()
+        coord = tf.train.Coordinator()
+        qr = tf.train.QueueRunner(queue, [count_up_to])
+        # NOTE that this test does not actually start the threads.
+        threads = qr.create_threads(sess, coord=coord)
+        other_threads = qr.create_threads(other_sess, coord=coord)
+        self.assertEqual(len(threads), len(other_threads))
+
   def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
