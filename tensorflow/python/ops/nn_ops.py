@@ -1005,6 +1005,117 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     return value
 
 
+def atrous_conv2d_transpose(value,
+                            filter,
+                            output_shape,
+                            rate,
+                            strides,
+                            padding="SAME",
+                            name=None):
+  with ops.name_scope(name, "atrous_conv2d_transpose",
+                      [value, filter, output_shape]) as name:
+    value = ops.convert_to_tensor(value, name="value")
+    filter = ops.convert_to_tensor(filter, name="filter")
+    if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
+      raise ValueError("input channels does not match filter's input channels, "
+                       "{} != {}".format(value.get_shape()[3], filter.get_shape(
+                       )[3]))
+
+    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
+    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+      raise ValueError("output_shape must have shape (4,), got {}"
+                       .format(output_shape_.get_shape()))
+
+    if isinstance(output_shape, (list, np.ndarray)):
+      # output_shape's shape should be == [4] if reached this point.
+      if not filter.get_shape()[2].is_compatible_with(output_shape[3]):
+        raise ValueError(
+            "output_shape does not match filter's output channels, "
+            "{} != {}".format(output_shape[3], filter.get_shape()[2]))
+
+    # Handle filters whose shape is unknown during graph creation.
+    if filter.get_shape().is_fully_defined():
+      filter_shape = filter.get_shape().as_list()
+    else:
+      filter_shape = array_ops.shape(filters)
+    if padding == "SAME":
+      filter_height, filter_width = filter_shape[0], filter_shape[1]
+      # Spatial dimensions of the filters and the upsampled filters in which we
+      # introduce (rate - 1) zeros between consecutive filter values.
+      filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
+      filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
+
+      pad_height = filter_height_up - 1
+      pad_width = filter_width_up - 1
+
+      # When pad_height (pad_width) is odd, we pad more to bottom (right),
+      # following the same convention as conv2d().
+      pad_top = pad_height // 2
+      pad_bottom = pad_height - pad_top
+      pad_left = pad_width // 2
+      pad_right = pad_width - pad_left
+    elif padding == "VALID":
+      pad_top = 0
+      pad_bottom = 0
+      pad_left = 0
+      pad_right = 0
+    else:
+      raise ValueError("Invalid padding")
+
+    # Handle input whose shape is unknown during graph creation.
+    if value.get_shape().is_fully_defined():
+      value_shape = value.get_shape().as_list()
+    else:
+      value_shape = array_ops.shape(value)
+
+    in_height = value_shape[1] + pad_top + pad_bottom
+    in_width = value_shape[2] + pad_left + pad_right
+
+    # More padding so that rate divides the height and width of the input.
+    pad_bottom_extra = (rate - in_height % rate) % rate
+    pad_right_extra = (rate - in_width % rate) % rate
+
+    # The paddings argument to space_to_batch includes both padding components.
+    space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
+                          [pad_left, pad_right + pad_right_extra]]
+
+    value = array_ops.space_to_batch(input=value,
+                                     paddings=space_to_batch_pad,
+                                     block_size=rate)
+
+    #compute the 1 parameter for gen_nn_ops.conv2d_backprop_input.
+    #This is essentially computing a conv input shape, given the output shape.
+    if value.get_shape().is_fully_defined():
+      value_shape = value.get_shape().as_list()
+    else:
+      value_shape = array_ops.shape(value)
+    if padding == "SAME":
+      batch_temp = value_shape[0]
+      height_temp = value_shape[1]
+      width_temp = value_shape[2]
+      depth_temp = output_shape[3]
+    elif padding == "VALID":
+      batch_temp = value_shape[0]
+      height_temp = value_shape[1] + filter_shape[0] - 1
+      width_temp = value_shape[2] + filter_shape[1] - 1
+      depth_temp = output_shape[3]
+    output_shape_temp = [batch_temp, height_temp, width_temp, depth_temp]
+    output_shape_temp_ = ops.convert_to_tensor(output_shape_temp, name="output_shape_temp")
+
+    value = gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_temp_,
+                                             filter=filter,
+                                             out_backprop=value,
+                                             strides=strides,
+                                             padding=padding,
+                                             name=name)
+    batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
+    value = array_ops.batch_to_space(input=value,
+                                     crops=batch_to_space_crop,
+                                     block_size=rate)
+
+    return value
+
+
 def conv2d_transpose(value,
                      filter,
                      output_shape,
