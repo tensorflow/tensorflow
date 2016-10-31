@@ -36,6 +36,9 @@ const POINT_SCALE_HOVER = 1.2;
 const LABELS_3D_COLOR_UNSELECTED = 0xFFFFFF;
 const LABELS_3D_COLOR_NO_SELECTION = 0xFFFFFF;
 
+const SPRITE_IMAGE_COLOR_UNSELECTED = 0xFFFFFF;
+const SPRITE_IMAGE_COLOR_NO_SELECTION = 0xFFFFFF;
+
 const TRACE_START_HUE = 60;
 const TRACE_END_HUE = 360;
 const TRACE_SATURATION = 1;
@@ -197,7 +200,8 @@ export class ProjectorScatterPlotAdapter {
   generatePointColorArray(
       ds: DataSet, legendPointColorer: (index: number) => string,
       selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[],
-      hoverPointIndex: number, label3dMode: boolean): Float32Array {
+      hoverPointIndex: number, label3dMode: boolean,
+      spriteImageMode: boolean): Float32Array {
     if (ds == null) {
       return new Float32Array(0);
     }
@@ -210,6 +214,11 @@ export class ProjectorScatterPlotAdapter {
     if (label3dMode) {
       unselectedColor = LABELS_3D_COLOR_UNSELECTED;
       noSelectionColor = LABELS_3D_COLOR_NO_SELECTION;
+    }
+
+    if (spriteImageMode) {
+      unselectedColor = SPRITE_IMAGE_COLOR_UNSELECTED;
+      noSelectionColor = SPRITE_IMAGE_COLOR_NO_SELECTION;
     }
 
     // Give all points the unselected color.

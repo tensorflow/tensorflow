@@ -135,7 +135,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
   }
 
   onDataSet(dataSet: DataSet) {
-    this.labelsActive = (dataSet.metadataInfo.spriteImage == null);
+    this.labelsActive = (dataSet.spriteAndMetadataInfo.spriteImage == null);
     this.dataSet = dataSet;
   }
 

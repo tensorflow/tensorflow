@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {DataSet, SpriteAndMetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -302,10 +302,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.beginProjection(this.currentProjection);
   }
 
-  metadataChanged(metadata: MetadataInfo) {
+  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo) {
     // Project by options for custom projections.
     let searchByMetadataIndex = -1;
-    this.searchByMetadataOptions = metadata.stats.map((stats, i) => {
+    this.searchByMetadataOptions = spriteAndMetadata.stats.map((stats, i) => {
       // Make the default label by the first non-numeric column.
       if (!stats.isNumeric && searchByMetadataIndex === -1) {
         searchByMetadataIndex = i;

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColumnStats, DataPoint, DataSet, MetadataInfo, PointMetadata, State} from './data';
+import {ColumnStats, DataPoint, DataSet, SpriteAndMetadataInfo, PointMetadata, State} from './data';
 import * as logging from './logging';
 import {runAsyncTask} from './util';
 
@@ -74,8 +74,8 @@ export interface DataProvider {
   /**
    * Fetches the metadata for the specified tensor.
    */
-  retrieveMetadata(run: string, tensorName: string,
-      callback: (r: MetadataInfo) => void): void;
+  retrieveSpriteAndMetadata(run: string, tensorName: string,
+      callback: (r: SpriteAndMetadataInfo) => void): void;
 
   /**
    * Returns the name of the tensor that should be fetched by default.
@@ -96,7 +96,7 @@ export function parseRawTensors(
 }
 
 export function parseRawMetadata(
-    contents: string, callback: (r: MetadataInfo) => void) {
+    contents: string, callback: (r: SpriteAndMetadataInfo) => void) {
   parseMetadata(contents).then(result => callback(result));
 }
 
@@ -202,7 +202,7 @@ export function analyzeMetadata(
   return columnStats;
 }
 
-export function parseMetadata(content: string): Promise<MetadataInfo> {
+export function parseMetadata(content: string): Promise<SpriteAndMetadataInfo> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
     let hasHeader = lines[0].indexOf('\t') >= 0;
@@ -228,7 +228,7 @@ export function parseMetadata(content: string): Promise<MetadataInfo> {
     return {
       stats: analyzeMetadata(columnNames, pointsMetadata),
       pointsInfo: pointsMetadata
-    } as MetadataInfo;
+    } as SpriteAndMetadataInfo;
   }, METADATA_MSG_ID).then(metadata => {
     logging.setModalMessage(null, METADATA_MSG_ID);
     return metadata;
@@ -244,12 +244,12 @@ export function fetchImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export function retrieveMetadataInfo(metadataPath: string,
+export function retrieveSpriteAndMetadataInfo(metadataPath: string,
     spriteImagePath: string, spriteMetadata: SpriteMetadata,
-    callback: (r: MetadataInfo) => void) {
-  let metadataPromise: Promise<MetadataInfo> = null;
+    callback: (r: SpriteAndMetadataInfo) => void) {
+  let metadataPromise: Promise<SpriteAndMetadataInfo> = Promise.resolve({});
   if (metadataPath) {
-    metadataPromise = new Promise<MetadataInfo>((resolve, reject) => {
+    metadataPromise = new Promise<SpriteAndMetadataInfo>((resolve, reject) => {
       logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
       d3.text(metadataPath, (err: any, rawMetadata: string) => {
         if (err) {

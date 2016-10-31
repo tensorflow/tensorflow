@@ -50,9 +50,9 @@ export interface ColumnStats {
   max: number;
 }
 
-export interface MetadataInfo {
-  stats: ColumnStats[];
-  pointsInfo: PointMetadata[];
+export interface SpriteAndMetadataInfo {
+  stats?: ColumnStats[];
+  pointsInfo?: PointMetadata[];
   spriteImage?: HTMLImageElement;
   spriteMetadata?: SpriteMetadata;
 }
@@ -120,18 +120,19 @@ export class DataSet {
   tSNEShouldStop = true;
   dim = [0, 0];
   hasTSNERun: boolean = false;
-  metadataInfo: MetadataInfo;
+  spriteAndMetadataInfo: SpriteAndMetadataInfo;
 
   private tsne: TSNE;
 
   /** Creates a new Dataset */
-  constructor(points: DataPoint[], metadataInfo?: MetadataInfo) {
+  constructor(points: DataPoint[],
+      spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
     this.sampledDataIndices =
         shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
     this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
-    this.metadataInfo = metadataInfo;
+    this.spriteAndMetadataInfo = spriteAndMetadataInfo;
   }
 
   private computeTraces(points: DataPoint[]) {
@@ -224,7 +225,7 @@ export class DataSet {
         projections: {} as {[key: string]: number}
       };
     });
-    return new DataSet(points, this.metadataInfo);
+    return new DataSet(points, this.spriteAndMetadataInfo);
   }
 
   /**
@@ -346,13 +347,13 @@ export class DataSet {
     });
   }
 
-  mergeMetadata(metadata: MetadataInfo) {
+  mergeMetadata(metadata: SpriteAndMetadataInfo) {
     if (metadata.pointsInfo.length !== this.points.length) {
       logging.setWarningMessage(
           `Number of tensors (${this.points.length}) do not match` +
           ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
     }
-    this.metadataInfo = metadata;
+    this.spriteAndMetadataInfo = metadata;
     metadata.pointsInfo.slice(0, this.points.length)
         .forEach((m, i) => this.points[i].metadata = m);
   }

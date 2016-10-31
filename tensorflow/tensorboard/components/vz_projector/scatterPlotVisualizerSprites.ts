@@ -166,7 +166,8 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     let imageDim = [0, 0];
     if (this.image) {
       pointSize = IMAGE_SIZE;
-      imageDim = this.dataSet.metadataInfo.spriteMetadata.singleImageDim;
+      imageDim =
+          this.dataSet.spriteAndMetadataInfo.spriteMetadata.singleImageDim;
     }
 
     this.uniforms = {
@@ -298,7 +299,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
 
   onDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
-    this.image = this.dataSet.metadataInfo.spriteImage;
+    this.image = this.dataSet.spriteAndMetadataInfo.spriteImage;
     this.points = null;
     if (this.geometry) {
       this.geometry.dispose();
