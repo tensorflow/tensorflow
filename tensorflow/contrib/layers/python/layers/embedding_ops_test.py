@@ -371,6 +371,28 @@ class HashedEmbeddingLookupTest(tf.test.TestCase):
     self.assertEqual(embedded_np.shape, embedded_tf.shape)
     np.testing.assert_almost_equal(embedded_np, embedded_tf)
 
+  def test_embedding_lookup_unique_param3d(self):
+    embeds = np.random.randn(5, 3, 3)
+    idx = np.random.randint(0, 5, 10)
+    idx2d = np.random.randint(0, 5, (10, 2))
+
+    with self.test_session():
+      embedded_np = embeds[idx]
+      embedded_np2d = embeds[idx2d]
+      embedded_tf = tf.contrib.layers.embedding_lookup_unique(
+          embeds, idx).eval()
+      embedded_tf_lst = tf.contrib.layers.embedding_lookup_unique(
+          [embeds], idx).eval()
+      embedded_tf2d = tf.contrib.layers.embedding_lookup_unique(
+          embeds, idx2d).eval()
+
+    self.assertEqual(embedded_np.shape, embedded_tf.shape)
+    np.testing.assert_almost_equal(embedded_np, embedded_tf)
+    self.assertEqual(embedded_np.shape, embedded_tf_lst.shape)
+    np.testing.assert_almost_equal(embedded_np, embedded_tf_lst)
+    self.assertEqual(embedded_np2d.shape, embedded_tf2d.shape)
+    np.testing.assert_almost_equal(embedded_np2d, embedded_tf2d)
+
 
 if __name__ == "__main__":
   tf.test.main()
