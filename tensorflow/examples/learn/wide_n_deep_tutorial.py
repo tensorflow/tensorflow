@@ -51,7 +51,7 @@ CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
 
 
 def maybe_download():
-  """May be downloads training data and returns train and test file names."""
+  """Maybe downloads training data and returns train and test file names."""
   if FLAGS.train_data:
     train_file_name = FLAGS.train_data
   else:
