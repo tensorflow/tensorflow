@@ -37,10 +37,10 @@ from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.losses.python.losses import loss_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
@@ -74,9 +74,8 @@ def _get_optimizer(optimizer):
 
 
 def _add_hidden_layer_summary(value, tag):
-  logging_ops.scalar_summary("%s:fraction_of_zero_values" % tag,
-                             nn.zero_fraction(value))
-  logging_ops.histogram_summary("%s:activation" % tag, value)
+  summary.scalar("%s:fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s:activation" % tag, value)
 
 
 def _centered_bias(num_label_columns):
@@ -84,9 +83,8 @@ def _centered_bias(num_label_columns):
       array_ops.zeros([num_label_columns]),
       collections=[_CENTERED_BIAS, ops.GraphKeys.VARIABLES],
       name=_CENTERED_BIAS_WEIGHT)
-  logging_ops.scalar_summary(
-      ["centered_bias %d" % cb for cb in range(num_label_columns)],
-      array_ops.reshape(centered_bias, [-1]))
+  summary.scalar(["centered_bias %d" % cb for cb in range(num_label_columns)],
+                 array_ops.reshape(centered_bias, [-1]))
   return centered_bias
 
 
@@ -277,7 +275,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
     if enable_centered_bias:
       train_ops.append(_centered_bias_step(labels, loss_fn, num_label_columns))
 
-    logging_ops.scalar_summary("loss", loss)
+    summary.scalar("loss", loss)
 
     return None, loss, control_flow_ops.group(*train_ops)
 

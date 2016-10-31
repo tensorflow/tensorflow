@@ -26,6 +26,7 @@ import functools
 
 import numpy as np
 
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,7 +36,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import input as input_py
 from tensorflow.python.training import queue_runner
@@ -240,12 +240,11 @@ def bucket(tensors,
             errors.OutOfRangeError, errors.CancelledError)))
 
     for q in bucket_queues:
-      logging_ops.scalar_summary(
-          "bucket/%s/size" % q.name,
-          math_ops.cast(top_queue.size(), dtypes.float32))
-    logging_ops.scalar_summary(
-        "bucket/%s/fraction_of_%d_full" % (top_queue.name, capacity),
-        math_ops.cast(top_queue.size(), dtypes.float32) * (1. / capacity))
+      summary.scalar("bucket/%s/size" % q.name,
+                     math_ops.cast(top_queue.size(), dtypes.float32))
+    summary.scalar("bucket/%s/fraction_of_%d_full" % (top_queue.name, capacity),
+                   math_ops.cast(top_queue.size(), dtypes.float32) *
+                   (1. / capacity))
 
     dequeued = top_queue.dequeue(name="dequeue_top")
     which_bucket_dequeued = dequeued[0]

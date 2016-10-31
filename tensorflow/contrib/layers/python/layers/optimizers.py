@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,7 +29,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -140,7 +140,7 @@ def optimize_loss(loss,
         * `global_step` is an invalid type or shape.
         * `learning_rate` is an invalid type or value.
         * `optimizer` is wrong type.
-        * `clip_gradients' is not float or callable.
+        * `clip_gradients` is not float or callable.
         * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
           `global_step` is available.
   """
@@ -181,7 +181,7 @@ def optimize_loss(loss,
         raise ValueError("global_step is required for learning_rate_decay_fn.")
       lr = learning_rate_decay_fn(lr, global_step)
       if "learning_rate" in summaries:
-        logging_ops.scalar_summary("learning_rate", lr)
+        summary.scalar("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
@@ -234,8 +234,8 @@ def optimize_loss(loss,
       gradients = _multiply_gradients(gradients, gradient_multipliers)
 
     if "gradient_norm" in summaries:
-      logging_ops.scalar_summary("global_norm/gradient_norm",
-                                 clip_ops.global_norm(zip(*gradients)[0]))
+      summary.scalar("global_norm/gradient_norm",
+                     clip_ops.global_norm(zip(*gradients)[0]))
 
     # Optionally clip gradients by global norm.
     if isinstance(clip_gradients, float):
@@ -248,7 +248,7 @@ def optimize_loss(loss,
 
     # Add scalar summary for loss.
     if "loss" in summaries:
-      logging_ops.scalar_summary("loss", loss)
+      summary.scalar("loss", loss)
 
     # Add histograms for variables, gradients and gradient norms.
     for gradient, variable in gradients:
@@ -259,15 +259,14 @@ def optimize_loss(loss,
 
       if grad_values is not None:
         if "gradients" in summaries:
-          logging_ops.histogram_summary("gradients/" + variable.name,
-                                        grad_values)
+          summary.histogram("gradients/" + variable.name, grad_values)
         if "gradient_norm" in summaries:
-          logging_ops.scalar_summary("gradient_norm/" + variable.name,
-                                     clip_ops.global_norm([grad_values]))
+          summary.scalar("gradient_norm/" + variable.name,
+                         clip_ops.global_norm([grad_values]))
 
     if clip_gradients is not None and "gradient_norm" in summaries:
-      logging_ops.scalar_summary("global_norm/clipped_gradient_norm",
-                                 clip_ops.global_norm(zip(*gradients)[0]))
+      summary.scalar("global_norm/clipped_gradient_norm",
+                     clip_ops.global_norm(zip(*gradients)[0]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(gradients,
@@ -357,8 +356,7 @@ def adaptive_clipping_fn(std_factor=2.,
 
     # reports the max gradient norm for debugging
     if report_summary:
-      logging_ops.scalar_summary(
-          "global_norm/adaptive_max_gradient_norm", max_norm)
+      summary.scalar("global_norm/adaptive_max_gradient_norm", max_norm)
 
     # factor will be 1. if norm is smaller than max_norm
     factor = math_ops.select(norm < max_norm,

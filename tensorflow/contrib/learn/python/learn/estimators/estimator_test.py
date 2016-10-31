@@ -439,7 +439,7 @@ class EstimatorTest(tf.test.TestCase):
     est.fit(input_fn=boston_input_fn, steps=200)
     est.evaluate(input_fn=boston_input_fn, steps=200)
     loss_summary = tf.contrib.testing.simple_values_from_events(
-        tf.contrib.testing.latest_events(est.model_dir), ['loss'])
+        tf.contrib.testing.latest_events(est.model_dir), ['OptimizeLoss/loss'])
     self.assertEqual(1, len(loss_summary))
 
   def testLossInGraphCollection(self):
