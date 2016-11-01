@@ -579,6 +579,24 @@ TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
   EXPECT_FALSE(fs.FileExists("gs://bucket2"));
 }
 
+TEST(GcsFileSystemTest, GetChildren_NoItems) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "fields=items%2Fname%2Cprefixes%2CnextPageToken&delimiter=%2F&prefix="
+      "path%2F\n"
+      "Auth Token: fake_token\n",
+      "{\"prefixes\": [\"path/subpath/\"]}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */, 5 /* max upload attempts */);
+
+  std::vector<string> children;
+  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", &children));
+
+  EXPECT_EQ(std::vector<string>({"subpath/"}), children);
+}
+
 TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"

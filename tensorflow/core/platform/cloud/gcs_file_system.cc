@@ -847,35 +847,34 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     Json::Value root;
     TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
     const auto items = root.get("items", Json::Value::null);
-    if (items == Json::Value::null) {
-      // Empty results.
-      return Status::OK();
-    }
-    if (!items.isArray()) {
-      return errors::Internal("Expected an array 'items' in the GCS response.");
-    }
-    for (size_t i = 0; i < items.size(); i++) {
-      const auto item = items.get(i, Json::Value::null);
-      if (!item.isObject()) {
+    if (items != Json::Value::null) {
+      if (!items.isArray()) {
         return errors::Internal(
-            "Unexpected JSON format: 'items' should be a list of objects.");
+            "Expected an array 'items' in the GCS response.");
       }
-      string name;
-      TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
-      // The names should be relative to the 'dirname'. That means the
-      // 'object_prefix', which is part of 'dirname', should be removed from the
-      // beginning of 'name'.
-      StringPiece relative_path(name);
-      if (!relative_path.Consume(object_prefix)) {
-        return errors::Internal(
-            strings::StrCat("Unexpected response: the returned file name ",
-                            name, " doesn't match the prefix ", object_prefix));
-      }
-      if (!relative_path.empty() || include_self_directory_marker) {
-        result->emplace_back(relative_path.ToString());
-      }
-      if (++retrieved_results >= max_results) {
-        return Status::OK();
+      for (size_t i = 0; i < items.size(); i++) {
+        const auto item = items.get(i, Json::Value::null);
+        if (!item.isObject()) {
+          return errors::Internal(
+              "Unexpected JSON format: 'items' should be a list of objects.");
+        }
+        string name;
+        TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
+        // The names should be relative to the 'dirname'. That means the
+        // 'object_prefix', which is part of 'dirname', should be removed from
+        // the beginning of 'name'.
+        StringPiece relative_path(name);
+        if (!relative_path.Consume(object_prefix)) {
+          return errors::Internal(strings::StrCat(
+              "Unexpected response: the returned file name ", name,
+              " doesn't match the prefix ", object_prefix));
+        }
+        if (!relative_path.empty() || include_self_directory_marker) {
+          result->emplace_back(relative_path.ToString());
+        }
+        if (++retrieved_results >= max_results) {
+          return Status::OK();
+        }
       }
     }
     const auto prefixes = root.get("prefixes", Json::Value::null);
