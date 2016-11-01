@@ -353,7 +353,7 @@ def gradients(ys,
     colocate_gradients_with_ops: If True, try colocating gradients with
       the corresponding op.
     gate_gradients: If True, add a tuple around the gradients returned
-      for an operations.  This avoids some race conditions.
+      for an operation.  This avoids some race conditions.
     aggregation_method: Specifies the method used to combine gradient terms.
       Accepted values are constants defined in the class `AggregationMethod`.
 
@@ -829,3 +829,40 @@ def _hessian_vector_product(ys, xs, v):
 
   # Second backprop
   return gradients(elemwise_products, xs)
+
+
+def hessian(ys, x, name="hessian", colocate_gradients_with_ops=False, 
+            gate_gradients=False, aggregation_method=None):
+  """Constructs the Hessian of sum of `ys` with respect to `x`.
+
+  `hessian()` adds ops to the graph to output the Hessian of `ys` with 
+  respect to `x` and returns a `Tensor`.
+
+  Args:
+    ys: A `Tensor` or list of tensors to be differentiated.
+    x: A `Tensor` to be used for differentiation.
+    name: Optional name to use for grouping all the gradient ops together.
+      defaults to 'gradients'.
+    colocate_gradients_with_ops: If True, try colocating gradients with
+      the corresponding op.
+    gate_gradients: If True, add a tuple around the gradients returned
+      for an operation.  This avoids some race conditions.
+    aggregation_method: Specifies the method used to combine gradient terms.
+      Accepted values are constants defined in the class `AggregationMethod`.
+
+  Returns:
+    The hessian of `sum(ys)` with respect to `x`.
+
+  Raises:
+    LookupError: if one of the operations between `x` and `ys` does not
+      have a registered gradient function.
+    ValueError: if the arguments are invalid
+  """
+  # Compute the regular gradients
+  _gradients, = gradients(
+    ys, x, colocate_gradients_with_ops=colocate_gradients_with_ops,
+    gate_gradients=gate_gradients, aggregation_method=aggregation_method
+  )
+  # Apply the gradients again
+  _hess = [gradients(_gradient)[0] for gradient in array_ops.unpack(_gradients)]
+  return array_ops.pack(_hess, name=name)
