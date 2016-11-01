@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -45,6 +46,10 @@ class QueueRunner {
 
   // Starts the queue runner with the given session.
   Status Start(Session* sess);
+
+  // Starts the queue runner with the given session, and wait for up to the
+  // specified time (in milliseconds) for the queues to start to fill up.
+  Status Start(Session* sess, int wait_for);
 
   // Requests to stop and runs the cancel op.
   Status Stop(Session* sess);
@@ -78,7 +83,9 @@ class QueueRunner {
   mutex mu_;
   // TODO(yuefengz): implement c++ coordinator.
   int runs_ = 0;
-  Status status_;
+  Status status_ GUARDED_BY(mu_);
+  Status enqueue_status_ GUARDED_BY(mu_);
+  std::unique_ptr<BlockingCounter> counter_;
 };
 
 }  // namespace tensorflow

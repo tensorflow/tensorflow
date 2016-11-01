@@ -88,6 +88,11 @@ class RetryingWritableFile : public WritableFile {
       : base_file_(std::move(base_file)),
         initial_delay_microseconds_(delay_microseconds) {}
 
+  ~RetryingWritableFile() {
+    // Makes sure the retrying version of Close() is called in the destructor.
+    Close();
+  }
+
   Status Append(const StringPiece& data) override {
     return CallWithRetries(
         std::bind(&WritableFile::Append, base_file_.get(), data),
