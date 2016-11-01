@@ -9,6 +9,8 @@ node_modules
 /util/python/python_lib
 /pip_test
 /_python_build
+**/tools/git/gen
 *.pyc
 __pycache__
 *.swp
+

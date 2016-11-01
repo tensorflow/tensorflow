@@ -35,6 +35,9 @@ from tensorflow.contrib.learn.python.learn.datasets import text_datasets
 load_iris = base.load_iris
 load_boston = base.load_boston
 
+# Export utilities
+split_data = base.split_into_train_and_test
+
 # List of all available datasets.
 # Note, currently they may return different types.
 DATASETS = {
@@ -46,6 +49,11 @@ DATASETS = {
     'dbpedia': text_datasets.load_dbpedia,
 }
 
+# List of all synthetic datasets
+SYNTHETIC = {
+  # All of these will return ['data', 'target'] -> base.Dataset
+  'circles': synthetic.circles
+}
 
 def load_dataset(name, size='small', test_with_fake_data=False):
   """Loads dataset by name.
@@ -68,10 +76,32 @@ def load_dataset(name, size='small', test_with_fake_data=False):
   else:
     return DATASETS[name]()
 
-# List of all synthetic datasets
-SYNTHETIC = {
-  # All of these will return ['data', 'target'] -> base.Dataset
-  'circles': synthetic.circles
-}
+def make_synthetic(name='circles', n_samples=100, noise=None, *args, **kwargs):
+  """Creates binary synthetic datasets
 
-def make_synthetic(name, n_samples, )
+  Args:
+    name: Name of the dataset to generate (optional, str, default='circles')
+    n_samples: Number of datapoints to generate (optional, int, default=100)
+    noise: Standard deviation of the Gaussian noise added (optional, float or None, default=None)
+
+  Returns:
+    Shuffled features and labels for given synthetic dataset of type `base.Dataset`
+
+  Raises:
+    ValueError: 
+
+  Note: 
+    - This is a generic synthetic data generator - individual generators might have more parameters!
+      See documentation for individual parameters
+    - Note that the `noise` parameter uses `numpy.random.normal` and depends on `numpy`'s seed
+
+  TODO:
+    - Support custom seed for replicability
+    - Support multiclass datasets
+    - Need shuffling routine. Currently synthetic datasets are reshuffled to avoid train/test correlation,
+      but that hurts reprodusability
+  """
+  if name not in SYNTHETIC:
+    raise ValueError('Synthetic dataset not found or not implemeted: %s' % name)
+  else:
+    return SYNTHETIC[name](n_samples=n_samples, noise=noise, *args, **kwargs)
