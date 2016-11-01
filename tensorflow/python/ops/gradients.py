@@ -860,7 +860,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
     LookupError: if one of the operations between `xs` and `ys` does not
       have a registered gradient function.
     ValueError: if the arguments are invalid or not supported. Currently,
-      this function only supports one-dimensional `x` in `xs`
+      this function only supports one-dimensional `x` in `xs`.
   """
   xs = _AsList(xs)
   kwargs = {
