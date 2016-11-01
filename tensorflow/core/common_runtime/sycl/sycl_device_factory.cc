@@ -15,7 +15,7 @@ limitations under the License.
 
 #if TENSORFLOW_USE_SYCL
 
-#include "sycl_device.h"
+#include "tensorflow/core/common_runtime/sycl/sycl_device.h"
 
 namespace tensorflow {
 

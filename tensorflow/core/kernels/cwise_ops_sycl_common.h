@@ -58,12 +58,6 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
   void Left(const SYCLDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
             typename Functor::tin_type in, bool* error) {
-    // typedef typename Functor::out_type Tout;
-    // typedef typename Functor::in_type Tin;
-    // typedef typename Functor::func Binary;
-    // typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
-    // Assign(d, out, in.unaryExpr(Unary(scalar.data())));
-    //  printf("BinaryFunctor::Left NOT IMPLEMENTED ! \n");
     LOG(FATAL) << "BinaryFunctor::Left NOT IMPLEMENTED ! ";
   }
 
@@ -85,7 +79,6 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
              bool* error) {
     LOG(FATAL) << "BinaryFunctor::BCast NOT IMPLEMENTED ";
-    //    printf("BinaryFunctor::BCast NOT IMPLEMENTED ! \n");
   }
 };
 

@@ -45,8 +45,6 @@ class SYCLDevice : public LocalDevice {
   static string GetShortDeviceDescription(/*int device_id,
                                           const DeviceDescription& desc*/) {
     return strings::StrCat("device: 0, name SYCL, pci bus id: 0");
-    // return strings::StrCat("device: ", device_id, ", name: ", desc.name(),
-    //                       ", pci bus id: ", desc.pci_bus_id());
   }
 
  private:
