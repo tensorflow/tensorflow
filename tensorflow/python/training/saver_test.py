@@ -1644,6 +1644,29 @@ class MetaGraphTest(tf.test.TestCase):
                 "new_model/label:0":
                 np.random.random_integers(10, size=[1, 10])})
 
+  def testClearDevicesOnExport(self):
+    # Test that we export a graph without its devices and run successfully.
+    with tf.Graph().as_default():
+      with tf.device("/job:ps/replica:0/task:0/device:GPU:0"):
+        image = tf.placeholder(tf.float32, [None, 784], name="image")
+        label = tf.placeholder(tf.float32, [None, 10], name="label")
+        weights = tf.Variable(tf.random_uniform([784, 10]), name="weights")
+        bias = tf.Variable(tf.zeros([10]), name="bias")
+        logit = tf.nn.relu(tf.matmul(image, weights) + bias)
+        tf.nn.softmax(logit, name="prediction")
+        cost = tf.nn.softmax_cross_entropy_with_logits(logit, label)
+        tf.train.AdamOptimizer().minimize(cost, name="optimize")
+      meta_graph_def = tf.train.export_meta_graph(clear_devices=True)
+      tf.train.write_graph(meta_graph_def, "/tmp", "meta_graph.pbtxt")
+
+    with tf.Session(graph=tf.Graph()) as sess:
+      tf.train.import_meta_graph(meta_graph_def, import_scope="new_model")
+      sess.run(tf.initialize_all_variables())
+      sess.run(["new_model/optimize"],
+               {"new_model/image:0": np.random.random([1, 784]),
+                "new_model/label:0":
+                np.random.random_integers(10, size=[1, 10])})
+
 
 class CheckpointReaderTest(tf.test.TestCase):
 
