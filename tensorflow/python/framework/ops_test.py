@@ -88,6 +88,12 @@ class TensorTest(test_util.TensorFlowTestCase):
 
 class SparseTensorTest(test_util.TensorFlowTestCase):
 
+  def testInvalidFromValue(self):
+    for invalid_value in (None, 42.0, ops.convert_to_tensor(42.0)):
+      with self.assertRaisesRegexp(
+          TypeError, "Neither a SparseTensor nor SparseTensorValue"):
+        ops.SparseTensor.from_value(invalid_value)
+
   def testPythonConstruction(self):
     indices = [[1, 2], [2, 0], [3, 4]]
     values = [b"a", b"b", b"c"]

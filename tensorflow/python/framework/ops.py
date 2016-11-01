@@ -1027,6 +1027,12 @@ class SparseTensor(object):
 
   @classmethod
   def from_value(cls, sparse_tensor_value):
+    if not (
+        isinstance(sparse_tensor_value, SparseTensor) or
+        isinstance(sparse_tensor_value, SparseTensorValue)):
+      raise TypeError(
+          "Neither a SparseTensor nor SparseTensorValue: %s." %
+          sparse_tensor_value)
     return SparseTensor(
         indices=sparse_tensor_value.indices,
         values=sparse_tensor_value.values,
