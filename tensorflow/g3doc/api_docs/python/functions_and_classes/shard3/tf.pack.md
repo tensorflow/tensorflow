@@ -1,5 +1,7 @@
 ### `tf.pack(values, axis=0, name='pack')` {#pack}
 
+DEPRECATED: Use stack.
+
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
 Packs the list of tensors in `values` into a tensor with rank one higher than

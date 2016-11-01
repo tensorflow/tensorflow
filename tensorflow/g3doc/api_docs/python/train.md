@@ -980,9 +980,252 @@ learning_step = (
     Must be positive.  See the decay computation above.
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
-*  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals
+*  <b>`staircase`</b>: Boolean.  If `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
     'ExponentialDecay'.
+
+##### Returns:
+
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+  learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
+
+
+- - -
+
+### `tf.train.inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate, staircase=False, name=None)` {#inverse_time_decay}
+
+Applies inverse time decay to the initial learning rate.
+
+When training a model, it is often recommended to lower the learning rate as
+the training progresses.  This function applies an inverse decay function
+to a provided initial learning rate.  It requires an `global_step` value to
+compute the decayed learning rate.  You can just pass a TensorFlow variable
+that you increment at each training step.
+
+The function returns the decayed learning rate.  It is computed as:
+
+```python
+decayed_learning_rate = learning_rate / (1 + decay_rate * t)
+```
+
+Example: decay 1/t with a rate of 0.5:
+
+```python
+...
+global_step = tf.Variable(0, trainable=False)
+learning_rate = 0.1
+k = 0.5
+learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, k)
+
+# Passing global_step to minimize() will increment it at each step.
+learning_step = (
+    tf.train.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
+```
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The initial learning rate.
+*  <b>`global_step`</b>: A Python number.
+    Global step to use for the decay computation.  Must not be negative.
+*  <b>`decay_steps`</b>: How often to apply decay.
+*  <b>`decay_rate`</b>: A Python number.  The decay rate.
+*  <b>`staircase`</b>: Whether to apply decay in a discrete staircase, as opposed to
+    continuous, fashion.
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
+    'InverseTimeDecay'.
+
+##### Returns:
+
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+  learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
+
+
+- - -
+
+### `tf.train.natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate, staircase=False, name=None)` {#natural_exp_decay}
+
+Applies natural exponential decay to the initial learning rate.
+
+When training a model, it is often recommended to lower the learning rate as
+the training progresses.  This function applies an exponential decay function
+to a provided initial learning rate.  It requires an `global_step` value to
+compute the decayed learning rate.  You can just pass a TensorFlow variable
+that you increment at each training step.
+
+The function returns the decayed learning rate.  It is computed as:
+
+```python
+decayed_learning_rate = learning_rate * exp(-decay_rate * global_step)
+```
+
+Example: decay exponentially with a base of 0.96:
+
+```python
+...
+global_step = tf.Variable(0, trainable=False)
+learning_rate = 0.1
+k = 0.5
+learning_rate = tf.train.exponential_time_decay(learning_rate, global_step, k)
+
+# Passing global_step to minimize() will increment it at each step.
+learning_step = (
+    tf.train.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
+```
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The initial learning rate.
+*  <b>`global_step`</b>: A Python number.
+    Global step to use for the decay computation.  Must not be negative.
+*  <b>`decay_steps`</b>: How often to apply decay.
+*  <b>`decay_rate`</b>: A Python number.  The decay rate.
+*  <b>`staircase`</b>: Whether to apply decay in a discrete staircase, as opposed to
+    continuous, fashion.
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
+    'ExponentialTimeDecay'.
+
+##### Returns:
+
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+  learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
+
+
+- - -
+
+### `tf.train.piecewise_constant(x, boundaries, values, name=None)` {#piecewise_constant}
+
+Piecewise constant from boundaries and interval values.
+
+Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
+  for steps 100001 to 110000, and 0.1 for any additional steps.
+
+```python
+global_step = tf.Variable(0, trainable=False)
+boundaries = [100000, 110000]
+values = [1.0, 0.5, 0.1]
+learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
+
+# Later, whenever we perform an optimization step, we increment global_step.
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A 0-D scalar `Tensor`. Must be one of the following types: `float32`,
+    `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
+*  <b>`boundaries`</b>: A list of `Tensor`s or `int`s or `float`s with strictly
+    increasing entries, and with all elements having the same type as `x`.
+*  <b>`values`</b>: A list of `Tensor`s or float`s or `int`s that specifies the values
+    for the intervals defined by `boundaries`. It should have one more element
+    than `boundaries`, and all elements should have the same type.
+*  <b>`name`</b>: A string. Optional name of the operation. Defaults to
+    'PiecewiseConstant'.
+
+##### Returns:
+
+  A 0-D Tensor. Its value is `values[0]` when `x <= boundaries[0]`,
+  `values[1]` when `x > boundaries[0]` and `x <= boundaries[1]`, ...,
+  and values[-1] when `x > boundaries[-1]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if types of `x` and `buondaries` do not match, or types of all
+      `values` do not match.
+
+
+- - -
+
+### `tf.train.polynomial_decay(learning_rate, global_step, decay_steps, end_learning_rate=0.0001, power=1.0, cycle=False, name=None)` {#polynomial_decay}
+
+Applies a polynomial decay to the learning rate.
+
+It is commonly observed that a monotonically decreasing learning rate, whose
+degree of change is carefully chosen, results in a better performing model.
+This function applies a polynomial decay function to a provided initial
+`learning_rate` to reach an `end_learning_rate` in the given `decay_steps`.
+
+It requires a `global_step` value to compute the decayed learning rate.  You
+can just pass a TensorFlow variable that you increment at each training step.
+
+The function returns the decayed learning rate.  It is computed as:
+
+```python
+global_step = min(global_step, decay_steps)
+decayed_learning_rate = (learning_rate - end_learning_rate) *
+                        (1 - global_step / decay_steps) ^ (power) +
+                        end_learning_rate
+
+```
+
+If `cycle` is True then a multiple of `decay_steps` is used, the first one
+that is bigger than `global_steps`.
+
+```python
+decay_steps = decay_steps * ceil(global_step / decay_steps)
+decayed_learning_rate = (learning_rate - end_learning_rate) *
+                        (1 - global_step / decay_steps) ^ (power) +
+                        end_learning_rate
+
+```
+
+Example: decay from 0.1 to 0.01 in 10000 steps using sqrt (i.e. power=0.5):
+
+```python
+...
+global_step = tf.Variable(0, trainable=False)
+starter_learning_rate = 0.1
+end_learning_rate = 0.01
+decay_steps = 10000
+learning_rate = tf.train.polynomial_decay(starter_learning_rate, global_step,
+                                          decay_steps, end_learning_rate,
+                                          power=0.5)
+# Passing global_step to minimize() will increment it at each step.
+learning_step = (
+    tf.train.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
+```
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The initial learning rate.
+*  <b>`global_step`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
+    Global step to use for the decay computation.  Must not be negative.
+*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
+    Must be positive.  See the decay computation above.
+*  <b>`end_learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The minimal end learning rate.
+*  <b>`power`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The power of the polynomial. Defaults to sqrt, i.e. 0.5.
+*  <b>`cycle`</b>: A boolean, whether or not it should cycle beyond decay_steps.
+*  <b>`name`</b>: String.  Optional name of the operation. Defaults to
+    'PolynomialDecay'.
 
 ##### Returns:
 
@@ -1582,19 +1825,19 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 #### `tf.train.QueueRunner.create_threads(sess, coord=None, daemon=False, start=False)` {#QueueRunner.create_threads}
 
-Create threads to run the enqueue ops.
+Create threads to run the enqueue ops for the given session.
 
 This method requires a session in which the graph was launched.  It creates
 a list of threads, optionally starting them.  There is one thread for each
 op passed in `enqueue_ops`.
 
-The `coord` argument is an optional coordinator, that the threads will use
+The `coord` argument is an optional coordinator that the threads will use
 to terminate together and report exceptions.  If a coordinator is given,
 this method starts an additional thread to close the queue when the
 coordinator requests a stop.
 
-This method may be called again as long as all threads from a previous call
-have stopped.
+If previously created threads for the given session are still running, no
+new threads will be created.
 
 ##### Args:
 
@@ -1609,12 +1852,6 @@ have stopped.
 ##### Returns:
 
   A list of threads.
-
-##### Raises:
-
-
-*  <b>`RuntimeError`</b>: If threads from a previous call to `create_threads()` are
-  still running.
 
 
 - - -
@@ -4218,21 +4455,25 @@ such as saving a last checkpoint.
 
 ### `class tf.train.LoggingTensorHook` {#LoggingTensorHook}
 
-Prints given tensors every N iteration.
+Prints the given tensors once every N local steps or once every N seconds.
 
 The tensors will be printed to the log, with `INFO` severity.
 - - -
 
-#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=100)` {#LoggingTensorHook.__init__}
+#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None)` {#LoggingTensorHook.__init__}
 
 Initializes a LoggingHook monitor.
 
 ##### Args:
 
 
-*  <b>`tensors`</b>: `dict` of tag to tensors/names or
-      `iterable` of tensors/names.
-*  <b>`every_n_iter`</b>: `int`, print every N iteration.
+*  <b>`tensors`</b>: `dict` that maps string-valued tags to tensors/tensor names,
+      or `iterable` of tensors/tensor names.
+*  <b>`every_n_iter`</b>: `int`, print the values of `tensors` once every N local
+      steps taken on the current worker.
+*  <b>`every_n_secs`</b>: `int` or `float`, print the values of `tensors` once every N
+      seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
+      provided.
 
 ##### Raises:
 
@@ -4417,7 +4658,7 @@ Initialize CheckpointSaverHook monitor.
 Steps per second monitor.
 - - -
 
-#### `tf.train.StepCounterHook.__init__(every_n_steps=100, output_dir=None, summary_writer=None)` {#StepCounterHook.__init__}
+#### `tf.train.StepCounterHook.__init__(every_n_steps=100, every_n_secs=None, output_dir=None, summary_writer=None)` {#StepCounterHook.__init__}
 
 
 

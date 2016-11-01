@@ -322,7 +322,7 @@ class ZerosTest(tf.test.TestCase):
 class ZerosLikeTest(tf.test.TestCase):
 
   def _compareZeros(self, dtype, use_gpu):
-    with self.test_session(use_gpu=False):
+    with self.test_session(use_gpu=use_gpu):
       # Creates a tensor of non-zero values with shape 2 x 3.
       numpy_dtype = dtype.as_numpy_dtype
       d = tf.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
@@ -342,7 +342,7 @@ class ZerosLikeTest(tf.test.TestCase):
       self._compareZeros(dtype, False)
 
   def testZerosLikeGPU(self):
-    for dtype in [tf.float32, tf.float64, tf.int32]:
+    for dtype in [tf.float32, tf.float64, tf.int32, tf.bool]:
       self._compareZeros(dtype, True)
 
   def testZerosLikePartialShape(self):

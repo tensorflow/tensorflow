@@ -225,9 +225,9 @@ class DataFeeder(object):
 
     Args:
       x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]`.
-      y: Target vector, either floats for regression or class id for
+      y: Label vector, either floats for regression or class id for
         classification. If matrix, will consider as a sequence
-        of targets. Can be `None` for unsupervised setting.
+        of labels. Can be `None` for unsupervised setting.
       n_classes: Number of classes, 0 and 1 are considered regression, `None`
         will pass through the input labels without one-hot conversion.
       batch_size: Mini-batch size to accumulate.
@@ -238,7 +238,7 @@ class DataFeeder(object):
 
     Attributes:
       x: Input features.
-      y: Input target.
+      y: Input label.
       n_classes: Number of classes (if `None`, pass through indices without
         one-hot conversion).
       batch_size: Mini-batch size to accumulate.
@@ -248,7 +248,7 @@ class DataFeeder(object):
       output_dtype: DType of output.
     """
     self._x = check_array(x, dtype=x.dtype)
-    # self.n_classes is None means we're passing in raw target indices.
+    # self.n_classes is None means we're passing in raw label indices.
     y_dtype = (
         np.int64 if n_classes is not None and n_classes > 1 else np.float32)
     if n_classes is not None:
@@ -264,7 +264,7 @@ class DataFeeder(object):
         batch_size)
     # Input dtype matches dtype of x.
     self._input_dtype = _check_dtype(self._x.dtype)
-    # self.n_classes is None means we're passing in raw target indices
+    # self.n_classes is None means we're passing in raw label indices
     if n_classes is not None or self._y is None:
       self._output_dtype = np.float32
     else:
@@ -402,7 +402,7 @@ class DataFeeder(object):
       out = np.zeros(self.output_shape, dtype=self._output_dtype)
       for i in xrange(out.shape[0]):
         sample = batch_indices[i]
-        # self.n_classes is None means we're passing in raw target indices
+        # self.n_classes is None means we're passing in raw label indices
         if self.n_classes is None:
           out[i] = _access(self._y, sample)
         else:
@@ -436,12 +436,12 @@ class StreamingDataFeeder(DataFeeder):
       x: iterator that returns for each element, returns features.
       y: iterator that returns for each element, returns 1 or many classes /
          regression values.
-      n_classes: indicator of how many classes the target has.
+      n_classes: indicator of how many classes the label has.
       batch_size: Mini batch size to accumulate.
 
     Attributes:
       x: input features.
-      y: input target.
+      y: input label.
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
       input_shape: shape of the input.
@@ -531,7 +531,7 @@ class StreamingDataFeeder(DataFeeder):
             try:
               out[i] = y
             except ValueError as _:
-              assert len(y) == 1, ('Expected singleton target, got {}'
+              assert len(y) == 1, ('Expected singleton label, got {}'
                                    .format(repr(y)))
               out[i] = y[0]
       if self._y is None:
@@ -558,7 +558,7 @@ class DaskDataFeeder(object):
       x: iterator that returns for each element, returns features.
       y: iterator that returns for each element, returns 1 or many classes /
         regression values.
-      n_classes: indicator of how many classes the target has.
+      n_classes: indicator of how many classes the label has.
       batch_size: Mini batch size to accumulate.
       shuffle: Whether to shuffle the inputs.
       random_state: random state for RNG. Note that it will mutate so use a
@@ -567,7 +567,7 @@ class DaskDataFeeder(object):
 
     Attributes:
       x: input features.
-      y: input target.
+      y: input label.
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
       input_shape: shape of the input.
@@ -623,7 +623,7 @@ class DaskDataFeeder(object):
 
     Args:
       input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output targets.
+      output_placeholder: tf.Placeholder for output labels.
 
     Returns:
       A function that when called samples a random subset of batch size

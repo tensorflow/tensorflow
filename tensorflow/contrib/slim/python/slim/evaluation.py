@@ -71,7 +71,7 @@ more summaries and call the evaluation_loop method:
 
   # Define the summaries to write:
   for metric_name, metric_value in metrics_to_values.iteritems():
-    tf.scalar_summary(metric_name, metric_value)
+    tf.summary.scalar(metric_name, metric_value)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -101,8 +101,8 @@ with only summaries. The user need only leave out the 'eval_op' argument:
   predictions = MyModel(images)
 
   # Define the summaries to write:
-  tf.scalar_summary(...)
-  tf.histogram_summary(...)
+  tf.summary.scalar(...)
+  tf.summary.histogram(...)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -126,8 +126,8 @@ import time
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import summary_io
@@ -272,8 +272,8 @@ def evaluation(sess,
       global_step = variables.get_or_create_global_step()
 
     global_step = training_util.global_step(sess, global_step)
-    summary = sess.run(summary_op, summary_op_feed_dict)
-    summary_writer.add_summary(summary, global_step)
+    summary_str = sess.run(summary_op, summary_op_feed_dict)
+    summary_writer.add_summary(summary_str, global_step)
     summary_writer.flush()
 
   return final_op_value
@@ -311,7 +311,7 @@ def evaluate_once(master,
       value of `final_op` is returned.
     final_op_feed_dict: A feed dictionary to use when executing `final_op`.
     summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
-      default the summary_op is set to tf.merge_all_summaries().
+      default the summary_op is set to tf.summary.merge_all().
     summary_op_feed_dict: An optional feed dictionary to use when running the
       `summary_op`.
     variables_to_restore: A list of TensorFlow variables to restore during
@@ -324,7 +324,7 @@ def evaluate_once(master,
     The value of `final_op` or `None` if `final_op` is `None`.
   """
   if summary_op == _USE_DEFAULT:
-    summary_op = logging_ops.merge_all_summaries()
+    summary_op = summary.merge_all()
 
   global_step = variables.get_or_create_global_step()
 
@@ -398,7 +398,7 @@ def evaluation_loop(master,
       value of `final_op` is returned.
     final_op_feed_dict: A feed dictionary to use when executing `final_op`.
     summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
-      default the summary_op is set to tf.merge_all_summaries().
+      default the summary_op is set to tf.summary.merge_all().
     summary_op_feed_dict: An optional feed dictionary to use when running the
       `summary_op`.
     variables_to_restore: A list of TensorFlow variables to restore during
@@ -416,7 +416,7 @@ def evaluation_loop(master,
     The value of `final_op` or `None` if `final_op` is `None`.
   """
   if summary_op == _USE_DEFAULT:
-    summary_op = logging_ops.merge_all_summaries()
+    summary_op = summary.merge_all()
 
   global_step = variables.get_or_create_global_step()
 

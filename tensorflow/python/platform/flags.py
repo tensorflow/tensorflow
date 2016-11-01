@@ -24,15 +24,19 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _global_parser = _argparse.ArgumentParser()
 
+
+# pylint: disable=invalid-name
+
+
 class _FlagValues(object):
+  """Global container and accessor for flags and their values."""
 
   def __init__(self):
-    """Global container and accessor for flags and their values."""
     self.__dict__['__flags'] = {}
     self.__dict__['__parsed'] = False
 
-  def _parse_flags(self):
-    result, unparsed = _global_parser.parse_known_args()
+  def _parse_flags(self, args=None):
+    result, unparsed = _global_parser.parse_known_args(args=args)
     for flag_name, val in vars(result).items():
       self.__dict__['__flags'][flag_name] = val
     self.__dict__['__parsed'] = True
@@ -55,7 +59,7 @@ class _FlagValues(object):
 
 def _define_helper(flag_name, default_value, docstring, flagtype):
   """Registers 'flag_name' with 'default_value' and 'docstring'."""
-  _global_parser.add_argument("--" + flag_name,
+  _global_parser.add_argument('--' + flag_name,
                               default=default_value,
                               help=docstring,
                               type=flagtype)

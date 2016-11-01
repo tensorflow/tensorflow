@@ -899,7 +899,7 @@ class Saver(object):
                builder=None,
                defer_build=False,
                allow_empty=False,
-               write_version=saver_pb2.SaverDef.V1,
+               write_version=saver_pb2.SaverDef.V2,
                pad_step_number=False):
     """Creates a `Saver`.
 
@@ -1000,6 +1000,7 @@ class Saver(object):
       self.build()
     if self.saver_def:
       self._check_saver_def()
+      self._write_version = self.saver_def.version
 
   def build(self):
     """Builds saver_def."""
@@ -1343,7 +1344,8 @@ class Saver(object):
                         filename=None,
                         collection_list=None,
                         as_text=False,
-                        export_scope=None):
+                        export_scope=None,
+                        clear_devices=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1351,6 +1353,8 @@ class Saver(object):
       collection_list: List of string keys to collect.
       as_text: If `True`, writes the meta_graph as an ASCII proto.
       export_scope: Optional `string`. Name scope to remove.
+      clear_devices: Whether or not to clear the device field for an `Operation`
+        or `Tensor` during export.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1361,7 +1365,8 @@ class Saver(object):
         saver_def=self.saver_def,
         collection_list=collection_list,
         as_text=as_text,
-        export_scope=export_scope)
+        export_scope=export_scope,
+        clear_devices=clear_devices)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1461,8 +1466,8 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
-def import_meta_graph(meta_graph_or_file, import_scope=None,
-                      **kwargs):
+def import_meta_graph(meta_graph_or_file, clear_devices=False,
+                      import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
@@ -1516,6 +1521,8 @@ def import_meta_graph(meta_graph_or_file, import_scope=None,
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during import.
     import_scope: Optional `string`. Name scope to add. Only used when
       initializing from protocol buffer.
     **kwargs: Optional keyed arguments.
@@ -1532,6 +1539,7 @@ def import_meta_graph(meta_graph_or_file, import_scope=None,
     meta_graph_def = meta_graph_or_file
 
   meta_graph.import_scoped_meta_graph(meta_graph_def,
+                                      clear_devices=clear_devices,
                                       import_scope=import_scope,
                                       **kwargs)
   if meta_graph_def.HasField("saver_def"):
@@ -1555,6 +1563,7 @@ def export_meta_graph(filename=None,
                       as_text=False,
                       graph=None,
                       export_scope=None,
+                      clear_devices=False,
                       **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -1576,6 +1585,8 @@ def export_meta_graph(filename=None,
       the subgraph. The scope name will be striped from the node definitions
       for easy import later into new name scopes. If `None`, the whole graph
       is exported. graph_def and export_scope cannot both be specified.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during export.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1593,6 +1604,7 @@ def export_meta_graph(filename=None,
       as_text=as_text,
       graph=graph,
       export_scope=export_scope,
+      clear_devices=clear_devices,
       **kwargs)
   return meta_graph_def
 

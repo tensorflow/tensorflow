@@ -18,13 +18,14 @@ package org.tensorflow.demo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Fragment;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.Toast;
 
-public class CameraActivity extends Activity {
+public abstract class CameraActivity extends Activity {
   private static final int PERMISSIONS_REQUEST = 1;
 
   private static final String PERMISSION_CAMERA = Manifest.permission.CAMERA;
@@ -48,7 +49,8 @@ public class CameraActivity extends Activity {
   }
 
   @Override
-  public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+  public void onRequestPermissionsResult(
+      final int requestCode, final String[] permissions, final int[] grantResults) {
     switch (requestCode) {
       case PERMISSIONS_REQUEST: {
         if (grantResults.length > 0
@@ -79,10 +81,12 @@ public class CameraActivity extends Activity {
     }
   }
 
-  private void setFragment() {
+  protected void setFragment() {
     getFragmentManager()
-            .beginTransaction()
-            .replace(R.id.container, CameraConnectionFragment.newInstance())
-            .commit();
+        .beginTransaction()
+        .replace(R.id.container, createFragment())
+        .commit();
   }
+
+  protected abstract Fragment createFragment();
 }

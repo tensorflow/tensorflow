@@ -167,7 +167,7 @@ class Example {
   // A dense vector which is a row-slice of the underlying matrix.
   struct DenseVector {
     // Returns a row slice from the matrix.
-    Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>> row()
+    Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>> Row()
         const {
       return Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>>(
           data_matrix.data() + row_index * data_matrix.dimension(1),
@@ -176,7 +176,7 @@ class Example {
 
     // Returns a row slice as a 1 * F matrix, where F is the number of features.
     Eigen::TensorMap<Eigen::Tensor<const float, 2, Eigen::RowMajor>>
-    row_as_matrix() const {
+    RowAsMatrix() const {
       return Eigen::TensorMap<Eigen::Tensor<const float, 2, Eigen::RowMajor>>(
           data_matrix.data() + row_index * data_matrix.dimension(1), 1,
           data_matrix.dimension(1));
@@ -228,18 +228,26 @@ class FeatureWeightsDenseStorage {
       const Eigen::ThreadPoolDevice& device,
       const Example::DenseVector& dense_vector,
       const std::vector<double>& normalized_bounded_dual_delta) {
-    // Transform the dual vector into a column matrix.
-    const Eigen::TensorMap<Eigen::Tensor<const double, 2, Eigen::RowMajor>>
-        dual_matrix(normalized_bounded_dual_delta.data(),
-                    normalized_bounded_dual_delta.size(), 1);
-    const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
-        Eigen::IndexPair<int>(1, 0)};
-    // This essentially computes delta_w += delta_vector / \lamdba * N.
-    deltas_.device(device) =
-        (deltas_.cast<double>() +
-         dual_matrix.contract(dense_vector.row_as_matrix().cast<double>(),
-                              product_dims))
-            .cast<float>();
+    const size_t num_weight_vectors = normalized_bounded_dual_delta.size();
+    if (num_weight_vectors == 1) {
+      deltas_.device(device) =
+          deltas_ +
+          dense_vector.RowAsMatrix() *
+              deltas_.constant(normalized_bounded_dual_delta[0]);
+    } else {
+      // Transform the dual vector into a column matrix.
+      const Eigen::TensorMap<Eigen::Tensor<const double, 2, Eigen::RowMajor>>
+          dual_matrix(normalized_bounded_dual_delta.data(), num_weight_vectors,
+                      1);
+      const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
+          Eigen::IndexPair<int>(1, 0)};
+      // This essentially computes delta_w += delta_vector / \lamdba * N.
+      deltas_.device(device) =
+          (deltas_.cast<double>() +
+           dual_matrix.contract(dense_vector.RowAsMatrix().cast<double>(),
+                                product_dims))
+              .cast<float>();
+    }
   }
 
  private:
@@ -456,19 +464,37 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
         dense_weights.nominals() +
         dense_weights.deltas() *
             dense_weights.deltas().constant(num_loss_partitions);
-    const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
-        Eigen::IndexPair<int>(1, 1)};
-    const Eigen::Tensor<float, 2, Eigen::RowMajor> prev_prediction =
-        regularization.EigenShrinkMatrix(dense_weights.nominals())
-            .contract(dense_vector.row_as_matrix(), product_dims);
-    const Eigen::Tensor<float, 2, Eigen::RowMajor> prediction =
-        regularization.EigenShrinkMatrix(feature_weights)
-            .contract(dense_vector.row_as_matrix(), product_dims);
-    // The result of "tensor contraction" (multiplication)  in the code
-    // above is of dimension num_weight_vectors * 1.
-    for (int l = 0; l < num_weight_vectors; ++l) {
-      result.prev_wx[l] += prev_prediction(l, 0);
-      result.wx[l] += prediction(l, 0);
+    if (num_weight_vectors == 1) {
+      const Eigen::Tensor<float, 0, Eigen::RowMajor> prev_prediction =
+          (dense_vector.Row() *
+           regularization.EigenShrinkVector(
+               Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>>(
+                   dense_weights.nominals().data(),
+                   dense_weights.nominals().dimension(1))))
+              .sum();
+      const Eigen::Tensor<float, 0, Eigen::RowMajor> prediction =
+          (dense_vector.Row() *
+           regularization.EigenShrinkVector(
+               Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>>(
+                   feature_weights.data(), feature_weights.dimension(1))))
+              .sum();
+      result.prev_wx[0] += prev_prediction();
+      result.wx[0] += prediction();
+    } else {
+      const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
+          Eigen::IndexPair<int>(1, 1)};
+      const Eigen::Tensor<float, 2, Eigen::RowMajor> prev_prediction =
+          regularization.EigenShrinkMatrix(dense_weights.nominals())
+              .contract(dense_vector.RowAsMatrix(), product_dims);
+      const Eigen::Tensor<float, 2, Eigen::RowMajor> prediction =
+          regularization.EigenShrinkMatrix(feature_weights)
+              .contract(dense_vector.RowAsMatrix(), product_dims);
+      // The result of "tensor contraction" (multiplication)  in the code
+      // above is of dimension num_weight_vectors * 1.
+      for (int l = 0; l < num_weight_vectors; ++l) {
+        result.prev_wx[l] += prev_prediction(l, 0);
+        result.wx[l] += prediction(l, 0);
+      }
     }
   }
 
@@ -824,7 +850,7 @@ void Examples::ComputeSquaredNormPerExample(
       }
       for (int j = 0; j < num_dense_features; ++j) {
         const Eigen::Tensor<float, 0, Eigen::RowMajor> sn =
-            example->dense_vectors_[j]->row().square().sum();
+            example->dense_vectors_[j]->Row().square().sum();
         squared_norm += sn();
       }
       example->squared_norm_ = squared_norm;
@@ -1053,7 +1079,7 @@ REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 // persistent storage, as its implementation may change in the future.
 //
 // The current probability of at least one collision for 1B example_ids is
-// approximately 10^-11 (ie 2^60 / 2^97).
+// approximately 10^-21 (ie 2^60 / 2^129).
 class SdcaFprint : public OpKernel {
  public:
   explicit SdcaFprint(OpKernelConstruction* const context)
@@ -1061,26 +1087,26 @@ class SdcaFprint : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     const Tensor& input = context->input(0);
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
+                errors::InvalidArgument("Input must be a vector, got shape ",
+                                        input.shape().DebugString()));
     Tensor* out;
-    OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &out));
+    const int64 num_elements = input.NumElements();
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({num_elements, 2}), &out));
 
     const auto in_values = input.flat<string>();
-    auto out_values = out->flat<string>();
+    auto out_values = out->matrix<int64>();
 
-    for (int64 i = 0; i < in_values.size(); ++i) {
-      out_values(i) = Fp128ToBinaryString(Fingerprint128(in_values(i)));
+    for (int64 i = 0; i < num_elements; ++i) {
+      const Fprint128 fprint = Fingerprint128(in_values(i));
+      // Never return 0 or 1 as the first value of the hash to allow these to
+      // safely be used as sentinel values (e.g. dense hash table empty key).
+      out_values(i, 0) = TF_PREDICT_TRUE(fprint.low64 >= 2)
+                             ? fprint.low64
+                             : fprint.low64 + ~static_cast<uint64>(1);
+      out_values(i, 1) = fprint.high64;
     }
-  }
-
- private:
-  // Returns a 12 character binary string of the fprint.
-  // We use 12 of the 16 fingerprint bytes to save memory, in particular in
-  // string implementations that use a short string optimization.
-  static string Fp128ToBinaryString(const Fprint128& fprint) {
-    string result;
-    core::PutFixed64(&result, fprint.low64);
-    core::PutFixed32(&result, fprint.high64);
-    return result;
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaFprint").Device(DEVICE_CPU), SdcaFprint);

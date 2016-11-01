@@ -21,6 +21,7 @@ from __future__ import print_function
 # pylint: disable=missing-docstring
 import argparse
 import os.path
+import sys
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -116,7 +117,7 @@ def run_training():
   """Train MNIST for a number of steps."""
   # Get the sets of images and labels for training, validation, and
   # test on MNIST.
-  data_sets = input_data.read_data_sets(FLAGS.train_dir, FLAGS.fake_data)
+  data_sets = input_data.read_data_sets(FLAGS.input_data_dir, FLAGS.fake_data)
 
   # Tell TensorFlow that the model will be built into the default Graph.
   with tf.Graph().as_default():
@@ -145,13 +146,13 @@ def run_training():
     init = tf.initialize_all_variables()
 
     # Create a saver for writing training checkpoints.
-    saver = tf.train.Saver()
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.train.SummaryWriter(FLAGS.log_dir, sess.graph)
 
     # And then after everything is built:
 
@@ -189,7 +190,7 @@ def run_training():
 
       # Save a checkpoint and evaluate the model periodically.
       if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:
-        checkpoint_file = os.path.join(FLAGS.train_dir, 'checkpoint')
+        checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
         saver.save(sess, checkpoint_file, global_step=step)
         # Evaluate against the training set.
         print('Training Data Eval:')
@@ -215,6 +216,9 @@ def run_training():
 
 
 def main(_):
+  if tf.gfile.Exists(FLAGS.log_dir):
+    tf.gfile.DeleteRecursively(FLAGS.log_dir)
+  tf.gfile.MakeDirs(FLAGS.log_dir)
   run_training()
 
 
@@ -251,10 +255,16 @@ if __name__ == '__main__':
       help='Batch size.  Must divide evenly into the dataset sizes.'
   )
   parser.add_argument(
-      '--train_dir',
+      '--input_data_dir',
       type=str,
-      default='data',
-      help='Directory to put the training data.'
+      default='/tmp/tensorflow/mnist/input_data',
+      help='Directory to put the input data.'
+  )
+  parser.add_argument(
+      '--log_dir',
+      type=str,
+      default='/tmp/tensorflow/mnist/logs/fully_connected_feed',
+      help='Directory to put the log data.'
   )
   parser.add_argument(
       '--fake_data',
@@ -262,6 +272,6 @@ if __name__ == '__main__':
       help='If true, uses fake data for unit testing.',
       action='store_true'
   )
-  FLAGS = parser.parse_args()
 
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

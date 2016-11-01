@@ -19,13 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as var_ops
@@ -239,8 +239,7 @@ def _get_shared_file_name_queue(file_names, shuffle, num_epochs, name):
   # Creating a dummy variable so we can put the shared queue in ps if there is
   # a PS and in the worker otherwise. TODO(rohanj): Figure out how to place an
   # op on PS without this hack
-  with ops.Graph().as_default():
-    dummy_var = var_ops.Variable(initial_value=0, name='dummy_var')
+  dummy_var = var_ops.Variable(initial_value=0, name='queue_placement_var')
   with ops.device(dummy_var.device):
     shared_file_name_queue = input_ops.string_input_producer(
         constant_op.constant(
@@ -253,6 +252,18 @@ def _get_shared_file_name_queue(file_names, shuffle, num_epochs, name):
 
 
 def _get_file_names(file_pattern, randomize_input):
+  """Parse list of file names from pattern, optionally shuffled.
+
+  Args:
+    file_pattern: File glob pattern, or list of strings.
+    randomize_input: Whether to shuffle the order of file names.
+
+  Returns:
+    List of file names matching `file_pattern`.
+
+  Raises:
+    ValueError: If `file_pattern` is empty, or pattern matches no files.
+  """
   if isinstance(file_pattern, list):
     file_names = file_pattern
     if not file_names:
@@ -304,6 +315,36 @@ def _read_keyed_batch_examples_helper(file_pattern,
                                       parse_fn=None,
                                       setup_shared_queue=False,
                                       name=None):
+  """Adds operations to read, queue, batch `Example` protos.
+
+  Args:
+    file_pattern: List of files or pattern of file paths containing
+        `Example` records. See `tf.gfile.Glob` for pattern rules.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
+    reader: A function or class that returns an object with
+      `read` method, (filename tensor) -> (example tensor).
+    randomize_input: Whether the input should be randomized.
+    num_epochs: Integer specifying the number of times to read through the
+      dataset. If `None`, cycles through the dataset forever.
+      NOTE - If specified, creates a variable that must be initialized, so call
+      `tf.initialize_all_variables()` as shown in the tests.
+    queue_capacity: Capacity for input queue.
+    num_threads: The number of threads enqueuing examples.
+    read_batch_size: An int or scalar `Tensor` specifying the number of
+      records to read at once
+    parse_fn: Parsing function, takes `Example` Tensor returns parsed
+      representation. If `None`, no parsing is done.
+    setup_shared_queue: Whether to set up a shared queue for file names.
+    name: Name of resulting op.
+
+  Returns:
+    Returns tuple of:
+    - `Tensor` of string keys.
+    - String `Tensor` of batched `Example` proto.
+
+  Raises:
+    ValueError: for invalid inputs.
+  """
   # Retrieve files to read.
   file_names = _get_file_names(file_pattern, randomize_input)
 
@@ -348,10 +389,10 @@ def _read_keyed_batch_examples_helper(file_pattern,
 
     enqueue_many = read_batch_size > 1
 
-    if num_epochs is not None:
-      allow_smaller_final_batch = True
-    else:
+    if num_epochs is None:
       allow_smaller_final_batch = False
+    else:
+      allow_smaller_final_batch = True
 
     # Setup batching queue given list of read example tensors.
     if randomize_input:
@@ -505,7 +546,6 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
       Adding multiple queue runners for the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
       parsing.
-    parser_num_threads: (Deprecated) The number of threads to parse examples.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
@@ -520,7 +560,7 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
   """
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
-    keys, examples = read_keyed_batch_examples_shared_queue(
+    keys, examples = _read_keyed_batch_examples_shared_queue(
         file_pattern,
         batch_size,
         reader,
@@ -619,10 +659,10 @@ def queue_parsed_features(parsed_features,
     input_queue = data_flow_ops.FIFOQueue(feature_queue_capacity, queue_dtypes)
 
     # Add a summary op to debug if our feature queue is full or not.
-    logging_ops.scalar_summary('queue/parsed_features/%s/fraction_of_%d_full' %
-                               (input_queue.name, feature_queue_capacity),
-                               math_ops.cast(input_queue.size(), dtypes.float32)
-                               * (1. / feature_queue_capacity))
+    summary.scalar('queue/parsed_features/%s/fraction_of_%d_full' %
+                   (input_queue.name, feature_queue_capacity),
+                   math_ops.cast(input_queue.size(), dtypes.float32) *
+                   (1. / feature_queue_capacity))
 
     # Add multiple queue runners so that the queue is always full. Adding more
     # than two queue-runners may hog the cpu on the worker to fill up the queue.

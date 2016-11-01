@@ -24,8 +24,8 @@ import os
 import sys
 
 import tensorflow as tf
-from tensorflow.contrib.tfprof.tools.tfprof import tfprof_log_pb2
 from tensorflow.python.framework import ops
+from tensorflow.tools.tfprof import tfprof_log_pb2
 
 TRAINABLE_VARIABLES = '_trainable_variables'
 REGISTERED_FLOP_STATS = 'flops'
@@ -85,7 +85,7 @@ def _get_logged_ops(graph, run_meta=None):
     if node.name not in logged_ops:
       entry = tfprof_log_pb2.OpLogEntry()
       entry.name = node.name
-      entry.float_ops = stats.value
+      entry.float_ops = int(stats.value)
       logged_ops[entry.name] = entry
 
   for v in graph.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):

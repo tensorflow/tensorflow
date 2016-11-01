@@ -400,6 +400,9 @@ class FunctionLibraryRuntime {
   // Returns a debug string showing the definition of the function of
   // 'handle'.
   virtual string DebugString(Handle handle) = 0;
+
+  // Returns the graph version number.
+  virtual int graph_def_version() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

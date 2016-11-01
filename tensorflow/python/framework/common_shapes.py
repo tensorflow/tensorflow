@@ -20,8 +20,8 @@ from __future__ import print_function
 import numpy as np
 import six.moves
 
-from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -567,8 +567,12 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
       the C++ shape function.
 
   Returns:
-    A TensorShape list of the output shapes of the op, as computed using the
-    C++ shape inference function registered for the op.
+    A dictionary with the following keys:
+      shapes: A TensorShape list of the output shapes of the op, as computed
+        using the C++ shape inference function registered for the op.
+      handle_shapes: A TensorShape list of the shapes for handle outputs, if
+         any.
+      handle_dtypes: A list of DataType enums for the handle outputs, if any.
 
   Raises:
     ValueError: If the C++ shape function returned an error (e.g. because the
@@ -576,8 +580,16 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
     according to the shape function).
   """
   node_def_str = op.node_def.SerializeToString()
-  input_shapes = [i.get_shape().as_proto().SerializeToString() for i in
-                  op.inputs]
+
+  def tensor_to_inference_result(t):
+    r = cpp_shape_inference_pb2.CppShapeInferenceResult()
+    r.shape.CopyFrom(t.get_shape().as_proto())
+    # pylint: disable=protected-access
+    r.handle_shape.CopyFrom(t._handle_shape)
+    r.handle_dtype = t._handle_dtype
+    # pylint: enable=protected-access
+    return r.SerializeToString()
+  input_shapes = [tensor_to_inference_result(i) for i in op.inputs]
 
   input_tensors = [None for i in input_shapes]
   if input_tensors_needed:
@@ -596,10 +608,13 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
     raise ValueError(err.message)
 
   # Convert TensorShapeProto values in output_shapes.
-  result = [
-      tensor_shape.TensorShape(tensor_shape_pb2.TensorShapeProto.FromString(s))
+  result_protos = [
+      cpp_shape_inference_pb2.CppShapeInferenceResult().FromString(s)
       for s in output_shapes
   ]
+  result = [r.shape for r in result_protos]
+  result_handle_shapes = [r.handle_shape for r in result_protos]
+  result_handle_dtypes = [r.handle_dtype for r in result_protos]
 
   if debug_python_shape_fn:
     try:
@@ -616,4 +631,6 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
                str(result), str(python_result), str(op.node_def),
                ",".join([str(i.get_shape()) for i in op.inputs])))
 
-  return result
+  return {"shapes": result,
+          "handle_shapes": result_handle_shapes,
+          "handle_dtypes": result_handle_dtypes}

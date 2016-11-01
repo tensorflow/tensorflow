@@ -39,12 +39,14 @@ summary: "No. Op."
 `,
 			wanted: `
 // No. Op.
-func NoOp(scope *Scope) (err error) {
+func NoOp(scope *Scope) {
+	if scope.Err() != nil {
+		return
+	}
 	opspec := tf.OpSpec{
 		Type: "NoOp",
 	}
-	_, err = scope.Graph().AddOperation(opspec)
-	return err
+	scope.AddOperation(opspec)
 }
 `,
 		},
@@ -81,15 +83,18 @@ description: "Blah blah",
 // Returns x + y element-wise.
 //
 // Blah blah
-func Add(scope *Scope, x tf.Output, y tf.Output) (z tf.Output, err error) {
+func Add(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
 	opspec := tf.OpSpec{
 		Type: "Add",
 		Input: []tf.Input{
 			x, y,
 		},
 	}
-	op, err := scope.Graph().AddOperation(opspec)
-	return op.Output(0), err
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 `,
 		},
@@ -117,7 +122,10 @@ summary: "Cast x of type SrcT to y of DstT."
 `,
 			wanted: `
 // Cast x of type SrcT to y of DstT.
-func Cast(scope *Scope, x tf.Output, DstT tf.DataType) (y tf.Output, err error) {
+func Cast(scope *Scope, x tf.Output, DstT tf.DataType) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
 	attrs := map[string]interface{}{"DstT": DstT}
 	opspec := tf.OpSpec{
 		Type: "Cast",
@@ -126,8 +134,8 @@ func Cast(scope *Scope, x tf.Output, DstT tf.DataType) (y tf.Output, err error) 
 		},
 		Attrs: attrs,
 	}
-	op, err := scope.Graph().AddOperation(opspec)
-	return op.Output(0), err
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 `,
 		},
@@ -218,7 +226,10 @@ func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
 //	contents: 0-D.  The JPEG-encoded image.
 //
 // Returns 3-D with shape [height, width, channels]
-func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (image tf.Output, err error) {
+func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
 	attrs := map[string]interface{}{}
 	for _, a := range optional {
 		a(attrs)
@@ -230,8 +241,47 @@ func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (i
 		},
 		Attrs: attrs,
 	}
-	op, err := scope.Graph().AddOperation(opspec)
-	return op.Output(0), err
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+`,
+		},
+		{
+			tag: "MultipleOutputs",
+			opdef: `
+name: "TwoOutputs"
+input_arg: <
+  name: "input"
+  type_attr: "T"
+>
+output_arg <
+  name: "x"
+  type_attr: "T"
+>
+output_arg <
+  name: "y"
+  type_attr: "T"
+>
+attr: <
+  name: "T"
+  type: "type"
+>
+summary: "Op that produces multiple outputs"
+`,
+			wanted: `
+// Op that produces multiple outputs
+func TwoOutputs(scope *Scope, input tf.Output) (x tf.Output, y tf.Output) {
+        if scope.Err() != nil {
+                return
+        }
+        opspec := tf.OpSpec{
+                Type: "TwoOutputs",
+                Input: []tf.Input{
+                        input,
+                },
+        }
+        op := scope.AddOperation(opspec)
+        return op.Output(0), op.Output(1)
 }
 `,
 		},
@@ -290,7 +340,10 @@ func ShapeNOutType(value tf.DataType) ShapeNAttr {
 // Returns shape of tensors.
 //
 // Some description here.
-func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []tf.Output, err error) {
+func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
 	attrs := map[string]interface{}{}
 	for _, a := range optional {
 		a(attrs)
@@ -302,12 +355,17 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 		},
 		Attrs: attrs,
 	}
-	op, err := scope.Graph().AddOperation(opspec)
-	var idx int
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		return output, err
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
 	}
-	return output, err
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("ShapeN", err)
+		return
+	}
+	return output
 }
 `,
 		},
@@ -325,11 +383,11 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 			}
 			got, err := format.Source(buf.Bytes())
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Unable to format: %v\n%s", err, buf.Bytes())
 			}
 			want, err := format.Source([]byte(test.wanted))
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Unable to format: %v\n%s", err, test.wanted)
 			}
 			if !bytes.Equal(got, want) {
 				t.Fatalf("Got:\n%s\nWant:\n%s\n", got, want)

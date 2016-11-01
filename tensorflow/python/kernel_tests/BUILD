@@ -213,7 +213,7 @@ tf_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     srcs = ["matrix_triangular_solve_op_test.py"],
@@ -253,6 +253,16 @@ tf_py_test(
     size = "small",
     srcs = ["random_shuffle_queue_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "resource_variable_ops_test",
+    size = "small",
+    srcs = ["resource_variable_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:resource_variable_ops",
+    ],
 )
 
 tf_py_test(

@@ -43,7 +43,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest" 
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/best_splits_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/count_extremely_random_stats_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/finished_nodes_op.cc"
@@ -87,10 +87,7 @@ if(WIN32)
       # not working on windows yet
       "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
       "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/immutable_constant_op.h"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_matmul_op.h"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/svd*.cc"

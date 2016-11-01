@@ -192,7 +192,7 @@ class Tensor(ItemHandler):
         if isinstance(shape_dim, ops.SparseTensor):
           shape_dim = sparse_ops.sparse_tensor_to_dense(shape_dim)
         shape_dims.append(shape_dim)
-      shape = array_ops.squeeze(array_ops.pack(shape_dims))
+      shape = array_ops.reshape(array_ops.pack(shape_dims), [-1])
     if isinstance(tensor, ops.SparseTensor):
       if shape is not None:
         tensor = sparse_ops.sparse_reshape(tensor, shape)

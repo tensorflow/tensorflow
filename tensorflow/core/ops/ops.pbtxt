@@ -6711,6 +6711,182 @@ op {
   summary: "Output a fact about factorials."
 }
 op {
+  name: "FakeQuantWithMinMaxArgs"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "min"
+    type: "float"
+    default_value {
+      f: -6
+    }
+  }
+  attr {
+    name: "max"
+    type: "float"
+    default_value {
+      f: 6
+    }
+  }
+  summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same type."
+  description: "Attributes [min; max] define the clamping range for the \'inputs\' data.  Op\ndivides this range into 255 steps (total of 256 values), then replaces each\n\'inputs\' value with the closest of the quantized step values.\n\nQuantization is called fake since the output is still in floating point."
+}
+op {
+  name: "FakeQuantWithMinMaxArgsGradient"
+  input_arg {
+    name: "gradients"
+    description: "Backpropagated gradients above the FakeQuantWithMinMaxArgs operation."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    description: "Values passed as inputs to the FakeQuantWithMinMaxArgs operation."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops"
+    description: "Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:\n`gradients * (inputs >= min && inputs <= max)`."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "min"
+    type: "float"
+    default_value {
+      f: -6
+    }
+  }
+  attr {
+    name: "max"
+    type: "float"
+    default_value {
+      f: 6
+    }
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxArgs operation."
+}
+op {
+  name: "FakeQuantWithMinMaxVars"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  summary: "Fake-quantize the \'inputs\' tensor of type float and shape `[b, h, w, d]` via"
+  description: "global float scalars `min` and `max` to \'outputs\' tensor of same shape as\n`inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+}
+op {
+  name: "FakeQuantWithMinMaxVarsGradient"
+  input_arg {
+    name: "gradients"
+    description: "Backpropagated gradients above the FakeQuantWithMinMaxVars operation."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    description: "Values passed as inputs to the FakeQuantWithMinMaxVars operation.\nmin, max: Quantization interval, scalar floats."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops_wrt_input"
+    description: "Backpropagated gradients w.r.t. inputs:\n`gradients * (inputs >= min && inputs <= max)`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_min"
+    description: "Backpropagated gradients w.r.t. min parameter:\n`sum(gradients * (inputs < min))`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_max"
+    description: "Backpropagated gradients w.r.t. max parameter:\n`sum(gradients * (inputs > max))`."
+    type: DT_FLOAT
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxVars operation."
+}
+op {
+  name: "FakeQuantWithMinMaxVarsPerChannel"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  summary: "Fake-quantize the \'inputs\' tensor of type float and one of the shapes: `[d]`,"
+  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data in the corresponding\ndepth channel.  Op divides this range into 255 steps (total of 256 values), then\nreplaces each \'inputs\' value with the closest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+}
+op {
+  name: "FakeQuantWithMinMaxVarsPerChannelGradient"
+  input_arg {
+    name: "gradients"
+    description: "Backpropagated gradients above the FakeQuantWithMinMaxVars operation,\nshape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    description: "Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape\n  same as `gradients`.\nmin, max: Quantization interval, floats of shape `[d]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops_wrt_input"
+    description: "Backpropagated gradients w.r.t. inputs, shape same as\n`inputs`:\n  `gradients * (inputs >= min && inputs <= max)`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_min"
+    description: "Backpropagated gradients w.r.t. min parameter, shape `[d]`:\n`sum_per_d(gradients * (inputs < min))`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_max"
+    description: "Backpropagated gradients w.r.t. max parameter, shape `[d]`:\n`sum_per_d(gradients * (inputs > max))`."
+    type: DT_FLOAT
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
+}
+op {
   name: "Fill"
   input_arg {
     name: "dims"
@@ -14091,6 +14267,49 @@ op {
   summary: "Computes rectified linear gradients for a Relu operation."
 }
 op {
+  name: "RequantizationRange"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "input_min"
+    description: "The float value that the minimum quantized input value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_max"
+    description: "The float value that the maximum quantized input value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_min"
+    description: "The computed min output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_max"
+    description: "the computed max output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    description: "The type of the input."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Given a quantized tensor described by (input, input_min, input_max), outputs a"
+  description: "range that covers the actual values present in that tensor.  This op is\ntypically used to produce the requested_output_min and requested_output_max for\nRequantize."
+}
+op {
   name: "Requantize"
   input_arg {
     name: "input"
@@ -15333,8 +15552,8 @@ op {
   }
   output_arg {
     name: "output"
-    description: "vector containing the computed fingerprints."
-    type: DT_STRING
+    description: "a (N,2) shaped matrix where N is the number of elements in the input\nvector. Each row contains the low and high parts of the fingerprint."
+    type: DT_INT64
   }
   summary: "Computes fingerprints of the input strings."
 }
@@ -15773,7 +15992,7 @@ op {
     type: "type"
   }
   summary: "Selects elements from `t` or `e`, depending on `condition`."
-  description: "The `t`, and `e` tensors must all have the same shape,\nand the output will also have that shape.  The `condition` tensor\nmust be a scalar if `t` and `e` are scalars.  If `t` and `e` are vectors\nor higher rank, then `condition` must be either a vector with size\nmatching the first dimension of `t`, or must have the same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 6],\n                             [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
+  description: "The `t`, and `e` tensors must all have the same shape, and the\noutput will also have that shape.\n\nThe `condition` tensor must be a scalar if `t` and `e` are scalars.\nIf `t` and `e` are vectors or higher rank, then `condition` must be either a\nscalar, a vector with size matching the first dimension of `t`, or must have\nthe same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 6],\n                             [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
 }
 op {
   name: "SelfAdjointEig"

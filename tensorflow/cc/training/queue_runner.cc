@@ -14,22 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
-QueueRunner::QueueRunner() : started_(false) {}
-
-QueueRunner::QueueRunner(const QueueRunnerDef& queue_runner_def)
-    : started_(false) {
-  TF_CHECK_OK(Init(queue_runner_def));
+Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                        std::unique_ptr<QueueRunner>* result) {
+  result->reset(new QueueRunner());
+  return (*result)->Init(queue_runner_def);
 }
 
 Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
-  if (started_.load()) {
-    return Status(error::ALREADY_EXISTS, "QueueRunner is already running.");
-  }
   queue_name_ = queue_runner_def.queue_name();
+  enqueue_op_names_.clear();
   enqueue_op_names_.insert(enqueue_op_names_.end(),
                            queue_runner_def.enqueue_op_name().begin(),
                            queue_runner_def.enqueue_op_name().end());
@@ -47,24 +45,19 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
     }
   }
 
-  thread_pool_.reset(
-      new thread::ThreadPool(Env::Default(), queue_name_, runs_));
+  thread_pool_.reset(new thread::ThreadPool(
+      Env::Default(), SanitizeThreadSuffix(queue_name_), runs_));
   should_stop_ = false;
   return Status::OK();
 }
 
 QueueRunner::~QueueRunner() {
-  should_stop_ = true;
+  // Cannot run Stop() here because the session might already be closed or
+  // destroyed.
   Join();
 }
 
 Status QueueRunner::Start(Session* sess) {
-  if (runs_ == 0) {
-    return Status(
-        error::INVALID_ARGUMENT,
-        "No enqueue ops to run. You may want to Init the QueueRunner first.");
-  }
-  started_ = true;
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
@@ -72,17 +65,24 @@ Status QueueRunner::Start(Session* sess) {
   return Status::OK();
 }
 
+Status QueueRunner::Stop(Session* sess) {
+  should_stop_ = true;
+  if (cancel_op_name_.empty()) {
+    return Status::OK();
+  } else {
+    return sess->Run({}, {}, {cancel_op_name_}, nullptr);
+  }
+}
+
 Status QueueRunner::Join() {
   thread_pool_.reset();
-  started_ = false;
   return status_;
 }
 
 void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   bool decremented = false;
-  while (!should_stop_) {
-    std::vector<Tensor> outputs;
-    auto status = sess->Run({}, {}, {enqueue_op}, &outputs);
+  while (!should_stop_.load()) {
+    auto status = sess->Run({}, {}, {enqueue_op}, nullptr);
     if (status.ok()) {
       continue;
     } else if (queue_closed_exception_types_.count(
@@ -94,19 +94,25 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
 
       // If all enqueue ops have finished, run the close op.
       if (runs_ == 0 && !close_op_name_.empty()) {
-        std::vector<Tensor> outputs;
-        auto s = sess->Run({}, {}, {close_op_name_}, &outputs);
-        if (!s.ok()) {
-          status_ = status;
+        auto s = sess->Run({}, {}, {close_op_name_}, nullptr);
+        if (!s.ok() && status_.ok() &&
+            queue_closed_exception_types_.count(static_cast<int>(s.code())) ==
+                0) {
+          status_ = s;
         }
       }
     } else {
-      mutex_lock l(mu_);
-      should_stop_ = true;
-      // Only record the first failure status.
-      if (status_.ok()) {
-        status_ = status;
+      {
+        mutex_lock l(mu_);
+        should_stop_ = true;
+        // Only record the first failure status.
+        if (status_.ok()) {
+          status_ = status;
+        }
       }
+      // Stop the queue runner immediately to propagate the error to
+      // subsequent queues.
+      Stop(sess);
     }
   }
 
@@ -114,6 +120,11 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
     mutex_lock l(mu_);
     runs_--;
   }
+}
+
+Status QueueRunner::GetStatus() {
+  mutex_lock l(mu_);
+  return status_;
 }
 
 }  // namespace tensorflow

@@ -30,19 +30,19 @@ class Trainable(object):
   @abc.abstractmethod
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
-    """Trains a model given training data `x` predictions and `y` targets.
+    """Trains a model given training data `x` predictions and `y` labels.
 
     Args:
       x: Matrix of shape [n_samples, n_features...]. Can be iterator that
          returns arrays of features. The training input samples for fitting the
          model. If set, `input_fn` must be `None`.
       y: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of targets. The training target values
+         iterator that returns array of labels. The training label values
          (class labels in classification, real numbers in regression). If set,
          `input_fn` must be `None`.
       input_fn: Input function returning a tuple of:
           features - Dictionary of string feature name to `Tensor` or `Tensor`.
-          target - `Tensor` or dictionary of `Tensor` with target labels.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
         If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
       steps: Number of steps for which to train model. If `None`, train forever.
         'steps' works incrementally. If you call two times fit(steps=10) then

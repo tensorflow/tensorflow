@@ -70,6 +70,7 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],

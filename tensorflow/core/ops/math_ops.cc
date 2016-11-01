@@ -911,6 +911,19 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      // Merge handle shape and dtype if applicable.
+      if (c->input_handle_dtype(1) != c->input_handle_dtype(2)) {
+        // TODO(apassos) resolve this in the manner of b/32476923
+        return errors::InvalidArgument(
+            "Trying to merge handles pointing to different dtypes.");
+      }
+      c->set_output_handle_dtype(0, c->input_handle_dtype(1));
+      ShapeHandle output_handle_shape;
+      TF_RETURN_IF_ERROR(c->Merge(c->input_handle_shape(1),
+                                  c->input_handle_shape(2),
+                                  &output_handle_shape));
+      c->set_output_handle_shape(0, output_handle_shape);
+
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
       ShapeHandle other = c->input(2);
@@ -961,8 +974,9 @@ REGISTER_OP("Select")
       }
 
       c->set_output(0, data);
+
       return Status::OK();
-   })
+    })
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 
@@ -2295,6 +2309,35 @@ requested_output_max: The float value that the maximum quantized output value re
 output_min: The requested_output_min value is copied into this output.
 output_max: The requested_output_max value is copied into this output.
 out_type: The type of the output. Should be a lower bit depth than Tinput.
+
+)doc");
+
+REGISTER_OP("RequantizationRange")
+    .Input("input: Tinput")
+    .Input("input_min: float")
+    .Input("input_max: float")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("Tinput: quantizedtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Given a quantized tensor described by (input, input_min, input_max), outputs a
+range that covers the actual values present in that tensor.  This op is
+typically used to produce the requested_output_min and requested_output_max for
+Requantize.
+
+input_min: The float value that the minimum quantized input value represents.
+input_max: The float value that the maximum quantized input value represents.
+Tinput: The type of the input.
+output_min: The computed min output.
+output_max: the computed max output.
 
 )doc");
 

@@ -16,7 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unordered_map>
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/port.h"
@@ -71,6 +72,7 @@ class PendingCounts {
     }
   }
 
+  inline int num_nodes() const { return num_nodes_; }
   NodeState node_state(int id) {
     if (IsLarge(id)) {
       return NodeStateLarge(id);
@@ -185,12 +187,7 @@ class PendingCounts {
   // use one byte to hold both the pending and dead count for a node
   // where these together can fit in one byte, and we use a hash table
   // to handle the rare node ids that need larger counts than this.
-
-  // TODO(yuanbyu): We current use O(# of nodes in partition) space
-  // even for nested iterations where only a small fraction of the
-  // nodes are involved.  This is not efficient if the subgraph for
-  // the frame is only a small subset of the partition. We should make
-  // the vector size to be only the size of the frame subgraph.
+  // Each frame in this subgraph has its own PendingCounts.
 
   // We use 3 bits each for dead_count and pending.
   static const int kMaxCountForPackedCounts = 7;
@@ -243,7 +240,7 @@ class PendingCounts {
 
   const int num_nodes_;  // Just for bounds checking in debug mode
   PackedCounts* counts_;
-  std::unordered_map<int, LargeCounts> overflow_;
+  gtl::FlatMap<int, LargeCounts> overflow_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PendingCounts);
 };

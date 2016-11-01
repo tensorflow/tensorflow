@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './scatterPlot';
-import {Point2D} from './vector';
-import {DataPoint} from './data';
+import {DataPoint, DataSet} from './data';
 import * as logging from './logging';
+import {Point2D} from './vector';
 
 /**
  * Delay for running expensive tasks, in milliseconds.
  * The duration was empirically found so that it leaves enough time for the
  * browser to update its UI state before starting an expensive UI-blocking task.
  */
-const TASK_DELAY_MS = 25;
+const TASK_DELAY_MS = 200;
 
 /** Shuffles the array in-place in O(n) time using Fisher-Yates algorithm. */
 export function shuffle<T>(array: T[]): T[] {
@@ -157,7 +156,6 @@ export function runAsyncTask<T>(message: string, task: () => T,
         }
         resolve(result);
       } catch (ex) {
-        logging.setModalMessage('Error: ' + ex.message);
         reject(ex);
       }
       return true;

@@ -327,6 +327,6 @@ if __name__ == '__main__':
       default=True,
       help='Use fake input data.'
   )
-  FLAGS = parser.parse_args()
+  FLAGS, unparsed = parser.parse_known_args()
 
   tf.test.main()

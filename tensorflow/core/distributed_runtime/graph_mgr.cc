@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -207,6 +208,11 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     if (!s.ok()) {
       break;
     }
+    unit->graph = subgraph;
+    unit->build_cost_model = graph_options.build_cost_model();
+    if (unit->build_cost_model > 0) {
+      skip_cost_models_ = false;
+    }
   }
   return s;
 }
@@ -319,6 +325,7 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             const ExecutorOpts& opts,
                             StepStatsCollector* collector,
+                            CostGraphDef* cost_graph,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
@@ -348,7 +355,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  StartParallelExecutors(handle, item, rendezvous, collector,
+  StartParallelExecutors(handle, item, rendezvous, collector, cost_graph,
                          cancellation_manager,
                          [this, item, rendezvous, done](const Status& s) {
                            done(s);
@@ -360,6 +367,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
                                       Rendezvous* rendezvous,
                                       StepStatsCollector* collector,
+                                      CostGraphDef* cost_graph,
                                       CancellationManager* cancellation_manager,
                                       StatusCallback done) {
   const int num_units = item->units.size();
@@ -367,7 +375,9 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
   ResourceMgr* step_resource_manager = new ResourceMgr;
   // NOTE: Transfer one ref of rendezvous and item.
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, [step_resource_manager, done](const Status& s) {
+      num_units, rendezvous, [this, item, collector, cost_graph,
+                              step_resource_manager, done](const Status& s) {
+        BuildCostModel(item, collector, cost_graph);
         done(s);
         delete step_resource_manager;
       });
@@ -390,6 +400,26 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
   args.runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
   for (const auto& unit : item->units) {
     unit.root->RunAsync(args, barrier->Get());
+  }
+}
+
+void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
+                              CostGraphDef* cost_graph) {
+  if (collector && !skip_cost_models_) {
+    // Build the cost model
+    std::unordered_map<string, const Graph*> device_to_graph;
+    for (const auto& unit : item->units) {
+      if (unit.build_cost_model > 0) {
+        device_to_graph[unit.device->name()] = unit.graph;
+      }
+    }
+    collector->BuildCostModel(&cost_model_manager_, device_to_graph);
+
+    if (cost_graph != nullptr) {
+      for (const auto& unit : item->units) {
+        cost_model_manager_.AddToCostGraphDef(unit.graph, cost_graph);
+      }
+    }
   }
 }
 

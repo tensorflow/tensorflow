@@ -62,6 +62,21 @@ class SecondOrStepTimerTest(tf.test.TestCase):
     self.assertFalse(timer.should_trigger_for_step(3))
     self.assertTrue(timer.should_trigger_for_step(4))
 
+  def test_update_last_triggered_step(self):
+    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=1)
+
+    elapsed_secs, elapsed_steps = timer.update_last_triggered_step(1)
+    self.assertEqual(None, elapsed_secs)
+    self.assertEqual(None, elapsed_steps)
+
+    elapsed_secs, elapsed_steps = timer.update_last_triggered_step(5)
+    self.assertLess(0, elapsed_secs)
+    self.assertEqual(4, elapsed_steps)
+
+    elapsed_secs, elapsed_steps = timer.update_last_triggered_step(7)
+    self.assertLess(0, elapsed_secs)
+    self.assertEqual(2, elapsed_steps)
+
 
 class StopAtStepTest(tf.test.TestCase):
 
@@ -137,8 +152,12 @@ class LoggingTensorHookTest(tf.test.TestCase):
       tf.train.LoggingTensorHook(tensors=['t'], every_n_iter=0)
     with self.assertRaisesRegexp(ValueError, 'nvalid every_n_iter'):
       tf.train.LoggingTensorHook(tensors=['t'], every_n_iter=-10)
+    with self.assertRaisesRegexp(ValueError, 'xactly one of'):
+      tf.train.LoggingTensorHook(tensors=['t'], every_n_iter=5, every_n_secs=5)
+    with self.assertRaisesRegexp(ValueError, 'xactly one of'):
+      tf.train.LoggingTensorHook(tensors=['t'])
 
-  def test_print(self):
+  def test_print_every_n_steps(self):
     with tf.Graph().as_default(), tf.Session() as sess:
       t = tf.constant(42.0, name='foo')
       train_op = tf.constant(3)
@@ -158,6 +177,29 @@ class LoggingTensorHookTest(tf.test.TestCase):
           self.assertEqual(str(self.logged_message).find(t.name), -1)
         mon_sess.run(train_op)
         self.assertRegexpMatches(str(self.logged_message), t.name)
+
+  def test_print_every_n_secs(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      t = tf.constant(42.0, name='foo')
+      train_op = tf.constant(3)
+
+      hook = tf.train.LoggingTensorHook(tensors=[t.name], every_n_secs=1.0)
+      hook.begin()
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      sess.run(tf.initialize_all_variables())
+
+      mon_sess.run(train_op)
+      self.assertRegexpMatches(str(self.logged_message), t.name)
+
+      # assertNotRegexpMatches is not supported by python 3.1 and later
+      self.logged_message = ''
+      mon_sess.run(train_op)
+      self.assertEqual(str(self.logged_message).find(t.name), -1)
+      time.sleep(1.0)
+
+      self.logged_message = ''
+      mon_sess.run(train_op)
+      self.assertRegexpMatches(str(self.logged_message), t.name)
 
 
 class CheckpointSaverHookTest(tf.test.TestCase):
@@ -297,7 +339,7 @@ class StepCounterHookTest(tf.test.TestCase):
   def tearDown(self):
     shutil.rmtree(self.log_dir, ignore_errors=True)
 
-  def test_step_counter(self):
+  def test_step_counter_every_n_steps(self):
     with tf.Graph().as_default() as g, tf.Session() as sess:
       global_step = tf.contrib.framework.get_or_create_global_step()
       train_op = tf.assign_add(global_step, 1)
@@ -316,11 +358,41 @@ class StepCounterHookTest(tf.test.TestCase):
           expected_logdir=self.log_dir,
           expected_graph=g,
           expected_summaries={})
+      self.assertItemsEqual([11, 21], summary_writer.summaries.keys())
       for step in [11, 21]:
         summary_value = summary_writer.summaries[step][0].value[0]
-        self.assertTrue(summary_value.tag, 'global_step/sec')
-        # check at least 10 steps per sec is recorded.
-        self.assertGreater(summary_value.simple_value, 10)
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
+
+  def test_step_counter_every_n_secs(self):
+    with tf.Graph().as_default() as g, tf.Session() as sess:
+      global_step = tf.contrib.framework.get_or_create_global_step()
+      train_op = tf.assign_add(global_step, 1)
+      summary_writer = testing.FakeSummaryWriter(self.log_dir, g)
+      hook = tf.train.StepCounterHook(
+          summary_writer=summary_writer, every_n_steps=None, every_n_secs=0.1)
+
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      mon_sess.run(train_op)
+      time.sleep(0.2)
+      mon_sess.run(train_op)
+      time.sleep(0.2)
+      mon_sess.run(train_op)
+      hook.end(sess)
+
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertTrue(summary_writer.summaries, 'No summaries were created.')
+      self.assertItemsEqual([2, 3], summary_writer.summaries.keys())
+      for summary in summary_writer.summaries.values():
+        summary_value = summary[0].value[0]
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
 
 
 class SummarySaverHookTest(tf.test.TestCase):

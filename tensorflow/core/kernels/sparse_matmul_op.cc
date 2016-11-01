@@ -26,12 +26,14 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+
 
 namespace tensorflow {
 
@@ -133,7 +135,7 @@ struct SparseSlice {
 
 template <typename T>
 template <bool Transpose>
-void SparseSlice<T>::Initialize(const SparseSlice<T>::ConstMatrixMap& mat,
+void SparseSlice<T>::Initialize(const typename SparseSlice<T>::ConstMatrixMap& mat,
                                 int col_offset) {
   const int mat_rows = Transpose ? mat.dimension(1) : mat.dimension(0);
   const int mat_cols = Transpose ? mat.dimension(0) : mat.dimension(1);
@@ -852,6 +854,15 @@ class SparseMatMulOp : public OpKernel {
                                         b.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
+
+    if (k == 0) {
+      // If the inner dimension k in the matrix multiplication is zero, we fill
+      // the output with zeros.
+      functor::SetZeroFunctor<CPUDevice, float> f;
+      f(ctx->eigen_device<CPUDevice>(), output->flat<float>());
+      return;
+    }
+
     auto out = output->matrix<float>();
 
     std::unique_ptr<Tensor> a_float;
@@ -940,7 +951,7 @@ class SparseMatMulOp : public OpKernel {
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
     const std::vector<SparseSlice<TL>*>& left,
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& right, int num_cols,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, int num_cols,
     int output_row_offset, int output_col_offset, bool assign,
     bool transpose_output, MatrixMap* output) {
   static const Eigen::array<int, 2> perm({1, 0});
@@ -990,7 +1001,7 @@ inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::CreateSparseSlices(
-    const SparseMatMul<TL, TR>::ConstMatrixMapL& mat, bool transpose,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapL& mat, bool transpose,
     int slice_num_rows, int slice_block_size, int slice_num_cols,
     std::vector<std::vector<SparseSlice<TL>*>>* mat_slices,
     const DeviceBase::CpuWorkerThreads* thread_pool) {
@@ -1086,7 +1097,7 @@ ALWAYS_INLINE void CopyAndMayBeInterleave(void* dst, const void* src,
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int slice_row_start,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int slice_row_start,
     int slice_num_rows, int slice_col_start, int slice_num_cols, const int N,
     const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer) {
   DCHECK_EQ(N % 2, 0);
@@ -1143,7 +1154,7 @@ inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::SliceMatrix(
     const MatrixR& mat, const int num_rows, const int num_slices,
-    std::vector<SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
+    std::vector<typename SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
   slices->resize(num_slices);
   DSizes d(num_rows, mat.dimension(1));
   DCHECK_LE(num_rows * num_slices, mat.dimension(0));
@@ -1154,10 +1165,10 @@ inline void SparseMatMul<TL, TR>::SliceMatrix(
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::CreateDenseSlices(
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int row_start,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int row_start,
     int num_rows, int col_start, int num_cols,
     const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer,
-    std::vector<SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
+    std::vector<typename SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
   BlockingCounter* shuffle_counter = ShuffleMatrix(
       mat, row_start, num_rows, col_start, num_cols, N, thread_pool, buffer);
   const int num_slices = (num_cols + N - 1) / N;
@@ -1167,8 +1178,8 @@ inline BlockingCounter* SparseMatMul<TL, TR>::CreateDenseSlices(
 
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::ComputeBlockSizes(
-    const SparseMatMul<TL, TR>::ConstMatrixMapL& left,
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapL& left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
     int num_threads, int* KR, int* NR, int* KL, int* JB, int* IB) {
   // Heuristics for calculating block sizes
   // Assume two hyperthreads per core.
@@ -1238,8 +1249,8 @@ inline void SparseMatMul<TL, TR>::ComputeBlockSizes(
 //    {l_i} and JB elements from {r_j} and compute the IB * JB inner products.
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::Compute(
-    const SparseMatMul<TL, TR>::ConstMatrixMapL& left,
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapL& left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
     const DeviceBase::CpuWorkerThreads* thread_pool, bool transpose_output,
     MatrixMap* output) {
   const int num_threads = thread_pool->num_threads;

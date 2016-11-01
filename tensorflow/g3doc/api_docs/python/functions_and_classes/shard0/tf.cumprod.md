@@ -13,7 +13,7 @@ By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 performed
 instead:
 ```prettyprint
-tf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]
+tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumprod is performed in the
@@ -25,7 +25,7 @@ This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
 ```prettyprint
-tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]
+tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
 ```
 
 ##### Args:

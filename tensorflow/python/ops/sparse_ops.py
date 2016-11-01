@@ -1367,7 +1367,10 @@ def sparse_tensor_dense_matmul(sp_a,
         adjoint_b=adjoint_b)
 
 
-ops.RegisterShape("SparseTensorDenseMatMul")(common_shapes.call_cpp_shape_fn)
+@ops.RegisterShape("SparseTensorDenseMatMul")
+def _SparseTensorDenseMatMulShape(op):  # pylint: disable=invalid-name
+  # Pass the shape tensor as needed to access it as a constant value
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def sparse_softmax(sp_input, name=None):

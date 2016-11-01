@@ -15,11 +15,14 @@ limitations under the License.
 
 // Implements a quantized eight-bit version of the matmul operation.
 
+#define EIGEN_USE_THREADS
+
 #include "public/gemmlowp.h"
-#include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/meta_support.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
+#include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -125,12 +128,20 @@ class QuantizedMatMulOp : public OpKernel {
     const size_t ldb = b.dim_size(1);
     const size_t ldc = n;
 
-    // The gemmlowp optimized library only works for a particular set of data
-    // types, so check if we meet those requirements and
-    // fall back to a slower reference implementation if not.
-    if (std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
-        std::is_same<Toutput, qint32>() && (offset_c == 0) && (mult_c == 1) &&
-        (shift_c == 0) && (transpose_c == false)) {
+    if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
+        std::is_same<T2, quint8>() && std::is_same<Toutput, qint32>() &&
+        (offset_c == 0) && (mult_c == 1) && (shift_c == 0) &&
+        (transpose_c == false)) {
+      // Gemmlowp/meta code path works on 32 & 64 bit Arm with NEON Simd and
+      // allows optimized quantized 8bit to 32bit gemm.
+      meta::QuantizedGemm(context, transpose_a_, transpose_b_, a_data, b_data,
+                          c_data, m, n, k, offset_a, offset_b, lda, ldb, ldc);
+    } else if (std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
+               std::is_same<Toutput, qint32>() && (offset_c == 0) &&
+               (mult_c == 1) && (shift_c == 0) && (transpose_c == false)) {
+      // The gemmlowp optimized library only works for a particular set of data
+      // types, so check if we meet those requirements and fall back to a slower
+      // reference implementation if not.
       if (transpose_a_) {
         if (transpose_b_) {
           GemmlowpMultiply<true, true, false>(context, a_data, b_data, c_data,

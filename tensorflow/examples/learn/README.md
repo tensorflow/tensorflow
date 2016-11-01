@@ -21,7 +21,7 @@ Some examples use the `pandas` library for data processing (`sudo pip install pa
 * [Deep Neural Network with Customized Decay Function](iris_custom_decay_dnn.py)
 
 ## Specialized Models
-* [Building a Random Forest Model](random_forest.py)
+* [Building a Random Forest Model](random_forest_mnist.py)
 * [Building a Wide & Deep Model](wide_n_deep_tutorial.py)
 * [Building a Residual Network Model](resnet.py)
 

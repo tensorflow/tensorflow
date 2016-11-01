@@ -99,8 +99,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           values=['en', 'fr', 'zh'],
           indices=[[0, 0], [0, 1], [60, 0]],
           shape=[len(iris.target), 2])
-      target = tf.reshape(tf.constant(iris.target, dtype=tf.int32), [-1, 1])
-      return features, target
+      labels = tf.reshape(tf.constant(iris.target, dtype=tf.int32), [-1, 1])
+      return features, labels
 
     iris = _prepare_iris_data_for_logistic_regression()
     cont_features = [tf.contrib.layers.real_valued_column(str(i))
@@ -130,8 +130,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
                                       indices=[[0, 0], [0, 1], [2, 0]],
                                       shape=[3, 2])
       }
-      target = tf.constant([[1], [0], [0]])
-      return features, target
+      labels = tf.constant([[1], [0], [0]])
+      return features, labels
 
     sparse_features = [
         # The given hash_bucket_size results in variables larger than the
@@ -186,11 +186,11 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
-      target = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
       }
-      return features, target
+      labels = tf.constant([[1], [0], [0], [0]])
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         n_classes=2,
@@ -202,7 +202,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_train, steps=1)
     # Cross entropy = -0.25*log(0.25)-0.75*log(0.75) = 0.562
-    self.assertAlmostEqual(scores['loss'], 0.562, delta=0.1)
+    self.assertAlmostEqual(0.562, scores['loss'], delta=0.1)
 
   def testLossWithWeights(self):
     """Tests loss calculation with weights."""
@@ -210,21 +210,21 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
+      return features, labels
 
     def _input_fn_eval():
       # 4 rows, with different weights.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[7.], [1.], [1.], [1.]])
       }
-      return features, target
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         weight_column_name='w',
@@ -236,7 +236,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
     # Weighted cross entropy = (-7*log(0.25)-3*log(0.75))/10 = 1.06
-    self.assertAlmostEqual(scores['loss'], 1.06, delta=0.1)
+    self.assertAlmostEqual(1.06, scores['loss'], delta=0.1)
 
   def testTrainWithWeights(self):
     """Tests training with given weight column."""
@@ -245,21 +245,21 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # First row has more weight than others. Model should fit (y=x) better
       # than (y=Not(x)) due to the relative higher weight of the first row.
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[100.], [3.], [2.], [2.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
-      # Create 4 rows (y = x)
-      target = tf.constant([[1], [1], [1], [1]])
+      # Create 4 rows (y = x).
+      labels = tf.constant([[1], [1], [1], [1]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         weight_column_name='w',
@@ -347,9 +347,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     """Tests weight column in evaluation."""
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32)}
-      return features, target
+      return features, labels
 
     def _input_fn_predict():
       y = tf.train.limit_epochs(
@@ -374,18 +374,18 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.train.limit_epochs(
               tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
-      return features, target
+      return features, labels
 
-    def _my_metric_op(predictions, targets):
+    def _my_metric_op(predictions, labels):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
-      targets = tf.to_float(targets)
+      labels = tf.to_float(labels)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
-      return tf.reduce_sum(tf.mul(predictions, targets))
+      return tf.reduce_sum(tf.mul(predictions, labels))
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -432,9 +432,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     """Tests bias is centered or not."""
     def _input_fn_train():
       # Create 4 rows, three (y = x), one (y=Not(x))
-      target = tf.constant([[1], [1], [1], [0]])
+      labels = tf.constant([[1], [1], [1], [0]])
       features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -451,9 +451,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     """Tests bias is centered or not."""
     def _input_fn_train():
       # Create 4 rows, three (y = x), one (y=Not(x))
-      target = tf.constant([[1], [1], [1], [0]])
+      labels = tf.constant([[1], [1], [1], [0]])
       features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -472,9 +472,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     """Tests bias is centered or not."""
     def _input_fn_train():
       # Create 4 rows, three (y = x), one (y=Not(x))
-      target = tf.constant([[1], [1], [1], [0]])
+      labels = tf.constant([[1], [1], [1], [0]])
       features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -561,9 +561,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     """Tests the names of DNN weights and biases in the checkpoints."""
     def _input_fn_train():
       # Create 4 rows, three (y = x), one (y=Not(x))
-      target = tf.constant([[1], [1], [1], [0]])
+      labels = tf.constant([[1], [1], [1], [0]])
       features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
-      return features, target
+      return features, labels
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -601,9 +601,9 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     """Tests regression using tensor data as input."""
     def _input_fn():
       # Create 4 rows of (y = x)
-      target = tf.constant([[100.], [3.], [2.], [2.]])
+      labels = tf.constant([[100.], [3.], [2.], [2.]])
       features = {'x': tf.constant([[100.], [3.], [2.], [2.]])}
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -620,11 +620,11 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -635,7 +635,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     regressor.fit(input_fn=_input_fn_train, steps=100)
     scores = regressor.evaluate(input_fn=_input_fn_train, steps=1)
     # Average square loss = (0.75^2 + 3*0.25^2) / 4 = 0.1875
-    self.assertAlmostEqual(scores['loss'], 0.1875, delta=0.1)
+    self.assertAlmostEqual(0.1875, scores['loss'], delta=0.1)
 
   def testLossWithWeights(self):
     """Tests loss calculation with weights."""
@@ -643,21 +643,21 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     def _input_fn_train():
       # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # 4 rows, with different weights.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[7.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNLinearCombinedRegressor(
         weight_column_name='w',
@@ -669,7 +669,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     regressor.fit(input_fn=_input_fn_train, steps=100)
     scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
     # Weighted average square loss = (7*0.75^2 + 3*0.25^2) / 10 = 0.4125
-    self.assertAlmostEqual(scores['loss'], 0.4125, delta=0.1)
+    self.assertAlmostEqual(0.4125, scores['loss'], delta=0.1)
 
   def testTrainWithWeights(self):
     """Tests training with given weight column."""
@@ -678,21 +678,21 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # First row has more weight than others. Model should fit (y=x) better
       # than (y=Not(x)) due to the relative higher weight of the first row.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[100.], [3.], [2.], [2.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # Create 4 rows (y = x)
-      target = tf.constant([[1.], [1.], [1.], [1.]])
+      labels = tf.constant([[1.], [1.], [1.], [1.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNLinearCombinedRegressor(
         weight_column_name='w',
@@ -709,7 +709,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
 
   def testPredict_AsIterableFalse(self):
     """Tests predict method with as_iterable=False."""
-    target = [1., 0., 0.2]
+    labels = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
           'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
@@ -718,7 +718,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                       indices=[[0, 0], [0, 1], [2, 0]],
                                       shape=[3, 2])
       }
-      return features, tf.constant(target, dtype=tf.float32)
+      return features, tf.constant(labels, dtype=tf.float32)
 
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -740,11 +740,11 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertLess(scores['loss'], 0.2)
     predictions = regressor.predict(input_fn=_input_fn, as_iterable=False)
-    self.assertAllClose(predictions, target, atol=0.2)
+    self.assertAllClose(labels, predictions, atol=0.2)
 
   def testPredict_AsIterable(self):
     """Tests predict method with as_iterable=True."""
-    target = [1., 0., 0.2]
+    labels = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
           'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
@@ -753,7 +753,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                       indices=[[0, 0], [0, 1], [2, 0]],
                                       shape=[3, 2])
       }
-      return features, tf.constant(target, dtype=tf.float32)
+      return features, tf.constant(labels, dtype=tf.float32)
 
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -777,19 +777,19 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(
         regressor.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertAllClose(predictions, target, atol=0.2)
+    self.assertAllClose(labels, predictions, atol=0.2)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
     def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {'x': tf.train.limit_epochs(
           tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
-      return features, target
+      return features, labels
 
-    def _my_metric_op(predictions, targets):
-      return tf.reduce_sum(tf.mul(predictions, targets))
+    def _my_metric_op(predictions, labels):
+      return tf.reduce_sum(tf.mul(predictions, labels))
 
     regressor = tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -826,10 +826,10 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     """Tests regression with restarting training / evaluate."""
     def _input_fn(num_epochs=None):
       # Create 4 rows of (y = x)
-      target = tf.constant([[100.], [3.], [2.], [2.]])
+      labels = tf.constant([[100.], [3.], [2.], [2.]])
       features = {'x': tf.train.limit_epochs(
           tf.constant([[100.], [3.], [2.], [2.]]), num_epochs=num_epochs)}
-      return features, target
+      return features, labels
 
     model_dir = tempfile.mkdtemp()
     # pylint: disable=g-long-lambda
@@ -984,15 +984,15 @@ class FeatureEngineeringFunctionTest(tf.test.TestCase):
   def testNoneFeatureEngineeringFn(self):
     def input_fn():
       # Create 4 rows of (y = x)
-      target = tf.constant([[100.], [3.], [2.], [2.]])
+      labels = tf.constant([[100.], [3.], [2.], [2.]])
       features = {'x': tf.constant([[100.], [3.], [2.], [2.]])}
-      return features, target
+      return features, labels
 
-    def feature_engineering_fn(features, targets):
-      _, _ = features, targets
-      target = tf.constant([[1000.], [30.], [20.], [20.]])
+    def feature_engineering_fn(features, labels):
+      _, _ = features, labels
+      labels = tf.constant([[1000.], [30.], [20.], [20.]])
       features = {'x': tf.constant([[1000.], [30.], [20.], [20.]])}
-      return features, target
+      return features, labels
 
     estimator_with_fe_fn = tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],

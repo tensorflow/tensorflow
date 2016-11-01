@@ -92,7 +92,8 @@ class Feature {
     return Status::OK();
   }
 
-  bool ParseBytesList(SmallVector<string>* bytes_list) {
+  template <typename Result>
+  bool ParseBytesList(Result* bytes_list) {
     DCHECK(bytes_list != nullptr);
     protobuf::io::CodedInputStream stream(
         reinterpret_cast<const uint8*>(serialized_.data()), serialized_.size());
@@ -116,7 +117,8 @@ class Feature {
     return true;
   }
 
-  bool ParseFloatList(SmallVector<float>* float_list) {
+  template <typename Result>
+  bool ParseFloatList(Result* float_list) {
     DCHECK(float_list != nullptr);
     protobuf::io::CodedInputStream stream(
         reinterpret_cast<const uint8*>(serialized_.data()), serialized_.size());
@@ -158,7 +160,8 @@ class Feature {
     return true;
   }
 
-  bool ParseInt64List(SmallVector<int64>* int64_list) {
+  template <typename Result>
+  bool ParseInt64List(Result* int64_list) {
     DCHECK(int64_list != nullptr);
     protobuf::io::CodedInputStream stream(
         reinterpret_cast<const uint8*>(serialized_.data()), serialized_.size());
@@ -181,7 +184,7 @@ class Feature {
         while (!stream.ExpectAtEnd()) {
           protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
-          int64_list->push_back(n);
+          int64_list->push_back(static_cast<int64>(n));
         }
 
         stream.PopLimit(packed_limit);
@@ -190,7 +193,7 @@ class Feature {
           if (!stream.ExpectTag(kVarintTag(1))) return false;
           protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
-          int64_list->push_back(n);
+          int64_list->push_back(static_cast<int64>(n));
         }
       }
     }
@@ -392,6 +395,28 @@ struct SeededHasher {
   uint64 seed{0xDECAFCAFFE};
 };
 
+template <typename T>
+class LimitedArraySlice {
+ public:
+  LimitedArraySlice(T* begin, size_t num_elements)
+      : current_(begin), end_(begin + num_elements) {}
+
+  // May return negative if there were push_back calls after slice was filled.
+  int64 EndDistance() const { return end_ - current_; }
+
+  // Attempts to push value to the back of this. If the slice has
+  // already been filled, this method has no effect on the underlying data, but
+  // it changes the number returned by EndDistance into negative values.
+  void push_back(T&& value) {
+    if (EndDistance() > 0) *current_ = std::move(value);
+    ++current_;
+  }
+
+ private:
+  T* current_;
+  T* end_;
+};
+
 Status FastParseSerializedExample(
     const string& serialized_example, const string& example_name,
     const size_t example_index, const Config& config,
@@ -487,37 +512,29 @@ Status FastParseSerializedExample(
 
       switch (config.dense[d].dtype) {
         case DT_INT64: {
-          SmallVector<int64> list;
-          list.reserve(num_elements);
-          if (!feature.ParseInt64List(&list)) return parse_error();
-          if (list.size() != num_elements) {
-            return shape_error(list.size(), "int64");
-          }
           auto out_p = out.flat<int64>().data() + offset;
-          std::copy_n(list.begin(), list.size(), out_p);
+          LimitedArraySlice<int64> slice(out_p, num_elements);
+          if (!feature.ParseInt64List(&slice)) return parse_error();
+          if (slice.EndDistance() != 0) {
+            return shape_error(num_elements - slice.EndDistance(), "int64");
+          }
           break;
         }
         case DT_FLOAT: {
-          SmallVector<float> list;
-          list.reserve(num_elements);
-          if (!feature.ParseFloatList(&list)) return parse_error();
-          if (list.size() != num_elements) {
-            return shape_error(list.size(), "float");
-          }
           auto out_p = out.flat<float>().data() + offset;
-          std::copy_n(list.begin(), list.size(), out_p);
+          LimitedArraySlice<float> slice(out_p, num_elements);
+          if (!feature.ParseFloatList(&slice)) return parse_error();
+          if (slice.EndDistance() != 0) {
+            return shape_error(num_elements - slice.EndDistance(), "float");
+          }
           break;
         }
         case DT_STRING: {
-          SmallVector<string> list;
-          list.reserve(num_elements);
-          if (!feature.ParseBytesList(&list)) return parse_error();
-          if (list.size() != num_elements) {
-            return shape_error(list.size(), "bytes");
-          }
           auto out_p = out.flat<string>().data() + offset;
-          for (size_t i = 0; i < list.size(); ++i) {
-            out_p[i] = std::move(list[i]);
+          LimitedArraySlice<string> slice(out_p, num_elements);
+          if (!feature.ParseBytesList(&slice)) return parse_error();
+          if (slice.EndDistance() != 0) {
+            return shape_error(num_elements - slice.EndDistance(), "bytes");
           }
           break;
         }

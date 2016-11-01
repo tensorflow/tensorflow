@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {DataSet} from './data';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
@@ -67,40 +67,48 @@ const VERTEX_SHADER = `
       max(outputPointSize * scaleFactor, ${MIN_POINT_SIZE.toFixed(1)});
   }`;
 
+const FRAGMENT_SHADER_POINT_TEST_CHUNK = `
+  bool point_in_unit_circle(vec2 spriteCoord) {
+    vec2 centerToP = spriteCoord - vec2(0.5, 0.5);
+    return dot(centerToP, centerToP) < (0.5 * 0.5);
+  }
+
+  bool point_in_unit_equilateral_triangle(vec2 spriteCoord) {
+    vec3 v0 = vec3(0, 1, 0);
+    vec3 v1 = vec3(0.5, 0, 0);
+    vec3 v2 = vec3(1, 1, 0);
+    vec3 p = vec3(spriteCoord, 0);
+    float p_in_v0_v1 = cross(v1 - v0, p - v0).z;
+    float p_in_v1_v2 = cross(v2 - v1, p - v1).z;
+    float p_in_v2_v0 = cross(v0 - v2, p - v2).z;
+    vec3 p_inside = vec3(p_in_v0_v1, p_in_v1_v2, p_in_v2_v0);
+    vec3 p_inside_norm = step(vec3(0, 0, 0), p_inside);
+    return all(bvec3(p_inside_norm));
+  }
+`;
+
 const FRAGMENT_SHADER = `
-  // Values passed in from the vertex shader.
   varying vec2 xyIndex;
   varying vec3 vColor;
 
-  // Adding in the THREEjs shader chunks for fog.
-  ${THREE.ShaderChunk['common']}
-  ${THREE.ShaderChunk['fog_pars_fragment']}
-
-  // Uniforms passed in as properties from THREE.ShaderMaterial.
   uniform sampler2D texture;
   uniform float imageWidth;
   uniform float imageHeight;
   uniform bool isImage;
 
+  ${THREE.ShaderChunk['common']}
+  ${THREE.ShaderChunk['fog_pars_fragment']}
+  ${FRAGMENT_SHADER_POINT_TEST_CHUNK}
+
   void main() {
     if (isImage) {
       // Coordinates of the vertex within the entire sprite image.
       vec2 coords = (gl_PointCoord + xyIndex) / vec2(imageWidth, imageHeight);
-      // Determine the color of the spritesheet at the calculate spot.
-      vec4 fromTexture = texture2D(texture, coords);
-
-      // Finally, set the fragment color.
-      gl_FragColor = vec4(vColor, 1.0) * fromTexture;
+      gl_FragColor = vec4(vColor, 1.0) * texture2D(texture, coords);
     } else {
-      // Discard pixels outside the radius so points are rendered as circles.
-      vec2 uv = gl_PointCoord.xy - 0.5;
-      float uvLenSquared = dot(uv, uv);
-      if (uvLenSquared > (0.5 * 0.5)) {
-        discard;
-      }
-
-      // If the point is not an image, just color it.
-      gl_FragColor = vec4(vColor, 1.0);
+      bool inside = point_in_unit_circle(gl_PointCoord);
+      vec3 c = mix(vec3(1, 1, 1), vColor, float(inside));
+      gl_FragColor = vec4(c, 1);
     }
     ${THREE.ShaderChunk['fog_fragment']}
   }`;
@@ -108,20 +116,17 @@ const FRAGMENT_SHADER = `
 const FRAGMENT_SHADER_PICKING = `
   varying vec2 xyIndex;
   varying vec3 vColor;
-
   uniform bool isImage;
+
+  ${FRAGMENT_SHADER_POINT_TEST_CHUNK}
 
   void main() {
     xyIndex; // Silence 'unused variable' warning.
     if (isImage) {
       gl_FragColor = vec4(vColor, 1);
     } else {
-      vec2 pointCenterToHere = gl_PointCoord.xy - vec2(0.5, 0.5);
-      float lenSquared = dot(pointCenterToHere, pointCenterToHere);
-      if (lenSquared > (0.5 * 0.5)) {
-        discard;
-      }
-      gl_FragColor = vec4(vColor, 1);
+      float a = float(point_in_unit_circle(gl_PointCoord));
+      gl_FragColor = vec4(vColor, a);
     }
   }`;
 
@@ -156,18 +161,19 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
 
     let canvas = document.createElement('canvas');
     let image = this.image || canvas;
-    // TODO(b/31390553): Pass sprite dim to the renderer.
-    let spriteDim = 28.0;
     let tex = createTexture(image);
     let pointSize = (this.sceneIs3D ? this.pointSize3D : this.pointSize2D);
+    let imageDim = [0, 0];
     if (this.image) {
       pointSize = IMAGE_SIZE;
+      imageDim =
+          this.dataSet.spriteAndMetadataInfo.spriteMetadata.singleImageDim;
     }
 
     this.uniforms = {
       texture: {type: 't', value: tex},
-      imageWidth: {type: 'f', value: image.width / spriteDim},
-      imageHeight: {type: 'f', value: image.height / spriteDim},
+      imageWidth: {type: 'f', value: image.width / imageDim[0]},
+      imageHeight: {type: 'f', value: image.height / imageDim[1]},
       fogColor: {type: 'c', value: this.fog.color},
       fogNear: {type: 'f', value: this.fog.near},
       fogFar: {type: 'f', value: this.fog.far},
@@ -193,11 +199,11 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
       uniforms: this.uniforms,
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER_PICKING,
-      transparent: false,
+      transparent: true,
       depthTest: true,
       depthWrite: true,
       fog: false,
-      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
+      blending: THREE.NormalBlending,
     });
 
     this.points = new THREE.Points(this.geometry, this.renderMaterial);
@@ -291,9 +297,9 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     scene.remove(this.points);
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
+  onDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
-    this.image = spriteImage;
+    this.image = this.dataSet.spriteAndMetadataInfo.spriteImage;
     this.points = null;
     if (this.geometry) {
       this.geometry.dispose();

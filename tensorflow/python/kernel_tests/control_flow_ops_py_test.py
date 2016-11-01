@@ -33,6 +33,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
@@ -252,6 +253,15 @@ class ControlFlowTest(tf.test.TestCase):
       result = exit_i.eval()
     self.assertAllEqual(10, result)
 
+  def testDifferentFrame(self):
+    with self.test_session():
+      data = tf.placeholder(tf.float32, shape=[])
+      enter_1 = control_flow_ops.enter(data, "foo_1", False)
+      enter_2 = control_flow_ops.enter(data, "foo_2", False)
+      res = tf.add(enter_1, enter_2)
+      with self.assertRaisesOpError("has inputs from different frames"):
+        res.eval(feed_dict={data: 1.0})
+
   def testCondBool(self):
     values = tf.constant(10)
     fn1 = lambda: tf.add(values, 1)
@@ -421,7 +431,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testCondRef(self):
     with self.test_session():
-      x = state_ops.variable_op([1], tf.float32)
+      x = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="x", container="", shared_name="")
       true_fn = lambda: x
       false_fn = lambda: tf.constant([2.0])
       r = tf.cond(tf.constant(False), true_fn, false_fn)
@@ -429,7 +440,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
-      v = state_ops.variable_op([1], tf.float32)
+      v = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="v", container="", shared_name="")      
       inited = state_ops.is_variable_initialized(v)
       v_f, v_t = control_flow_ops.ref_switch(v, inited)
       # Both v_f and v_t are uninitialized references. However, an actual use
@@ -507,7 +519,7 @@ class ControlFlowTest(tf.test.TestCase):
                  ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
-  # Microbenchmark: 250,000 iterations/s.
+  # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
     with self.test_session():
       n = tf.constant(0)

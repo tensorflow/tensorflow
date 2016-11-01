@@ -34,24 +34,24 @@ def iris_input_fn(num_epochs=None):
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.train.limit_epochs(
       tf.reshape(tf.constant(iris.data), [-1, 4]), num_epochs=num_epochs)
-  target = tf.reshape(tf.constant(iris.target), [-1])
-  return features, target
+  labels = tf.reshape(tf.constant(iris.target), [-1])
+  return features, labels
 
 
-def logistic_model_fn(features, target, unused_mode):
-  target = tf.one_hot(target, 3, 1, 0)
+def logistic_model_fn(features, labels, unused_mode):
+  labels = tf.one_hot(labels, 3, 1, 0)
   prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(
-      features, target)
+      features, labels)
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=0.1)
   return prediction, loss, train_op
 
 
-def logistic_model_params_fn(features, target, unused_mode, params):
-  target = tf.one_hot(target, 3, 1, 0)
+def logistic_model_params_fn(features, labels, unused_mode, params):
+  labels = tf.one_hot(labels, 3, 1, 0)
   prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(
-      features, target)
+      features, labels)
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=params['learning_rate'])

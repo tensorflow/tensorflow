@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DistanceFunction, MetadataInfo} from './data';
+import {DistanceFunction, SpriteAndMetadataInfo} from './data';
 import * as vector from './vector';
 import {ProjectorInput} from './vz-projector-input';
 import {Projector} from './vz-projector';
@@ -90,9 +90,9 @@ export class InspectorPanel extends PolymerClass {
     }
   }
 
-  metadataChanged(metadata: MetadataInfo) {
+  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo) {
     let labelIndex = -1;
-    this.metadataFields = metadata.stats.map((stats, i) => {
+    this.metadataFields = spriteAndMetadata.stats.map((stats, i) => {
       if (!stats.isNumeric && labelIndex === -1) {
         labelIndex = i;
       }
@@ -100,7 +100,7 @@ export class InspectorPanel extends PolymerClass {
     });
     labelIndex = Math.max(0, labelIndex);
     // Make the default label the first non-numeric column.
-    this.selectedMetadataField = metadata.stats[labelIndex].name;
+    this.selectedMetadataField = spriteAndMetadata.stats[labelIndex].name;
   }
 
   datasetChanged() {
@@ -138,7 +138,7 @@ export class InspectorPanel extends PolymerClass {
   }
 
   private getLabelFromIndex(pointIndex: number): string {
-    let point = this.projector.currentDataSet.points[pointIndex];
+    let point = this.projector.dataSet.points[pointIndex];
     return point.metadata[this.selectedMetadataField].toString();
   }
 
@@ -218,7 +218,7 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       eucDist.classed('selected', true);
       this.distFunc = vector.dist;
-      let neighbors = this.projector.currentDataSet.findNeighbors(
+      let neighbors = this.projector.dataSet.findNeighbors(
           this.selectedPointIndex, this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
     });
@@ -228,7 +228,7 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       cosDist.classed('selected', true);
       this.distFunc = vector.cosDist;
-      let neighbors = this.projector.currentDataSet.findNeighbors(
+      let neighbors = this.projector.dataSet.findNeighbors(
           this.selectedPointIndex, this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
     });
@@ -240,7 +240,7 @@ export class InspectorPanel extends PolymerClass {
         this.projector.notifySelectionChanged([]);
         return;
       }
-      let indices = this.projector.currentDataSet.query(value, inRegexMode,
+      let indices = this.projector.dataSet.query(value, inRegexMode,
           this.selectedMetadataField);
       if (indices.length === 0) {
         this.searchBox.message = '0 matches.';
@@ -249,7 +249,7 @@ export class InspectorPanel extends PolymerClass {
       }
       this.projector.notifySelectionChanged(indices);
     };
-    this.searchBox.onInputChanged((value, inRegexMode) => {
+    this.searchBox.registerInputChangedListener((value, inRegexMode) => {
       updateInput(value, inRegexMode);
     });
 
@@ -278,7 +278,7 @@ export class InspectorPanel extends PolymerClass {
     });
 
     this.clearSelectionButton.on('click', () => {
-      this.projector.clearSelectionAndHover();
+      this.projector.adjustSelectionAndHover([]);
     });
     this.resetFilterButton.attr('disabled', true);
   }

@@ -249,7 +249,7 @@ class MonitorsTest(tf.test.TestCase):
       var = tf.Variable(0.0)
       var.initializer.run()
       tensor = tf.assign_add(var, 1.0)
-      summary_op = tf.scalar_summary('my_summary', tensor)
+      summary_op = tf.summary.scalar('my_summary', tensor)
       self._run_monitor(
           learn.monitors.SummarySaver(
               summary_op=summary_op, save_steps=8,

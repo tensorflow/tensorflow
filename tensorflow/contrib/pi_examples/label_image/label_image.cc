@@ -23,6 +23,7 @@ limitations under the License.
 //
 // Full build instructions are at tensorflow/contrib/pi_examples/README.md.
 
+#include <stdio.h>
 #include <jpeglib.h>
 #include <setjmp.h>
 #include <fstream>
@@ -315,7 +316,7 @@ int main(int argc, char* argv[]) {
   string output_layer = "softmax";
   bool self_test = false;
   string root_dir = "";
-  vector tensorflow::Flag > flag_list = {
+  std::vector<tensorflow::Flag> flag_list = {
       Flag("image", &image, "image to be processed"),
       Flag("graph", &graph, "graph to be executed"),
       Flag("labels", &labels, "name of file containing labels"),
@@ -338,7 +339,7 @@ int main(int argc, char* argv[]) {
   }
 
   // We need to call this to set up global state for TensorFlow.
-  tensorflow::port::InitMain(usage, &argc, &argv);
+  tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   if (argc > 1) {
     LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return -1;

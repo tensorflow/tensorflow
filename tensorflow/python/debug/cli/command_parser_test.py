@@ -129,5 +129,34 @@ class ValidateSlicingStringTest(test_util.TensorFlowTestCase):
     self.assertFalse(command_parser.validate_slicing_string("[5, bar]"))
 
 
+class ParseIndicesTest(test_util.TensorFlowTestCase):
+
+  def testParseValidIndicesStringsWithBrackets(self):
+    self.assertEqual([0], command_parser.parse_indices("[0]"))
+    self.assertEqual([0], command_parser.parse_indices(" [0] "))
+    self.assertEqual([-1, 2], command_parser.parse_indices("[-1, 2]"))
+    self.assertEqual([3, 4, -5],
+                     command_parser.parse_indices("[3,4,-5]"))
+
+  def testParseValidIndicesStringsWithoutBrackets(self):
+    self.assertEqual([0], command_parser.parse_indices("0"))
+    self.assertEqual([0], command_parser.parse_indices(" 0 "))
+    self.assertEqual([-1, 2], command_parser.parse_indices("-1, 2"))
+    self.assertEqual([3, 4, -5], command_parser.parse_indices("3,4,-5"))
+
+  def testParseInvalidIndicesStringsWithoutBrackets(self):
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: 'a'"):
+      self.assertEqual([0], command_parser.parse_indices("0,a"))
+
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: '2\]'"):
+      self.assertEqual([0], command_parser.parse_indices("1, 2]"))
+
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: ''"):
+      self.assertEqual([0], command_parser.parse_indices("3, 4,"))
+
+
 if __name__ == "__main__":
   googletest.main()

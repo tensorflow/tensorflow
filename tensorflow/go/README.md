@@ -11,7 +11,7 @@ Construct and execute TensorFlow graphs in Go.
 ## Requirements
 
 -   Go version 1.7+
--   [bazel](https://www.bazel.io/versions/master/docs/install.html)
+-   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
     ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
     or [Mac OS

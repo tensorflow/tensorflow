@@ -1,25 +1,36 @@
-Bijector which computes Y = g(X; shift, scale) = scale * X + shift.
+Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
+
+`scale` is either a non-zero scalar, or a lower triangular matrix with
+non-zero diagonal.  This means the `Bijector` will be invertible and
+computation of determinant and inverse will be efficient.
+
+As a result, the mean and covariance are transformed:
+
+```
+E[Y] = matmul(scale, E[X])
+Cov[Y] = matmul(scale, matmul(Cov[X], scale, transpose_b=True))
+```
 
 Example Use:
 
 ```python
-# No batch, scalar.
+# No batch, scalar
 mu = 0     # shape=[]
-sigma = 1  # shape=[]
+sigma = 1  # shape=[], treated like a 1x1 matrix.
 b = ScaleAndShift(shift=mu, scale=sigma)
 # b.shaper.batch_ndims == 0
 # b.shaper.event_ndims == 0
 
 # One batch, scalar.
 mu = ...    # shape=[b], b>0
-sigma = ... # shape=[b], b>0
+sigma = ... # shape=[b], b>0, treated like a batch of 1x1 matrices
 b = ScaleAndShift(shift=mu, scale=sigma)
 # b.shaper.batch_ndims == 1
 # b.shaper.event_ndims == 0
 
 # No batch, multivariate.
 mu = ...    # shape=[d],    d>0
-sigma = ... # shape=[d, d], d>0
+sigma = ... # shape=[d, d], d>0, treated like a single dxd matrix.
 b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
 # b.shaper.batch_ndims == 0
 # b.shaper.event_ndims == 1
@@ -42,17 +53,26 @@ b.forward(x) # == x + 1
 
 #### `tf.contrib.distributions.bijector.ScaleAndShift.__init__(shift, scale, event_ndims=0, validate_args=False, name='scale_and_shift')` {#ScaleAndShift.__init__}
 
-Instantiates the `Exp` bijector.
+Instantiates the `ScaleAndShift` bijector.
+
+This `Bijector` is initialized with `scale` and `shift` `Tensors`, giving
+the forward operation:
+
+```Y = g(X) = matmul(scale, X) + shift```
 
 ##### Args:
 
 
-*  <b>`shift`</b>: `Tensor` used to shift input, i.e., `Y = g(X) = scale * X + shift`.
-*  <b>`scale`</b>: `Tensor` used to scale input, i.e., `Y = g(X) = scale * X + shift`.
+*  <b>`shift`</b>: Numeric `Tensor`.
+*  <b>`scale`</b>: Numeric `Tensor` of same `dtype` as `shift`.  If `event_ndims = 0`,
+    `scale` is treated like a `1x1` matrix or a batch thereof.
+    Otherwise, the last two dimensions of `scale` define a matrix.
+    `scale` must have non-negative diagonal entries.  The upper triangular
+    part of `scale` is ignored, effectively making it lower triangular.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
-    associated with a particular draw from the distribution.
-*  <b>`validate_args`</b>: `Boolean` indicated whether arguments should be checked for
-    correctness.
+    associated with a particular draw from the distribution.  Must be 0 or 1
+*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
+    for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
 
 
