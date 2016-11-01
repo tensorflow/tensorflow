@@ -101,8 +101,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         tf.clip_by_global_norm for more details.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
       default_prediction_key: Default prediction key to use with metrics.
       enable_centered_bias: A bool. If True, estimator will learn a centered
@@ -142,7 +142,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._default_prediction_key = default_prediction_key
     self._feature_engineering_fn = (
         feature_engineering_fn or
-        (lambda features, targets: (features, targets)))
+        (lambda features, labels: (features, labels)))
     self._enable_centered_bias = enable_centered_bias
 
   @property
@@ -199,11 +199,11 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return features
     return {"": features}
 
-  def _get_train_ops(self, features, targets):
+  def _get_train_ops(self, features, labels):
     """See base class."""
 
     features = self._get_feature_dict(features)
-    features, targets = self._feature_engineering_fn(features, targets)
+    features, labels = self._feature_engineering_fn(features, labels)
     logits = self._logits(features, is_training=True)
 
     def _make_training_op(training_loss):
@@ -217,19 +217,19 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         with ops.get_default_graph().colocate_with(global_step):
           return state_ops.assign_add(global_step, 1).op
 
-    model_fn_ops = self._head.head_ops(features, targets,
+    model_fn_ops = self._head.head_ops(features, labels,
                                        estimator.ModeKeys.TRAIN,
                                        _make_training_op,
                                        logits=logits)
     return model_fn_ops.training_op, model_fn_ops.loss
 
-  def _get_eval_ops(self, features, targets, metrics=None):
+  def _get_eval_ops(self, features, labels, metrics=None):
     """See base class."""
     features = self._get_feature_dict(features)
-    features, targets = self._feature_engineering_fn(features, targets)
+    features, labels = self._feature_engineering_fn(features, labels)
     logits = self._logits(features)
 
-    model_fn_ops = self._head.head_ops(features, targets,
+    model_fn_ops = self._head.head_ops(features, labels,
                                        estimator.ModeKeys.EVAL, None,
                                        logits=logits)
     all_metrics = model_fn_ops.default_metrics
@@ -243,7 +243,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     # TODO(zakaria): Remove this once we refactor this class to delegate
     #   to estimator.
     # pylint: disable=protected-access
-    result = estimator._make_metrics_ops(all_metrics, features, targets,
+    result = estimator._make_metrics_ops(all_metrics, features, labels,
                                          model_fn_ops.predictions)
     return result
 
@@ -383,7 +383,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
-      n_classes: number of target classes. Default is binary classification.
+      n_classes: number of label classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training.
         It will be multiplied by the loss of the example.
@@ -414,8 +414,8 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         residual after centered bias.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Raises:
@@ -576,7 +576,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=False,
-               target_dimension=1,
+               label_dimension=1,
                config=None,
                feature_engineering_fn=None):
     """Initializes a DNNLinearCombinedRegressor instance.
@@ -613,11 +613,11 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      target_dimension: TODO(zakaria): dimension of the target for multilabels.
+      label_dimension: TODO(zakaria): dimension of the label for multilabels.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Raises:
@@ -626,7 +626,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
     """
     head = head_lib._regression_head(  # pylint: disable=protected-access
         weight_column_name=weight_column_name,
-        target_dimension=target_dimension,
+        label_dimension=label_dimension,
         enable_centered_bias=enable_centered_bias)
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,

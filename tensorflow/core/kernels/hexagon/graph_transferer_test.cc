@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -23,6 +25,9 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+static const string NAME_A = "a";
+static const string NAME_B = "b";
 
 class GraphTransfererTest : public ::testing::Test {
  protected:
@@ -37,8 +42,8 @@ class GraphTransfererTest : public ::testing::Test {
 
 static GraphDef CreateSmallGraphDef() {
   Scope root = Scope::NewRootScope();
-  ops::Output node_a = ops::Const(root.WithOpName("a"), 1);
-  ops::Output node_b = ops::Const(root.WithOpName("b"), 2);
+  ops::Output node_a = ops::Const(root.WithOpName(NAME_A), 1);
+  ops::Output node_b = ops::Const(root.WithOpName(NAME_B), 2);
   ops::Add(root.WithOpName("a_plus_b"), node_a, node_b);
 
   GraphDef def;
@@ -46,12 +51,44 @@ static GraphDef CreateSmallGraphDef() {
   return def;
 }
 
+static const GraphTransferer::ConstNodeTransferParams* FindConstNodeParams(
+    const GraphTransferer& gt, const string& name) {
+  for (const GraphTransferer::ConstNodeTransferParams& params :
+       gt.GetConstNodeParams()) {
+    if (params.name == name) {
+      return &params;
+    }
+  }
+  return nullptr;
+}
+
 TEST_F(GraphTransfererTest, LoadGraph) {
   GraphDef def = CreateSmallGraphDef();
   _session->Create(def);
 
   GraphTransferer gt;
-  gt.LoadGraphFromProto(&def);
+  gt.LoadGraphFromProto(def);
+  ASSERT_EQ(2, gt.GetConstNodeParams().size());
+  const GraphTransferer::ConstNodeTransferParams* params_a =
+      FindConstNodeParams(gt, NAME_A);
+  ASSERT_TRUE(params_a != nullptr);
+  EXPECT_TRUE(params_a->id > 0 && params_a->id <= 2);
+  EXPECT_EQ(NAME_A, params_a->name);
+  EXPECT_EQ(1, params_a->shape[0]);
+  EXPECT_EQ(1, params_a->shape[1]);
+  EXPECT_EQ(1, params_a->shape[2]);
+  EXPECT_EQ(1, params_a->shape[3]);
+  EXPECT_EQ(10, params_a->data_size);
+
+  const GraphTransferer::ConstNodeTransferParams* params_b =
+      FindConstNodeParams(gt, NAME_B);
+  ASSERT_TRUE(params_b != nullptr);
+  EXPECT_TRUE(params_b->id > 0 && params_b->id <= 2);
+  EXPECT_EQ(1, params_b->shape[0]);
+  EXPECT_EQ(1, params_b->shape[1]);
+  EXPECT_EQ(1, params_b->shape[2]);
+  EXPECT_EQ(1, params_b->shape[3]);
+  EXPECT_EQ(10, params_b->data_size);
 }
 
 }  // namespace tensorflow

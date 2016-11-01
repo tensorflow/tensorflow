@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColumnStats, DataPoint, DataSet, MetadataInfo, PointMetadata, State} from './data';
+import {ColumnStats, DataPoint, DataSet, SpriteAndMetadataInfo, PointMetadata, State} from './data';
 import * as logging from './logging';
 import {runAsyncTask} from './util';
 
@@ -23,22 +23,34 @@ const NUM_COLORS_COLOR_MAP = 20;
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';
 
-/** Information associated with a tensor. */
-export interface TensorInfo {
-  /** Name of the tensor. */
-  name: string;
-  /** The shape of the tensor. */
-  shape: [number, number];
-  /** The path to the metadata file associated with the tensor. */
-  metadataFile: string;
-  /** The path to the bookmarks file associated with the tensor. */
-  bookmarksFile: string;
+/** Matches the json format of `projector_config.proto` */
+export interface SpriteMetadata {
+  imagePath: string;
+  singleImageDim: [number, number];
 }
 
-/** Information for the model checkpoint. */
-export interface CheckpointInfo {
-  tensors: {[name: string]: TensorInfo};
-  checkpointFile: string;
+/** Matches the json format of `projector_config.proto` */
+export interface EmbeddingInfo {
+  /** Name of the tensor. */
+  tensorName: string;
+  /** The shape of the tensor. */
+  tensorShape: [number, number];
+  /**
+   * The path to the tensors TSV file. If empty, it is assumed that the tensor
+   * is stored in the checkpoint file.
+   */
+  tensorPath?: string;
+  /** The path to the metadata file associated with the tensor. */
+  metadataPath?: string;
+  /** The path to the bookmarks file associated with the tensor. */
+  bookmarksPath?: string;
+  sprite?: SpriteMetadata;
+}
+
+/** Matches the json format of `projector_config.proto` */
+export interface ProjectorConfig {
+  embeddings: EmbeddingInfo[];
+  modelCheckpointPath: string;
 }
 
 export type ServingMode = 'demo' | 'server' | 'proto';
@@ -49,19 +61,21 @@ export interface DataProvider {
   retrieveRuns(callback: (runs: string[]) => void): void;
 
   /**
-   * Returns info about the checkpoint: number of tensors, their shapes,
+   * Returns the projector configuration: number of tensors, their shapes,
    * and their associated metadata files.
    */
-  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void;
+  retrieveProjectorConfig(run: string,
+      callback: (d: ProjectorConfig) => void): void;
 
   /** Fetches and returns the tensor with the specified name. */
-  retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void);
+  retrieveTensor(run: string, tensorName: string,
+      callback: (ds: DataSet) => void);
 
   /**
    * Fetches the metadata for the specified tensor.
    */
-  retrieveMetadata(run: string, tensorName: string,
-      callback: (r: MetadataInfo) => void): void;
+  retrieveSpriteAndMetadata(run: string, tensorName: string,
+      callback: (r: SpriteAndMetadataInfo) => void): void;
 
   /**
    * Returns the name of the tensor that should be fetched by default.
@@ -82,7 +96,7 @@ export function parseRawTensors(
 }
 
 export function parseRawMetadata(
-    contents: string, callback: (r: MetadataInfo) => void) {
+    contents: string, callback: (r: SpriteAndMetadataInfo) => void) {
   parseMetadata(contents).then(result => callback(result));
 }
 
@@ -188,7 +202,7 @@ export function analyzeMetadata(
   return columnStats;
 }
 
-export function parseMetadata(content: string): Promise<MetadataInfo> {
+export function parseMetadata(content: string): Promise<SpriteAndMetadataInfo> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
     let hasHeader = lines[0].indexOf('\t') >= 0;
@@ -214,7 +228,7 @@ export function parseMetadata(content: string): Promise<MetadataInfo> {
     return {
       stats: analyzeMetadata(columnNames, pointsMetadata),
       pointsInfo: pointsMetadata
-    } as MetadataInfo;
+    } as SpriteAndMetadataInfo;
   }, METADATA_MSG_ID).then(metadata => {
     logging.setModalMessage(null, METADATA_MSG_ID);
     return metadata;
@@ -227,5 +241,41 @@ export function fetchImage(url: string): Promise<HTMLImageElement> {
     image.onload = () => resolve(image);
     image.onerror = (err) => reject(err);
     image.src = url;
+  });
+}
+
+export function retrieveSpriteAndMetadataInfo(metadataPath: string,
+    spriteImagePath: string, spriteMetadata: SpriteMetadata,
+    callback: (r: SpriteAndMetadataInfo) => void) {
+  let metadataPromise: Promise<SpriteAndMetadataInfo> = Promise.resolve({});
+  if (metadataPath) {
+    metadataPromise = new Promise<SpriteAndMetadataInfo>((resolve, reject) => {
+      logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
+      d3.text(metadataPath, (err: any, rawMetadata: string) => {
+        if (err) {
+          logging.setModalMessage('Error: ' + err.responseText);
+          reject(err);
+          return;
+        }
+        resolve(parseMetadata(rawMetadata));
+      });
+    });
+  }
+  let spriteMsgId = null;
+  let spritesPromise: Promise<HTMLImageElement> = null;
+  if (spriteImagePath) {
+    spriteMsgId = logging.setModalMessage('Fetching sprite image...');
+    spritesPromise = fetchImage(spriteImagePath);
+  }
+
+  // Fetch the metadata and the image in parallel.
+  Promise.all([metadataPromise, spritesPromise]).then(values => {
+    if (spriteMsgId) {
+      logging.setModalMessage(null, spriteMsgId);
+    }
+    let [metadata, spriteImage] = values;
+    metadata.spriteImage = spriteImage;
+    metadata.spriteMetadata = spriteMetadata;
+    callback(metadata);
   });
 }

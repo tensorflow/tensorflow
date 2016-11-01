@@ -19,13 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as var_ops
@@ -239,8 +239,7 @@ def _get_shared_file_name_queue(file_names, shuffle, num_epochs, name):
   # Creating a dummy variable so we can put the shared queue in ps if there is
   # a PS and in the worker otherwise. TODO(rohanj): Figure out how to place an
   # op on PS without this hack
-  with ops.Graph().as_default():
-    dummy_var = var_ops.Variable(initial_value=0, name='dummy_var')
+  dummy_var = var_ops.Variable(initial_value=0, name='queue_placement_var')
   with ops.device(dummy_var.device):
     shared_file_name_queue = input_ops.string_input_producer(
         constant_op.constant(
@@ -561,7 +560,7 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
   """
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
-    keys, examples = read_keyed_batch_examples_shared_queue(
+    keys, examples = _read_keyed_batch_examples_shared_queue(
         file_pattern,
         batch_size,
         reader,
@@ -660,10 +659,10 @@ def queue_parsed_features(parsed_features,
     input_queue = data_flow_ops.FIFOQueue(feature_queue_capacity, queue_dtypes)
 
     # Add a summary op to debug if our feature queue is full or not.
-    logging_ops.scalar_summary('queue/parsed_features/%s/fraction_of_%d_full' %
-                               (input_queue.name, feature_queue_capacity),
-                               math_ops.cast(input_queue.size(), dtypes.float32)
-                               * (1. / feature_queue_capacity))
+    summary.scalar('queue/parsed_features/%s/fraction_of_%d_full' %
+                   (input_queue.name, feature_queue_capacity),
+                   math_ops.cast(input_queue.size(), dtypes.float32) *
+                   (1. / feature_queue_capacity))
 
     # Add multiple queue runners so that the queue is always full. Adding more
     # than two queue-runners may hog the cpu on the worker to fill up the queue.

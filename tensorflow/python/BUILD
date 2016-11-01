@@ -218,23 +218,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cpp_shape_inference",
-    srcs = ["framework/cpp_shape_inference.cc"],
-    hdrs = ["framework/cpp_shape_inference.h"],
-    copts = ["-Wno-sign-compare"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":numpy_lib",
-        ":py_func_lib",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_cc",
-        "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
-    ],
-)
-
-cc_library(
     name = "python_op_gen_main",
     srcs = [
         "framework/python_op_gen_main.cc",
@@ -284,6 +267,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cpp_shape_inference_proto_py",
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow",
     ],
@@ -661,6 +645,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "resource_variable_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "script_ops_gen",
     require_shape_functions = True,
 )
@@ -986,6 +975,16 @@ py_library(
         ":control_flow_ops",
         ":framework",
         ":math_ops",
+    ],
+)
+
+py_library(
+    name = "resource_variable_ops",
+    srcs = ["ops/resource_variable_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":resource_variable_ops_gen",
     ],
 )
 
@@ -1409,6 +1408,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":random_ops_gen",
+        ":resource_variable_ops",
         ":resources",
         ":rnn",
         ":rnn_cell",
@@ -1509,7 +1509,6 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
-    tags = ["notsan"],
 )
 
 cuda_py_test(
@@ -1585,7 +1584,6 @@ cuda_py_test(
         ":lib",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["notsan"],
 )
 
 py_library(
@@ -1692,6 +1690,7 @@ tf_proto_library(
         ["**/*.proto"],
         exclude = [
             "util/protobuf/compare_test.proto",
+            "framework/cpp_shape_inference.proto",
         ],
     ),
     go_api_version = 2,
@@ -1701,6 +1700,13 @@ tf_proto_library_py(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["util/protobuf/compare_test.proto"],
+)
+
+tf_proto_library(
+    name = "cpp_shape_inference_proto",
+    srcs = ["framework/cpp_shape_inference.proto"],
+    cc_api_version = 2,
+    cc_libs = ["//tensorflow/core:protos_all_cc"],
 )
 
 py_test(
@@ -1766,6 +1772,24 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":pywrap_tensorflow",
+    ],
+)
+
+cc_library(
+    name = "cpp_shape_inference",
+    srcs = ["framework/cpp_shape_inference.cc"],
+    hdrs = ["framework/cpp_shape_inference.h"],
+    copts = ["-Wno-sign-compare"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cpp_shape_inference_proto_cc",
+        ":numpy_lib",
+        ":py_func_lib",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_cc",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
     ],
 )
 

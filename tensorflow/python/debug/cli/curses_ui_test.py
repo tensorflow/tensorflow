@@ -20,8 +20,11 @@ from __future__ import print_function
 import argparse
 import curses
 
+import numpy as np
+
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import tensor_format
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -54,12 +57,18 @@ class MockCursesUI(curses_ui.CursesUI):
     self.unwrapped_outputs = []
     self.wrapped_outputs = []
     self.scroll_messages = []
+    self.output_array_pointer_indices = []
+
+    self.output_pad_rows = []
 
     # Observers of command textbox.
     self.existing_commands = []
 
-    # Observers for tab-completion candidates.
+    # Observer for tab-completion candidates.
     self.candidates_lists = []
+
+    # Observer for toast messages.
+    self.toasts = []
 
     curses_ui.CursesUI.__init__(self)
 
@@ -146,7 +155,7 @@ class MockCursesUI(curses_ui.CursesUI):
     return codes_to_string(self._command_sequence[self._command_counter]
                            [:self._command_key_counter])
 
-  def _scroll_output(self, direction):
+  def _scroll_output(self, direction, line_index=None):
     """Override to observe screen output.
 
     This method is invoked after every command that generates a new screen
@@ -155,18 +164,27 @@ class MockCursesUI(curses_ui.CursesUI):
 
     Args:
       direction: which direction to scroll.
+      line_index: (int or None) Optional line index to scroll to. See doc string
+        of the overridden method for more information.
     """
 
-    curses_ui.CursesUI._scroll_output(self, direction)
+    curses_ui.CursesUI._scroll_output(self, direction, line_index=line_index)
 
     self.unwrapped_outputs.append(self._curr_unwrapped_output)
     self.wrapped_outputs.append(self._curr_wrapped_output)
     self.scroll_messages.append(self._scroll_info)
+    self.output_array_pointer_indices.append(self._output_array_pointer_indices)
+    self.output_pad_rows.append(self._output_pad_row)
 
   def _display_candidates(self, candidates):
     curses_ui.CursesUI._display_candidates(self, candidates)
 
     self.candidates_lists.append(candidates)
+
+  def _toast(self, message, color=None, line_index=None):
+    curses_ui.CursesUI._toast(self, message, color=color, line_index=line_index)
+
+    self.toasts.append(message)
 
 
 class CursesTest(test_util.TensorFlowTestCase):
@@ -187,6 +205,24 @@ class CursesTest(test_util.TensorFlowTestCase):
     parsed = ap.parse_args(args)
 
     return debugger_cli_common.RichTextLines(["bar"] * parsed.num_times)
+
+  def _print_ones(self, args, screen_info=None):
+    ap = argparse.ArgumentParser(
+        description="Print all-one matrix.", usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "-s",
+        "--size",
+        dest="size",
+        type=int,
+        default=3,
+        help="Size of the matrix. For example, of the value is 3, "
+        "the matrix will have shape (3, 3)")
+
+    parsed = ap.parse_args(args)
+
+    m = np.ones([parsed.size, parsed.size])
+
+    return tensor_format.format_tensor(m, "m")
 
   def testInitialization(self):
     ui = MockCursesUI(40, 80)
@@ -229,8 +265,9 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(["ERROR: Invalid command prefix \"foo\""],
                      ui.unwrapped_outputs[0].lines)
+    # TODO(cais): Add explanation for the 35 extra lines.
     self.assertEqual(["ERROR: Invalid command prefix \"foo\""],
-                     ui.wrapped_outputs[0].lines)
+                     ui.wrapped_outputs[0].lines[:1])
     # A single line of output should not have caused scrolling.
     self.assertEqual("-" * 80, ui.scroll_messages[0])
 
@@ -273,7 +310,7 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # Before scrolling.
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
 
     # Initial scroll: At the top.
     self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
@@ -281,14 +318,14 @@ class CursesTest(test_util.TensorFlowTestCase):
     # After 1st scrolling (PageDown).
     # The screen output shouldn't have changed. Only the viewport should.
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
-    self.assertIn("Scroll: 4.17%", ui.scroll_messages[1])
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
+    self.assertIn("Scroll: 1.69%", ui.scroll_messages[1])
 
     # After 2nd scrolling (PageDown).
-    self.assertIn("Scroll: 8.33%", ui.scroll_messages[2])
+    self.assertIn("Scroll: 3.39%", ui.scroll_messages[2])
 
     # After 3rd scrolling (PageUp).
-    self.assertIn("Scroll: 4.17%", ui.scroll_messages[3])
+    self.assertIn("Scroll: 1.69%", ui.scroll_messages[3])
 
   def testCutOffTooManyOutputLines(self):
     ui = MockCursesUI(
@@ -304,7 +341,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     ui.run_ui()
 
     self.assertEqual(["bar"] * 10 + ["Output cut off at 10 lines!"],
-                     ui.wrapped_outputs[0].lines)
+                     ui.wrapped_outputs[0].lines[:11])
 
   def testRunUIScrollTallOutputEndHome(self):
     """Scroll tall output with PageDown and PageUp."""
@@ -328,7 +365,7 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # Before scrolling.
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
 
     # Initial scroll: At the top.
     self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
@@ -353,7 +390,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.unwrapped_outputs))
 
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
     self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
 
   def testCompileHelpWithoutHelpIntro(self):
@@ -529,10 +566,6 @@ class CursesTest(test_util.TensorFlowTestCase):
     # is less than the number of lines in the output.
     self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
 
-    # The 2nd scroll info should contain no scrolling, because the screen size
-    # is now greater than the numberf lines in the output.
-    self.assertEqual("-" * 85, ui.scroll_messages[1])
-
   def testTabCompletionWithCommonPrefix(self):
     # Type "b" and trigger tab completion.
     ui = MockCursesUI(
@@ -556,7 +589,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.wrapped_outputs))
     self.assertEqual(1, len(ui.scroll_messages))
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
 
   def testTabCompletionEmptyTriggerWithoutCommonPrefix(self):
     ui = MockCursesUI(
@@ -603,7 +636,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.wrapped_outputs))
     self.assertEqual(1, len(ui.scroll_messages))
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
 
   def testTabCompletionNoMatch(self):
     ui = MockCursesUI(
@@ -625,7 +658,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["ERROR: Invalid command prefix \"c\""],
                      ui.unwrapped_outputs[0].lines)
     self.assertEqual(["ERROR: Invalid command prefix \"c\""],
-                     ui.wrapped_outputs[0].lines)
+                     ui.wrapped_outputs[0].lines[:1])
 
   def testTabCompletionOneWordContext(self):
     ui = MockCursesUI(
@@ -648,7 +681,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.wrapped_outputs))
     self.assertEqual(1, len(ui.scroll_messages))
     self.assertEqual(["bar"] * 30, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 30, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 30, ui.wrapped_outputs[0].lines[:30])
 
   def testTabCompletionTwice(self):
     ui = MockCursesUI(
@@ -674,7 +707,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.wrapped_outputs))
     self.assertEqual(1, len(ui.scroll_messages))
     self.assertEqual(["bar"] * 123, ui.unwrapped_outputs[0].lines)
-    self.assertEqual(["bar"] * 123, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 123, ui.wrapped_outputs[0].lines[:123])
 
   def testRegexSearch(self):
     """Test regex search."""
@@ -703,20 +736,127 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(3, len(ui.wrapped_outputs))
 
     # The first output should have no highlighting.
-    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines[:3])
     self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
 
     # The second output should have highlighting for "b" and "r".
-    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines[:3])
     for i in range(3):
-      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+      self.assertEqual([(0, 1, "black_on_white"), (2, 3, "black_on_white")],
                        ui.wrapped_outputs[1].font_attr_segs[i])
 
     # The third output should have highlighting for "a" only.
-    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines[:3])
     for i in range(3):
-      self.assertEqual([(1, 2, "bw_reversed")],
+      self.assertEqual([(1, 2, "black_on_white")],
                        ui.wrapped_outputs[2].font_attr_segs[i])
+
+  def testRegexSearchContinuation(self):
+    """Test continuing scrolling down to next regex match."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/(b|r)\n"),  # Regex search and highlight.
+            string_to_codes("/\n"),  # Continue scrolling down: 1st time.
+            string_to_codes("/\n"),  # Continue scrolling down: 2nd time.
+            string_to_codes("/\n"),  # Continue scrolling down: 3rd time.
+            string_to_codes("/\n"),  # Continue scrolling down: 4th time.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    # The 1st output is for the non-searched output. The other three are for
+    # the searched output. Even though continuation search "/" is performed
+    # four times, there should be only three searched outputs, because the
+    # last one has exceeded the end.
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+
+    for i in range(4):
+      self.assertEqual(["bar"] * 3, ui.unwrapped_outputs[i].lines)
+      self.assertEqual({}, ui.unwrapped_outputs[i].font_attr_segs)
+
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines[:3])
+    self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
+
+    for j in range(1, 4):
+      self.assertEqual(["bar"] * 3, ui.wrapped_outputs[j].lines[:3])
+      self.assertEqual({
+          0: [(0, 1, "black_on_white"), (2, 3, "black_on_white")],
+          1: [(0, 1, "black_on_white"), (2, 3, "black_on_white")],
+          2: [(0, 1, "black_on_white"), (2, 3, "black_on_white")]
+      }, ui.wrapped_outputs[j].font_attr_segs)
+
+    self.assertEqual([0, 0, 1, 2], ui.output_pad_rows)
+
+  def testRegexSearchNoMatchContinuation(self):
+    """Test continuing scrolling when there is no regex match."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/foo\n"),  # Regex search and highlight.
+            string_to_codes("/\n"),  # Continue scrolling down.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    # The regex search and continuation search should not have produced any
+    # output.
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual([0], ui.output_pad_rows)
+
+  def testRegexSearchContinuationWithoutSearch(self):
+    """Test continuation scrolling when no regex search has been performed."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/\n"),  # Continue scrolling without search first.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual([0], ui.output_pad_rows)
+
+  def testRegexSearchWithInvalidRegex(self):
+    """Test using invalid regex to search."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/[\n"),  # Continue scrolling without search first.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    # Invalid regex should not have led to a new screen of output.
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual([0], ui.output_pad_rows)
+
+    # Invalid regex should have led to a toast error message.
+    self.assertEqual(["ERROR: Invalid regular expression: \"[\""], ui.toasts)
 
   def testRegexSearchFromCommandHistory(self):
     """Test regex search commands are recorded in command history."""
@@ -740,23 +880,213 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(4, len(ui.wrapped_outputs))
 
-    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines[:3])
     self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
 
-    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines[:3])
     for i in range(3):
-      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+      self.assertEqual([(0, 1, "black_on_white"), (2, 3, "black_on_white")],
                        ui.wrapped_outputs[1].font_attr_segs[i])
 
-    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[2].lines[:4])
     self.assertEqual({}, ui.wrapped_outputs[2].font_attr_segs)
 
     # The regex search command loaded from history should have worked on the
     # new screen output.
-    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[3].lines)
+    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[3].lines[:4])
     for i in range(4):
-      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+      self.assertEqual([(0, 1, "black_on_white"), (2, 3, "black_on_white")],
                        ui.wrapped_outputs[3].font_attr_segs[i])
+
+  def testDisplayTensorWithIndices(self):
+    """Test displaying tensor with indices."""
+
+    ui = MockCursesUI(
+        8,  # Use a small screen height to cause scrolling.
+        80,
+        command_sequence=[
+            string_to_codes("print_ones --size 5\n"),
+            [curses.KEY_NPAGE],
+            [curses.KEY_NPAGE],
+            [curses.KEY_NPAGE],
+            [curses.KEY_END],
+            [curses.KEY_NPAGE],  # This PageDown goes over the bottom limit.
+            [curses.KEY_PPAGE],
+            [curses.KEY_PPAGE],
+            [curses.KEY_PPAGE],
+            [curses.KEY_HOME],
+            [curses.KEY_PPAGE],  # This PageDown goes over the top limit.
+            self._EXIT
+        ])
+
+    ui.register_command_handler("print_ones", self._print_ones,
+                                "print an all-one matrix of specified size")
+    ui.run_ui()
+
+    self.assertEqual(11, len(ui.unwrapped_outputs))
+    self.assertEqual(11, len(ui.output_array_pointer_indices))
+    self.assertEqual(11, len(ui.scroll_messages))
+
+    for i in range(11):
+      self.assertEqual([
+          "Tensor \"m\":", "", "array([[ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.]])"
+      ], ui.unwrapped_outputs[i].lines)
+
+    self.assertEqual({
+        0: None,
+        -1: [1, 0]
+    }, ui.output_array_pointer_indices[0])
+    self.assertIn(" Scroll: 0.00% -[1,0] ", ui.scroll_messages[0])
+
+    # Scrolled down one line.
+    self.assertEqual({
+        0: None,
+        -1: [2, 0]
+    }, ui.output_array_pointer_indices[1])
+    self.assertIn(" Scroll: 16.67% -[2,0] ", ui.scroll_messages[1])
+
+    # Scrolled down one line.
+    self.assertEqual({
+        0: [0, 0],
+        -1: [3, 0]
+    }, ui.output_array_pointer_indices[2])
+    self.assertIn(" Scroll: 33.33% [0,0]-[3,0] ", ui.scroll_messages[2])
+
+    # Scrolled down one line.
+    self.assertEqual({
+        0: [1, 0],
+        -1: [4, 0]
+    }, ui.output_array_pointer_indices[3])
+    self.assertIn(" Scroll: 50.00% [1,0]-[4,0] ", ui.scroll_messages[3])
+
+    # Scroll to the bottom.
+    self.assertEqual({
+        0: [4, 0],
+        -1: None
+    }, ui.output_array_pointer_indices[4])
+    self.assertIn(" Scroll: 100.00% [4,0]- ", ui.scroll_messages[4])
+
+    # Attempt to scroll beyond the bottom should lead to no change.
+    self.assertEqual({
+        0: [4, 0],
+        -1: None
+    }, ui.output_array_pointer_indices[5])
+    self.assertIn(" Scroll: 100.00% [4,0]- ", ui.scroll_messages[5])
+
+    # Scrolled up one line.
+    self.assertEqual({
+        0: [3, 0],
+        -1: None
+    }, ui.output_array_pointer_indices[6])
+    self.assertIn(" Scroll: 83.33% [3,0]- ", ui.scroll_messages[6])
+
+    # Scrolled up one line.
+    self.assertEqual({
+        0: [2, 0],
+        -1: None
+    }, ui.output_array_pointer_indices[7])
+    self.assertIn(" Scroll: 66.67% [2,0]- ", ui.scroll_messages[7])
+
+    # Scrolled up one line.
+    self.assertEqual({
+        0: [1, 0],
+        -1: [4, 0]
+    }, ui.output_array_pointer_indices[8])
+    self.assertIn(" Scroll: 50.00% [1,0]-[4,0] ", ui.scroll_messages[8])
+
+    # Scroll to the top.
+    self.assertEqual({
+        0: None,
+        -1: [1, 0]
+    }, ui.output_array_pointer_indices[9])
+    self.assertIn(" Scroll: 0.00% -[1,0] ", ui.scroll_messages[9])
+
+    # Attempt to scroll pass the top limit should lead to no change.
+    self.assertEqual({
+        0: None,
+        -1: [1, 0]
+    }, ui.output_array_pointer_indices[10])
+    self.assertIn(" Scroll: 0.00% -[1,0] ", ui.scroll_messages[10])
+
+  def testScrollTensorByValidIndices(self):
+    """Test scrolling to specified (valid) indices in a tensor."""
+
+    ui = MockCursesUI(
+        8,  # Use a small screen height to cause scrolling.
+        80,
+        command_sequence=[
+            string_to_codes("print_ones --size 5\n"),
+            string_to_codes("@[0, 0]\n"),  # Scroll to element [0, 0].
+            string_to_codes("@1,0\n"),  # Scroll to element [3, 0].
+            string_to_codes("@[0,2]\n"),  # Scroll back to line 0.
+            self._EXIT
+        ])
+
+    ui.register_command_handler("print_ones", self._print_ones,
+                                "print an all-one matrix of specified size")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(4, len(ui.output_array_pointer_indices))
+
+    for i in range(4):
+      self.assertEqual([
+          "Tensor \"m\":", "", "array([[ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.],",
+          "       [ 1.,  1.,  1.,  1.,  1.]])"
+      ], ui.unwrapped_outputs[i].lines)
+
+    self.assertEqual({
+        0: None,
+        -1: [1, 0]
+    }, ui.output_array_pointer_indices[0])
+    self.assertEqual({
+        0: [0, 0],
+        -1: [3, 0]
+    }, ui.output_array_pointer_indices[1])
+    self.assertEqual({
+        0: [1, 0],
+        -1: [4, 0]
+    }, ui.output_array_pointer_indices[2])
+    self.assertEqual({
+        0: [0, 0],
+        -1: [3, 0]
+    }, ui.output_array_pointer_indices[3])
+
+  def testScrollTensorByInvalidIndices(self):
+    """Test scrolling to specified invalid indices in a tensor."""
+
+    ui = MockCursesUI(
+        8,  # Use a small screen height to cause scrolling.
+        80,
+        command_sequence=[
+            string_to_codes("print_ones --size 5\n"),
+            string_to_codes("@[10, 0]\n"),  # Scroll to invalid indices.
+            string_to_codes("@[]\n"),  # Scroll to invalid indices.
+            string_to_codes("@\n"),  # Scroll to invalid indices.
+            self._EXIT
+        ])
+
+    ui.register_command_handler("print_ones", self._print_ones,
+                                "print an all-one matrix of specified size")
+    ui.run_ui()
+
+    # Because all scroll-by-indices commands are invalid, there should be only
+    # one output event.
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(1, len(ui.output_array_pointer_indices))
+
+    # Check error messages.
+    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[1])
+    self.assertEqual("ERROR: invalid literal for int() with base 10: ''",
+                     ui.toasts[2])
+    self.assertEqual("ERROR: Empty indices.", ui.toasts[3])
 
 
 if __name__ == "__main__":

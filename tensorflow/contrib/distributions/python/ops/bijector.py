@@ -1048,28 +1048,39 @@ class Exp(Bijector):
 
 
 class ScaleAndShift(Bijector):
-  """Bijector which computes Y = g(X; shift, scale) = scale * X + shift.
+  """Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
+
+  `scale` is either a non-zero scalar, or a lower triangular matrix with
+  non-zero diagonal.  This means the `Bijector` will be invertible and
+  computation of determinant and inverse will be efficient.
+
+  As a result, the mean and covariance are transformed:
+
+  ```
+  E[Y] = matmul(scale, E[X])
+  Cov[Y] = matmul(scale, matmul(Cov[X], scale, transpose_b=True))
+  ```
 
   Example Use:
 
   ```python
-  # No batch, scalar.
+  # No batch, scalar
   mu = 0     # shape=[]
-  sigma = 1  # shape=[]
+  sigma = 1  # shape=[], treated like a 1x1 matrix.
   b = ScaleAndShift(shift=mu, scale=sigma)
   # b.shaper.batch_ndims == 0
   # b.shaper.event_ndims == 0
 
   # One batch, scalar.
   mu = ...    # shape=[b], b>0
-  sigma = ... # shape=[b], b>0
+  sigma = ... # shape=[b], b>0, treated like a batch of 1x1 matrices
   b = ScaleAndShift(shift=mu, scale=sigma)
   # b.shaper.batch_ndims == 1
   # b.shaper.event_ndims == 0
 
   # No batch, multivariate.
   mu = ...    # shape=[d],    d>0
-  sigma = ... # shape=[d, d], d>0
+  sigma = ... # shape=[d, d], d>0, treated like a single dxd matrix.
   b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
   # b.shaper.batch_ndims == 0
   # b.shaper.event_ndims == 1
@@ -1097,13 +1108,22 @@ class ScaleAndShift(Bijector):
                event_ndims=0,
                validate_args=False,
                name="scale_and_shift"):
-    """Instantiates the `Exp` bijector.
+    """Instantiates the `ScaleAndShift` bijector.
+
+    This `Bijector` is initialized with `scale` and `shift` `Tensors`, giving
+    the forward operation:
+
+    ```Y = g(X) = matmul(scale, X) + shift```
 
     Args:
-      shift: `Tensor` used to shift input, i.e., `Y = g(X) = scale * X + shift`.
-      scale: `Tensor` used to scale input, i.e., `Y = g(X) = scale * X + shift`.
+      shift: Numeric `Tensor`.
+      scale: Numeric `Tensor` of same `dtype` as `shift`.  If `event_ndims = 0`,
+        `scale` is treated like a `1x1` matrix or a batch thereof.
+        Otherwise, the last two dimensions of `scale` define a matrix.
+        `scale` must have non-negative diagonal entries.  The upper triangular
+        part of `scale` is ignored, effectively making it lower triangular.
       event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
-        associated with a particular draw from the distribution.
+        associated with a particular draw from the distribution.  Must be 0 or 1
       validate_args: `Boolean` indicating whether arguments should be checked
         for correctness.
       name: `String` name given to ops managed by this object.
@@ -1111,10 +1131,16 @@ class ScaleAndShift(Bijector):
 
     self._parameters = {}
     self._name = name
+    self._validate_args = validate_args
     with self._name_scope("init", values=[shift, scale, event_ndims]):
       self._shift = ops.convert_to_tensor(shift, name="shift")
       self._scale = ops.convert_to_tensor(scale, name="scale")
       event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
+      if validate_args:
+        event_ndims = control_flow_ops.with_dependencies(
+            [check_ops.assert_less(
+                event_ndims, 2, message="event_ndims must be 0 or 1")],
+            event_ndims)
       if self.shift.dtype.base_dtype != self.scale.dtype.base_dtype:
         raise TypeError("%s.dtype=%s does not match %s.dtype=%s" %
                         (self.shift.name, self.shift.dtype, self.scale.name,
@@ -1173,6 +1199,23 @@ class ScaleAndShift(Bijector):
         array_ops.ones([right], dtype=dtypes.int32)))
     scale = array_ops.reshape(scale, pad)
     batch_ndims = ndims - 2 + right
+    # For safety, explicitly zero-out the upper triangular part.
+    scale = array_ops.matrix_band_part(scale, -1, 0)
+    if self.validate_args:
+      # matrix_band_part will fail if scale is not at least rank 2.
+      shape = array_ops.shape(scale)
+      assert_square = check_ops.assert_equal(
+          shape[-2], shape[-1],
+          message="Input must be a (batch of) square matrix.")
+      # Assuming lower-triangular means we only need check diag != 0.
+      diag = array_ops.matrix_diag_part(scale)
+      is_non_singular = math_ops.logical_not(
+          math_ops.reduce_any(
+              math_ops.equal(diag, ops.convert_to_tensor(0, dtype=diag.dtype))))
+      assert_non_singular = control_flow_ops.Assert(
+          is_non_singular, ["Singular matrix encountered", diag])
+      scale = control_flow_ops.with_dependencies(
+          [assert_square, assert_non_singular], scale)
     return scale, batch_ndims
 
   @property
@@ -1198,9 +1241,8 @@ class ScaleAndShift(Bijector):
     return x
 
   def _inverse_log_det_jacobian(self, y):  # pylint: disable=unused-argument
-    return -math_ops.reduce_sum(
-        math_ops.log(array_ops.matrix_diag_part(self.scale)),
-        reduction_indices=[-1])
+    abs_diag = math_ops.abs(array_ops.matrix_diag_part(self.scale))
+    return -math_ops.reduce_sum(math_ops.log(abs_diag), reduction_indices=[-1])
 
   def _forward_log_det_jacobian(self, x):  # pylint: disable=unused-argument
     return -self._inverse_log_det_jacobian(x)

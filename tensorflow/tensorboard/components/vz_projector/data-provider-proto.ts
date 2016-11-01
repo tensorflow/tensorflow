@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint, DataProto, DataSet, MetadataInfo, PointMetadata, State} from './data';
-import {analyzeMetadata, CheckpointInfo, DataProvider} from './data-provider';
+import {DataPoint, DataProto, DataSet, SpriteAndMetadataInfo, PointMetadata, State} from './data';
+import {analyzeMetadata, ProjectorConfig, DataProvider} from './data-provider';
 
 
 export class ProtoDataProvider implements DataProvider {
@@ -28,17 +28,14 @@ export class ProtoDataProvider implements DataProvider {
     callback(['proto']);
   }
 
-  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void) {
+  retrieveProjectorConfig(run: string, callback: (d: ProjectorConfig) => void) {
     callback({
-      tensors: {
-        'proto': {
-          name: 'proto',
-          shape: this.dataProto.shape,
-          metadataFile: 'proto',
-          bookmarksFile: null
-        }
-      },
-      checkpointFile: 'proto'
+      modelCheckpointPath: 'proto',
+      embeddings: [{
+        tensorName: 'proto',
+        tensorShape: this.dataProto.shape,
+        metadataPath: 'proto'
+      }]
     });
   }
 
@@ -47,8 +44,8 @@ export class ProtoDataProvider implements DataProvider {
     callback(this.flatArrayToDataset(this.dataProto.tensor));
   }
 
-  retrieveMetadata(run: string, tensorName: string,
-      callback: (r: MetadataInfo) => void): void {
+  retrieveSpriteAndMetadata(run: string, tensorName: string,
+      callback: (r: SpriteAndMetadataInfo) => void): void {
     let columnNames = this.dataProto.metadata.columns.map(c => c.name);
     let n = this.dataProto.shape[0];
     let pointsMetadata: PointMetadata[] = new Array(n);

@@ -1595,7 +1595,7 @@ class MetaGraphTest(tf.test.TestCase):
                 "new_model/label:0":
                 np.random.random_integers(10, size=[1, 10])})
 
-  def testClearDevices(self):
+  def testClearDevicesOnImport(self):
     # Test that we import a graph without its devices and run successfully.
     with tf.Graph().as_default():
       with tf.device("/job:ps/replica:0/task:0/device:GPU:0"):
@@ -1619,6 +1619,29 @@ class MetaGraphTest(tf.test.TestCase):
     with tf.Session(graph=tf.Graph()) as sess:
       tf.train.import_meta_graph(
           meta_graph_def, clear_devices=True, import_scope="new_model")
+      sess.run(tf.initialize_all_variables())
+      sess.run(["new_model/optimize"],
+               {"new_model/image:0": np.random.random([1, 784]),
+                "new_model/label:0":
+                np.random.random_integers(10, size=[1, 10])})
+
+  def testClearDevicesOnExport(self):
+    # Test that we export a graph without its devices and run successfully.
+    with tf.Graph().as_default():
+      with tf.device("/job:ps/replica:0/task:0/device:GPU:0"):
+        image = tf.placeholder(tf.float32, [None, 784], name="image")
+        label = tf.placeholder(tf.float32, [None, 10], name="label")
+        weights = tf.Variable(tf.random_uniform([784, 10]), name="weights")
+        bias = tf.Variable(tf.zeros([10]), name="bias")
+        logit = tf.nn.relu(tf.matmul(image, weights) + bias)
+        tf.nn.softmax(logit, name="prediction")
+        cost = tf.nn.softmax_cross_entropy_with_logits(logit, label)
+        tf.train.AdamOptimizer().minimize(cost, name="optimize")
+      meta_graph_def = tf.train.export_meta_graph(clear_devices=True)
+      tf.train.write_graph(meta_graph_def, "/tmp", "meta_graph.pbtxt")
+
+    with tf.Session(graph=tf.Graph()) as sess:
+      tf.train.import_meta_graph(meta_graph_def, import_scope="new_model")
       sess.run(tf.initialize_all_variables())
       sess.run(["new_model/optimize"],
                {"new_model/image:0": np.random.random([1, 784]),
@@ -1922,6 +1945,38 @@ class ScopedGraphTest(tf.test.TestCase):
       saver3.restore(sess, saver0_ckpt)
       self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
+  def testExportGraphDefWithScope(self):
+    test_dir = _TestDir("export_graph_def")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    graph1 = tf.Graph()
+    with graph1.as_default():
+      with tf.name_scope("hidden1"):
+        images = tf.constant(1.0, tf.float32, shape=[3, 2], name="images")
+        weights1 = tf.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                               name="weights")
+        biases1 = tf.Variable([0.1] * 3, name="biases")
+        tf.nn.relu(tf.matmul(images, weights1) + biases1, name="relu")
+
+    # Run the graph and save scoped checkpoint.
+    with self.test_session(graph=graph1) as sess:
+      sess.run(tf.initialize_all_variables())
+      _, var_list_1 = meta_graph.export_scoped_meta_graph(
+          graph_def=graph1.as_graph_def(), export_scope="hidden1")
+      saver = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
+      saver.save(sess, saver0_ckpt, write_state=False)
+
+    expected = np.reshape([[5.0999999, 7.0999999, 9.10000038] * 3], (3, 3))
+
+    # Verifies that we can run successfully after restoring.
+    graph2 = tf.Graph()
+    new_var_list_1 = meta_graph.copy_scoped_meta_graph(
+        from_scope="hidden1", to_scope="new_hidden1",
+        from_graph=graph1, to_graph=graph2)
+
+    with self.test_session(graph=graph2) as sess:
+      saver3 = saver_module.Saver(var_list=new_var_list_1, max_to_keep=1)
+      saver3.restore(sess, saver0_ckpt)
+      self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
 if __name__ == "__main__":
   tf.test.main()

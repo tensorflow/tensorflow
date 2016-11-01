@@ -1,5 +1,7 @@
 ### `tf.unpack(value, num=None, axis=0, name='unpack')` {#unpack}
 
+DEPRECATED: Use unstack.
+
 Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
 Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.

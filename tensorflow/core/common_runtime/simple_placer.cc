@@ -645,7 +645,8 @@ Status SimplePlacer::Run() {
     // edge from the source of that edge to `node`.
     for (const auto& edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
-          IsRefType(node->input_type(edge->dst_input()))) {
+          (IsRefType(node->input_type(edge->dst_input())) ||
+           node->input_type(edge->dst_input()) == DT_RESOURCE)) {
         // If both the source node and this node have paritally
         // specified a device, then 'node's device should be
         // cleared: the reference edge forces 'node' to be on the

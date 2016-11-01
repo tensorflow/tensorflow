@@ -695,7 +695,9 @@ class OpDefLibrary(object):
           attr_value.list.tensor.extend(
               [_MakeTensor(x, key) for x in value])
         elif attr_def.type == "func":
-          if isinstance(value, compat.bytes_or_text_types):
+          if isinstance(value, attr_value_pb2.NameAttrList):
+            attr_value.func.CopyFrom(value)
+          elif isinstance(value, compat.bytes_or_text_types):
             attr_value.func.name = value
           else:
             value.add_to_graph(ops.get_default_graph())

@@ -80,6 +80,27 @@ Returns x * y element-wise.
 
 - - -
 
+### `tf.multiply(x, y, name=None)` {#multiply}
+
+Returns x * y element-wise.
+
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
 ### `tf.scalar_mul(scalar, x)` {#scalar_mul}
 
 Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
@@ -123,6 +144,13 @@ Returns x / y element-wise.
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.divide(x, y, name=None)` {#divide}
+
+Computes Python style division of `x` by `y`.
 
 
 - - -
@@ -314,6 +342,25 @@ I.e., \(y = -x\).
 ##### Returns:
 
   A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+
+- - -
+
+### `tf.negative(x, name=None)` {#negative}
+
+Computes numerical negative value element-wise.
+
+I.e., \\(y = -x\\).
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2601,7 +2648,7 @@ By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 performed
 instead:
 ```prettyprint
-tf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]
+tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumprod is performed in the
@@ -2613,7 +2660,7 @@ This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
 ```prettyprint
-tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]
+tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
 ```
 
 ##### Args:
@@ -3073,51 +3120,52 @@ idx ==> [1, 3, 5]
 
 - - -
 
-### `tf.where(input, name=None)` {#where}
+### `tf.where(condition, x=None, y=None, name=None)` {#where}
 
-Returns locations of true values in a boolean tensor.
+Return the elements, either from `x` or `y`, depending on the `condition`.
 
-This operation returns the coordinates of true elements in `input`. The
-coordinates are returned in a 2-D tensor where the first dimension (rows)
-represents the number of true elements, and the second dimension (columns)
-represents the coordinates of the true elements. Keep in mind, the shape of
-the output tensor can vary depending on how many true values there are in
-`input`. Indices are output in row-major order.
+If both `x` and `y` are None, then this operation returns the coordinates of
+true elements of `condition`.  The coordinates are returned in a 2-D tensor
+where the first dimension (rows) represents the number of true elements, and
+the second dimension (columns) represents the coordinates of the true
+elements. Keep in mind, the shape of the output tensor can vary depending on
+how many true values there are in input. Indices are output in row-major
+order.
 
-For example:
+If both non-None, `x` and `y` must have the same shape.
+The `condition` tensor must be a scalar if `x` and `y` are scalar.
+If `x` and `y` are vectors or higher rank, then `condition` must be either a
+vector with size matching the first dimension of `x`, or must have the same
+shape as `x`.
 
-```prettyprint
-# 'input' tensor is [[True, False]
-#                    [True, False]]
-# 'input' has two true values, so output has two coordinates.
-# 'input' has rank of 2, so coordinates have two indices.
-where(input) ==> [[0, 0],
-                  [1, 0]]
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be taken
+from `x` (if true) or `y` (if false).
 
-# `input` tensor is [[[True, False]
-#                     [True, False]]
-#                    [[False, True]
-#                     [False, True]]
-#                    [[False, False]
-#                     [False, True]]]
-# 'input' has 5 true values, so output has 5 coordinates.
-# 'input' has rank of 3, so coordinates have three indices.
-where(input) ==> [[0, 0, 0],
-                  [0, 1, 0],
-                  [1, 0, 1],
-                  [1, 1, 1],
-                  [2, 1, 1]]
-```
+If `condition` is a vector and `x` and `y` are higher rank matrices, then it
+chooses which row (outer dimension) to copy from `x` and `y`. If `condition`
+has the same shape as `x` and `y`, then it chooses which element to copy from
+`x` and `y`.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`condition`</b>: A `Tensor` of type `bool`
+*  <b>`x`</b>: A Tensor which may have the same shape as `condition`. If `condition` is
+    rank 1, `x` may have higher rank, but its first dimension must match the
+    size of `condition`.
+*  <b>`y`</b>: A `tensor` with the same shape and type as `x`.
+*  <b>`name`</b>: A name of the operation (optional)
 
 ##### Returns:
 
-  A `Tensor` of type `int64`.
+  A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
+  A `Tensor` with shape `(num_true, dim_size(condition))`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: When exactly one of `x` or `y` is non-None.
 
 
 - - -

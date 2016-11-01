@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {DataSet} from './data';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {SelectionContext} from './selectionContext';
 
@@ -103,7 +103,7 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
     this.traces = [];
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
+  onDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
     if (dataSet) {
       // Set up the position buffer arrays for each trace.

@@ -5,10 +5,10 @@
 Loss operations for use in training models, typically with signature like the
 following:
 
-`sum_of_squares(predictions, targets, weight, scope) : Tensor`
+`sum_of_squares(predictions, labels, weight, scope) : Tensor`
 
 All loss functions take a pair of tensors, `predictions` and ground truth
-`targets`. It is assumed that the shape of both these tensors is of the form
+`labels`. It is assumed that the shape of both these tensors is of the form
 `[batch_size, d1, ... dN]` where `batch_size` is the number
 of samples in the batch and `d1` ... `dN` are the remaining dimensions.
 

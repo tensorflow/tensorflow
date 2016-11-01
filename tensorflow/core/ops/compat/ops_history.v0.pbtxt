@@ -25016,7 +25016,7 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_STRING
+    type: DT_INT64
   }
 }
 op {

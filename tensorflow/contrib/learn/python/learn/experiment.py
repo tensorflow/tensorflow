@@ -73,8 +73,8 @@ class Experiment(object):
 
     Args:
       estimator: Object implementing `Trainable` and `Evaluable`.
-      train_input_fn: function, returns features and targets for training.
-      eval_input_fn: function, returns features and targets for evaluation. If
+      train_input_fn: function, returns features and labels for training.
+      eval_input_fn: function, returns features and labels for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
