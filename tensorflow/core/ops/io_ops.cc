@@ -588,7 +588,11 @@ REGISTER_OP("WriteFile")
     .Output("output: int32")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Writes contents to the end of input filename. Creates file if not existing.
+Writes contents to the file at input filename. Creates file if not existing.
+
+filename: scalar. The name of the file to which we write the contents.
+contents: scalar. The content to be written to the output file.
+output: scalar. The status of write opreation. 0 means success, -1 means failure.
 )doc");
 
 REGISTER_OP("MatchingFiles")
