@@ -858,6 +858,9 @@ def hessian(ys, x, name="hessian", colocate_gradients_with_ops=False,
       have a registered gradient function.
     ValueError: if the arguments are invalid
   """
+  ndims = x.get_shape().ndims
+  if ndims is not None and ndims != 1:
+    raise ValueError("Hessians can only be computed with respect to one-dimensional tensors")
   kwargs = {
     'colocate_gradients_with_ops': colocate_gradients_with_ops,
     'gate_gradients': gate_gradients,
