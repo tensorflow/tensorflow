@@ -213,3 +213,34 @@ def maybe_download(filename, work_directory, source_url):
         size = f.size()
       print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
+
+def split_into_train_and_test(dataset, test_ratio=0.3, shuffle=False):
+  """Split the dataset into train and test datasets
+
+  The method splits the provided dataset into two parts: train and test
+  
+  Args:
+    dataset: dataset to split 
+      (type=tensorflow.contrib.learn.python.learn.datasets.base.Dataset)
+    test_ratio: The ratio of the test subset (type=float, default=0.3)
+    shuffle: Should the data be shuffled (type=boolean, defaule=False)
+
+  Returns:
+    train, test: Tuple of datasets of the same type as input
+  """
+  if not 0 <= test_ratio <= 1:
+    raise ValueError('The test_ratio value is out of bounds: %s' % test_ratio)
+  len_train = int(dataset.data.shape[0]*(1.-test_ratio))
+  # We don't want to modify the original dataset, so make a copy
+  X = dataset.data[:]
+  y = dataset.target[:]
+  if shuffle:
+    indices = np.random.permutation(range(X.shape[0]))
+    X = X[indices]
+    y = y[indices]
+  return  Dataset(data=X[:len_train], target=y[:len_train]), \
+          Dataset(data=X[len_train:], target=y[len_train:])
+
+
+
+
