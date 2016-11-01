@@ -293,7 +293,18 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
 
-    # Test the case where the 2nd element of the key is neither "classes" nor
+    # Tests the case where the prediction_key is neither "classes" nor
+    # "probabilities".
+    with self.assertRaisesRegexp(KeyError, 'bad_type'):
+      classifier.evaluate(
+          input_fn=_input_fn,
+          steps=100,
+          metrics={
+              'bad_name': MetricSpec(
+                  metric_fn=tf.contrib.metrics.streaming_auc,
+                  prediction_key='bad_type')})
+
+    # Tests the case where the 2nd element of the key is neither "classes" nor
     # "probabilities".
     with self.assertRaises(KeyError):
       classifier.evaluate(
@@ -301,7 +312,7 @@ class LinearClassifierTest(tf.test.TestCase):
           steps=100,
           metrics={('bad_name', 'bad_type'): tf.contrib.metrics.streaming_auc})
 
-    # Test the case where the tuple of the key doesn't have 2 elements.
+    # Tests the case where the tuple of the key doesn't have 2 elements.
     with self.assertRaises(ValueError):
       classifier.evaluate(
           input_fn=_input_fn,
@@ -1028,8 +1039,11 @@ class LinearRegressorTest(tf.test.TestCase):
         input_fn=_input_fn,
         steps=1,
         metrics={
-            'my_error': tf.contrib.metrics.streaming_mean_squared_error,
-            'my_metric': _my_metric_op
+            'my_error': MetricSpec(
+                metric_fn=tf.contrib.metrics.streaming_mean_squared_error,
+                prediction_key='scores'),
+            'my_metric': MetricSpec(metric_fn=_my_metric_op,
+                                    prediction_key='scores')
         })
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
@@ -1040,13 +1054,33 @@ class LinearRegressorTest(tf.test.TestCase):
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
 
-    # Tests that when the key is a tuple, an error is raised.
+    # Tests the case where the prediction_key is not "scores".
+    with self.assertRaisesRegexp(KeyError, 'bad_type'):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              'bad_name': MetricSpec(
+                  metric_fn=tf.contrib.metrics.streaming_auc,
+                  prediction_key='bad_type')})
+
+    # Tests the case where the 2nd element of the key is not "scores".
     with self.assertRaises(KeyError):
       regressor.evaluate(
           input_fn=_input_fn,
           steps=1,
           metrics={('my_error', 'predictions'
                    ): tf.contrib.metrics.streaming_mean_squared_error})
+
+    # Tests the case where the tuple of the key doesn't have 2 elements.
+    with self.assertRaises(ValueError):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              ('bad_length_name', 'scores', 'bad_length'):
+                  tf.contrib.metrics.streaming_mean_squared_error
+          })
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""

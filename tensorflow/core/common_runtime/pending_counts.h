@@ -16,7 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unordered_map>
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/port.h"
@@ -239,7 +240,7 @@ class PendingCounts {
 
   const int num_nodes_;  // Just for bounds checking in debug mode
   PackedCounts* counts_;
-  std::unordered_map<int, LargeCounts> overflow_;
+  gtl::FlatMap<int, LargeCounts> overflow_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PendingCounts);
 };

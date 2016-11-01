@@ -34,18 +34,14 @@ namespace tensorflow {
 // which creates a thread for each enqueue op, runs close op on completion.
 class QueueRunner {
  public:
-  QueueRunner();
-
-  // The constructor initializes the class from the proto.
+  // Creates a new QueueRunner from proto.
   // TODO(yuefengz): we may want to initialize from queues and ops in the
   // future.
-  explicit QueueRunner(const QueueRunnerDef& queue_runner_def);
+  static Status New(const QueueRunnerDef& queue_runner_def,
+                    std::unique_ptr<QueueRunner>* result);
 
   // The destructor would join all the threads.
   ~QueueRunner();
-
-  // Initializes the instance with the QueueRunnerDef proto.
-  Status Init(const QueueRunnerDef& queue_runner_def);
 
   // Starts the queue runner with the given session.
   Status Start(Session* sess);
@@ -61,6 +57,11 @@ class QueueRunner {
   Status GetStatus();
 
  private:
+  QueueRunner() {}
+
+  // Initializes the instance with the QueueRunnerDef proto.
+  Status Init(const QueueRunnerDef& queue_runner_def);
+
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
 
@@ -73,7 +74,6 @@ class QueueRunner {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::atomic<bool> should_stop_;
-  std::atomic<bool> started_;
   condition_variable wait_to_close_;
   mutex mu_;
   // TODO(yuefengz): implement c++ coordinator.

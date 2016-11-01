@@ -267,10 +267,12 @@ class ConcatOffsetOp : public OpKernel {
           out_vec(j) = offset;
           offset += inp_vec(j);
         } else {
-          OP_REQUIRES(
-              ctx, (inp0_vec(j) == inp_vec(j)),
-              errors::InvalidArgument("input[", i, ",", j, "] mismatch: ",
-                                      inp0_vec(j), " vs. ", inp_vec(j)));
+          OP_REQUIRES(ctx, (inp0_vec(j) == inp_vec(j)),
+                      errors::InvalidArgument(
+                          "All dimensions except ", cdim, " must match. Input ",
+                          i, " has shape [", inp.SummarizeValue(10),
+                          "] and doesn't match input 0 with shape [",
+                          inp0.SummarizeValue(10), "]."));
           out_vec(j) = 0;
         }
       }

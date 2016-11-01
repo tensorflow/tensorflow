@@ -1252,7 +1252,12 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+      c->set_output_handle_shape(0, c->input_handle_shape(0));
+      return Status::OK();
+    })
     .Doc(R"Doc(
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
@@ -4387,6 +4392,7 @@ REGISTER_OP("FakeQuantWithMinMaxArgs")
     .Attr("max: float = 6.0")
     .Input("inputs: float")
     .Output("outputs: float")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 
@@ -4417,6 +4423,13 @@ REGISTER_OP("FakeQuantWithMinMaxVars")
     .Input("min: float")
     .Input("max: float")
     .Output("outputs: float")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
 global float scalars `min` and `max` to 'outputs' tensor of same shape as
@@ -4456,6 +4469,20 @@ REGISTER_OP("FakeQuantWithMinMaxVarsPerChannel")
     .Input("min: float")
     .Input("max: float")
     .Output("outputs: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input, min, max;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &min));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &max));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -1), c->Dim(min, 0), &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -1), c->Dim(max, 0), &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(min, 0), c->Dim(max, 0), &unused));
+
+      c->set_output(0, input);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
 `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`

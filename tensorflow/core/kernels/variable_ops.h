@@ -26,6 +26,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Resource stored by variables in the resource manager.
+class Var : public ResourceBase {
+ public:
+  explicit Var(DataType dtype) : tensor_(dtype) {}
+  mutex* mu() { return &mu_; }
+  Tensor* tensor() { return &tensor_; }
+
+  string DebugString() override {
+    return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
+                           tensor_.shape().DebugString());
+  }
+
+ private:
+  mutex mu_;
+  Tensor tensor_;
+
+  ~Var() override {}
+  TF_DISALLOW_COPY_AND_ASSIGN(Var);
+};
+
 class VariableOp : public OpKernel {
  public:
   explicit VariableOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -59,25 +79,6 @@ class VariableOp : public OpKernel {
   }
 
  private:
-  class Var : public ResourceBase {
-   public:
-    explicit Var(DataType dtype) : tensor_(dtype) {}
-    mutex* mu() { return &mu_; }
-    Tensor* tensor() { return &tensor_; }
-
-    string DebugString() override {
-      return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                             tensor_.shape().DebugString());
-    }
-
-   private:
-    mutex mu_;
-    Tensor tensor_;
-
-    ~Var() override {}
-    TF_DISALLOW_COPY_AND_ASSIGN(Var);
-  };
-
   DataType dtype_;
   TensorShape shape_;
 

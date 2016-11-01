@@ -388,7 +388,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "bijector_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/bijector_test.py"],
     additional_deps = [
         ":distributions_py",

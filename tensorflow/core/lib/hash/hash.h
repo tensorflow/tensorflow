@@ -43,9 +43,6 @@ inline uint64 Hash64Combine(uint64 a, uint64 b) {
 }
 
 // Convenience Hash functors
-struct HashInt64 {
-  size_t operator()(int64 x) const { return static_cast<size_t>(x); }
-};
 struct HashStr {
   size_t operator()(const string& s) const {
     return static_cast<size_t>(Hash64(s));

@@ -21,19 +21,15 @@ from __future__ import print_function
 
 import math
 import re
-import tempfile
 
 import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework import list_variables
-from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
-from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.utils import export
@@ -83,8 +79,8 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
   columns_to_variables[bias_column] = [bias_variable]
 
 
-def _linear_classifier_model_fn(features, labels, mode, params):
-  """Linear classifier model_fn.
+def _linear_model_fn(features, labels, mode, params):
+  """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
     features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
@@ -94,18 +90,13 @@ def _linear_classifier_model_fn(features, labels, mode, params):
       See `ModeKeys`.
     params: A dict of hyperparameters.
       The following hyperparameters are expected:
+      * head: A `Head` instance.
       * feature_columns: An iterable containing all the feature columns used by
           the model.
-      * n_classes: number of label classes.
-      * weight_column_name: A string defining the weight feature column, or
-          None if there are no weights.
       * optimizer: string, `Optimizer` object, or callable that defines the
           optimizer to use for training.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * enable_centered_bias: A bool. If True, estimator will learn a centered
-          bias variable for each class. Rest of the model structure learns the
-          residual after centered bias.
       * num_ps_replicas: The number of parameter server replicas.
       * joint_weights: If True, the weights for all columns will be stored in a
         single (possibly partitioned) variable. It's more efficient, but it's
@@ -113,26 +104,17 @@ def _linear_classifier_model_fn(features, labels, mode, params):
         sparse and use the 'sum' combiner.
 
   Returns:
-    predictions: A dict of `Tensor` objects.
-    loss: A scalar containing the loss of the step.
-    train_op: The op for training.
+    An `estimator.ModelFnOps` instance.
 
   Raises:
     ValueError: If mode is not any of the `ModeKeys`.
   """
+  head = params["head"]
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   gradient_clip_norm = params.get("gradient_clip_norm", None)
   num_ps_replicas = params.get("num_ps_replicas", 0)
   joint_weights = params.get("joint_weights", False)
-
-  head = params.get("head", None)
-  if not head:
-    # TODO(zakaria): Remove these params and make head mandatory
-    head = head_lib._multi_class_head(  # pylint: disable=protected-access
-        params.get("n_classes"),
-        weight_column_name=params["weight_column_name"],
-        enable_centered_bias=params.get("enable_centered_bias", False))
 
   if not isinstance(features, dict):
     features = {"": features}
@@ -173,8 +155,8 @@ def _linear_classifier_model_fn(features, labels, mode, params):
   return head.head_ops(features, labels, mode, _train_op_fn, logits)
 
 
-def sdca_classifier_model_fn(features, labels, mode, params):
-  """Linear classifier model_fn that uses the SDCA optimizer.
+def sdca_model_fn(features, labels, mode, params):
+  """A model_fn for linear models that use the SDCA optimizer.
 
   Args:
     features: A dict of `Tensor` keyed by column name.
@@ -184,51 +166,57 @@ def sdca_classifier_model_fn(features, labels, mode, params):
       See `ModeKeys`.
     params: A dict of hyperparameters.
       The following hyperparameters are expected:
+      * head: A `Head` instance. Type must be one of `_BinarySvmHead`,
+          `_RegressionHead` or `_MultiClassHead`.
       * feature_columns: An iterable containing all the feature columns used by
           the model.
       * optimizer: An `SDCAOptimizer` instance.
       * weight_column_name: A string defining the weight feature column, or
           None if there are no weights.
-      * loss_type: A string. Must be either "logistic_loss" or "hinge_loss".
       * update_weights_hook: A `SessionRunHook` object or None. Used to update
           model weights.
 
   Returns:
-    predictions: A dict of `Tensor` objects.
-    loss: A scalar containing the loss of the step.
-    train_op: The op for training.
+    An `estimator.ModelFnOps` instance.
 
   Raises:
     ValueError: If `optimizer` is not an `SDCAOptimizer` instance.
+    ValueError: If the type of head is neither `_BinarySvmHead`, nor
+      `_RegressionHead` nor `_MultiClassHead`.
     ValueError: If mode is not any of the `ModeKeys`.
   """
+  head = params["head"]
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   weight_column_name = params["weight_column_name"]
-  loss_type = params.get("loss_type", None)
-  update_weights_hook = params.get("update_weights_hook")
+  update_weights_hook = params.get("update_weights_hook", None)
 
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
 
-  logits, columns_to_variables, bias = (
-      layers.weighted_sum_from_feature_columns(
-          columns_to_tensors=features,
-          feature_columns=feature_columns,
-          num_outputs=1))
-
-  _add_bias_column(feature_columns, features, bias, labels,
-                   columns_to_variables)
-
-  if loss_type is "hinge_loss":
-    head = head_lib._binary_svm_head(  # pylint: disable=protected-access
-        weight_column_name=weight_column_name,
-        enable_centered_bias=False)
+  if isinstance(head, head_lib._BinarySvmHead):  # pylint: disable=protected-access
+    loss_type = "hinge_loss"
+  elif isinstance(head, head_lib._MultiClassHead):  # pylint: disable=protected-access
+    loss_type = "logistic_loss"
+  elif isinstance(head, head_lib._RegressionHead):  # pylint: disable=protected-access
+    loss_type = "squared_loss"
   else:
-    # pylint: disable=protected-access
-    head = head_lib._multi_class_head(2,  # pylint: disable=protected-access
-                                      weight_column_name=weight_column_name,
-                                      enable_centered_bias=False)
+    return ValueError("Unsupported head type: {}".format(head))
+
+  parent_scope = "linear"
+
+  with variable_scope.variable_op_scope(
+      features.values(), parent_scope) as scope:
+    logits, columns_to_variables, bias = (
+        layers.weighted_sum_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=feature_columns,
+            num_outputs=1,
+            scope=scope))
+
+    _add_bias_column(feature_columns, features, bias, labels,
+                     columns_to_variables)
+
   def _train_op_fn(unused_loss):
     global_step = contrib_variables.get_global_step()
     sdca_model, train_op = optimizer.get_train_step(columns_to_variables,
@@ -384,63 +372,58 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """
     # TODO(zoy): Give an unsupported error if enable_centered_bias is
     #    requested for SDCA once its default changes to False.
-    self._model_dir = model_dir or tempfile.mkdtemp()
-    if n_classes < 2:
-      raise ValueError("Classification requires n_classes >= 2")
-    self._n_classes = n_classes
     self._feature_columns = feature_columns
     assert self._feature_columns
-    self._weight_column_name = weight_column_name
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
-    num_ps_replicas = config.num_ps_replicas if config else 0
 
     chief_hook = None
+    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
+        enable_centered_bias):
+      enable_centered_bias = False
+      logging.warning("centered_bias is not supported with SDCA, "
+                      "please disable it explicitly.")
+    head = head_lib._multi_class_head(  # pylint: disable=protected-access
+        n_classes,
+        weight_column_name=weight_column_name,
+        enable_centered_bias=enable_centered_bias)
+    params = {
+        "head": head,
+        "feature_columns": feature_columns,
+        "optimizer": self._optimizer,
+    }
+
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
       assert not _joint_weight, ("_joint_weight is incompatible with the"
                                  " SDCAOptimizer")
       assert n_classes == 2, "SDCA only applies to binary classification."
 
-      model_fn = sdca_classifier_model_fn
-      # We use a hook to perform the weight update and shrink step only on the
-      # chief. Because the SdcaModel constructed by the estimator within the
-      # call to fit() but we need to pass the hook to fit(), we pass the hook
-      # as a parameter to the model_fn and have that propagate the model to the
-      # hook.
+      model_fn = sdca_model_fn
+      # The model_fn passes the model parameters to the chief_hook. We then use
+      # the hook to update weights and shrink step only on the chief.
       chief_hook = _SdcaUpdateWeightsHook()
-      params = {
-          "feature_columns": feature_columns,
-          "optimizer": self._optimizer,
+      params.update({
           "weight_column_name": weight_column_name,
-          "loss_type": "logistic_loss",
           "update_weights_hook": chief_hook,
-      }
+      })
     else:
-      model_fn = _linear_classifier_model_fn
-      head = head_lib._multi_class_head(  # pylint: disable=protected-access
-          n_classes,
-          weight_column_name=weight_column_name,
-          enable_centered_bias=enable_centered_bias)
-      params = {
-          "head": head,
-          "feature_columns": feature_columns,
-          "optimizer": self._optimizer,
+      model_fn = _linear_model_fn
+      params.update({
           "gradient_clip_norm": gradient_clip_norm,
-          "num_ps_replicas": num_ps_replicas,
+          "num_ps_replicas": config.num_ps_replicas if config else 0,
           "joint_weights": _joint_weight,
-      }
+      })
 
     self._estimator = estimator.Estimator(
         model_fn=model_fn,
-        model_dir=self._model_dir,
+        model_dir=model_dir,
         config=config,
         params=params,
         feature_engineering_fn=feature_engineering_fn)
 
-    self._additional_run_hook = None
-    if self._estimator.config.is_chief:
-      self._additional_run_hook = chief_hook
+    self._additional_run_hook = (chief_hook if self._estimator.config.is_chief
+                                 else None)
 
   def get_estimator(self):
     return self._estimator
@@ -470,7 +453,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 
     return result
 
-  # TODO(ispir): Simplify evaluate by aligning this logic with custom Estimator.
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
     """See evaluable.Evaluable."""
@@ -507,10 +489,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return preds[head_lib.PredictionKey.PROBABILITIES]
 
   def get_variable_names(self):
-    return [name for name, _ in list_variables(self._model_dir)]
+    return self._estimator.get_variable_names()
 
   def get_variable_value(self, name):
-    return load_variable(self.model_dir, name)
+    return self._estimator.get_variable_value(name)
 
   def export(self,
              export_dir,
@@ -544,11 +526,11 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
-    for name, _ in list_variables(self._model_dir):
+    for name in self.get_variable_names():
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = load_variable(self._model_dir, name)
+        values[name] = self.get_variable_value(name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
@@ -559,7 +541,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def bias_(self):
-    return load_variable(self._model_dir, name="linear/bias_weight")
+    return self.get_variable_value("linear/bias_weight")
 
   @property
   def config(self):
@@ -567,11 +549,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 
   @property
   def model_dir(self):
-    return self._model_dir
+    return self._estimator.model_dir
 
 
-# TODO(zoy): Use model_fn similar to LinearClassifier.
-class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
+class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
   """Linear regressor model.
 
   Train a linear regression model to predict label value given observation of
@@ -660,55 +641,132 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
-    if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+    self._feature_columns = feature_columns
+    assert self._feature_columns
+    self._optimizer = _get_default_optimizer(feature_columns)
+    if optimizer:
+      self._optimizer = _get_optimizer(optimizer)
+
+    chief_hook = None
+    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
+        enable_centered_bias):
       enable_centered_bias = False
       logging.warning("centered_bias is not supported with SDCA, "
                       "please disable it explicitly.")
-    self._weight_column_name = weight_column_name
-    self._joint_weights = _joint_weights
-    super(LinearRegressor, self).__init__(
-        model_dir=model_dir,
+    head = head_lib._regression_head(  # pylint: disable=protected-access
         weight_column_name=weight_column_name,
-        linear_feature_columns=feature_columns,
-        linear_optimizer=optimizer,
-        _joint_linear_weights=_joint_weights,
-        gradient_clip_norm=gradient_clip_norm,
-        enable_centered_bias=enable_centered_bias,
         label_dimension=label_dimension,
+        enable_centered_bias=enable_centered_bias)
+    params = {
+        "head": head,
+        "feature_columns": feature_columns,
+        "optimizer": self._optimizer,
+    }
+
+    if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+      assert label_dimension == 1, "SDCA only applies for label_dimension=1."
+      assert not _joint_weights, ("_joint_weights is incompatible with"
+                                  " SDCAOptimizer.")
+
+      model_fn = sdca_model_fn
+      # The model_fn passes the model parameters to the chief_hook. We then use
+      # the hook to update weights and shrink step only on the chief.
+      chief_hook = _SdcaUpdateWeightsHook()
+      params.update({
+          "weight_column_name": weight_column_name,
+          "update_weights_hook": chief_hook,
+      })
+    else:
+      model_fn = _linear_model_fn
+      params.update({
+          "gradient_clip_norm": gradient_clip_norm,
+          "num_ps_replicas": config.num_ps_replicas if config else 0,
+          "joint_weights": _joint_weights,
+      })
+
+    self._estimator = estimator.Estimator(
+        model_fn=model_fn,
+        model_dir=model_dir,
         config=config,
+        params=params,
         feature_engineering_fn=feature_engineering_fn)
 
-  def _get_train_ops(self, features, labels):
-    """See base class."""
-    if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
-      return super(LinearRegressor, self)._get_train_ops(features, labels)
-    assert not self._joint_weights, ("_joint_weights is incompatible with"
-                                     " SDCAOptimizer.")
-    global_step = contrib_variables.get_or_create_global_step()
+    self._additional_run_hook = (chief_hook if self._estimator.config.is_chief
+                                 else None)
 
-    logits, columns_to_variables, bias = (
-        layers.weighted_sum_from_feature_columns(
-            columns_to_tensors=features,
-            feature_columns=self._linear_feature_columns,
-            num_outputs=self._head.logits_dimension,
-            weight_collections=[self._linear_model.get_scope_name()],
-            scope=self._linear_model.get_scope_name()))
-    _add_bias_column(self._linear_feature_columns, features, bias, labels,
-                     columns_to_variables)
+  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+          monitors=None, max_steps=None):
+    """See trainable.Trainable."""
+    # TODO(roumposg): Remove when deprecated monitors are removed.
+    if monitors is None:
+      monitors = []
+    deprecated_monitors = [
+        m for m in monitors
+        if not isinstance(m, session_run_hook.SessionRunHook)
+    ]
+    for monitor in deprecated_monitors:
+      monitor.set_estimator(self)
+      monitor._lock_estimator()  # pylint: disable=protected-access
 
-    def _train_op_fn(unused_loss):
-      sdca_model, train_op = self._linear_optimizer.get_train_step(
-          columns_to_variables, self._weight_column_name,
-          self._loss_type(), features, labels, global_step)
-      return sdca_model.update_weights(train_op)
+    if self._additional_run_hook:
+      monitors.append(self._additional_run_hook)
+    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
+                                 batch_size=batch_size, monitors=monitors,
+                                 max_steps=max_steps)
 
-    model_fn_ops = self._head.head_ops(features, labels,
-                                       estimator.ModeKeys.TRAIN, _train_op_fn,
-                                       logits=logits)
-    return model_fn_ops.training_op, model_fn_ops.loss
+    for monitor in deprecated_monitors:
+      monitor._unlock_estimator()  # pylint: disable=protected-access
 
-  def _loss_type(self):
-    return "squared_loss"
+    return result
+
+  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
+               batch_size=None, steps=None, metrics=None, name=None):
+    """See evaluable.Evaluable."""
+    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
+                                    feed_fn=feed_fn, batch_size=batch_size,
+                                    steps=steps, metrics=metrics, name=name)
+
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
+    """Runs inference to determine the predicted class."""
+    preds = self._estimator.predict(x=x, input_fn=input_fn,
+                                    batch_size=batch_size,
+                                    outputs=[head_lib.PredictionKey.SCORES],
+                                    as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=head_lib.PredictionKey.SCORES)
+    return preds[head_lib.PredictionKey.SCORES]
+
+  def get_variable_names(self):
+    return self._estimator.get_variable_names()
+
+  def get_variable_value(self, name):
+    return self._estimator.get_variable_value(name)
+
+  def export(self,
+             export_dir,
+             input_fn=None,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=1,
+             exports_to_keep=None):
+    """See BaseEstimator.export."""
+    def default_input_fn(unused_estimator, examples):
+      return layers.parse_feature_columns_from_examples(
+          examples, self._feature_columns)
+
+    return self._estimator.export(
+        export_dir=export_dir,
+        input_fn=input_fn or default_input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        signature_fn=(signature_fn or export.regression_signature_fn),
+        prediction_key=head_lib.PredictionKey.SCORES,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
 
   @property
   @deprecated("2016-10-30",
@@ -716,7 +774,16 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def weights_(self):
-    return self.linear_weights_
+    values = {}
+    optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
+    for name in self.get_variable_names():
+      if (name.startswith("linear/") and
+          name != "linear/bias_weight" and
+          not re.match(optimizer_regex, name)):
+        values[name] = self.get_variable_value(name)
+    if len(values) == 1:
+      return values[list(values.keys())[0]]
+    return values
 
   @property
   @deprecated("2016-10-30",
@@ -724,4 +791,12 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def bias_(self):
-    return self.linear_bias_
+    return self.get_variable_value("linear/bias_weight")
+
+  @property
+  def config(self):
+    return self._estimator.config
+
+  @property
+  def model_dir(self):
+    return self._estimator.model_dir
