@@ -858,11 +858,13 @@ def hessian(ys, x, name="hessian", colocate_gradients_with_ops=False,
       have a registered gradient function.
     ValueError: if the arguments are invalid
   """
+  kwargs = {
+    'colocate_gradients_with_ops': colocate_gradients_with_ops,
+    'gate_gradients': gate_gradients,
+    'aggregation_method': aggregation_method
+  }
   # Compute the regular gradients
-  _gradients, = gradients(
-    ys, x, colocate_gradients_with_ops=colocate_gradients_with_ops,
-    gate_gradients=gate_gradients, aggregation_method=aggregation_method
-  )
+  _gradients, = gradients(ys, x, **kwargs)
   # Apply the gradients again
-  _hess = [gradients(_gradient)[0] for gradient in array_ops.unpack(_gradients)]
+  _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in array_ops.unpack(_gradients)]
   return array_ops.pack(_hess, name=name)
