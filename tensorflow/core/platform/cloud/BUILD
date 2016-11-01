@@ -201,7 +201,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "retrying_file_system_test",
-    size = "small",
+    size = "medium",
     srcs = ["retrying_file_system_test.cc"],
     deps = [
         ":retrying_file_system",
