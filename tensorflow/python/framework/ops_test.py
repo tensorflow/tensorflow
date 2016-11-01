@@ -25,6 +25,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -84,38 +85,6 @@ class TensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "not iterable"):
       for _ in t:
         pass
-
-
-class SparseTensorTest(test_util.TensorFlowTestCase):
-
-  def testInvalidFromValue(self):
-    for invalid_value in (None, 42.0, ops.convert_to_tensor(42.0)):
-      with self.assertRaisesRegexp(
-          TypeError, "Neither a SparseTensor nor SparseTensorValue"):
-        ops.SparseTensor.from_value(invalid_value)
-
-  def testPythonConstruction(self):
-    indices = [[1, 2], [2, 0], [3, 4]]
-    values = [b"a", b"b", b"c"]
-    shape = [4, 5]
-    sp_value = ops.SparseTensorValue(indices, values, shape)
-    for sp in [
-        ops.SparseTensor(indices, values, shape),
-        ops.SparseTensor.from_value(sp_value),
-        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
-      self.assertEqual(sp.indices.dtype, dtypes.int64)
-      self.assertEqual(sp.values.dtype, dtypes.string)
-      self.assertEqual(sp.shape.dtype, dtypes.int64)
-
-      with self.test_session() as sess:
-        value = sp.eval()
-        self.assertAllEqual(indices, value.indices)
-        self.assertAllEqual(values, value.values)
-        self.assertAllEqual(shape, value.shape)
-        sess_run_value = sess.run(sp)
-        self.assertAllEqual(sess_run_value.indices, value.indices)
-        self.assertAllEqual(sess_run_value.values, value.values)
-        self.assertAllEqual(sess_run_value.shape, value.shape)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
@@ -1252,7 +1221,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     g0 = ops.Graph()
     a = g0.create_op("a", [], [dtypes.float32])
     b = g0.create_op("b", [], [dtypes.float32])
-    sparse = ops.SparseTensor(
+    sparse = sparse_tensor.SparseTensor(
         _apply_op(g0, "const", [], [dtypes.int64]),
         _apply_op(g0, "const", [], [dtypes.float32]),
         _apply_op(g0, "const", [], [dtypes.int64]))

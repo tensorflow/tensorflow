@@ -31,6 +31,7 @@ from tensorflow.contrib.layers.python.layers import utils
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
@@ -1217,7 +1218,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
     TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
   """
   with ops.name_scope(scope, 'InnerFlatten', [inputs, new_rank]) as sc:
-    if isinstance(inputs, ops.SparseTensor):
+    if isinstance(inputs, sparse_tensor.SparseTensor):
       flattened = _sparse_inner_flatten(inputs, new_rank)
     else:
       inputs = ops.convert_to_tensor(inputs)

@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -257,11 +258,11 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
-  if not isinstance(sp_ids, ops.SparseTensor):
+  if not isinstance(sp_ids, sparse_tensor.SparseTensor):
     raise TypeError("sp_ids must be SparseTensor")
   ignore_weights = sp_weights is None
   if not ignore_weights:
-    if not isinstance(sp_weights, ops.SparseTensor):
+    if not isinstance(sp_weights, sparse_tensor.SparseTensor):
       raise TypeError("sp_weights must be either None or SparseTensor")
     sp_ids.values.get_shape().assert_is_compatible_with(
         sp_weights.values.get_shape())

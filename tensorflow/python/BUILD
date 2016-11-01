@@ -281,6 +281,7 @@ py_library(
         "framework/load_library.py",
         "framework/meta_graph.py",
         "framework/random_seed.py",
+        "framework/sparse_tensor.py",
         "framework/tensor_util.py",
     ],
     srcs_version = "PY2AND3",
@@ -493,6 +494,19 @@ py_test(
     size = "small",
     srcs = ["framework/tensor_shape_test.py"],
     main = "framework/tensor_shape_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_sparse_tensor_test",
+    size = "small",
+    srcs = ["framework/sparse_tensor_test.py"],
+    main = "framework/sparse_tensor_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",

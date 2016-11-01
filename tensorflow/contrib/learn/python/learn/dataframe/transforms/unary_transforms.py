@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe import series
 from tensorflow.contrib.learn.python.learn.dataframe import transform
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 
 # Each entry is a mapping from registered_name to operation. Each operation is
@@ -83,10 +83,10 @@ def register_unary_op(registered_name, operation, ignore_dtype=None):
 
   def _apply_transform(self, input_tensors, **kwargs):
     input_tensor = input_tensors[0]
-    if isinstance(input_tensor, ops.SparseTensor):
-      result = ops.SparseTensor(input_tensor.indices,
-                                operation(input_tensor.values),
-                                input_tensor.shape)
+    if isinstance(input_tensor, sparse_tensor.SparseTensor):
+      result = sparse_tensor.SparseTensor(input_tensor.indices,
+                                          operation(input_tensor.values),
+                                          input_tensor.shape)
     else:
       result = operation(input_tensor)
     # pylint: disable=not-callable
