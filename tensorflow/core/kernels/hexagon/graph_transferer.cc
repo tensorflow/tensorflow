@@ -31,6 +31,7 @@ static constexpr const char* const CONST_SHAPE_PREFIX = "const_shape_";
 static constexpr const char* const PADDING_PREFIX = "NN_PAD_";
 static constexpr const char* const PADDING_ATTR_NAME = "padding";
 static constexpr const char* const STRIDES_ATTR_NAME = "strides";
+static constexpr const char* const KSIZE_ATTR_NAME = "ksize";
 static constexpr const char* const PADDING_VALID_STR = "VALID";
 static constexpr const char* const PADDING_SAME_STR = "SAME";
 
@@ -192,7 +193,13 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
   std::vector<int32> strides;
   context->GetAttr(STRIDES_ATTR_NAME, &strides);
   const int stride_id = RegisterConstantShape(strides);
-  std::vector<int> extra_inputs{stride_id, 0};
+  std::vector<int> extra_inputs{stride_id};
+  if (node.def().attr().count(KSIZE_ATTR_NAME) > 0) {
+    std::vector<int32> kernel_sizes;
+    context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes);
+    const int ksize_id = RegisterConstantShape(kernel_sizes);
+    extra_inputs.push_back(ksize_id);
+  }
   AppendNodeParams(node.name(), id, node.type_string(), padding,
                    node.num_inputs(), extra_inputs, node.num_outputs());
 }

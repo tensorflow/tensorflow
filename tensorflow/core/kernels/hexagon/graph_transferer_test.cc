@@ -58,14 +58,33 @@ static GraphDef CreateConvGraphDef() {
   test::FillIota<float>(&input_data, 1.0f);
   ops::Output input =
       ops::Const(root.WithOpName("input"), ops::Input::Initializer(input_data));
-  const int stride = 1;
   Tensor filter_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&filter_data, 1.0f);
   ops::Output filter = ops::Const(root.WithOpName("filter"),
                                   ops::Input::Initializer(filter_data));
+  const std::vector<int> strides{1, 1, 1, 1};
+  ops::Output conv =
+      ops::Conv2D(root.WithOpName("conv"), input, filter, strides, "SAME");
+  GraphDef def;
+  TF_CHECK_OK(root.ToGraphDef(&def));
+  return def;
+}
+
+static GraphDef CreatePoolGraphDef() {
+  Scope root = Scope::NewRootScope();
+  Tensor input_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&input_data, 1.0f);
+  ops::Output input =
+      ops::Const(root.WithOpName("input"), ops::Input::Initializer(input_data));
+  Tensor filter_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&filter_data, 1.0f);
+  ops::Output filter = ops::Const(root.WithOpName("filter"),
+                                  ops::Input::Initializer(filter_data));
+  const std::vector<int> ksize{1, 1, 1, 1};
   const std::vector<int> padding{0, 0, 0, 0};
-  ops::Output conv = ops::Conv2D(root.WithOpName("conv"), input, filter,
-                                 {1, stride, stride, 1}, "SAME");
+  const std::vector<int> strides{1, 1, 1, 1};
+  ops::Output max_pool =
+      ops::MaxPool(root.WithOpName("maxpool"), input, ksize, strides, "SAME");
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -139,9 +158,29 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   const int id = params_conv->id;
   EXPECT_TRUE(id > 0 && id <= (const_node_count + op_node_count));
   EXPECT_EQ("Conv2D", params_conv->type);
-  EXPECT_EQ(4, params_conv->inputs_size);
+  EXPECT_EQ(3, params_conv->inputs_size);
   EXPECT_EQ(1, params_conv->outputs_size);
   EXPECT_EQ("NN_PAD_SAME", params_conv->padding);
 }
 
+TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
+  GraphDef def = CreatePoolGraphDef();
+  _session->Create(def);
+
+  GraphTransferer gt;
+  gt.LoadGraphFromProto(def);
+  const int const_node_count = gt.GetConstNodeParams().size();
+  ASSERT_EQ(3, const_node_count);
+  const int op_node_count = gt.GetOpNodeParams().size();
+  ASSERT_EQ(1, op_node_count);
+  const GraphTransferer::NodeTransferParams* params_max_pool =
+      FindOpNodeParams(gt, "maxpool");
+  ASSERT_TRUE(params_max_pool != nullptr);
+  const int id = params_max_pool->id;
+  EXPECT_TRUE(id > 0 && id <= (const_node_count + op_node_count));
+  EXPECT_EQ("MaxPool", params_max_pool->type);
+  EXPECT_EQ(3, params_max_pool->inputs_size);
+  EXPECT_EQ(1, params_max_pool->outputs_size);
+  EXPECT_EQ("NN_PAD_SAME", params_max_pool->padding);
+}
 }  // namespace tensorflow
