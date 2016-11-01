@@ -120,8 +120,8 @@ class ReadFileOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("ReadFile").Device(DEVICE_CPU), ReadFileOp);
 
 class WriteFileOp : public OpKernel {
-  using OpKernel::OpKernel;
   public:
+    using OpKernel::OpKernel;
     void Compute(OpKernelContext* context) override {
 	    const Tensor* filename_input;
 	    const Tensor* contents_input;
