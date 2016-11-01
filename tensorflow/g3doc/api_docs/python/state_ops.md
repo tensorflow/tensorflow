@@ -1765,7 +1765,7 @@ Builds saver_def.
 
 - - -
 
-#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False, export_scope=None)` {#Saver.export_meta_graph}
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False, export_scope=None, clear_devices=False)` {#Saver.export_meta_graph}
 
 Writes `MetaGraphDef` to save_path/filename.
 
@@ -1776,6 +1776,8 @@ Writes `MetaGraphDef` to save_path/filename.
 *  <b>`collection_list`</b>: List of string keys to collect.
 *  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
 *  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during export.
 
 ##### Returns:
 
@@ -3120,7 +3122,7 @@ Returns an Op that initializes all tables of the default graph.
 
 - - -
 
-### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False, graph=None, export_scope=None, **kwargs)` {#export_meta_graph}
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False, graph=None, export_scope=None, clear_devices=False, **kwargs)` {#export_meta_graph}
 
 Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -3144,6 +3146,8 @@ a subgraph.
     the subgraph. The scope name will be striped from the node definitions
     for easy import later into new name scopes. If `None`, the whole graph
     is exported. graph_def and export_scope cannot both be specified.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during export.
 *  <b>`**kwargs`</b>: Optional keyed arguments.
 
 ##### Returns:
