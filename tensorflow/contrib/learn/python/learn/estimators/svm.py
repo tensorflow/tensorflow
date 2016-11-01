@@ -148,14 +148,16 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
     self._model_dir = model_dir or tempfile.mkdtemp()
     self._chief_hook = linear._SdcaUpdateWeightsHook()  # pylint: disable=protected-access
     self._estimator = estimator.Estimator(
-        model_fn=linear.sdca_classifier_model_fn,
+        model_fn=linear.sdca_model_fn,
         model_dir=self._model_dir,
         config=config,
         params={
+            "head": head_lib._binary_svm_head(  # pylint: disable=protected-access
+                weight_column_name=weight_column_name,
+                enable_centered_bias=False),
             "feature_columns": feature_columns,
             "optimizer": self._optimizer,
             "weight_column_name": weight_column_name,
-            "loss_type": "hinge_loss",
             "update_weights_hook": self._chief_hook,
         },
         feature_engineering_fn=feature_engineering_fn)

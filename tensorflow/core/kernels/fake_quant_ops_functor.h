@@ -32,10 +32,13 @@ static constexpr float kStepsFloat = static_cast<float>(kSteps);
 // Gymnastics with nudged zero point is to ensure that real zero maps to
 // an integer, which is required for e.g. zero-padding in convolutional layers.
 // Returns (nudged_min, nudged_max, nudged_scale).
-template <typename Device>
-std::tuple<float, float, float> Nudge(const float min, const float max) {
-  const float scale = (max - min) / (kStepsFloat - 0.0f);
-  const float zero_point_from_min = 0.0f - min / scale;
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void Nudge(const float min,
+                                                 const float max,
+                                                 float* nudged_min,
+                                                 float* nudged_max,
+                                                 float* scale) {
+  *scale = (max - min) / (kStepsFloat - 0.0f);
+  const float zero_point_from_min = 0.0f - min / *scale;
   const uint8 nudged_zero_point = [zero_point_from_min] {
     if (zero_point_from_min < 0.0f) {
       return static_cast<uint8>(0);
@@ -46,9 +49,8 @@ std::tuple<float, float, float> Nudge(const float min, const float max) {
     }
   }();
 
-  const float nudged_min = (0.0f - nudged_zero_point) * scale;
-  const float nudged_max = (kStepsFloat - nudged_zero_point) * scale;
-  return std::make_tuple(nudged_min, nudged_max, scale);
+  *nudged_min = (0.0f - nudged_zero_point) * (*scale);
+  *nudged_max = (kStepsFloat - nudged_zero_point) * (*scale);
 }
 
 template<typename T> using ConstScalar =
@@ -71,7 +73,7 @@ struct FakeQuantWithMinMaxArgsFunctor {
     eigen_assert(min < max && "min should be < max");
 
     float nudged_min, nudged_max, nudged_scale;
-    std::tie(nudged_min, nudged_max, nudged_scale) = Nudge<Device>(min, max);
+    Nudge(min, max, &nudged_min, &nudged_max, &nudged_scale);
     const float inv_nudged_scale = 1.0f / nudged_scale;
 
     auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
@@ -93,7 +95,7 @@ struct FakeQuantWithMinMaxArgsGradientFunctor {
     eigen_assert(min < max && "min should be < max");
 
     float nudged_min, nudged_max, nudged_scale;
-    std::tie(nudged_min, nudged_max, nudged_scale) = Nudge<Device>(min, max);
+    Nudge(min, max, &nudged_min, &nudged_max, &nudged_scale);
 
     auto between_nudged_min_max = (inputs >= nudged_min && inputs <= nudged_max)
         .select(inputs.constant(1.0f), inputs.constant(0.0f));
@@ -121,8 +123,7 @@ struct FakeQuantWithMinMaxVarsFunctor {
 #endif
 
     float nudged_min, nudged_max, nudged_scale;
-    std::tie(nudged_min, nudged_max, nudged_scale) =
-        Nudge<Device>(min(), max());
+    Nudge(min(), max(), &nudged_min, &nudged_max, &nudged_scale);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
 
     const auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
@@ -155,8 +156,7 @@ struct FakeQuantWithMinMaxVarsGradientFunctor {
 #endif
 
     float nudged_min, nudged_max, nudged_scale;
-    std::tie(nudged_min, nudged_max, nudged_scale) =
-        Nudge<Device>(min(), max());
+    Nudge(min(), max(), &nudged_min, &nudged_max, &nudged_scale);
 
     const auto between_min_max = (inputs >= nudged_min && inputs <= nudged_max)
         .select(inputs.constant(1.0f), inputs.constant(0.0f));
@@ -197,8 +197,7 @@ struct FakeQuant1WithMinMaxVarsPerChannelFunctor {
 
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      std::tie(nudged_min, nudged_max, nudged_scale) =
-          Nudge<Device>(min(i), max(i));
+      Nudge(min(i), max(i), &nudged_min, &nudged_max, &nudged_scale);
       const float clamped =
           std::max(std::min(inputs(i), nudged_max), nudged_min);
       const float clamped_shifted = clamped - nudged_min;
@@ -233,8 +232,7 @@ struct FakeQuant2WithMinMaxVarsPerChannelFunctor {
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      std::tie(nudged_min, nudged_max, nudged_scale) =
-          Nudge<Device>(min(i), max(i));
+      Nudge(min(i), max(i), &nudged_min, &nudged_max, &nudged_scale);
       const auto clamped = inputs_restored.chip<1>(i)
           .cwiseMin(nudged_max).cwiseMax(nudged_min);
       const auto clamped_shifted = clamped - nudged_min;
@@ -271,8 +269,7 @@ struct FakeQuant4WithMinMaxVarsPerChannelFunctor {
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      std::tie(nudged_min, nudged_max, nudged_scale) =
-          Nudge<Device>(min(i), max(i));
+      Nudge(min(i), max(i), &nudged_min, &nudged_max, &nudged_scale);
       const auto clamped = inputs_restored.chip<3>(i)
           .cwiseMin(nudged_max).cwiseMax(nudged_min);
       const auto clamped_shifted = clamped - nudged_min;
@@ -310,8 +307,7 @@ struct FakeQuant1WithMinMaxVarsPerChannelGradientFunctor {
 
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      std::tie(nudged_min, nudged_max, nudged_scale) =
-          Nudge<Device>(min(i), max(i));
+      Nudge(min(i), max(i), &nudged_min, &nudged_max, &nudged_scale);
 
       const bool between_min_max =
           inputs(i) >= nudged_min && inputs(i) <= nudged_max;
@@ -352,8 +348,7 @@ struct FakeQuant2WithMinMaxVarsPerChannelGradientFunctor {
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      std::tie(nudged_min, nudged_max, nudged_scale) =
-          Nudge<Device>(min(i), max(i));
+      Nudge(min(i), max(i), &nudged_min, &nudged_max, &nudged_scale);
       const auto gradients_chip = gradients_restored.chip<1>(i);
       const auto inputs_chip = inputs_restored.chip<1>(i);
 
@@ -404,8 +399,7 @@ struct FakeQuant4WithMinMaxVarsPerChannelGradientFunctor {
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      std::tie(nudged_min, nudged_max, nudged_scale) =
-          Nudge<Device>(min(i), max(i));
+      Nudge(min(i), max(i), &nudged_min, &nudged_max, &nudged_scale);
       const auto gradients_chip = gradients_restored.chip<3>(i);
       const auto inputs_chip = inputs_restored.chip<3>(i);
 

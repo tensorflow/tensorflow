@@ -44,13 +44,15 @@ from tensorflow.python.util import compat
 _UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
 
 
-def _node_def(from_node_def, export_scope, unbound_inputs):
+def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
   """Create a `NodeDef` proto with export_scope stripped.
 
   Args:
     from_node_def: A `node_def_pb2.NodeDef` protocol buffer.
     export_scope: A `string` representing the name scope to remove.
     unbound_inputs: An array of unbound input names if they exist.
+    clear_devices: Boolean which controls whether to clear device information
+      from node_def. Default false.
 
   Returns:
     A `node_def_pb2.NodeDef` protocol buffer.
@@ -79,6 +81,9 @@ def _node_def(from_node_def, export_scope, unbound_inputs):
           list=attr_value_pb2.AttrValue.ListValue(s=new_s)))
     else:
       node_def.attr[k].CopyFrom(v)
+
+  if clear_devices:
+    node_def.device = ""
 
   return node_def
 
@@ -543,6 +548,7 @@ def export_scoped_meta_graph(filename=None,
                              export_scope=None,
                              as_text=False,
                              unbound_inputs_col_name="unbound_inputs",
+                             clear_devices=False,
                              **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -565,6 +571,8 @@ def export_scoped_meta_graph(filename=None,
       with the given name will be added to the returned `MetaGraphDef`,
       containing the names of tensors that must be remapped when importing the
       `MetaGraphDef`.
+    clear_devices: Boolean which controls whether to clear device information
+      before exporting the graph.
     **kwargs: Optional keyed arguments, including meta_info_def,
       saver_def, collection_list.
 
@@ -576,31 +584,37 @@ def export_scoped_meta_graph(filename=None,
     ValueError: When the `GraphDef` is larger than 2GB.
   """
   graph = graph or ops.get_default_graph()
-  if graph_def and export_scope:
-    raise ValueError("graph_def and export_scope cannot both "
-                     "be specified.")
-
-  if graph_def is None and export_scope:
-    unbound_inputs = []
-    # Only do this complicated work if we want to remove a name scope.
-    graph_def = graph_pb2.GraphDef()
-    # pylint: disable=protected-access
-    graph_def.versions.CopyFrom(graph._graph_def_versions)
-    bytesize = 0
-    for key in sorted(graph._nodes_by_name):
-      if _should_include_node(key, export_scope):
-        value = graph._nodes_by_name[key]
-    # pylint: enable=protected-access
-        graph_def.node.extend([_node_def(value.node_def, export_scope,
-                                         unbound_inputs)])
-        if value.outputs:
-          assert "_output_shapes" not in graph_def.node[-1].attr
-          graph_def.node[-1].attr["_output_shapes"].list.shape.extend([
-              output.get_shape().as_proto() for output in value.outputs])
-        bytesize += value.node_def.ByteSize()
-        if bytesize >= (1 << 31) or bytesize < 0:
-          raise ValueError("GraphDef cannot be larger than 2GB.")
-
+  unbound_inputs = []
+  if export_scope or clear_devices:
+    if graph_def:
+      new_graph_def = graph_pb2.GraphDef()
+      new_graph_def.versions.CopyFrom(graph_def.versions)
+      for node_def in graph_def.node:
+        if _should_include_node(node_def.name, export_scope):
+          new_node_def = _node_def(node_def, export_scope, unbound_inputs,
+                                   clear_devices=clear_devices)
+          new_graph_def.node.extend([new_node_def])
+      graph_def = new_graph_def
+    else:
+      # Only do this complicated work if we want to remove a name scope.
+      graph_def = graph_pb2.GraphDef()
+      # pylint: disable=protected-access
+      graph_def.versions.CopyFrom(graph.graph_def_versions)
+      bytesize = 0
+      for key in sorted(graph._nodes_by_id):
+        if _should_include_node(graph._nodes_by_id[key].name, export_scope):
+          value = graph._nodes_by_id[key]
+      # pylint: enable=protected-access
+          node_def = _node_def(value.node_def, export_scope, unbound_inputs,
+                               clear_devices=clear_devices)
+          graph_def.node.extend([node_def])
+          if value.outputs:
+            assert "_output_shapes" not in graph_def.node[-1].attr
+            graph_def.node[-1].attr["_output_shapes"].list.shape.extend([
+                output.get_shape().as_proto() for output in value.outputs])
+          bytesize += value.node_def.ByteSize()
+          if bytesize >= (1 << 31) or bytesize < 0:
+            raise ValueError("GraphDef cannot be larger than 2GB.")
     # It's possible that not all the inputs are in the export_scope.
     # If we would like such information included in the exported meta_graph,
     # add them to a special unbound_inputs collection.

@@ -544,8 +544,10 @@ class ConcatOffsetTest(tf.test.TestCase):
       s0 = tf.constant([2, 3, 5], tf.int32)
       s1 = tf.constant([2, 7, 10], tf.int32)
       off = gen_array_ops._concat_offset(cdim, [s0, s1])
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   r"mismatch: 5 vs. 10"):
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          r"All dimensions except 1 must match. Input 1 has shape \[2 7 10\] "
+          r"and doesn't match input 0 with shape \[2 3 5\]."):
         sess.run(off)
 
 if __name__ == "__main__":

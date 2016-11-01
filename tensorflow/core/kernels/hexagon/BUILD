@@ -30,7 +30,6 @@ tf_cc_test(
     name = "quantized_matmul_op_for_hexagon_test",
     size = "small",
     srcs = ["quantized_matmul_op_for_hexagon_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -71,6 +70,7 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],

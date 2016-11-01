@@ -368,23 +368,29 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
-        sigma = np.eye(2, dtype=np.float32)
+        # Note:  sigma is -1 * identity matrix.
+        sigma = -np.eye(2, dtype=np.float32)
         bijector = bijectors.ScaleAndShift(
             shift=mu, scale=sigma, event_ndims=1)
         self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
-        self.assertAllClose([2., 0], run(bijector.forward, x))
-        self.assertAllClose([0., 2], run(bijector.inverse, x))
+        # matmul(sigma, x) + shift
+        # = [-1, -1] + [1, -1]
+        self.assertAllClose([0., -2], run(bijector.forward, x))
+        self.assertAllClose([0., -2], run(bijector.inverse, x))
         self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
 
+        # x is a 2-batch of 2-vectors.
+        # The first vector is [1, 1], the second is [-1, -1].
+        # Each undergoes matmul(sigma, x) + shift.
         x = [[1., 1],
              [-1., -1]]
-        self.assertAllClose([[2., 0],
-                             [0, -2]],
+        self.assertAllClose([[0., -2],
+                             [2., 0]],
                             run(bijector.forward, x))
-        self.assertAllClose([[0., 2],
-                             [-2., 0]],
+        self.assertAllClose([[0., -2],
+                             [2., 0]],
                             run(bijector.inverse, x))
         self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
 
@@ -476,9 +482,51 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
       self.assertAllClose(
           [0.], sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
 
+  def testNoBatchMultivariateRaisesWhenSingular(self):
+    with self.test_session():
+      mu = [1., -1]
+      sigma = [[0., 1.], [1., 1.]]  # Has zero on the diag!
+      bijector = bijectors.ScaleAndShift(
+          shift=mu, scale=sigma, event_ndims=1, validate_args=True)
+      with self.assertRaisesOpError("Singular"):
+        bijector.forward([1., 1.]).eval()
+
+  def testEventNdimsLargerThanOneRaises(self):
+    with self.test_session():
+      mu = [1., -1]
+      sigma = [[1., 1.], [1., 1.]]
+      bijector = bijectors.ScaleAndShift(
+          shift=mu, scale=sigma, event_ndims=2, validate_args=True)
+      with self.assertRaisesOpError("event_ndims"):
+        bijector.forward([1., 1.]).eval()
+
+  def testNonSquareMatrixScaleRaises(self):
+    # event_ndims = 1, so we expected a matrix, but will only feed a vector.
+    with self.test_session():
+      mu = [1., -1]
+      sigma = [[1., 1., 1.], [1., 1., 1.]]
+      bijector = bijectors.ScaleAndShift(
+          shift=mu, scale=sigma, event_ndims=1, validate_args=True)
+      with self.assertRaisesOpError("square"):
+        bijector.forward([1., 1.]).eval()
+
+  def testScaleZeroScalarRaises(self):
+    with self.test_session():
+      mu = -1.
+      sigma = 0.  # Scalar, leads to non-invertible bijector
+      bijector = bijectors.ScaleAndShift(
+          shift=mu, scale=sigma, validate_args=True)
+      with self.assertRaisesOpError("Singular"):
+        bijector.forward(1.).eval()
+
   def testScalarCongruency(self):
     with self.test_session():
       bijector = bijectors.ScaleAndShift(shift=3.6, scale=0.42, event_ndims=0)
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
+
+  def testScalarCongruencyWithNegativeScale(self):
+    with self.test_session():
+      bijector = bijectors.ScaleAndShift(shift=3.6, scale=-0.42, event_ndims=0)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
 
 

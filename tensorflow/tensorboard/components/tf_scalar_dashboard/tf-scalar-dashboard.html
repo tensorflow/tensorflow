@@ -32,7 +32,7 @@ limitations under the License.
 <link rel="import" href="../paper-item/paper-item.html">
 
 <!--
-tf-event-dashboard is a complete frontend that loads runs from a backend,
+tf-scalar-dashboard is a complete frontend that loads runs from a backend,
 and creates chart panes that display data for those runs.
 
 It provides a categorizer, run selector, and x type selector, by which the user
@@ -46,7 +46,7 @@ manifestation and just effect data bindings or data loading. The .sidebar div
 contains shared controls provided by tf-sidebar-helper. The .center div
 contains vz-line-charts embedded inside tf-panes-helper's.
 -->
-<dom-module id="tf-event-dashboard">
+<dom-module id="tf-scalar-dashboard">
   <template>
     <div id="plumbing">
       <tf-color-scale
@@ -176,7 +176,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
 
   <script>
     Polymer({
-      is: "tf-event-dashboard",
+      is: "tf-scalar-dashboard",
       behaviors: [
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,

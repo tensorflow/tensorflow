@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -231,6 +232,9 @@ class ExecutorImpl : public Executor {
     for (int i = 0; i < graph_->num_node_ids(); i++) {
       params_.delete_kernel(nodes_[i].kernel);
     }
+    for (auto fiter : frame_info_) {
+      delete fiter.second;
+    }
     delete[] frame_local_ids_;
     delete[] nodes_;
     delete graph_;
@@ -258,11 +262,17 @@ class ExecutorImpl : public Executor {
   friend class ExecutorState;
 
   struct ControlFlowInfo {
-    std::unordered_map<string, int> frame_name_to_size;
+    gtl::FlatMap<string, int, HashStr> frame_name_to_size;
     std::vector<string> frame_names;
   };
 
   struct FrameInfo {
+    FrameInfo()
+        : input_count(0),
+          total_inputs(0),
+          pending_counts(nullptr),
+          nodes(nullptr) {}
+
     // The total number of inputs to a frame.
     int input_count;
 
@@ -286,6 +296,14 @@ class ExecutorImpl : public Executor {
                                      ControlFlowInfo* cf_info);
   void InitializePending(const Graph* graph, const ControlFlowInfo& cf_info);
 
+  FrameInfo* EnsureFrameInfo(const string& fname) {
+    auto slot = &frame_info_[fname];
+    if (*slot == nullptr) {
+      *slot = new FrameInfo;
+    }
+    return *slot;
+  }
+
   // Owned.
   LocalExecutorParams params_;
   const Graph* graph_;
@@ -303,7 +321,7 @@ class ExecutorImpl : public Executor {
   // Mapping from frame name to static information about the frame.
   // TODO(yuanbyu): We could cache it along with the graph so to avoid
   // the overhead of constructing it for each executor instance.
-  std::unordered_map<string, FrameInfo> frame_info_;
+  gtl::FlatMap<string, FrameInfo*, HashStr> frame_info_;
 
   // Mapping from a node's id to its index in the PendingCounts of the
   // frame the node belongs to.
@@ -329,17 +347,17 @@ Status ExecutorImpl::Initialize() {
       params_.device->RequiresRecordingAccessedTensors();
 
   for (auto& it : cf_info.frame_name_to_size) {
-    frame_info_[it.first].nodes = new std::vector<const Node*>;
+    EnsureFrameInfo(it.first)->nodes = new std::vector<const Node*>;
   }
   frame_local_ids_ = new int[num_nodes];
-  std::unordered_map<string, int> frame_count;
+  gtl::FlatMap<string, int, HashStr> frame_count;
 
   // Preprocess every node in the graph to create an instance of op
   // kernel for each node.
   for (const Node* n : graph_->nodes()) {
     const int id = n->id();
     const string& frame_name = cf_info.frame_names[id];
-    FrameInfo& frame_info = frame_info_[frame_name];
+    FrameInfo* frame_info = EnsureFrameInfo(frame_name);
 
     // See if this node is a root node, and if so, add to root_nodes_.
     const int num_in_edges = n->in_edges().size();
@@ -359,8 +377,8 @@ Status ExecutorImpl::Initialize() {
       item->inlined_output_type[i] = n->output_type(i);
     }
 
-    item->input_start = frame_info.total_inputs;
-    frame_info.total_inputs += n->num_inputs();
+    item->input_start = frame_info->total_inputs;
+    frame_info->total_inputs += n->num_inputs();
 
     item->output_attr_start = total_output_tensors_;
     total_output_tensors_ += n->num_outputs();
@@ -379,11 +397,11 @@ Status ExecutorImpl::Initialize() {
 
     // Initialize static information about the frames in the graph.
     frame_local_ids_[id] = frame_count[frame_name]++;
-    frame_info.nodes->push_back(n);
+    frame_info->nodes->push_back(n);
     if (IsEnter(n)) {
       string enter_name;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "frame_name", &enter_name));
-      ++frame_info_[enter_name].input_count;
+      EnsureFrameInfo(enter_name)->input_count++;
     }
   }
 
@@ -550,8 +568,8 @@ class ExecutorState {
     // A tensor value, if val_field_is_set.
     ManualConstructor<Tensor> val;
 
-    Tensor* ref = nullptr;       // A tensor reference.
-    mutex* ref_mu = nullptr;     // mutex for *ref if ref is not nullptr.
+    Tensor* ref = nullptr;    // A tensor reference.
+    mutex* ref_mu = nullptr;  // mutex for *ref if ref is not nullptr.
 
     // Whether the value exists, either in <val> or <ref>.
     bool has_value = false;
@@ -722,10 +740,11 @@ class ExecutorState {
     void InitializeFrameInfo(const string& enter_name) {
       auto it_frame_info = executor->frame_info_.find(enter_name);
       DCHECK(it_frame_info != executor->frame_info_.end());
-      pending_counts = it_frame_info->second.pending_counts;
-      total_input_tensors = it_frame_info->second.total_inputs;
-      num_pending_inputs = it_frame_info->second.input_count;
-      nodes = it_frame_info->second.nodes;
+      ExecutorImpl::FrameInfo* finfo = it_frame_info->second;
+      pending_counts = finfo->pending_counts;
+      total_input_tensors = finfo->total_inputs;
+      num_pending_inputs = finfo->input_count;
+      nodes = finfo->nodes;
     }
 
     inline IterationState* GetIteration(int64 iter)
@@ -885,7 +904,8 @@ class ExecutorState {
   // child frame is composed of the name of the parent frame, the iteration
   // number at which the parent frame is creating the new frame, and the
   // name of the new frame from nodedef.
-  std::unordered_map<string, FrameState*> outstanding_frames_ GUARDED_BY(mu_);
+  gtl::FlatMap<string, FrameState*, HashStr> outstanding_frames_
+      GUARDED_BY(mu_);
 
   // The unique name of a frame.
   inline string MakeFrameName(FrameState* frame, int64 iter_id, string name) {
@@ -990,7 +1010,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().
   root_frame_ = new FrameState(impl_, 1);
-  root_frame_->frame_id = 0;          // must be 0
+  root_frame_->frame_id = 0;  // must be 0
   root_frame_->InitializeFrameInfo(root_frame_->frame_name);
 
   // Initialize iteration 0.
@@ -1078,7 +1098,7 @@ void ExecutorImpl::InitializePending(const Graph* graph,
                                      const ControlFlowInfo& cf_info) {
   for (auto& it : cf_info.frame_name_to_size) {
     PendingCounts* counts = new PendingCounts(it.second);
-    frame_info_[it.first].pending_counts = counts;
+    EnsureFrameInfo(it.first)->pending_counts = counts;
     // Make sure everything is initialized
     for (int id = 0; id < it.second; id++) {
       counts->set_initial_count(id, 0, 0);
@@ -1104,7 +1124,7 @@ void ExecutorImpl::InitializePending(const Graph* graph,
       initial_count = num_in_edges;
     }
     const string& name = cf_info.frame_names[id];
-    PendingCounts* counts = frame_info_[name].pending_counts;
+    PendingCounts* counts = EnsureFrameInfo(name)->pending_counts;
     counts->set_initial_count(pending_id, initial_count, num_in_edges);
   }
 }

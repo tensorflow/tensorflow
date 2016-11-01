@@ -2011,18 +2011,8 @@ def _EditDistanceShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2, 5])
 
 
-@ops.RegisterShape("Quantize")
-@ops.RegisterShape("Dequantize")
-def _QuantizeDequantizeShape(op):
-  unused_min_range = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  unused_max_range = op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
-  return common_shapes.unchanged_shape(op)
-
-
-@ops.RegisterShape("FakeQuantWithMinMaxArgs")
-def _FakeQuantWithMinMaxArgsShape(op):
-  """Shape function for FakeQuantWithMinMaxArgs op: preserve the input shape."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape("Quantize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Dequantize")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxArgs")
@@ -2031,10 +2021,10 @@ def _FakeQuantWithMinMaxArgsGradient(op, grad):
   return fake_quant_with_min_max_args_gradient(grad, op.inputs[0])
 
 
-@ops.RegisterShape("FakeQuantWithMinMaxVars")
-def _FakeQuantWithMinMaxVarsShape(op):
-  """Shape function for FakeQuantWithMinMaxVars op: preserve the input shape."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape("FakeQuantWithMinMaxArgs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVars")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")(
+    common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVars")
@@ -2042,12 +2032,6 @@ def _FakeQuantWithMinMaxVarsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxVars op."""
   return fake_quant_with_min_max_vars_gradient(grad, op.inputs[0], op.inputs[1],
                                                op.inputs[2])
-
-
-@ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")
-def _FakeQuantWithMinMaxVarsPerChannelShape(op):
-  """Shape function for FakeQuantWithMinMaxVarsPerChannel op: input shape."""
-  return [op.inputs[0].get_shape()]
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVarsPerChannel")
