@@ -20,7 +20,6 @@ from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import bayesflow
-from tensorflow.contrib import client
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
