@@ -26,7 +26,7 @@ namespace tensorflow {
 
 TEST(TrainingOpsTest, UpdateFertileSlots_ShapeFn) {
   ShapeInferenceTestOp op("UpdateFertileSlots");
-  INFER_OK(op, "?;?;?;?;?;?;?", "[2,?];[2,?];[?];[?]");
+  INFER_OK(op, "?;?;?;?;?;?;?;?", "[2,?];[2,?];[?];[?]");
 }
 
 TEST(TrainingOpsTest, ScatterAddNdim_ShapeFn) {
