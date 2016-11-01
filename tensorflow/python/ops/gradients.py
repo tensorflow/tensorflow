@@ -831,43 +831,62 @@ def _hessian_vector_product(ys, xs, v):
   return gradients(elemwise_products, xs)
 
 
-def hessian(ys, x, name="hessian", colocate_gradients_with_ops=False, 
+def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False, 
             gate_gradients=False, aggregation_method=None):
-  """Constructs the Hessian of sum of `ys` with respect to `x`.
+  """Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
-  `hessian()` adds ops to the graph to output the Hessian of `ys` with 
-  respect to `x` and returns a `Tensor`.
+  `hessians()` adds ops to the graph to output the Hessian matrix of `ys` 
+  with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)` 
+  where each tensor is the Hessian of `sum(ys)`. This function currently
+  only supports evaluating the Hessian with respect to (a list of) one-
+  dimensional tensors.
+
+  The Hessian is a matrix of second-order partial derivatives of a scalar
+  tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
 
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
-    x: A `Tensor` to be used for differentiation.
+    xs: A `Tensor` or list of tensors to be used for differentiation.
     name: Optional name to use for grouping all the gradient ops together.
-      defaults to 'gradients'.
-    colocate_gradients_with_ops: If True, try colocating gradients with
-      the corresponding op.
-    gate_gradients: If True, add a tuple around the gradients returned
-      for an operation.  This avoids some race conditions.
-    aggregation_method: Specifies the method used to combine gradient terms.
-      Accepted values are constants defined in the class `AggregationMethod`.
+      defaults to 'hessians'.
+    colocate_gradients_with_ops: See `gradients()` documentation for details.
+    gate_gradients: See `gradients()` documentation for details.
+    aggregation_method: See `gradients()` documentation for details.
 
   Returns:
-    The hessian of `sum(ys)` with respect to `x`.
+    A list of Hessian matrices of `sum(y)` for each `x` in `xs`.
 
   Raises:
-    LookupError: if one of the operations between `x` and `ys` does not
+    LookupError: if one of the operations between `xs` and `ys` does not
       have a registered gradient function.
-    ValueError: if the arguments are invalid
+    ValueError: if the arguments are invalid or not supported. Currently,
+      this function only supports one-dimensional `x` in `xs`
   """
-  ndims = x.get_shape().ndims
-  if ndims is not None and ndims != 1:
-    raise ValueError("Hessians can only be computed with respect to one-dimensional tensors")
+  xs = _AsList(xs)
   kwargs = {
-    'colocate_gradients_with_ops': colocate_gradients_with_ops,
-    'gate_gradients': gate_gradients,
-    'aggregation_method': aggregation_method
-  }
-  # Compute the regular gradients
-  _gradients, = gradients(ys, x, **kwargs)
-  # Apply the gradients again
-  _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in array_ops.unpack(_gradients)]
-  return array_ops.pack(_hess, name=name)
+      'colocate_gradients_with_ops': colocate_gradients_with_ops,
+      'gate_gradients': gate_gradients,
+      'aggregation_method': aggregation_method
+    }
+  # Compute a hessian matrix for each x in xs
+  hessians = []
+  for x in xs:
+    # Check dimensions
+    ndims = x.get_shape().ndims
+    if ndims is None:
+      raise ValueError('cannot compute Hessian because the dimensionality of ' \
+                       '`x` cannot be determined')
+    elif ndims != 1:
+      raise ValueError('computing hessians is currently only supported for ' \
+                       'one-dimensional tensors')
+    # Compute the partial derivatives of the input with respect to all 
+    # elements of `x`
+    _gradients = gradients(ys, x, **kwargs)[0]
+    # Unpack the gradients into a list so we can take derivatives with 
+    # respect to each element
+    _gradients = array_ops.unpack(_gradients)
+    # Compute the partial derivatives with respect to each element of the list
+    _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
+    # Pack the list into a matrix and add to the list of hessians
+    hessians.append(array_ops.pack(_hess, name=name))
+  return hessians

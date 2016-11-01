@@ -421,7 +421,7 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
 
 class HessianTest(test_util.TensorFlowTestCase):
 
-  def testHessian(self):
+  def testHessian1D(self):
     # Manually compute the Hessian explicitly for a low-dimensional problem
     # and check that `hessian` matches. Specifically, the Hessian of 
     # f(x) = x^T A x is H = A + A^T.
@@ -435,9 +435,18 @@ class HessianTest(test_util.TensorFlowTestCase):
         mat = constant_op.constant(mat_value)
         x = constant_op.constant(x_value)
         x_mat_x = math_ops.reduce_sum(x[:, None] * mat * x[None, :])
-        hess = gradients.hessian(x_mat_x, x)
+        hess = gradients.hessians(x_mat_x, x)[0]
         hess_actual = hess.eval()
       self.assertAllClose(hess_value, hess_actual)
+
+  def testHessianInvalidDimension(self):
+    for use_gpu in [False, True]:
+      for shape in [(10, 10), None]:
+        with self.test_session(use_gpu=use_gpu):
+          x = array_ops.placeholder(tf.float32, shape)
+          # Expect a ValueError because the dimensions are wrong
+          with self.assertRaises(ValueError):
+            gradients.hessians(x, x)          
 
 
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
