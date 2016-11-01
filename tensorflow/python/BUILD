@@ -205,6 +205,24 @@ py_test(
     ],
 )
 
+py_test(
+    name = "decorator_utils_test",
+    srcs = ["util/decorator_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "deprecation_test",
+    srcs = ["util/deprecation_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 cc_library(
     name = "python_op_gen",
     srcs = ["framework/python_op_gen.cc"],

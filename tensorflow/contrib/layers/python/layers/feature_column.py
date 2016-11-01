@@ -76,7 +76,6 @@ import collections
 import math
 import six
 
-from tensorflow.contrib.framework.python.framework import deprecation
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
@@ -90,6 +89,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 
 
 class _LinearEmbeddingLookupArguments(

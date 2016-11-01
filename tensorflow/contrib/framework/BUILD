@@ -18,8 +18,6 @@ py_library(
         "__init__.py",
         "python/framework/__init__.py",
         "python/framework/checkpoint_utils.py",
-        "python/framework/decorator_utils.py",
-        "python/framework/deprecation.py",
         "python/framework/experimental.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
@@ -98,20 +96,6 @@ py_test(
     name = "prettyprint_ops_test",
     size = "small",
     srcs = ["python/ops/prettyprint_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
-py_test(
-    name = "deprecation_test",
-    srcs = ["python/framework/deprecation_test.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
-py_test(
-    name = "decorator_utils_test",
-    srcs = ["python/framework/decorator_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
