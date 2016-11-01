@@ -780,6 +780,7 @@ class RandomTreeGraphs(object):
            self.variables.accumulator_sums,
            self.variables.node_to_accumulator_map,
            stale,
+           self.variables.node_sums,
            regression=self.params.regression))
 
     # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has

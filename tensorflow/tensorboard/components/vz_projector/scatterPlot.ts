@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {PointAccessor, DataSet} from './data';
+import {DataSet, PointAccessors3D} from './data';
 import {HoverContext} from './hoverContext';
 import {LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -42,7 +42,7 @@ const ORTHO_CAMERA_FRUSTUM_HALF_EXTENT = 1.2;
 const SHIFT_KEY = 16;
 const CTRL_KEY = 17;
 
-const START_CAMERA_POS_3D = new THREE.Vector3(0.6, 1.0, 1.85);
+const START_CAMERA_POS_3D = new THREE.Vector3(0.45, 0.9, 1.6);
 const START_CAMERA_TARGET_3D = new THREE.Vector3(0, 0, 0);
 const START_CAMERA_POS_2D = new THREE.Vector3(0, 0, 1);
 const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
@@ -103,7 +103,7 @@ export class ScatterPlot {
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
 
   // Accessors for rendering and labeling the points.
-  private pointAccessors: [PointAccessor, PointAccessor, PointAccessor];
+  private pointAccessors: PointAccessors3D;
 
   // Scaling functions for each axis.
   private xScale: d3.scale.Linear<number, number>;
@@ -718,8 +718,7 @@ export class ScatterPlot {
     this.renderer.render(this.scene, this.camera);
   }
 
-  setPointAccessors(pointAccessors:
-                        [PointAccessor, PointAccessor, PointAccessor]) {
+  setPointAccessors(pointAccessors: PointAccessors3D) {
     this.pointAccessors = pointAccessors;
   }
 

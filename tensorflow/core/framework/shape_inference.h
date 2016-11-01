@@ -164,7 +164,7 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<ShapeHandle>& input_tensors_as_shapes,
+                   const std::vector<TensorShapeProto>& input_tensors_as_shapes,
                    const std::vector<TensorShapeProto>& input_handle_shapes,
                    const std::vector<DataType>& input_handle_dtypes);
 

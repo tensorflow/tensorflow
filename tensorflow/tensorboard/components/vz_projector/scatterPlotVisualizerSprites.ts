@@ -80,10 +80,7 @@ const FRAGMENT_SHADER_POINT_TEST_CHUNK = `
     vec3 p = vec3(spriteCoord, 0);
     float p_in_v0_v1 = cross(v1 - v0, p - v0).z;
     float p_in_v1_v2 = cross(v2 - v1, p - v1).z;
-    float p_in_v2_v0 = cross(v0 - v2, p - v2).z;
-    vec3 p_inside = vec3(p_in_v0_v1, p_in_v1_v2, p_in_v2_v0);
-    vec3 p_inside_norm = step(vec3(0, 0, 0), p_inside);
-    return all(bvec3(p_inside_norm));
+    return (p_in_v0_v1 > 0.0) && (p_in_v1_v2 > 0.0);
   }
 `;
 
@@ -125,8 +122,11 @@ const FRAGMENT_SHADER_PICKING = `
     if (isImage) {
       gl_FragColor = vec4(vColor, 1);
     } else {
-      float a = float(point_in_unit_circle(gl_PointCoord));
-      gl_FragColor = vec4(vColor, a);
+      bool inside = point_in_unit_circle(gl_PointCoord);
+      if (!inside) {
+        discard;
+      }
+      gl_FragColor = vec4(vColor, 1);
     }
   }`;
 

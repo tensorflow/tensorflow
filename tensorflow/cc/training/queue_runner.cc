@@ -48,6 +48,7 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix(queue_name_), runs_));
   should_stop_ = false;
+
   return Status::OK();
 }
 
@@ -57,10 +58,28 @@ QueueRunner::~QueueRunner() {
   Join();
 }
 
-Status QueueRunner::Start(Session* sess) {
+Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
+
+Status QueueRunner::Start(Session* sess, int wait_for) {
+  counter_.reset(new BlockingCounter(runs_));
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
+  }
+  // Wait for up to 'wait_for' milliseconds.
+  if (wait_for > 0) {
+    if (!counter_->WaitFor(std::chrono::milliseconds(wait_for))) {
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Queues not fed before the timeout");
+    }
+    // Check the status of the queue runner as well as the result of the enqueue
+    // operations.
+    mutex_lock l(mu_);
+    if (!enqueue_status_.ok()) {
+      return enqueue_status_;
+    } else {
+      return status_;
+    }
   }
   return Status::OK();
 }
@@ -76,13 +95,23 @@ Status QueueRunner::Stop(Session* sess) {
 
 Status QueueRunner::Join() {
   thread_pool_.reset();
+  mutex_lock l(mu_);
   return status_;
 }
 
 void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   bool decremented = false;
+  bool first_iteration = true;
   while (!should_stop_.load()) {
     auto status = sess->Run({}, {}, {enqueue_op}, nullptr);
+    if (first_iteration) {
+      if (!status.ok()) {
+        mutex_lock l(mu_);
+        enqueue_status_ = status;
+      }
+      counter_->DecrementCount();
+      first_iteration = false;
+    }
     if (status.ok()) {
       continue;
     } else if (queue_closed_exception_types_.count(
@@ -114,6 +143,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
       // subsequent queues.
       Stop(sess);
     }
+    first_iteration = false;
   }
 
   if (!decremented) {

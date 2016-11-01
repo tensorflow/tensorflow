@@ -317,5 +317,22 @@ TEST(QueueRunnerTest, EmptyEnqueueOps) {
             Code::INVALID_ARGUMENT);
 }
 
+TEST(QueueRunnerTest, StartTimeout) {
+  GraphDef graph_def = BuildDoubleQueueGraph();
+  SessionOptions options;
+  std::unique_ptr<Session> session(NewSession(options));
+  TF_CHECK_OK(session->Create(graph_def));
+
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName1, {kEnqueueOp1}, kCloseOp1, kCancelOp1, {});
+
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  // This will timeout since queue0 is not fed and queue1 is fetching data from
+  // queue0.
+  EXPECT_EQ(qr->Start(session.get(), 1).code(), Code::DEADLINE_EXCEEDED);
+  session->Close();
+}
+
 }  // namespace
 }  // namespace tensorflow
