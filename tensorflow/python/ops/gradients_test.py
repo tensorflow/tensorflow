@@ -419,6 +419,28 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
       self.assertAllClose(hess_v_value, hess_v_actual)
 
 
+class HessianTest(test_util.TensorFlowTestCase):
+
+  def testHessian(self):
+    # Manually compute the Hessian explicitly for a low-dimensional problem
+    # and check that `hessian` matches. Specifically, the Hessian of 
+    # f(x) = x^T A x is H = A + A^T.
+    m = 4
+    rng = np.random.RandomState([1, 2, 3])
+    mat_value = rng.randn(m, m).astype("float32")
+    x_value = rng.randn(m, 1).astype("float32")
+    hess_value = mat_value + mat_value.T
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        mat = constant_op.constant(mat_value)
+        x = constant_op.constant(x_value)
+        mat_x = math_ops.matmul(mat, x, name="Ax")
+        x_mat_x = math_ops.matmul(array_ops.transpose(x), mat_x, name="xAx")
+        hess = gradients.hessian(x_mat_x, x)
+        hess_actual = hess.eval()
+      self.assertAllClose(hess_value, hess_actual)
+
+
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesToTensor(self):
