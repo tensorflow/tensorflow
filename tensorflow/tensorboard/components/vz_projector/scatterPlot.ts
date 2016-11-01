@@ -42,7 +42,7 @@ const ORTHO_CAMERA_FRUSTUM_HALF_EXTENT = 1.2;
 const SHIFT_KEY = 16;
 const CTRL_KEY = 17;
 
-const START_CAMERA_POS_3D = new THREE.Vector3(0.6, 1.0, 1.85);
+const START_CAMERA_POS_3D = new THREE.Vector3(0.45, 0.9, 1.6);
 const START_CAMERA_TARGET_3D = new THREE.Vector3(0, 0, 0);
 const START_CAMERA_POS_2D = new THREE.Vector3(0, 0, 1);
 const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
