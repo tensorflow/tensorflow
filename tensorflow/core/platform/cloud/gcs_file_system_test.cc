@@ -601,6 +601,27 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
             children);
 }
 
+TEST(GcsFileSystemTest, GetChildren_SelfDirectoryMarker) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "fields=items%2Fname%2Cprefixes%2CnextPageToken&delimiter=%2F&prefix="
+      "path%2F\n"
+      "Auth Token: fake_token\n",
+      "{\"items\": [ "
+      "  { \"name\": \"path/\" },"
+      "  { \"name\": \"path/file3.txt\" }],"
+      "\"prefixes\": [\"path/subpath/\"]}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */, 5 /* max upload attempts */);
+
+  std::vector<string> children;
+  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", &children));
+
+  EXPECT_EQ(std::vector<string>({"file3.txt", "subpath/"}), children);
+}
+
 TEST(GcsFileSystemTest, GetChildren_ThreeFiles_NoSlash) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
@@ -751,6 +772,24 @@ TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_Matches) {
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*/file2.txt", &result));
   EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
             result);
+}
+
+TEST(GcsFileSystemTest, GetMatchingPaths_SelfDirectoryMarker) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
+      "Auth Token: fake_token\n",
+      "{\"items\": [ "
+      "  { \"name\": \"path/\" },"
+      "  { \"name\": \"path/file3.txt\" }]}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */, 5 /* max upload attempts */);
+
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", &result));
+  EXPECT_EQ(std::vector<string>({"gs://bucket/path/file3.txt"}), result);
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_NoMatches) {
