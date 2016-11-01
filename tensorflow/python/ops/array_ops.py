@@ -1774,6 +1774,10 @@ ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Reshape")
+def _DelegateReshapeShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
+
+
 def _ReshapeShape(op):
   """Shape function for Reshape op."""
   input_shape = op.inputs[0].get_shape()
