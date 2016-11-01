@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/cc/training/coordinator.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -33,12 +34,16 @@ namespace tensorflow {
 
 // QueueRunner class imitates the behavior of the python version of QueueRunner
 // which creates a thread for each enqueue op, runs close op on completion.
-class QueueRunner {
+class QueueRunner : public RunnerInterface {
  public:
   // Creates a new QueueRunner from proto.
   // TODO(yuefengz): we may want to initialize from queues and ops in the
   // future.
   static Status New(const QueueRunnerDef& queue_runner_def,
+                    std::unique_ptr<QueueRunner>* result);
+
+  // Creates a new QueueRunner with a coordinator, see coordinator.h for usage.
+  static Status New(const QueueRunnerDef& queue_runner_def, Coordinator* coord,
                     std::unique_ptr<QueueRunner>* result);
 
   // The destructor would join all the threads.
@@ -51,24 +56,29 @@ class QueueRunner {
   // specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for);
 
-  // Requests to stop and runs the cancel op.
-  Status Stop(Session* sess);
-
   // Joins all the threads. Returns okay if all threads run successfully;
   // otherwise returns the first captured failure status.
-  Status Join();
+  Status Join() final;
 
   // Returns the lastest status.
   Status GetStatus();
 
  private:
-  QueueRunner() {}
+  QueueRunner() : coord_(nullptr) {}
 
   // Initializes the instance with the QueueRunnerDef proto.
   Status Init(const QueueRunnerDef& queue_runner_def);
 
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
+
+  // Requests to stop and runs the cancel op. It would be called in a separate
+  // thread when coordinator is set.
+  void Stop(Session* sess);
+
+  // Updates the internal status; it only keeps OK or the first unexpected error
+  // status.
+  void UpdateStatus(const Status& status);
 
   string queue_name_;
   std::vector<string> enqueue_op_names_;
@@ -78,7 +88,6 @@ class QueueRunner {
   std::unordered_set<int> queue_closed_exception_types_;
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  std::atomic<bool> should_stop_;
   condition_variable wait_to_close_;
   mutex mu_;
   // TODO(yuefengz): implement c++ coordinator.
@@ -86,6 +95,8 @@ class QueueRunner {
   Status status_ GUARDED_BY(mu_);
   Status enqueue_status_ GUARDED_BY(mu_);
   std::unique_ptr<BlockingCounter> counter_;
+
+  Coordinator* coord_;
 };
 
 }  // namespace tensorflow
