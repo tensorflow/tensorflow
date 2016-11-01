@@ -1881,22 +1881,20 @@ class RegisterStatistics(object):
 
   Well-known types of statistics include these so far:
 
-  - weight_parameters: For operations like MatMul, Conv, and BiasAdd that take
-    learned weights as inputs, this statistic captures how many numerical values
-    are used. This is good to know because the weights take up most of the size
-    of a typical serialized graph on disk.
-
   - flops: When running a graph, the bulk of the computation happens doing
     numerical calculations like matrix multiplications. This type allows a node
     to return how many floating-point operations it takes to complete. The
     total number of FLOPs for a graph is a good guide to its expected latency.
 
   You can add your own statistics just by picking a new type string, registering
-  functions for the ops you care about, and then calling something like
-  python/tools/graph_metrics.py with the new type as an argument.
+  functions for the ops you care about, and then calling get_stats_for_node_def.
 
   If a statistic for an op is registered multiple times, a KeyError will be
   raised.
+
+  Since the statistics is counted on a per-op basis. It is not suitable for
+  model parameters (capacity), which is expected to be counted only once, even
+  if it is shared by multiple ops. (e.g. RNN)
 
   For example, you can define a new metric called doohickey for a Foo operation
   by placing this in your code:

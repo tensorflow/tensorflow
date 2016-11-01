@@ -1534,19 +1534,6 @@ def _calc_mat_mul_flops(graph, node):
   return ops.OpStats("flops", (k * output_count * 2))
 
 
-@ops.RegisterStatistics("MatMul", "weight_parameters")
-def _calc_mat_mul_weight_parameters(graph, node):
-  """Calculates the on-disk size of the weights for MatMul."""
-  # We assume here that the weights are always in the second input to the op,
-  # which is generally true by convention for fully-connected layers, but not
-  # enforced or checked.
-  weights_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                             node.input[1])
-  weights_shape.assert_is_fully_defined()
-  return ops.OpStats("weight_parameters",
-                     (int(weights_shape[1]) * int(weights_shape[0])))
-
-
 def _as_indexed_slices(x, optimize=True):
   """Convert 'x' to IndexedSlices.
 
