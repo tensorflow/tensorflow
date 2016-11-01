@@ -682,10 +682,10 @@ template <typename T>
 void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit, 
                  int shape_size, T* data, int64* data_index, string* result) {
   if (*data_index >= limit) return;  
-  int element_count = shape[dim_index];
-  // Reach the rightmost dim of the tensor.
+  int64 element_count = shape[dim_index];
+  // We have reached the right-most dimension of the tensor.
   if (dim_index == shape_size - 1) {
-    for (int i = 0; i < element_count; i++) {
+    for (int64 i = 0; i < element_count; i++) {
       if (*data_index >= limit) return;
       if (i > 0) strings::StrAppend(result, " ");
       strings::StrAppend(result, data[(*data_index)++]);
@@ -693,7 +693,7 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
     return;
   }  
   // Loop every element of one dim.
-  for (int i = 0; i < element_count; i++) {
+  for (int64 i = 0; i < element_count; i++) {
     bool flag = false;
     if (*data_index < limit) {
       strings::StrAppend(result, "[");
