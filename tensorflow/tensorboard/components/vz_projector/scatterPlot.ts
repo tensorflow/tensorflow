@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {PointAccessor, DataSet} from './data';
+import {DataSet, PointAccessors3D} from './data';
 import {HoverContext} from './hoverContext';
 import {LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -103,7 +103,7 @@ export class ScatterPlot {
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
 
   // Accessors for rendering and labeling the points.
-  private pointAccessors: [PointAccessor, PointAccessor, PointAccessor];
+  private pointAccessors: PointAccessors3D;
 
   // Scaling functions for each axis.
   private xScale: d3.scale.Linear<number, number>;
@@ -718,8 +718,7 @@ export class ScatterPlot {
     this.renderer.render(this.scene, this.camera);
   }
 
-  setPointAccessors(pointAccessors:
-                        [PointAccessor, PointAccessor, PointAccessor]) {
+  setPointAccessors(pointAccessors: PointAccessors3D) {
     this.pointAccessors = pointAccessors;
   }
 

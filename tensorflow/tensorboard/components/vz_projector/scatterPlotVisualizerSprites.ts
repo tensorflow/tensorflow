@@ -122,8 +122,11 @@ const FRAGMENT_SHADER_PICKING = `
     if (isImage) {
       gl_FragColor = vec4(vColor, 1);
     } else {
-      float a = float(point_in_unit_circle(gl_PointCoord));
-      gl_FragColor = vec4(vColor, a);
+      bool inside = point_in_unit_circle(gl_PointCoord);
+      if (!inside) {
+        discard;
+      }
+      gl_FragColor = vec4(vColor, 1);
     }
   }`;
 
