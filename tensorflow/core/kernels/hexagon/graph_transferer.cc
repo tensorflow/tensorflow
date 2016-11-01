@@ -27,6 +27,12 @@ static constexpr bool DBG = false;
 static constexpr const char* const INPUTS_NODE_PREFIX = "inputs_for_";
 static constexpr const char* const OUTPUTS_NODE_PREFIX = "outputs_for_";
 static constexpr const char* const DATA_NODE_PREFIX = "data_for_op_";
+static constexpr const char* const CONST_SHAPE_PREFIX = "const_shape_";
+static constexpr const char* const PADDING_PREFIX = "NN_PAD_";
+static constexpr const char* const PADDING_ATTR_NAME = "padding";
+static constexpr const char* const STRIDES_ATTR_NAME = "strides";
+static constexpr const char* const PADDING_VALID_STR = "VALID";
+static constexpr const char* const PADDING_SAME_STR = "SAME";
 
 void GraphTransferer::LoadGraphFromProto(const GraphDef& graph_def) {
   ImportGraphDefOptions opts;
@@ -61,6 +67,11 @@ void GraphTransferer::LoadGraphFromProto(const GraphDef& graph_def) {
 const std::vector<GraphTransferer::ConstNodeTransferParams>&
 GraphTransferer::GetConstNodeParams() const {
   return const_node_transfer_params_list_;
+}
+
+const std::vector<GraphTransferer::NodeTransferParams>&
+GraphTransferer::GetOpNodeParams() const {
+  return node_transfer_params_list_;
 }
 
 int GraphTransferer::CacheNode(const Node& node) {
@@ -107,6 +118,8 @@ void GraphTransferer::RegisterNode(const ShapeRefiner& shape_refiner,
     }
   } else if (node.IsConstant()) {
     RegisterConstantNode(shape_refiner, node);
+  } else if (HasPaddingAndStrides(node)) {
+    RegisterNodeWithPaddingAndStrides(shape_refiner, node);
   } else {
     // TODO(satok): register params for nodes which are supported by SOC
     if (DBG) {
@@ -134,8 +147,6 @@ void GraphTransferer::RegisterConstantNode(const ShapeRefiner& shape_refiner,
   CHECK(context->ValueKnown(num_elements_dim));
   const int64 num_output_elements = context->Value(num_elements_dim);
   const int data_size = max_bytes_per_data * num_output_elements;
-  const int rank = context->Rank(shape_handle);
-  CHECK(rank == 0);
   const std::array<int64, SHAPE_ARRAY_SIZE> shape =
       BuildShapeArray(shape_handle, context);
   const_node_transfer_params_list_.emplace_back(
@@ -144,6 +155,46 @@ void GraphTransferer::RegisterConstantNode(const ShapeRefiner& shape_refiner,
                               {{shape[0], shape[1], shape[2], shape[3]}},
                               data_name,
                               data_size});
+}
+
+int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
+  // TODO(satok): Handle non-4dim strides
+  CHECK(shape.size() == 4);
+  const string shape_name =
+      std::string(CONST_SHAPE_PREFIX) + std::to_string(shape.at(0)) + 'x' +
+      std::to_string(shape.at(1)) + 'x' + std::to_string(shape.at(2)) + 'x' +
+      std::to_string(shape.at(3));
+  if (node_name_to_id_cache_map_.count(shape_name) <= 0) {
+    node_name_cache_list_.emplace_back(nullptr);
+    const int id = node_name_cache_list_.size() - 1;
+    node_name_to_id_cache_map_.emplace(shape_name, id);
+    const_node_transfer_params_list_.emplace_back(ConstNodeTransferParams{
+        shape_name, id, {{shape[0], shape[1], shape[2], shape[3]}}, "", 0});
+  }
+  return node_name_to_id_cache_map_[shape_name];
+}
+
+bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
+  return node.def().attr().count(PADDING_ATTR_NAME) > 0 &&
+         node.def().attr().count(STRIDES_ATTR_NAME) > 0;
+}
+
+void GraphTransferer::RegisterNodeWithPaddingAndStrides(
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+  const int id = node_name_to_id_cache_map_[node.name()];
+  shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
+  CHECK(node.def().attr().count(PADDING_ATTR_NAME) > 0);
+  // TODO(satok): Use context->GetAttr(...) instead?
+  Padding padding;
+  context->GetAttr(PADDING_ATTR_NAME, &padding);
+  CHECK(node.def().attr().count(STRIDES_ATTR_NAME) > 0);
+  std::vector<int32> strides;
+  context->GetAttr(STRIDES_ATTR_NAME, &strides);
+  const int stride_id = RegisterConstantShape(strides);
+  std::vector<int> extra_inputs{stride_id, 0};
+  AppendNodeParams(node.name(), id, node.type_string(), padding,
+                   node.num_inputs(), extra_inputs, node.num_outputs());
 }
 
 bool GraphTransferer::RegisterNodeIfAllInputsAreCached(
@@ -161,14 +212,21 @@ bool GraphTransferer::RegisterNodeIfAllInputsAreCached(
 
 void GraphTransferer::AppendNodeParams(const string& name, const int id,
                                        const string& type,
-                                       const string& padding,
+                                       const Padding& padding,
                                        const int inputs_size,
+                                       const std::vector<int>& extra_inputs,
                                        const int outputs_size) {
+  // TODO(satok): register inputs
+  // TODO(satok): register outputs
+  // TODO(satok): store padding as Padding?
   node_transfer_params_list_.emplace_back(NodeTransferParams{
-      name, id, type, padding,
-      string(INPUTS_NODE_PREFIX) + std::to_string(inputs_size), inputs_size,
-      string(OUTPUTS_NODE_PREFIX) + std::to_string(outputs_size),
-      outputs_size});
+      name, id, type,
+      string(PADDING_PREFIX) +
+          string(padding == VALID ? PADDING_VALID_STR : PADDING_SAME_STR),
+      string(INPUTS_NODE_PREFIX) + std::to_string(id),
+      inputs_size + static_cast<int>(extra_inputs.size()),
+      string(OUTPUTS_NODE_PREFIX) + std::to_string(id),
+      static_cast<int>(outputs_size)});
 }
 
 /* static */ std::array<int64, GraphTransferer::SHAPE_ARRAY_SIZE>
@@ -205,6 +263,7 @@ GraphTransferer::BuildShapeArray(
 
 void GraphTransferer::DumpNodeTransferParams() const {
   // TODO(satok): Dump all params
+  LOG(INFO) << "*** Const Nodes ***";
   for (const ConstNodeTransferParams& params :
        const_node_transfer_params_list_) {
     LOG(INFO) << "[ " << params.id << " \"" << params.name << "\" (Const)";
@@ -214,6 +273,18 @@ void GraphTransferer::DumpNodeTransferParams() const {
     LOG(INFO) << "  data_size: " << params.data_size << " bytes"
               << " ]";
   }
+  LOG(INFO) << "******";
+  LOG(INFO) << "*** Op Nodes ***";
+  for (const NodeTransferParams& params : node_transfer_params_list_) {
+    LOG(INFO) << "[ " << params.id << " \"" << params.name;
+    LOG(INFO) << "  type: " << params.type;
+    LOG(INFO) << "  padding: " << params.padding;
+    LOG(INFO) << "  inputs: " << params.inputs_name
+              << ", size = " << params.inputs_size;
+    LOG(INFO) << "  outputs: " << params.outputs_name
+              << ", size = " << params.outputs_size << " ]";
+  }
+  LOG(INFO) << "******";
 }
 
 }  // namespace tensorflow
