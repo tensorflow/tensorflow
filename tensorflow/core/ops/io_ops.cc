@@ -582,6 +582,15 @@ REGISTER_OP("ReadFile")
 Reads and outputs the entire contents of the input filename.
 )doc");
 
+REGISTER_OP("WriteFile")
+    .Input("filename: string")
+    .Input("contents: string")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Writes contents to the end of input filename. Creates file if not existing.
+)doc");
+
 REGISTER_OP("MatchingFiles")
     .Input("pattern: string")
     .Output("filenames: string")

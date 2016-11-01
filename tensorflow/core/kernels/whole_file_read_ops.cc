@@ -46,6 +46,14 @@ static Status ReadEntireFile(Env* env, const string& filename,
   return Status::OK();
 }
 
+static Status WriteFileContent(Env* env, const string& filename,
+		const string& contents) {
+	std::unique_ptr<WritableFile> file;
+	TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file));
+	TF_RETURN_IF_ERROR(file->Append(contents));
+	return Status::OK();
+}
+
 class WholeFileReader : public ReaderBase {
  public:
   WholeFileReader(Env* env, const string& node_name)
@@ -119,4 +127,31 @@ class ReadFileOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ReadFile").Device(DEVICE_CPU), ReadFileOp);
 
+class WriteFileOp : public OpKernel {
+  public:
+    using OpKernel::OpKernel;
+    void Compute(OpKernelContext* context) override {
+	    const Tensor* filename_input;
+	    const Tensor* contents_input;
+	    Tensor* output = nullptr;
+	    OP_REQUIRES_OK(context, context->input("filename", &filename_input));
+	    OP_REQUIRES_OK(context, context->input("contents", &contents_input));
+	    OP_REQUIRES(context, TensorShapeUtils::IsScalar(filename_input->shape()),
+			    errors::InvalidArgument(
+				    "Input filename tensor must be scalar, but had shape: ",
+				    filename_input->shape().DebugString()));
+	    OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents_input->shape()),
+			    errors::InvalidArgument(
+				    "Contents tensor must be scalar, but had shape: ",
+				    contents_input->shape().DebugString()));
+	    OP_REQUIRES_OK(context, WriteFileContent(context->env(),
+				    filename_input->scalar<string>()(),
+				    contents_input->scalar<string>()()));
+	    OP_REQUIRES_OK(context, context->allocate_output("output", TensorShape({}), &output));
+	     output->scalar<int>();
+
+    }
+};
+
+REGISTER_KERNEL_BUILDER(Name("WriteFile").Device(DEVICE_CPU), WriteFileOp);
 }  // namespace tensorflow
