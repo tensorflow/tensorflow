@@ -454,6 +454,8 @@
 
 * **[Data IO (Python functions)](../../api_docs/python/python_io.md)**:
   * [`tf_record_iterator`](../../api_docs/python/python_io.md#tf_record_iterator)
+  * [`TFRecordCompressionType`](../../api_docs/python/python_io.md#TFRecordCompressionType)
+  * [`TFRecordOptions`](../../api_docs/python/python_io.md#TFRecordOptions)
   * [`TFRecordWriter`](../../api_docs/python/python_io.md#TFRecordWriter)
 
 * **[Neural Network](../../api_docs/python/nn.md)**:
