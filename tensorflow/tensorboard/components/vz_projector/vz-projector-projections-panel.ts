@@ -284,7 +284,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet = dataSet;
     this.originalDataSet = originalDataSet;
     this.dim = dim;
-    let perplexity = Math.ceil(Math.sqrt(dataSet.points.length) / 4);
+    let perplexity =
+        Math.max(5, Math.ceil(Math.sqrt(dataSet.points.length) / 4));
     this.perplexitySlider.value = perplexity.toString();
     this.updateTSNEPerplexityFromSliderChange();
     this.clearCentroids();
