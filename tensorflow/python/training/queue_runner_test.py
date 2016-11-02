@@ -25,19 +25,6 @@ import tensorflow as tf
 
 class QueueRunnerTest(tf.test.TestCase):
 
-  def _wait_for_thread_registration(self, coord, N):
-    """Wait for N threads to register with the coordinator.
-
-    This is necessary in some tests that launch threads and
-    then want to join() them in the coordinator.
-
-    Args:
-      coord: A Coordinator object.
-      N: Number of threads to wait for.
-    """
-    while len(coord._registered_threads) < N:
-      time.sleep(0.001)
-
   def testBasic(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -135,7 +122,6 @@ class QueueRunnerTest(tf.test.TestCase):
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
-      self._wait_for_thread_registration(coord, len(threads))
       coord.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 0.
@@ -149,7 +135,6 @@ class QueueRunnerTest(tf.test.TestCase):
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
-      self._wait_for_thread_registration(coord, len(threads))
       # The exception should be re-raised when joining.
       with self.assertRaisesRegexp(ValueError, "Operation not in the graph"):
         coord.join()
@@ -162,9 +147,7 @@ class QueueRunnerTest(tf.test.TestCase):
       dequeue = queue.dequeue()
       qr = tf.train.QueueRunner(queue, [enqueue])
       coord = tf.train.Coordinator()
-      threads = qr.create_threads(sess, coord, start=True)
-      # Wait for the threads to have registered with the coordinator.
-      self._wait_for_thread_registration(coord, len(threads))
+      qr.create_threads(sess, coord, start=True)
       # Dequeue one element and then request stop.
       dequeue.op.run()
       time.sleep(0.02)
