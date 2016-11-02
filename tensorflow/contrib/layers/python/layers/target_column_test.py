@@ -58,7 +58,7 @@ class MultiClassTargetColumnTest(tf.test.TestCase):
       labels = tf.constant([[1.], [0.]])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      self.assertAlmostEqual(.81326163,
+      self.assertAlmostEqual(0.81326175,
                              sess.run(target_column.loss(logits, labels, {})))
 
   def testBinaryClassificationWithWeights(self):
