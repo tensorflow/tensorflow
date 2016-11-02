@@ -343,7 +343,11 @@ Status BundleWriter::Finish() {
   status_ = env_->NewWritableFile(MetaFilename(prefix_), &file);
   if (!status_.ok()) return status_;
   {
-    table::TableBuilder builder(table::Options(), file.get());
+    // N.B.: the default use of Snappy compression may not be supported on all
+    // platforms (e.g. Android).  The metadata file is small, so this is fine.
+    table::Options options;
+    options.compression = table::kNoCompression;
+    table::TableBuilder builder(options, file.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(1);
