@@ -156,6 +156,25 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "mnist",
+    srcs = ["mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:input_data",
+    ],
+)
+
+py_binary(
+    name = "multiple_gpu",
+    srcs = ["multiple_gpu.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 sh_test(
     name = "examples_test",
     size = "large",
