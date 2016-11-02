@@ -879,14 +879,16 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
     elif ndims != 1:
       raise ValueError('computing hessians is currently only supported for ' \
                        'one-dimensional tensors')
-    # Compute the partial derivatives of the input with respect to all 
-    # elements of `x`
-    _gradients = gradients(ys, x, **kwargs)[0]
-    # Unpack the gradients into a list so we can take derivatives with 
-    # respect to each element
-    _gradients = array_ops.unpack(_gradients)
-    # Compute the partial derivatives with respect to each element of the list
-    _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
-    # Pack the list into a matrix and add to the list of hessians
-    hessians.append(array_ops.pack(_hess, name=name))
+    with ops.name_scope(name + '_first_derivative'):
+      # Compute the partial derivatives of the input with respect to all 
+      # elements of `x`
+      _gradients = gradients(ys, x, **kwargs)[0]
+      # Unpack the gradients into a list so we can take derivatives with 
+      # respect to each element
+      _gradients = array_ops.unpack(_gradients)
+    with ops.name_scope(name + '_second_derivative'):
+      # Compute the partial derivatives with respect to each element of the list
+      _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
+      # Pack the list into a matrix and add to the list of hessians
+      hessians.append(array_ops.pack(_hess, name=name))
   return hessians
