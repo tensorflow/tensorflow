@@ -15,15 +15,12 @@ limitations under the License.
 
 /* tslint:disable:no-namespace */
 module TF.Globals {
-  const PROJECTOR_LAUNCHED = false;
 
   // The names of TensorBoard tabs.
-  export var TABS =
-      ['scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms'];
-
-  if (PROJECTOR_LAUNCHED) {
-    TABS.push('embeddings');
-  }
+  export var TABS = [
+    'scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms',
+    'embeddings'
+  ];
 
   // If true, TensorBoard stores its hash in the URI state.
   // If false, tab switching in TensorBoard will not update location hash,

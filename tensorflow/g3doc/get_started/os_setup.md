@@ -548,7 +548,7 @@ r0.8 and earlier to fetch the protobuf library that TensorFlow depends on.
 
 #### Install Bazel
 
-Follow instructions [here](http://bazel.io/docs/install.html) to install the
+Follow instructions [here](http://bazel.build/docs/install.html) to install the
 dependencies for bazel. Then download the latest stable bazel version using the
 [installer for your system](https://github.com/bazelbuild/bazel/releases) and
 run the installer as mentioned there:
@@ -622,7 +622,7 @@ and installing python dependencies using easy_install or pip.
 
 #### Dependencies
 
-Follow instructions [here](http://bazel.io/docs/install.html) to install the
+Follow instructions [here](http://bazel.build/docs/install.html) to install the
 dependencies for bazel. You can then use homebrew to install bazel:
 
 ```bash

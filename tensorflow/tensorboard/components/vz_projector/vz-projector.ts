@@ -494,6 +494,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       state.projections.push(projections);
     }
     state.selectedProjection = this.selectedProjection;
+    state.dataSetDimensions = this.dataSet.dim;
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
     state.cameraDef = this.scatterPlot.getCameraDef();
