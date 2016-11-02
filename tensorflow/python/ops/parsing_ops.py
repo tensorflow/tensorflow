@@ -24,6 +24,7 @@ import re
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -406,8 +407,9 @@ def _parse_example_raw(serialized,
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 
-    sparse_tensors = [ops.SparseTensor(ix, val, shape) for (ix, val, shape)
-                      in zip(sparse_indices, sparse_values, sparse_shapes)]
+    sparse_tensors = [
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
+        in zip(sparse_indices, sparse_values, sparse_shapes)]
 
     return dict(
         zip(sparse_keys + dense_keys, sparse_tensors + dense_values))
@@ -530,7 +532,7 @@ def _parse_single_example_raw(serialized,
     if sparse_keys is not None:
       for s in sparse_keys:
         s_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", s)
-        outputs[s] = ops.SparseTensor(
+        outputs[s] = sparse_tensor.SparseTensor(
             array_ops.slice(outputs[s].indices,
                             [0, 1], [-1, -1], name="Slice_Indices_%s" % s_name),
             outputs[s].values,
@@ -841,13 +843,13 @@ def _parse_single_sequence_example_raw(serialized,
      feature_list_sparse_shapes, feature_list_dense_values) = outputs
 
     context_sparse_tensors = [
-        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
         in zip(context_sparse_indices,
                context_sparse_values,
                context_sparse_shapes)]
 
     feature_list_sparse_tensors = [
-        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
         in zip(feature_list_sparse_indices,
                feature_list_sparse_values,
                feature_list_sparse_shapes)]

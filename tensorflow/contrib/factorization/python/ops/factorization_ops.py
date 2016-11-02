@@ -655,7 +655,7 @@ class WALSModel(object):
       update_op: An op that assigns the newly computed values to the row/column
         factors.
     """
-    assert isinstance(sp_input, ops.SparseTensor)
+    assert isinstance(sp_input, tf.SparseTensor)
 
     if update_row_factors:
       left = self._row_factors

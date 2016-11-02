@@ -26,6 +26,7 @@ from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -362,9 +363,9 @@ def _create_joint_embedding_lookup(columns_to_tensors,
     values = t.values + prev_size
     prev_size += a.vocab_size
     sparse_tensors.append(
-        ops.SparseTensor(t.indices,
-                         values,
-                         t.shape))
+        sparse_tensor_py.SparseTensor(t.indices,
+                                      values,
+                                      t.shape))
   sparse_tensor = sparse_ops.sparse_concat(1, sparse_tensors)
   with variable_scope.variable_scope(
       None, default_name='linear_weights', values=columns_to_tensors.values()):
@@ -695,7 +696,7 @@ def _log_variable(variable):
 
 def _infer_real_valued_column_for_tensor(name, tensor):
   """Creates a real_valued_column for given tensor and name."""
-  if isinstance(tensor, ops.SparseTensor):
+  if isinstance(tensor, sparse_tensor_py.SparseTensor):
     raise ValueError(
         'SparseTensor is not supported for auto detection. Please define '
         'corresponding FeatureColumn for tensor {} {}.', name, tensor)

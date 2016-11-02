@@ -28,3 +28,6 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 
 ops.RegisterShape("VarHandleOp")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CreateVariableOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ReadVariableOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AssignVariableOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AssignAddVariableOp")(common_shapes.call_cpp_shape_fn)

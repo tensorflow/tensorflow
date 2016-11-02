@@ -718,6 +718,14 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   INFER_ERROR(
       "Cannot reshape a tensor with 2 elements to shape [] (1 elements)", op,
       "[1,2];[0]");
+
+  // Reshaping a tensor with no elements.
+  new_shape = test::AsTensor<int32>({-1});
+  INFER_OK(op, "[0];[1]", "[0]");
+  new_shape = test::AsTensor<int32>({-1, 6});
+  INFER_OK(op, "[0,2];[1]", "[0,6]");
+  new_shape = test::AsTensor<int32>({0, -1});
+  INFER_OK(op, "[0,2];[1]", "[0,?]");
 }
 
 TEST(ArrayOpsTest, QuantizedReshape_ShapeFn) {

@@ -25,6 +25,14 @@ Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
   return (*result)->Init(queue_runner_def);
 }
 
+Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                        Coordinator* coord,
+                        std::unique_ptr<QueueRunner>* result) {
+  result->reset(new QueueRunner());
+  (*result)->coord_ = coord;
+  return (*result)->Init(queue_runner_def);
+}
+
 Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   queue_name_ = queue_runner_def.queue_name();
   enqueue_op_names_.clear();
@@ -46,8 +54,8 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   }
 
   thread_pool_.reset(new thread::ThreadPool(
-      Env::Default(), SanitizeThreadSuffix(queue_name_), runs_));
-  should_stop_ = false;
+      Env::Default(), SanitizeThreadSuffix(queue_name_), runs_ + 1));
+
   return Status::OK();
 }
 
@@ -57,63 +65,108 @@ QueueRunner::~QueueRunner() {
   Join();
 }
 
-Status QueueRunner::Start(Session* sess) {
+Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
+
+Status QueueRunner::Start(Session* sess, int wait_for) {
+  counter_.reset(new BlockingCounter(runs_));
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
   }
+  if (coord_) {
+    thread_pool_->Schedule(std::bind(&QueueRunner::Stop, this, sess));
+  }
+  // Wait for up to 'wait_for' milliseconds.
+  if (wait_for > 0) {
+    if (!counter_->WaitFor(std::chrono::milliseconds(wait_for))) {
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Queues not fed before the timeout");
+    }
+    // Check the status of the queue runner as well as the result of the enqueue
+    // operations.
+    mutex_lock l(mu_);
+    if (!enqueue_status_.ok()) {
+      return enqueue_status_;
+    } else {
+      return status_;
+    }
+  }
   return Status::OK();
 }
 
-Status QueueRunner::Stop(Session* sess) {
-  should_stop_ = true;
+void QueueRunner::Stop(Session* sess) {
   if (cancel_op_name_.empty()) {
-    return Status::OK();
+    return;
   } else {
-    return sess->Run({}, {}, {cancel_op_name_}, nullptr);
+    CHECK(coord_ != nullptr);
+    coord_->WaitForStop();
+    UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
   }
 }
 
 Status QueueRunner::Join() {
   thread_pool_.reset();
+  mutex_lock l(mu_);
   return status_;
+}
+
+void QueueRunner::UpdateStatus(const Status& status) {
+  {
+    mutex_lock l(mu_);
+    if (!status_.ok() || status.ok() ||
+        queue_closed_exception_types_.count(static_cast<int>(status.code())) >
+            0) {
+      return;
+    }
+    status_ = status;
+  }
+  if (coord_) {
+    coord_->ReportStatus(status);
+  }
 }
 
 void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   bool decremented = false;
-  while (!should_stop_.load()) {
+  bool first_iteration = true;
+  while (true) {
+    if (coord_ && coord_->ShouldStop()) {
+      break;
+    }
     auto status = sess->Run({}, {}, {enqueue_op}, nullptr);
+    if (first_iteration) {
+      if (!status.ok()) {
+        mutex_lock l(mu_);
+        enqueue_status_ = status;
+      }
+      counter_->DecrementCount();
+      first_iteration = false;
+    }
     if (status.ok()) {
       continue;
     } else if (queue_closed_exception_types_.count(
                    static_cast<int>(status.code())) > 0) {
-      mutex_lock l(mu_);
-      runs_--;
-      decremented = true;
-      should_stop_ = true;
-
-      // If all enqueue ops have finished, run the close op.
-      if (runs_ == 0 && !close_op_name_.empty()) {
-        auto s = sess->Run({}, {}, {close_op_name_}, nullptr);
-        if (!s.ok() && status_.ok() &&
-            queue_closed_exception_types_.count(static_cast<int>(s.code())) ==
-                0) {
-          status_ = s;
-        }
-      }
-    } else {
       {
         mutex_lock l(mu_);
-        should_stop_ = true;
-        // Only record the first failure status.
-        if (status_.ok()) {
-          status_ = status;
-        }
+        runs_--;
+        decremented = true;
       }
-      // Stop the queue runner immediately to propagate the error to
-      // subsequent queues.
-      Stop(sess);
+
+      // If all enqueue ops have finished, run the close op.
+      if (runs_ == 0) {
+        if (!close_op_name_.empty()) {
+          auto s = sess->Run({}, {}, {close_op_name_}, nullptr);
+          UpdateStatus(status);
+        }
+        break;
+      }
+    } else {
+      UpdateStatus(status);
+      if (coord_) {
+        coord_->RequestStop();
+      }
+      break;
     }
+    first_iteration = false;
   }
 
   if (!decremented) {

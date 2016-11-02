@@ -31,11 +31,20 @@ InferenceContext::InferenceContext(
     const NodeDef* node_def, const OpDef& op_def,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
-    const std::vector<ShapeHandle>& input_tensors_as_shapes,
+    const std::vector<TensorShapeProto>& input_tensors_as_shapes,
     const std::vector<TensorShapeProto>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
     : node_def_(*CHECK_NOTNULL(node_def)) {
-  PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
+  std::vector<ShapeHandle> input_tensors_as_shape_handles;
+  for (const TensorShapeProto& p : input_tensors_as_shapes) {
+    ShapeHandle shape;
+    construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
+    if (!construction_status_.ok()) {
+      return;
+    }
+    input_tensors_as_shape_handles.push_back(shape);
+  }
+  PreInputInit(op_def, input_tensors, input_tensors_as_shape_handles);
   if (!construction_status_.ok()) return;
   for (const TensorShapeProto& p : input_shapes) {
     ShapeHandle shape;

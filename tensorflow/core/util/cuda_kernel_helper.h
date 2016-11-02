@@ -77,16 +77,8 @@ __device__ __host__ inline T ldg(const T* address) {
 #define CUDA_ATOMIC_WRAPPER(op, T) \
   __device__ __forceinline__ T CudaAtomic##op(T* address, T val)
 
-// Reason of guarding: NVCC cannot compile the "::" in "cuda_builtin::atomicOp".
-#ifdef __GCUDACC__
-using cuda_builtin::__float_as_int;
-using cuda_builtin::__int_as_float;
-#define USE_CUDA_ATOMIC(op, T) \
-  CUDA_ATOMIC_WRAPPER(op, T) { return cuda_builtin::atomic##op(address, val); }
-#else
 #define USE_CUDA_ATOMIC(op, T) \
   CUDA_ATOMIC_WRAPPER(op, T) { return atomic##op(address, val); }
-#endif
 
 // For atomicAdd.
 USE_CUDA_ATOMIC(Add, int32);

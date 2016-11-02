@@ -22,7 +22,7 @@ module TF.Globals {
       ['scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms'];
 
   if (PROJECTOR_LAUNCHED) {
-    TABS.push('projections');
+    TABS.push('embeddings');
   }
 
   // If true, TensorBoard stores its hash in the URI state.

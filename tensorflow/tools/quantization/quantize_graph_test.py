@@ -160,7 +160,7 @@ def get_top_value(input_values):
   return max_index, max_value
 
 
-def test_graph(float_graph_def, input_map, output_names):
+def test_graph(float_graph_def, input_map, output_names, log_graph=False):
   """Runs the float graph through the rewriter and tests the results."""
   float_results = run_graph_def(float_graph_def, input_map,
                                 [output_name + ":0"
@@ -183,6 +183,9 @@ def test_graph(float_graph_def, input_map, output_names):
                                     for output_name in output_names])
   for expected, result in zip(float_results, eightbit_results):
     assert are_tensors_near(expected, result, 1.0)
+
+  if log_graph:
+    tf.logging.info("8bit:\n%s", str(eightbit_graph_def))
 
   # Test the weights_rounded mode. This uses the default bit_depth.
   weights_rounded_rewriter = quantize_graph.GraphRewriter(
@@ -580,6 +583,40 @@ class QuantizeGraphTest(tf.test.TestCase):
     float_graph_def.node.extend([relu_node])
     test_graph(float_graph_def, {}, [relu_name])
 
+  def test_relu_w_fake_quant_w_min_max_vars(self):
+    input_node = quantize_graph.create_constant_node(
+        "input", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=tf.float32, shape=[1, 2, 6, 1])
+    relu_node = quantize_graph.create_node("Relu", "relu",
+                                           [input_node.name])
+    quantize_graph.set_attr_dtype(relu_node, "T", tf.float32)
+
+    min_node = quantize_graph.create_constant_node(
+        "min_bias_add", value=0, dtype=tf.float32, shape=[])
+    max_node = quantize_graph.create_constant_node(
+        "max_bias_add", value=12, dtype=tf.float32, shape=[])
+    fake_quant_node = quantize_graph.create_node(
+        "FakeQuantWithMinMaxVars", "fake_quant",
+        [relu_node.name, min_node.name, max_node.name])
+
+    float_graph_def = tf.GraphDef()
+    float_graph_def.node.extend([input_node, relu_node, min_node, max_node,
+                                 fake_quant_node])
+    test_graph(float_graph_def, {}, [fake_quant_node.name], log_graph=True)
+
+    # Verify there is only one Quantize and one Requantize op.
+    eightbit_rewriter = quantize_graph.GraphRewriter(float_graph_def,
+                                                     "eightbit",
+                                                     quantized_input_range=None)
+    eightbit_graph_def = eightbit_rewriter.rewrite([fake_quant_node.name])
+
+    ops = [node.op for node in eightbit_graph_def.node]
+    # No quantize since all inputs are const and can be quantized up-front.
+    self.assertEqual(0, ops.count("QuantizeV2") + ops.count("Quantize"))
+
+    # One dequantize at the end.
+    self.assertEqual(1, ops.count("Dequantize"))
+
   def test_relu6(self):
     input_constant_name = "input_constant"
     relu6_name = "relu6"
@@ -719,6 +756,42 @@ class QuantizeGraphTest(tf.test.TestCase):
     self.assertEqual(len(input_map),
                      ops.count("QuantizeV2") + ops.count("Quantize"))
     self.assertEqual(len(output_names), ops.count("Dequantize"))
+
+  def test_bias_add_w_fake_quant_w_min_max_vars(self):
+    input_node = quantize_graph.create_constant_node(
+        "input", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        dtype=tf.float32, shape=[1, 1, 2, 5])
+    offset_node = quantize_graph.create_constant_node(
+        "offset", value=[1, 2, 3, 4, 5], dtype=tf.float32, shape=[5])
+    bias_add_node = quantize_graph.create_node(
+        "BiasAdd", "bias_add", [input_node.name, offset_node.name])
+    quantize_graph.set_attr_dtype(bias_add_node, "T", tf.float32)
+
+    min_node = quantize_graph.create_constant_node(
+        "min_bias_add", value=-.5, dtype=tf.float32, shape=[])
+    max_node = quantize_graph.create_constant_node(
+        "max_bias_add", value=15.5, dtype=tf.float32, shape=[])
+    fake_quant_node = quantize_graph.create_node(
+        "FakeQuantWithMinMaxVars", "fake_quant",
+        [bias_add_node.name, min_node.name, max_node.name])
+
+    float_graph_def = tf.GraphDef()
+    float_graph_def.node.extend([input_node, offset_node, bias_add_node,
+                                 min_node, max_node, fake_quant_node])
+    test_graph(float_graph_def, {}, [fake_quant_node.name], log_graph=True)
+
+    # Verify there is only one Quantize and one Requantize op.
+    eightbit_rewriter = quantize_graph.GraphRewriter(float_graph_def,
+                                                     "eightbit",
+                                                     quantized_input_range=None)
+    eightbit_graph_def = eightbit_rewriter.rewrite([fake_quant_node.name])
+
+    ops = [node.op for node in eightbit_graph_def.node]
+    # No quantize since all inputs are const and can be quantized up-front.
+    self.assertEqual(0, ops.count("QuantizeV2") + ops.count("Quantize"))
+
+    # One dequantize at the end.
+    self.assertEqual(1, ops.count("Dequantize"))
 
   def test_remove_redundant_quantization(self):
     a_constant_name = "a_constant"

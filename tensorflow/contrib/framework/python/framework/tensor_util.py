@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -283,7 +284,7 @@ def is_tensor(x):
   Returns:
     `True` if `x` is a tensor, `False` if not.
   """
-  tensor_types = (ops.Tensor, ops.SparseTensor, variables.Variable)
+  tensor_types = (ops.Tensor, sparse_tensor.SparseTensor, variables.Variable)
   return isinstance(x, tensor_types)
 
 
@@ -303,7 +304,7 @@ def with_shape(expected_shape, tensor):
   Raises:
     ValueError: if tensor has an invalid shape.
   """
-  if isinstance(tensor, ops.SparseTensor):
+  if isinstance(tensor, sparse_tensor.SparseTensor):
     raise ValueError('SparseTensor not supported.')
 
   # Shape type must be 1D int32.
@@ -376,9 +377,9 @@ def convert_to_tensor_or_sparse_tensor(
   """
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
-  if isinstance(value, ops.SparseTensorValue):
-    value = ops.SparseTensor.from_value(value)
-  if isinstance(value, ops.SparseTensor):
+  if isinstance(value, sparse_tensor.SparseTensorValue):
+    value = sparse_tensor.SparseTensor.from_value(value)
+  if isinstance(value, sparse_tensor.SparseTensor):
     if dtype and not dtype.is_compatible_with(value.dtype):
       raise RuntimeError(
           'Sparse dtype: requested = %s, actual = %s' % (
