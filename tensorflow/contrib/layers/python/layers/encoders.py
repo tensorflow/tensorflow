@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import embedding_ops as contrib_embedding_ops
 from tensorflow.contrib.layers.python.ops import sparse_ops
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -74,14 +74,14 @@ def bow_encoder(ids,
         initializer=initializer, regularizer=regularizer,
         trainable=trainable)
     if sparse_lookup:
-      if isinstance(ids, ops.SparseTensor):
+      if isinstance(ids, sparse_tensor.SparseTensor):
         sparse_ids = ids
       else:
         sparse_ids = sparse_ops.dense_to_sparse_tensor(ids)
       return contrib_embedding_ops.safe_embedding_lookup_sparse(
           [embeddings], sparse_ids, combiner='mean', default_id=0)
     else:
-      if isinstance(ids, ops.SparseTensor):
+      if isinstance(ids, sparse_tensor.SparseTensor):
         raise TypeError('ids are expected to be dense Tensor, got: %s', ids)
       return math_ops.reduce_mean(
           embedding_ops.embedding_lookup(embeddings, ids),

@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
@@ -464,7 +465,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       values = np.array([1.0, 2.0]).astype(np.float32)
       shape = np.array([7, 9, 2]).astype(np.int64)
-      sp = ops.SparseTensor(
+      sp = sparse_tensor.SparseTensor(
           constant_op.constant(indices),
           constant_op.constant(values),
           constant_op.constant(shape))
@@ -533,14 +534,14 @@ class SessionTest(test_util.TensorFlowTestCase):
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       values = np.array([1.0, 2.0]).astype(np.float32)
       shape = np.array([7, 9, 2]).astype(np.int64)
-      sp = ops.SparseTensor(
+      sp = sparse_tensor.SparseTensor(
           array_ops.placeholder(dtype=np.int64, shape=(2, 3)),
           array_ops.placeholder(dtype=np.float32, shape=(2,)),
           array_ops.placeholder(dtype=np.int64, shape=(3,)),)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
       sp_shape = array_ops.identity(sp.shape)
-      sp2 = ops.SparseTensor(sp_indices, sp_values, sp_shape)
+      sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape], {sp: (indices, values, shape)})
@@ -555,17 +556,19 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Feed with SparseTensorValue
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape],
-          {sp: ops.SparseTensorValue(indices, values, shape)})
+          {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(indices_out, indices)
       self.assertAllEqual(values_out, values)
       self.assertAllEqual(shape_out, shape)
       # Feed with SparseTensorValue, fetch SparseTensorValue
-      sp2_out = s.run(sp2, {sp: ops.SparseTensorValue(indices, values, shape)})
+      sp2_out = s.run(
+          sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
       self.assertAllEqual(sp2_out.shape, shape)
       # Feed SparseTensorValue and fetch sp directly.
-      sp_out = s.run(sp, {sp: ops.SparseTensorValue(indices, values, shape)})
+      sp_out = s.run(
+          sp, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
       self.assertAllEqual(sp_out.shape, shape)
@@ -579,7 +582,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
       sp_shape = array_ops.identity(sp.shape)
-      sp2 = ops.SparseTensor(sp_indices, sp_values, sp_shape)
+      sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape], {sp: (indices, values, shape)})
@@ -589,17 +592,49 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Feed with SparseTensorValue
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape],
-          {sp: ops.SparseTensorValue(indices, values, shape)})
+          {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(indices_out, indices)
       self.assertAllEqual(values_out, values)
       self.assertAllEqual(shape_out, shape)
       # Feed with SparseTensorValue, fetch SparseTensorValue
-      sp2_out = s.run(sp2, {sp: ops.SparseTensorValue(indices, values, shape)})
+      sp2_out = s.run(
+          sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
       self.assertAllEqual(sp2_out.shape, shape)
 
-  def testFeedSparePlaceholderConstantShape(self):
+  def testFeedSparsePlaceholderPartialShape(self):
+    with session.Session() as s:
+      indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
+      values = np.array([1.0, 2.0]).astype(np.float32)
+      shape = np.array([7, 9, 2]).astype(np.int64)
+      sp = array_ops.sparse_placeholder(
+          shape=[None, 9, 2], dtype=np.float32, name='placeholder1')
+      sp_indices = array_ops.identity(sp.indices)
+      sp_values = array_ops.identity(sp.values)
+      sp_shape = array_ops.identity(sp.shape)
+      sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
+      # Feed with tuple
+      indices_out, values_out, shape_out = s.run(
+          [sp_indices, sp_values, sp_shape], {sp: (indices, values, shape)})
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+      # Feed with SparseTensorValue
+      indices_out, values_out, shape_out = s.run(
+          [sp_indices, sp_values, sp_shape],
+          {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+      # Feed with SparseTensorValue, fetch SparseTensorValue
+      sp2_out = s.run(
+          sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
+      self.assertAllEqual(sp2_out.indices, indices)
+      self.assertAllEqual(sp2_out.values, values)
+      self.assertAllEqual(sp2_out.shape, shape)
+
+  def testFeedSparsePlaceholderConstantShape(self):
     with session.Session() as s:
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       values = np.array([1.0, 2.0]).astype(np.float32)

@@ -23,6 +23,7 @@ from math import ceil
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -552,7 +553,7 @@ def _ExtractImagePatchesGrad(op, grad):
   sp_shape = (rows_in * cols_in,
               rows_out * cols_out * ksize_r * ksize_c)
 
-  sp_mat = ops.SparseTensor(
+  sp_mat = sparse_tensor.SparseTensor(
     array_ops.constant(idx, dtype=ops.dtypes.int64),
     array_ops.ones((len(idx),), dtype=ops.dtypes.float32),
     sp_shape

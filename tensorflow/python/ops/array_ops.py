@@ -93,6 +93,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
@@ -176,7 +177,8 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 
   """
   with ops.name_scope(name, "Shape", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.shape, out_type)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -227,7 +229,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     A `Tensor` of type `out_type`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops._prod(
           gen_math_ops.cast(input.shape, out_type), 0, name=name)
     else:
@@ -279,7 +282,8 @@ def rank_internal(input, name=None, optimize=True):
     A `Tensor` of type `int32`.
   """
   with ops.name_scope(name, "Rank", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_array_ops.size(input.shape, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -1445,6 +1449,17 @@ def placeholder(dtype, shape=None, name=None):
   return ret
 
 
+# pylint: disable=redefined-outer-name
+def _normalize_sparse_shape(shape, name):
+  """Takes numpy array or Tensor or None and returns either None or Tensor."""
+  if shape is None: return None
+  if not isinstance(shape, ops.Tensor):
+    for el in shape:
+      if el is None:
+        return None
+  return ops.convert_to_tensor(shape, name=name)
+
+
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
 
@@ -1484,14 +1499,11 @@ def sparse_placeholder(dtype, shape=None, name=None):
     A `SparseTensor` that may be used as a handle for feeding a value, but not
     evaluated directly.
   """
+  shape_name = (name + "/shape") if name is not None else None
+  shape = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
-    shape = placeholder(
-        dtypes.int64, shape=[None],
-        name=(name + "/shape") if name is not None else None)
-  else:
-    shape = ops.convert_to_tensor(
-        shape, name=(name + "/shape") if name is not None else None)
-  return ops.SparseTensor(
+    shape = placeholder(dtypes.int64, shape=[None], name=shape_name)
+  return sparse_tensor.SparseTensor(
       values=placeholder(
           dtype, shape=[None],
           name=(name + "/values") if name is not None else None),
@@ -1500,6 +1512,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
           name=(name + "/indices") if name is not None else None),
       shape=shape
   )
+# pylint: enable=redefined-outer-name
 
 
 def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
@@ -1774,6 +1787,10 @@ ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Reshape")
+def _DelegateReshapeShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
+
+
 def _ReshapeShape(op):
   """Shape function for Reshape op."""
   input_shape = op.inputs[0].get_shape()
@@ -1991,9 +2008,13 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   Raises:
     TypeError: If either `hypothesis` or `truth` are not a `SparseTensor`.
   """
-  if not isinstance(hypothesis, (ops.SparseTensor, ops.SparseTensorValue)):
+  if not isinstance(
+      hypothesis, (sparse_tensor.SparseTensor,
+                   sparse_tensor.SparseTensorValue)):
     raise TypeError("Hypothesis must be a SparseTensor.")
-  if not isinstance(truth, (ops.SparseTensor, ops.SparseTensorValue)):
+  if not isinstance(
+      truth, (sparse_tensor.SparseTensor,
+              sparse_tensor.SparseTensorValue)):
     raise TypeError("Truth must be a SparseTensor.")
 
   return gen_array_ops._edit_distance(hypothesis.indices,

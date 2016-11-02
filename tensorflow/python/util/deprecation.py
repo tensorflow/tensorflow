@@ -22,8 +22,8 @@ import functools
 import inspect
 import re
 
-from tensorflow.contrib.framework.python.framework import decorator_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import decorator_utils
 
 
 def _add_deprecated_function_notice_to_docstring(doc, date, instructions):

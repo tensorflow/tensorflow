@@ -22,7 +22,6 @@ import numpy as np
 
 import tensorflow as tf
 
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
 
@@ -36,7 +35,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   x_values = x[non_zero]
   x_shape = x.shape
 
-  return ops.SparseTensor(
+  return tf.SparseTensor(
       indices=x_indices, values=x_values, shape=x_shape), len(x_values)
 
 class ShapeOpsTest(tf.test.TestCase):

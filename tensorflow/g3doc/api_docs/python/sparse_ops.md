@@ -95,6 +95,17 @@ Creates a `SparseTensor`.
 
 - - -
 
+#### `tf.SparseTensor.get_shape()` {#SparseTensor.get_shape}
+
+Get the `TensorShape` that represents the shape of the dense tensor.
+
+##### Returns:
+
+  A `TensorShape` object.
+
+
+- - -
+
 #### `tf.SparseTensor.indices` {#SparseTensor.indices}
 
 The indices of non-zero values in the represented dense tensor.
@@ -1368,8 +1379,8 @@ Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
 Example:
 
 ```python
-sp_zero = ops.SparseTensor([[0]], [0], [7])
-sp_one = ops.SparseTensor([[1]], [1], [7])
+sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
+sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
 res = tf.sparse_maximum(sp_zero, sp_one).eval()
 # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
 ```
@@ -1399,8 +1410,8 @@ Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
 Example:
 
 ```python
-sp_zero = ops.SparseTensor([[0]], [0], [7])
-sp_one = ops.SparseTensor([[1]], [1], [7])
+sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
+sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
 res = tf.sparse_minimum(sp_zero, sp_one).eval()
 # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
 ```

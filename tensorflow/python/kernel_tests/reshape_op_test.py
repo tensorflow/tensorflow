@@ -100,7 +100,7 @@ class ReshapeTest(tf.test.TestCase):
 
   def testErrors(self):
     y = tf.constant(0.0, shape=[23, 29, 31])
-    with self.assertRaisesRegexp(ValueError, "isn't divisible by 17"):
+    with self.assertRaisesRegexp(ValueError, "must be evenly divisible by 17"):
       tf.reshape(y, [17, -1])
 
     z = tf.constant(0.0, shape=[32, 128])

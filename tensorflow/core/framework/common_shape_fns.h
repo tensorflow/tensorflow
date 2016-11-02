@@ -96,6 +96,13 @@ Status Get3dOutputSize(const std::array<int64, 3>& input,
 
 namespace shape_inference {
 
+// Like GetWindowedOutputSize, but deals with DimensionHandles.
+Status GetWindowedOutputSizeFromDims(InferenceContext* c,
+                                     DimensionHandle input_size,
+                                     DimensionOrConstant filter_size,
+                                     int64 stride, Padding padding_type,
+                                     DimensionHandle* output_size);
+
 // Transfers shape of input(0) to output(0).
 Status UnchangedShape(shape_inference::InferenceContext* c);
 

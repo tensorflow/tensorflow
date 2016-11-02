@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -78,4 +79,4 @@ def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
           math_ops.mul(higher_dims, shape_multipliers), reduction_indices=[1])
       flat_indices = math_ops.add(flat_indices, offsets)
     values = array_ops.gather(flat_tensor, flat_indices)
-    return ops.SparseTensor(indices, values, dense_shape)
+    return sparse_tensor.SparseTensor(indices, values, dense_shape)
