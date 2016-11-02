@@ -754,14 +754,18 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
     return errors::Internal("'result' cannot be nullptr.");
   }
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 1, &children, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(dirname, 1, &children, true /* recursively */,
+                         true /* include_self_directory_marker */));
   *result = !children.empty();
   return Status::OK();
 }
 
 Status GcsFileSystem::GetChildren(const string& dirname,
                                   std::vector<string>* result) {
-  return GetChildrenBounded(dirname, UINT64_MAX, result, false);
+  return GetChildrenBounded(dirname, UINT64_MAX, result,
+                            false /* recursively */,
+                            false /* include_self_directory_marker */);
 }
 
 Status GcsFileSystem::GetMatchingPaths(const string& pattern,
@@ -776,7 +780,9 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
                                    pattern);
   }
   std::vector<string> all_files;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dir, UINT64_MAX, &all_files, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(dir, UINT64_MAX, &all_files, true /* recursively */,
+                         false /* include_self_directory_marker */));
 
   // Match all obtained files to the input pattern.
   for (const auto& f : all_files) {
@@ -791,7 +797,8 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
 Status GcsFileSystem::GetChildrenBounded(const string& dirname,
                                          uint64 max_results,
                                          std::vector<string>* result,
-                                         bool recursive) {
+                                         bool recursive,
+                                         bool include_self_directory_marker) {
   if (!result) {
     return errors::InvalidArgument("'result' cannot be null");
   }
@@ -840,33 +847,34 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     Json::Value root;
     TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
     const auto items = root.get("items", Json::Value::null);
-    if (items == Json::Value::null) {
-      // Empty results.
-      return Status::OK();
-    }
-    if (!items.isArray()) {
-      return errors::Internal("Expected an array 'items' in the GCS response.");
-    }
-    for (size_t i = 0; i < items.size(); i++) {
-      const auto item = items.get(i, Json::Value::null);
-      if (!item.isObject()) {
+    if (items != Json::Value::null) {
+      if (!items.isArray()) {
         return errors::Internal(
-            "Unexpected JSON format: 'items' should be a list of objects.");
+            "Expected an array 'items' in the GCS response.");
       }
-      string name;
-      TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
-      // The names should be relative to the 'dirname'. That means the
-      // 'object_prefix', which is part of 'dirname', should be removed from the
-      // beginning of 'name'.
-      StringPiece relative_path(name);
-      if (!relative_path.Consume(object_prefix)) {
-        return errors::Internal(
-            strings::StrCat("Unexpected response: the returned file name ",
-                            name, " doesn't match the prefix ", object_prefix));
-      }
-      result->emplace_back(relative_path.ToString());
-      if (++retrieved_results >= max_results) {
-        return Status::OK();
+      for (size_t i = 0; i < items.size(); i++) {
+        const auto item = items.get(i, Json::Value::null);
+        if (!item.isObject()) {
+          return errors::Internal(
+              "Unexpected JSON format: 'items' should be a list of objects.");
+        }
+        string name;
+        TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
+        // The names should be relative to the 'dirname'. That means the
+        // 'object_prefix', which is part of 'dirname', should be removed from
+        // the beginning of 'name'.
+        StringPiece relative_path(name);
+        if (!relative_path.Consume(object_prefix)) {
+          return errors::Internal(strings::StrCat(
+              "Unexpected response: the returned file name ", name,
+              " doesn't match the prefix ", object_prefix));
+        }
+        if (!relative_path.empty() || include_self_directory_marker) {
+          result->emplace_back(relative_path.ToString());
+        }
+        if (++retrieved_results >= max_results) {
+          return Status::OK();
+        }
       }
     }
     const auto prefixes = root.get("prefixes", Json::Value::null);
@@ -982,7 +990,9 @@ Status GcsFileSystem::DeleteDir(const string& dirname) {
   // with the corresponding name prefix or if there is exactly one matching
   // object and it is the directory marker. Therefore we need to retrieve
   // at most two children for the prefix to detect if a directory is empty.
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 2, &children, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(dirname, 2, &children, true /* recursively */,
+                         true /* include_self_directory_marker */));
 
   if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
     return errors::FailedPrecondition("Cannot delete a non-empty directory.");
@@ -1015,7 +1025,9 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   }
   // Rename all individual objects in the directory one by one.
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(src, UINT64_MAX, &children, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(src, UINT64_MAX, &children, true /* recursively */,
+                         true /* include_self_directory_marker */));
   for (const string& subpath : children) {
     TF_RETURN_IF_ERROR(
         RenameObject(JoinGcsPath(src, subpath), JoinGcsPath(target, subpath)));
@@ -1110,8 +1122,9 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   }
   std::vector<string> all_objects;
   // Get all children in the directory recursively.
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, UINT64_MAX, &all_objects,
-                                        true /* recursive */));
+  TF_RETURN_IF_ERROR(GetChildrenBounded(
+      dirname, UINT64_MAX, &all_objects, true /* recursively */,
+      true /* include_self_directory_marker */));
   for (const string& object : all_objects) {
     const string& full_path = JoinGcsPath(dirname, object);
     // Delete all objects including directory markers for subfolders.

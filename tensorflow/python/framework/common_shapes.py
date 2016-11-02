@@ -552,7 +552,9 @@ def broadcast_shape(shape_x, shape_y):
   return tensor_shape.TensorShape(return_dims)
 
 
-def call_cpp_shape_fn(op, input_tensors_needed=None,
+def call_cpp_shape_fn(op,
+                      input_tensors_needed=None,
+                      input_tensors_as_shapes_needed=None,
                       debug_python_shape_fn=None):
   """A shape function that delegates to the registered C++ shape function.
 
@@ -560,6 +562,8 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
     op: the node in the graph for which to compute output shapes.
     input_tensors_needed: a list of input tensor indices for which to compute
       the input tensor's value and pass to the C++ shape function.
+    input_tensors_as_shapes_needed: a list of input tensor indices for which to
+      compute the constant_value_as_shape and pass to the C++ shape function.
     debug_python_shape_fn: For testing only during migration to using
       call_cpp_shape_fn. Do not submit calls that set this,
       as the comparison is slow. If non-None, the python shape function;
@@ -594,16 +598,25 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
   input_tensors = [None for i in input_shapes]
   if input_tensors_needed:
     for idx in input_tensors_needed:
-      input_tensors[idx] = tensor_util.constant_value(op.inputs[idx])
-      if input_tensors[idx] is not None:
-        input_tensors[idx] = np.asarray(input_tensors[idx])
+      v = tensor_util.constant_value(op.inputs[idx])
+      if v is not None:
+        input_tensors[idx] = np.asarray(v)
+
+  serialized_unknown_shape = (
+      tensor_shape.TensorShape(None).as_proto().SerializeToString())
+  arr = [serialized_unknown_shape for i in input_shapes]
+  if input_tensors_as_shapes_needed:
+    for idx in input_tensors_as_shapes_needed:
+      s = tensor_util.constant_value_as_shape(op.inputs[idx])
+      if s is not None:
+        arr[idx] = s.as_proto().SerializeToString()
+  input_tensors_as_shapes = arr
 
   try:
     with errors.raise_exception_on_not_ok_status() as status:
-      output_shapes = pywrap_tensorflow.RunCppShapeInference(node_def_str,
-                                                             input_shapes,
-                                                             input_tensors,
-                                                             status)
+      output_shapes = pywrap_tensorflow.RunCppShapeInference(
+          node_def_str, input_shapes, input_tensors, input_tensors_as_shapes,
+          status)
   except errors.InvalidArgumentError as err:
     raise ValueError(err.message)
 

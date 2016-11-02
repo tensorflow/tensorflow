@@ -18,7 +18,7 @@ import * as logging from './logging';
 import {runAsyncTask} from './util';
 
 /** Maximum number of colors supported in the color map. */
-const NUM_COLORS_COLOR_MAP = 20;
+const NUM_COLORS_COLOR_MAP = 50;
 
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';

@@ -31,6 +31,7 @@ filegroup(
         "@iron_overlay_behavior//:iron_overlay_behavior",
         "@iron_range_behavior//:iron_range_behavior",
         "@iron_resizable_behavior//:iron_resizable_behavior",
+        "@iron_scroll_target_behavior//:iron_scroll_target_behavior",
         "@iron_selector//:iron_selector",
         "@iron_validatable_behavior//:iron_validatable_behavior",
         "@lodash//:lodash",

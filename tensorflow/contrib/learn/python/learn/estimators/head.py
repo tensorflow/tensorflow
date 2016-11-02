@@ -27,6 +27,7 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.python import summary
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -603,7 +604,7 @@ class _MultiClassHead(_Head):
 
 def _check_labels(labels, label_name):
   labels = labels[label_name] if isinstance(labels, dict) else labels
-  if isinstance(labels, ops.SparseTensor):
+  if isinstance(labels, sparse_tensor.SparseTensor):
     raise ValueError("SparseTensor is not supported as labels.")
   return labels
 

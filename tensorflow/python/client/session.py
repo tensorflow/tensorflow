@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -97,10 +98,10 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
 _REGISTERED_EXPANSIONS = [
     # SparseTensors are fetched as SparseTensorValues. They can be fed
     # SparseTensorValues or normal tuples.
-    (ops.SparseTensor,
+    (sparse_tensor.SparseTensor,
      lambda fetch: (
          [fetch.indices, fetch.values, fetch.shape],
-         lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
+         lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
      lambda feed, feed_val: list(zip(
          [feed.indices, feed.values, feed.shape], feed_val)),
      lambda feed: [feed.indices, feed.values, feed.shape]),
@@ -113,7 +114,7 @@ _REGISTERED_EXPANSIONS = [
          _get_indexed_slices_value_from_fetches),
      _get_feeds_for_indexed_slices,
      lambda feed: [feed.values, feed.indices] if feed.dense_shape is None
-                  else [feed.values, feed.indices, feed.dense_shape]),
+     else [feed.values, feed.indices, feed.dense_shape]),
     # The default catches all other types and performs no expansions.
     (object,
      lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),

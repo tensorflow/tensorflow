@@ -41,41 +41,6 @@ py_test(
     ],
 )
 
-py_library(
-    name = "graph_metrics_lib",
-    srcs = ["graph_metrics.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "graph_metrics",
-    srcs = [
-        "graph_metrics.py",
-    ],
-    main = "graph_metrics.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "graph_metrics_test",
-    size = "small",
-    srcs = [
-        "graph_metrics_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":graph_metrics_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
 py_binary(
     name = "inspect_checkpoint",
     srcs = [

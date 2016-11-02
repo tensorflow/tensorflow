@@ -24,7 +24,6 @@ import tensorflow as tf
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
@@ -41,7 +40,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   x_values = x[non_zero]
   x_shape = x.shape
 
-  return ops.SparseTensor(
+  return tf.SparseTensor(
       indices=x_indices, values=x_values, shape=x_shape), len(x_values)
 
 
@@ -54,7 +53,7 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
         [3, 2], [3, 3]])
     val = np.array([0, 10, 13, 14, 32, 33])
     shape = np.array([5, 6])
-    return ops.SparseTensor(
+    return tf.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtype),
         constant_op.constant(shape, dtypes.int64))
@@ -72,7 +71,7 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
         [1, 2, 2]])
     val = np.array([1, 10, 12, 103, 150, 149, 150, 122])
     shape = np.array([2, 3, 4])
-    return ops.SparseTensor(
+    return tf.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtype),
         constant_op.constant(shape, dtypes.int64))
@@ -130,11 +129,11 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
     indices = np.array([0, 13, 10, 33, 32, 14])
     values = np.array([-3, 4, 1, 9, 5, 1])
     shape = np.array([3, 3])
-    indices = ops.SparseTensorValue(
+    indices = tf.SparseTensorValue(
         np.array(ind, np.int64),
         np.array(indices, indices_dtype),
         np.array(shape, np.int64))
-    values = ops.SparseTensorValue(
+    values = tf.SparseTensorValue(
         np.array(ind, np.int64),
         np.array(values, values_dtype),
         np.array(shape, np.int64))
@@ -143,8 +142,8 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
   def _SparseTensor_3x50(self, indices_dtype, values_dtype):
     indices, values = self._SparseTensorValue_3x50(indices_dtype, values_dtype)
     return (
-        ops.SparseTensor.from_value(indices),
-        ops.SparseTensor.from_value(values))
+        tf.SparseTensor.from_value(indices),
+        tf.SparseTensor.from_value(values))
 
   def _AssertResultsSorted(self, output, vocab_size):
     self.assertAllEqual(
@@ -172,8 +171,8 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
     vocab_size = 50
     indices_v, values_v = self._SparseTensorValue_3x50(np.int32, np.float32)
     with self.test_session(use_gpu=False) as sess:
-      for indices in (indices_v, ops.SparseTensor.from_value(indices_v)):
-        for values in (values_v, ops.SparseTensor.from_value(values_v)):
+      for indices in (indices_v, tf.SparseTensor.from_value(indices_v)):
+        for values in (values_v, tf.SparseTensor.from_value(values_v)):
           sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
           output = sess.run(sp_output)
@@ -237,13 +236,13 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
         [3, 2], [3, 3]])
     val = np.array([0, 10, 13, 14, 32, 33])
     shape = np.array([5, 6])
-    return ops.SparseTensorValue(
+    return tf.SparseTensorValue(
         np.array(ind, np.int64),
         np.array(val, np.int32),
         np.array(shape, np.int64))
 
   def _SparseTensor_5x6(self):
-    return ops.SparseTensor.from_value(self._SparseTensorValue_5x6())
+    return tf.SparseTensor.from_value(self._SparseTensorValue_5x6())
 
   def testBasic(self):
     with self.test_session(use_gpu=False) as sess:
@@ -285,14 +284,14 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
   _SHP_2_5_6 = np.array([2, 5, 6], dtype=np.int64)
 
   def _SparseTensor_2x5x6(self):
-    return ops.SparseTensor(
+    return tf.SparseTensor(
         constant_op.constant(self._IND_2_5_6, dtypes.int64),
         constant_op.constant(self._VAL_2_5_6, dtypes.int32),
         constant_op.constant(self._SHP_2_5_6, dtypes.int64))
 
   def _SparseTensorValue_2x5x6(self):
-    return ops.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
-                                 self._SHP_2_5_6)
+    return tf.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
+                                self._SHP_2_5_6)
 
   def testBasic(self):
     with self.test_session(use_gpu=False) as sess:
@@ -395,13 +394,13 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         [3, 2], [3, 3]])
     val = np.array([0, 10, 13, 14, 32, 33])
     shape = np.array([5, 6])
-    return ops.SparseTensorValue(
+    return tf.SparseTensorValue(
         np.array(ind, np.int64),
         np.array(val, np.int32),
         np.array(shape, np.int64))
 
   def _SparseTensor_5x6(self):
-    return ops.SparseTensor.from_value(self._SparseTensorValue_5x6())
+    return tf.SparseTensor.from_value(self._SparseTensorValue_5x6())
 
   def _SparseTensor_String5x6(self):
     ind = np.array([
@@ -410,7 +409,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         [3, 2], [3, 3]])
     val = np.array(["a", "b", "c", "d", "e", "f"])
     shape = np.array([5, 6])
-    return ops.SparseTensor(
+    return tf.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.string),
         constant_op.constant(shape, dtypes.int64))
@@ -419,7 +418,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
     ind = np.array([[0, 0], [1, 0], [1, 3], [1, 4]])
     val = np.array([0, 10, 13, 14])
     shape = np.array([2, 6])
-    return ops.SparseTensor(
+    return tf.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
         constant_op.constant(val, dtypes.int32),
         constant_op.constant(shape, dtypes.int64))
@@ -518,7 +517,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, True)
 
   def testSimpleAndRandomInputs(self):
-    sp_t = ops.SparseTensor(self.ind, self.vals, self.shape)
+    sp_t = tf.SparseTensor(self.ind, self.vals, self.shape)
 
     with self.test_session(use_gpu=False):
       self._compare_all(sp_t, None, ndims=2)
@@ -542,7 +541,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
           self._compare_all(sp_t, axes, ndims=len(dims))
 
   def testInvalidAxes(self):
-    sp_t = ops.SparseTensor(self.ind, self.vals, self.shape)
+    sp_t = tf.SparseTensor(self.ind, self.vals, self.shape)
     with self.test_session(use_gpu=False):
       with self.assertRaisesOpError("Invalid reduction dimension -3"):
         sparse_ops.sparse_reduce_sum(sp_t, -3).eval()
@@ -574,8 +573,8 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
   def _check(self, result_tensor, result_np, input_sp_t):
-    self.assertTrue(isinstance(result_tensor, ops.SparseTensor))
-    self.assertTrue(isinstance(input_sp_t, ops.SparseTensor))
+    self.assertTrue(isinstance(result_tensor, tf.SparseTensor))
+    self.assertTrue(isinstance(input_sp_t, tf.SparseTensor))
     self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
     self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
 
@@ -725,17 +724,17 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
   def testBasic(self):
     with self.test_session(use_gpu=False):
       # 1-D, values at index 0.
-      sp_zero = ops.SparseTensor([[0]], [0], [7])
-      sp_one = ops.SparseTensor([[0]], [1], [7])
+      sp_zero = tf.SparseTensor([[0]], [0], [7])
+      sp_one = tf.SparseTensor([[0]], [1], [7])
       max_tf = tf.sparse_maximum(sp_zero, sp_one).eval()
       min_tf = tf.sparse_minimum(sp_zero, sp_one).eval()
       self._assertSparseTensorValueEqual(sp_one.eval(), max_tf)
       self._assertSparseTensorValueEqual(sp_zero.eval(), min_tf)
 
       # Values at different indices.
-      sp_zero = ops.SparseTensor([[0]], [0], [7])
-      sp_zero_2 = ops.SparseTensor([[1]], [0], [7])
-      expected = ops.SparseTensor([[0], [1]], [0, 0], [7])
+      sp_zero = tf.SparseTensor([[0]], [0], [7])
+      sp_zero_2 = tf.SparseTensor([[1]], [0], [7])
+      expected = tf.SparseTensor([[0], [1]], [0, 0], [7])
       max_tf = tf.sparse_maximum(sp_zero, sp_zero_2).eval()
       min_tf = tf.sparse_minimum(sp_zero, sp_zero_2).eval()
       self._assertSparseTensorValueEqual(expected.eval(), max_tf)
@@ -767,13 +766,13 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
 
   def testMismatchedShapes(self):
     with self.test_session(use_gpu=False):
-      sp_zero = ops.SparseTensor([[0, 0]], [0], [1, 1])
-      sp_one = ops.SparseTensor([[0]], [1], [2])
+      sp_zero = tf.SparseTensor([[0, 0]], [0], [1, 1])
+      sp_one = tf.SparseTensor([[0]], [1], [2])
       with self.assertRaisesOpError("Operands do not have the same ranks"):
         tf.sparse_maximum(sp_zero, sp_one).eval()
 
-      sp_zero = ops.SparseTensor([[0]], [0], [1])
-      sp_one = ops.SparseTensor([[0]], [1], [2])
+      sp_zero = tf.SparseTensor([[0]], [0], [1])
+      sp_one = tf.SparseTensor([[0]], [1], [2])
       with self.assertRaisesOpError("Operands' shapes do not match"):
         tf.sparse_maximum(sp_zero, sp_one).eval()
 
