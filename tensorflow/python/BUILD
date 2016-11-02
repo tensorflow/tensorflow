@@ -41,6 +41,7 @@ py_library(
         ":summary",
         ":training",
         ":ops",
+        ":test_ops",
         "//tensorflow/python/debug:debug_py",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",

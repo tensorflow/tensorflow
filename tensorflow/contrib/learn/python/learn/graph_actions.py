@@ -40,6 +40,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
@@ -77,7 +78,8 @@ def get_summary_writer(logdir):
 
 
 def _make_saver(graph, keep_checkpoint_max=5):
-  vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
+  vars_to_save = (graph.get_collection(ops.GraphKeys.VARIABLES) +
+                  graph.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
   if vars_to_save:
     return tf_saver.Saver(vars_to_save,
                           sharded=True,
@@ -846,9 +848,11 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
     raise ValueError('feed_dicts is invalid: %s.' % feed_dicts)
 
   graph = contrib_ops.get_graph_from_inputs(output_dict.values())
-
   with graph.as_default() as g:
     with tf_session.Session('') as session:
+      session.run(
+          resources.initialize_resources(resources.shared_resources() +
+                                         resources.local_resources()))
       if restore_checkpoint_path:
         _restore_from_checkpoint(session, g, restore_checkpoint_path)
       else:
