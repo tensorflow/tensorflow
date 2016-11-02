@@ -147,8 +147,10 @@ def get_git_version(git_base_path):
   """
   unknown_label = b"unknown"
   try:
-    val = subprocess.check_output(["git", str("--git-dir="+git_base_path+"/.git"), str("--work-tree="+git_base_path), "describe",
-                                   "--long", "--dirty", "--tags"]).strip()
+    val = bytes(subprocess.check_output([
+        "git", str("--git-dir=%s/.git" % git_base_path),
+        str("--work-tree=" + git_base_path), "describe", "--long", "--dirty", "--tags"
+    ]).strip())
     return val if val else unknown_label
   except subprocess.CalledProcessError:
     return unknown_label
@@ -199,7 +201,7 @@ def generate(arglist):
   data = json.load(open(spec))
   git_version = None
   if not data["git"]:
-    git_version = "unknown"
+    git_version = b"unknown"
   else:
     old_branch = data["branch"]
     new_branch = parse_branch_ref(head_symlink)

@@ -249,11 +249,18 @@ class SavedModelBuilder(object):
     proto_meta_graph_def = self._saved_model.meta_graphs.add()
     proto_meta_graph_def.CopyFrom(meta_graph_def)
 
+  def _maybe_clear_devices(self, clear_devices):
+    if not clear_devices:
+      return
+    for node in ops.get_default_graph().as_graph_def().node:
+      node.device = ""
+
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
                      assets_collection=None,
-                     legacy_init_op=None):
+                     legacy_init_op=None,
+                     clear_devices=False):
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -268,7 +275,9 @@ class SavedModelBuilder(object):
           that this collection should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
       legacy_init_op: Op or group of ops to execute after the restore op upon a
-        load.
+          load.
+      clear_devices: Set to true if the device info on the default graph should
+          be cleared.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
@@ -278,6 +287,8 @@ class SavedModelBuilder(object):
       raise AssertionError(
           "Variables and assets have not been saved yet. "
           "Please invoke `add_meta_graph_and_variables()` first.")
+
+    self._maybe_clear_devices(clear_devices)
 
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
@@ -300,7 +311,8 @@ class SavedModelBuilder(object):
                                    tags,
                                    signature_def_map=None,
                                    assets_collection=None,
-                                   legacy_init_op=None):
+                                   legacy_init_op=None,
+                                   clear_devices=False):
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -318,10 +330,14 @@ class SavedModelBuilder(object):
       assets_collection: Assets collection to be saved with SavedModel.
       legacy_init_op: Op or group of ops to execute after the restore op upon a
         load.
+      clear_devices: Set to true if the device info on the default graph should
+          be cleared.
     """
     if self._has_saved_variables:
       raise AssertionError("Variables and assets have already been saved. "
                            "Please invoke `add_meta_graph()` instead.")
+
+    self._maybe_clear_devices(clear_devices)
 
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)

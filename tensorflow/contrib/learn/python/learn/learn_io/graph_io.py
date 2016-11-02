@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
@@ -645,7 +646,7 @@ def queue_parsed_features(parsed_features,
     # directly.
     for key in sorted(parsed_features.keys()):
       tensor = parsed_features[key]
-      if isinstance(tensor, ops.SparseTensor):
+      if isinstance(tensor, sparse_tensor.SparseTensor):
         tensors_mapping.append((key, True))
         tensors_to_enqueue.extend([tensor.indices, tensor.values, tensor.shape])
       else:
@@ -704,7 +705,7 @@ def queue_parsed_features(parsed_features,
     for key, is_sparse_tensor in tensors_mapping:
       if is_sparse_tensor:
         # Three tensors are (indices, values, shape).
-        dequeued_parsed_features[key] = ops.SparseTensor(
+        dequeued_parsed_features[key] = sparse_tensor.SparseTensor(
             dequeued_tensors[index], dequeued_tensors[index + 1],
             dequeued_tensors[index + 2])
         index += 3

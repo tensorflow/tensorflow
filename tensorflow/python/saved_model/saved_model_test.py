@@ -553,6 +553,29 @@ class SavedModelTest(tf.test.TestCase):
       tf.get_collection("init_op")[0].run()
       self.assertEqual(3, tf.get_collection("v")[2].eval())
 
+  def testClearDevices(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_clear_devices")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Specify a device and save a variable.
+    tf.reset_default_graph()
+    with tf.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      with sess.graph.device("/cpu:0"):
+        self._init_and_validate_variable(sess, "v", 42)
+        builder.add_meta_graph_and_variables(
+            sess, [tag_constants.TRAINING], clear_devices=True)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Restore the graph with a single predefined tag whose variables were saved
+    # without any device information.
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, [tag_constants.TRAINING], export_dir)
+      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

@@ -22,11 +22,12 @@ from __future__ import print_function
 from tensorflow.contrib.layers import feature_column
 from tensorflow.contrib.learn.python.learn.dataframe import series as ss
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import parsing_ops
 
 
 def _to_feature_spec(tensor, default_value=None):
-  if isinstance(tensor, ops.SparseTensor):
+  if isinstance(tensor, sparse_tensor.SparseTensor):
     return parsing_ops.VarLenFeature(dtype=tensor.dtype)
   else:
     return parsing_ops.FixedLenFeature(shape=tensor.get_shape(),

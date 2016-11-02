@@ -388,11 +388,14 @@ def list_directory(dirname):
   """
   if not is_directory(dirname):
     raise errors.NotFoundError(None, None, "Could not find directory")
-  file_list = get_matching_files(os.path.join(compat.as_str_any(dirname), "*"))
-  return [
-      compat.as_str_any(pywrap_tensorflow.Basename(compat.as_bytes(filename)))
-      for filename in file_list
-  ]
+  with errors.raise_exception_on_not_ok_status() as status:
+    # Convert each element to string, since the return values of the
+    # vector of string should be interpreted as strings, not bytes.
+    return [
+        compat.as_str_any(filename)
+        for filename in pywrap_tensorflow.GetChildren(
+            compat.as_bytes(dirname), status)
+    ]
 
 
 def walk(top, in_order=True):

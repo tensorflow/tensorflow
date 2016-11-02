@@ -25,6 +25,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -84,32 +85,6 @@ class TensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "not iterable"):
       for _ in t:
         pass
-
-
-class SparseTensorTest(test_util.TensorFlowTestCase):
-
-  def testPythonConstruction(self):
-    indices = [[1, 2], [2, 0], [3, 4]]
-    values = [b"a", b"b", b"c"]
-    shape = [4, 5]
-    sp_value = ops.SparseTensorValue(indices, values, shape)
-    for sp in [
-        ops.SparseTensor(indices, values, shape),
-        ops.SparseTensor.from_value(sp_value),
-        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
-      self.assertEqual(sp.indices.dtype, dtypes.int64)
-      self.assertEqual(sp.values.dtype, dtypes.string)
-      self.assertEqual(sp.shape.dtype, dtypes.int64)
-
-      with self.test_session() as sess:
-        value = sp.eval()
-        self.assertAllEqual(indices, value.indices)
-        self.assertAllEqual(values, value.values)
-        self.assertAllEqual(shape, value.shape)
-        sess_run_value = sess.run(sp)
-        self.assertAllEqual(sess_run_value.indices, value.indices)
-        self.assertAllEqual(sess_run_value.values, value.values)
-        self.assertAllEqual(sess_run_value.shape, value.shape)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
@@ -1246,7 +1221,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     g0 = ops.Graph()
     a = g0.create_op("a", [], [dtypes.float32])
     b = g0.create_op("b", [], [dtypes.float32])
-    sparse = ops.SparseTensor(
+    sparse = sparse_tensor.SparseTensor(
         _apply_op(g0, "const", [], [dtypes.int64]),
         _apply_op(g0, "const", [], [dtypes.float32]),
         _apply_op(g0, "const", [], [dtypes.int64]))
@@ -1421,12 +1396,6 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
       """, gd)
 
 
-# NOTE(petewarden): Dummy stats registrations for ops used in the tests.
-@ops.RegisterStatistics("a", "weight_parameters")
-def _calc_a_weight_params(unused_graph, unused_node):
-  return ops.OpStats("weight_parameters", 10)
-
-
 @ops.RegisterStatistics("a", "flops")
 def _calc_a_forward_flops(unused_graph, unused_node):
   return ops.OpStats("flops", 20)
@@ -1437,8 +1406,6 @@ class StatisticsTest(test_util.TensorFlowTestCase):
   def testRegisteredNode(self):
     graph = ops.Graph()
     node = ops._NodeDef("a", "an_a")
-    weight_params = ops.get_stats_for_node_def(graph, node, "weight_parameters")
-    self.assertEqual(10, weight_params.value)
     flops = ops.get_stats_for_node_def(graph, node, "flops")
     self.assertEqual(20, flops.value)
     missing_stat = ops.get_stats_for_node_def(graph, node, "missing_stat")
@@ -1451,19 +1418,11 @@ class StatisticsTest(test_util.TensorFlowTestCase):
     self.assertEqual(None, weight_params.value)
 
   def testAccumulateStatistics(self):
-    weight_params_total = ops.OpStats("weight_parameters")
-    self.assertEqual(None, weight_params_total.value)
     flops_total = ops.OpStats("flops")
     self.assertEqual(None, flops_total.value)
-    first_weight_params = ops.OpStats("weight_parameters", 100)
-    weight_params_total += first_weight_params
-    self.assertEqual(100, weight_params_total.value)
     second_flops = ops.OpStats("flops", 3)
     flops_total += second_flops
     self.assertEqual(3, flops_total.value)
-    second_weight_params = ops.OpStats("weight_parameters", 200)
-    weight_params_total += second_weight_params
-    self.assertEqual(300, weight_params_total.value)
 
 
 class ColocationGroupTest(test_util.TensorFlowTestCase):

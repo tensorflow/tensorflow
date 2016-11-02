@@ -542,7 +542,8 @@ class CheckpointSaverTest(tf.test.TestCase):
         self.assertEqual(1, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
 
-  def test_save_secs_saves_periodically(self):
+  # TODO(gunan): Reenable this test after b/32446874 is fixed.
+  def disabled_test_save_secs_saves_periodically(self):
     with self.graph.as_default():
       monitor = learn.monitors.CheckpointSaver(
           self.model_dir, save_secs=2, scaffold=self.scaffold)

@@ -16,6 +16,8 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
@@ -28,6 +30,7 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
 -->
 <dom-module id="tf-image-dashboard">
   <template>
+    <paper-dialog with-backdrop id="actual-image-size-dialog"></paper-dialog>
     <div id="plumbing">
       <tf-color-scale
         id="colorScale"
@@ -60,6 +63,12 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
           >
           <template>
             <tf-image-loader color-scale="[[_colorScale]]"></tf-image-loader>
+            <paper-icon-button
+              class="actual-size-button"
+              icon="aspect-ratio"
+              on-tap="_showActualSize"
+              title="Show the image at its true pixel size"
+              ></paper-icon-button>
           </template>
         </tf-panes-helper>
       </div>
@@ -71,6 +80,27 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
         --card-height: auto;
         --card-expanded-width: 700px;
         --card-expanded-height: auto;
+      }
+
+      .actual-size-button {
+        background: #fff;
+        border-radius: 100%;
+        bottom: -35px;
+        color: #2196f3;
+        height: 32px;
+        left: 35px;
+        padding: 4px;
+        pointer-events: auto;
+        position: absolute;
+        width: 32px;
+      }
+
+      .actual-size-button-selected {
+        background: var(--tb-ui-light-accent);
+      }
+
+      #actual-image-size-dialog {
+        overflow: auto;
       }
     </style>
   </template>
@@ -93,6 +123,29 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
           this.fire("rendered");
         });
       },
+      _showActualSize: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+        var card = currentTarget.node.closest('.card');
+
+        // Create a full-size copy of the image.
+        var newImage = card.querySelector('#img').cloneNode();
+        newImage.style.height = 'auto';
+        newImage.style.width = 'auto';
+        newImage.style.margin = 0;
+        newImage.style.padding = 0;
+        newImage.classList.add("actual-size-image");
+
+        // When the user clicks on the image, empty and close the dialog.
+        var dialog = this.$$('#actual-image-size-dialog');
+        newImage.addEventListener('click', function() {
+          dialog.close();
+        });
+
+        // Update dialog content. Show the dialog.
+        dialog.innerHTML = '';
+        dialog.appendChild(newImage);
+        dialog.open();
+      }
     });
   </script>
 </dom-module>

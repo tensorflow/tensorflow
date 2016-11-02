@@ -22,8 +22,8 @@ from __future__ import print_function
 import functools
 
 import tensorflow as tf
-from tensorflow.contrib.framework.python.framework import decorator_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import decorator_utils
 
 
 def _test_function(unused_arg=0):

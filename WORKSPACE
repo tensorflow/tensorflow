@@ -153,8 +153,8 @@ new_http_archive(
 new_http_archive(
   name = "iron_iconset_svg",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-iconset-svg/archive/v1.0.10.tar.gz",
-  strip_prefix = "iron-iconset-svg-1.0.10",
+  url = "https://github.com/polymerelements/iron-iconset-svg/archive/v1.1.0.tar.gz",
+  strip_prefix = "iron-iconset-svg-1.1.0",
 )
 
 new_http_archive(
@@ -188,8 +188,8 @@ new_http_archive(
 new_http_archive(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-overlay-behavior/archive/v1.9.0.tar.gz",
-  strip_prefix = "iron-overlay-behavior-1.9.0",
+  url = "https://github.com/polymerelements/iron-overlay-behavior/archive/v1.10.1.tar.gz",
+  strip_prefix = "iron-overlay-behavior-1.10.1",
 )
 
 new_http_archive(
@@ -204,6 +204,13 @@ new_http_archive(
   build_file = "bower.BUILD",
   url = "https://github.com/polymerelements/iron-resizable-behavior/archive/v1.0.3.tar.gz",
   strip_prefix = "iron-resizable-behavior-1.0.3",
+)
+
+new_http_archive(
+  name = "iron_scroll_target_behavior",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/iron-scroll-target-behavior/archive/v1.0.3.tar.gz",
+  strip_prefix = "iron-scroll-target-behavior-1.0.3",
 )
 
 new_http_archive(
@@ -291,8 +298,8 @@ new_http_archive(
 new_http_archive(
   name = "paper_icon_button",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-icon-button/archive/v1.1.2.tar.gz",
-  strip_prefix = "paper-icon-button-1.1.2",
+  url = "https://github.com/polymerelements/paper-icon-button/archive/v1.1.3.tar.gz",
+  strip_prefix = "paper-icon-button-1.1.3",
 )
 
 new_http_archive(
