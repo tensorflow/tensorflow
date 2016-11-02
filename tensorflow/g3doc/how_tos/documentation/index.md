@@ -233,7 +233,7 @@ def foo(x, y, name="bar"):
 
   Given two 1-D tensors `x` and `y`, this operation computes the foo.
 
-  For example:
+  Example:
 
   ```
   # x is [1, 1]

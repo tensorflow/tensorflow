@@ -46,12 +46,6 @@ std::unique_ptr<Device> GetCPUDevice(Env* env) {
   return nullptr;
 }
 
-thread::ThreadPool* GetThreadPool(Env* env) {
-  static thread::ThreadPool* thread_pool =
-      new thread::ThreadPool(env, "GraphRunnerCompute", 1);
-  return thread_pool;
-}
-
 // A simple rendezvous class.
 // Assumes a single sender and a single receiver, no duplicate sends, and no
 // sends of dead tensors.
@@ -113,10 +107,8 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   CopyGraph(*graph, graph_to_run.get());
 
   std::unique_ptr<Device> device = GetCPUDevice(env);
-  thread::ThreadPool* thread_pool = GetThreadPool(env);
-  if (!device || !thread_pool) {
-    return errors::NotFound(
-        "Cannot find a device and/or a thread pool for GraphRunner.");
+  if (!device) {
+    return errors::NotFound("Cannot find a device for GraphRunner.");
   }
 
   SimpleRendezvous* rendez = new SimpleRendezvous;
@@ -142,9 +134,10 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
 
   // Create the local executor and the Rendezvous for fetching back the
   // constants.
-  auto runner = [thread_pool](Executor::Args::Closure c) {
-    thread_pool->Schedule(c);
-  };
+
+  // Run operators on the local thread. We should not need concurrency here; we
+  // should not be running expensive operators.
+  auto runner = [](Executor::Args::Closure c) { c(); };
 
   // Take ownership and pass to NewLocalExecutor
   Graph* g = graph_to_run.release();

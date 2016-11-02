@@ -767,8 +767,9 @@ TEST(GcsFileSystemTest, GetMatchingPaths_BucketAndWildcard) {
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", &result));
-  EXPECT_EQ(std::vector<string>(
-                {"gs://bucket/path/file1.txt", "gs://bucket/path/file3.txt"}),
+  EXPECT_EQ(std::vector<string>({"gs://bucket/path/file1.txt",
+                                 "gs://bucket/path/file3.txt",
+                                 "gs://bucket/path/subpath"}),
             result);
 }
 

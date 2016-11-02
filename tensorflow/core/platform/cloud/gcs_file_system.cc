@@ -118,6 +118,26 @@ string JoinGcsPath(const string& path, const string& subpath) {
   return strings::StrCat(MaybeAppendSlash(path), subpath);
 }
 
+/// \brief Returns the given paths appending all their subfolders.
+///
+/// For every path X in the list, every subfolder in X is added to the
+/// resulting list.
+/// For example:
+///  - for 'a/b/c/d' it will append 'a', 'a/b' and 'a/b/c'
+///  - for 'a/b/c/' it will append 'a', 'a/b' and 'a/b/c'
+std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
+  std::set<string> result;
+  result.insert(paths.begin(), paths.end());
+  for (const string& path : paths) {
+    StringPiece subpath = io::Dirname(path);
+    while (!subpath.empty()) {
+      result.emplace(subpath.ToString());
+      subpath = io::Dirname(subpath);
+    }
+  }
+  return result;
+}
+
 Status ParseJson(StringPiece json, Json::Value* result) {
   Json::Reader reader;
   if (!reader.parse(json.ToString(), *result)) {
@@ -784,9 +804,11 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
       GetChildrenBounded(dir, UINT64_MAX, &all_files, true /* recursively */,
                          false /* include_self_directory_marker */));
 
-  // Match all obtained files to the input pattern.
-  for (const auto& f : all_files) {
-    const string& full_path = io::JoinPath(dir, f);
+  const auto& files_and_folders = AddAllSubpaths(all_files);
+
+  // Match all obtained paths to the input pattern.
+  for (const auto& path : files_and_folders) {
+    const string& full_path = io::JoinPath(dir, path);
     if (Env::Default()->MatchPath(full_path, pattern)) {
       results->push_back(full_path);
     }

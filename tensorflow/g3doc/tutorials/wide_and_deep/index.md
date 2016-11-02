@@ -111,7 +111,7 @@ columns:
 
 ```python
 wide_columns = [
-  gender, native_country, education, occupation, workclass, marital_status, relationship, age_buckets,
+  gender, native_country, education, occupation, workclass, relationship, age_buckets,
   tf.contrib.layers.crossed_column([education, occupation], hash_bucket_size=int(1e4)),
   tf.contrib.layers.crossed_column([native_country, occupation], hash_bucket_size=int(1e4)),
   tf.contrib.layers.crossed_column([age_buckets, education, occupation], hash_bucket_size=int(1e6))]
