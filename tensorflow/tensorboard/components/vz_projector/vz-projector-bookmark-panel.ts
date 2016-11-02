@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 import {State} from './data';
 import {DataProvider, EmbeddingInfo} from './data-provider';
+import * as logging from './logging';
 import {Projector} from './vz-projector';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -21,7 +22,13 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 // tslint:disable-next-line
 export let BookmarkPanelPolymer = PolymerElement({
   is: 'vz-projector-bookmark-panel',
-  properties: {savedStates: Object, selectedState: Number}
+  properties: {
+    savedStates: Object,
+    // Keep a separate polymer property because the savedStates doesn't change
+    // when adding and removing states.
+    hasStates: {type: Boolean, value: false},
+    selectedState: Number
+  }
 });
 
 export class BookmarkPanel extends BookmarkPanelPolymer {
@@ -30,6 +37,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
 
   // A list containing all of the saved states.
   private savedStates: State[];
+  private hasStates = false;
   private selectedState: number;
 
   private dom: d3.Selection<any>;
@@ -85,6 +93,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
     }
 
     this.push('savedStates', currentState as any);
+    this.updateHasStates();
   }
 
   /** Handles a click on the download bookmarks button. */
@@ -114,20 +123,28 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
   private setupUploadButton() {
     // Show and setup the load view button.
     let fileInput = this.dom.select('#state-file');
-    fileInput.on('change', function() {
+    fileInput.on('change', () => {
       let file: File = (d3.event as any).target.files[0];
       // Clear out the value of the file chooser. This ensures that if the user
       // selects the same file, we'll re-read it.
       (d3.event as any).target.value = '';
       let fileReader = new FileReader();
-      fileReader.onload = function(evt) {
+      fileReader.onload = (evt) => {
         let str: string = (evt.target as any).result;
         let savedStates = JSON.parse(str);
-        this.loadAllStates(savedStates);
-        this.loadSavedState(0);
-      }.bind(this);
+
+        // Verify the bookmarks match.
+        if (this.savedStatesValid(savedStates)) {
+          this.loadAllStates(savedStates);
+          this.loadSavedState(0);
+        } else {
+          logging.setWarningMessage(
+              `Unable to load bookmarks: wrong dataset, expected dataset ` +
+              `with shape (${savedStates[0].dataSetDimensions}).`);
+        }
+      };
       fileReader.readAsText(file);
-    }.bind(this));
+    });
   }
 
   loadAllStates(savedStates: State[]) {
@@ -135,6 +152,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
       savedStates[i].isSelected = false;
       this.push('savedStates', savedStates[i] as any);
     }
+    this.updateHasStates();
   }
 
   /** Deselects any selected state selection. */
@@ -150,9 +168,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
 
   /** Handles a radio button click on a saved state. */
   _radioButtonHandler(evt: Event) {
-    let index =
-        +(evt.target as Element).parentElement.getAttribute('data-index');
-    this.loadSavedState(index);
+    this.loadSavedState(this.getParentDataIndex(evt));
   }
 
   loadSavedState(index: number) {
@@ -174,7 +190,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
    * Crawls up the DOM to find an ancestor with a data-index attribute. This is
    * used to match events to their bookmark index.
    */
-  _getParentDataIndex(evt: Event) {
+  private getParentDataIndex(evt: Event) {
     for (let i = 0; i < (evt as any).path.length; i++) {
       let dataIndex = (evt as any).path[i].getAttribute('data-index');
       if (dataIndex != null) {
@@ -186,13 +202,14 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
 
   /** Handles a clear button click on a bookmark. */
   _clearButtonHandler(evt: Event) {
-    let index = this._getParentDataIndex(evt);
+    let index = this.getParentDataIndex(evt);
     this.splice('savedStates', index, 1);
+    this.updateHasStates();
   }
 
   /** Handles a label change event on a bookmark. */
   _labelChange(evt: Event) {
-    let index = this._getParentDataIndex(evt);
+    let index = this.getParentDataIndex(evt);
     this.savedStates[index].label = (evt.target as any).value;
   }
 
@@ -219,6 +236,25 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
    */
   loadSavedStates(serializedStates: string) {
     this.savedStates = JSON.parse(serializedStates);
+    this.updateHasStates();
+  }
+
+  /**
+   * Updates the hasState polymer property.
+   */
+  private updateHasStates() {
+    this.hasStates = (this.savedStates.length !== 0);
+  }
+
+  /** Sanity checks a State array to ensure it matches the current dataset. */
+  private savedStatesValid(states: State[]): boolean {
+    for (let i = 0; i < states.length; i++) {
+      if (states[i].dataSetDimensions[0] !== this.projector.dataSet.dim[0] ||
+          states[i].dataSetDimensions[1] !== this.projector.dataSet.dim[1]) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 document.registerElement(BookmarkPanel.prototype.is, BookmarkPanel);
