@@ -571,9 +571,8 @@ class WALSModel(object):
         extras = size % num_shards
         assignments = tf.maximum(ids // (ids_per_shard + 1),
                                  (ids - extras) // ids_per_shard)
-        new_ids = tf.select(assignments < extras,
-                            ids % (ids_per_shard + 1),
-                            (ids - extras) % ids_per_shard)
+        new_ids = tf.where(assignments < extras, ids % (ids_per_shard + 1),
+                           (ids - extras) % ids_per_shard)
         return assignments, new_ids
     return func
 

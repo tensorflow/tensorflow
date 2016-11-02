@@ -45,6 +45,7 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
@@ -1108,8 +1109,9 @@ class Estimator(BaseEstimator):
 
     result = _make_metrics_ops(all_metrics, features, labels,
                                model_fn_ops.predictions)
-    if 'loss' not in result:
-      result['loss'] = metrics_lib.streaming_mean(model_fn_ops.loss)
+    if metric_key.MetricKey.LOSS not in result:
+      result[metric_key.MetricKey.LOSS] = metrics_lib.streaming_mean(
+          model_fn_ops.loss)
     return result
 
   def _get_predict_ops(self, features):

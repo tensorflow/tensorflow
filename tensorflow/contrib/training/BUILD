@@ -15,9 +15,16 @@ py_library(
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
+        "python/training/training.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+    ],
 )
 
 py_test(
@@ -85,6 +92,19 @@ py_test(
     name = "bucket_ops_test",
     size = "medium",
     srcs = ["python/training/bucket_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "training_test",
+    size = "large",
+    srcs = ["python/training/training_test.py"],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",

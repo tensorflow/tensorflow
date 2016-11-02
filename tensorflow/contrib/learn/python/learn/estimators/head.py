@@ -24,6 +24,8 @@ from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.python import summary
 from tensorflow.python.framework import ops
@@ -388,17 +390,17 @@ class _RegressionHead(_Head):
   def _logits_to_prediction(self, logits=None):
     predictions = {}
     if self.logits_dimension == 1:
-      predictions[PredictionKey.SCORES] = array_ops.squeeze(
+      predictions[prediction_key.PredictionKey.SCORES] = array_ops.squeeze(
           logits, squeeze_dims=[1])
     else:
-      predictions[PredictionKey.SCORES] = logits
+      predictions[prediction_key.PredictionKey.SCORES] = logits
     return predictions
 
   # pylint: disable=undefined-variable
   def _create_signature_fn(self):
     def _regression_signature_fn(examples, unused_features, predictions):
       if isinstance(predictions, dict):
-        score = predictions[PredictionKey.SCORES]
+        score = predictions[prediction_key.PredictionKey.SCORES]
       else:
         score = predictions
 
@@ -409,11 +411,12 @@ class _RegressionHead(_Head):
     return _regression_signature_fn
 
   def _default_metric(self):
-    return {_head_prefixed(self._head_name, MetricKey.LOSS):
-            _weighted_average_loss_metric_spec(self._eval_loss_fn,
-                                               PredictionKey.SCORES,
-                                               self._label_name,
-                                               self._weight_column_name)}
+    return {_head_prefixed(self._head_name, metric_key.MetricKey.LOSS):
+            _weighted_average_loss_metric_spec(
+                self._eval_loss_fn,
+                prediction_key.PredictionKey.SCORES,
+                self._label_name,
+                self._weight_column_name)}
 
 
 class _MultiClassHead(_Head):
@@ -530,12 +533,16 @@ class _MultiClassHead(_Head):
     return self._logits_to_prediction(logits)
 
   def _logits_to_prediction(self, logits=None):
-    predictions = {PredictionKey.LOGITS: logits}
+    # pylint: disable=missing-docstring
+    predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
-      predictions[PredictionKey.LOGISTIC] = math_ops.sigmoid(logits)
+      predictions[prediction_key.PredictionKey.LOGISTIC] = math_ops.sigmoid(
+          logits)
       logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[PredictionKey.PROBABILITIES] = nn.softmax(logits)
-    predictions[PredictionKey.CLASSES] = math_ops.argmax(logits, 1)
+    predictions[prediction_key.PredictionKey.PROBABILITIES] = nn.softmax(
+        logits)
+    predictions[prediction_key.PredictionKey.CLASSES] = math_ops.argmax(
+        logits, 1)
 
     return predictions
 
@@ -546,8 +553,9 @@ class _MultiClassHead(_Head):
       if isinstance(predictions, dict):
         default_signature = exporter.classification_signature(
             input_tensor=examples,
-            classes_tensor=predictions[PredictionKey.CLASSES],
-            scores_tensor=predictions[PredictionKey.PROBABILITIES])
+            classes_tensor=predictions[prediction_key.PredictionKey.CLASSES],
+            scores_tensor=predictions[
+                prediction_key.PredictionKey.PROBABILITIES])
       else:
         default_signature = exporter.classification_signature(
             input_tensor=examples,
@@ -558,44 +566,49 @@ class _MultiClassHead(_Head):
     return _classification_signature_fn
 
   def _default_metric(self):
-    metrics = {_head_prefixed(self._head_name, MetricKey.LOSS):
-               _weighted_average_loss_metric_spec(self._eval_loss_fn,
-                                                  PredictionKey.LOGITS,
-                                                  self._label_name,
-                                                  self._weight_column_name)}
+    metrics = {_head_prefixed(self._head_name, metric_key.MetricKey.LOSS):
+               _weighted_average_loss_metric_spec(
+                   self._eval_loss_fn,
+                   prediction_key.PredictionKey.LOGITS,
+                   self._label_name,
+                   self._weight_column_name)}
 
     # TODO(b/29366811): This currently results in both an "accuracy" and an
     # "accuracy/threshold_0.500000_mean" metric for binary classification.
-    metrics[_head_prefixed(self._head_name, MetricKey.ACCURACY)] = (
+    metrics[_head_prefixed(self._head_name, metric_key.MetricKey.ACCURACY)] = (
         metric_spec.MetricSpec(metrics_lib.streaming_accuracy,
-                               PredictionKey.CLASSES, self._label_name,
+                               prediction_key.PredictionKey.CLASSES,
+                               self._label_name,
                                self._weight_column_name))
     if self.logits_dimension == 1:
-      def _add_binary_metric(metric_key, metric_fn):
-        metrics[_head_prefixed(self._head_name, metric_key)] = (
+      def _add_binary_metric(key, metric_fn):
+        metrics[_head_prefixed(self._head_name, key)] = (
             metric_spec.MetricSpec(metric_fn,
-                                   PredictionKey.LOGISTIC,
+                                   prediction_key.PredictionKey.LOGISTIC,
                                    self._label_name,
                                    self._weight_column_name))
-      _add_binary_metric(MetricKey.PREDICTION_MEAN, _predictions_streaming_mean)
-      _add_binary_metric(MetricKey.LABEL_MEAN, _labels_streaming_mean)
+      _add_binary_metric(
+          metric_key.MetricKey.PREDICTION_MEAN, _predictions_streaming_mean)
+      _add_binary_metric(
+          metric_key.MetricKey.LABEL_MEAN, _labels_streaming_mean)
 
       # Also include the streaming mean of the label as an accuracy baseline, as
       # a reminder to users.
-      _add_binary_metric(MetricKey.ACCURACY_BASELINE, _labels_streaming_mean)
+      _add_binary_metric(
+          metric_key.MetricKey.ACCURACY_BASELINE, _labels_streaming_mean)
 
-      _add_binary_metric(MetricKey.AUC, _streaming_auc)
+      _add_binary_metric(metric_key.MetricKey.AUC, _streaming_auc)
 
       for threshold in self._thresholds:
-        _add_binary_metric(MetricKey.ACCURACY_MEAN % threshold,
+        _add_binary_metric(metric_key.MetricKey.ACCURACY_MEAN % threshold,
                            _accuracy_at_threshold(threshold))
         # Precision for positive examples.
-        _add_binary_metric(MetricKey.PRECISION_MEAN % threshold,
+        _add_binary_metric(metric_key.MetricKey.PRECISION_MEAN % threshold,
                            _streaming_at_threshold(
                                metrics_lib.streaming_precision_at_thresholds,
                                threshold),)
         # Recall for positive examples.
-        _add_binary_metric(MetricKey.RECALL_MEAN % threshold,
+        _add_binary_metric(metric_key.MetricKey.RECALL_MEAN % threshold,
                            _streaming_at_threshold(
                                metrics_lib.streaming_recall_at_thresholds,
                                threshold))
@@ -635,21 +648,24 @@ class _BinarySvmHead(_MultiClassHead):
 
   def _logits_to_prediction(self, logits=None):
     predictions = {}
-    predictions[PredictionKey.LOGITS] = logits
+    predictions[prediction_key.PredictionKey.LOGITS] = logits
     logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[PredictionKey.CLASSES] = math_ops.argmax(logits, 1)
+    predictions[prediction_key.PredictionKey.CLASSES] = math_ops.argmax(
+        logits, 1)
 
     return predictions
 
   def _default_metric(self):
-    metrics = {_head_prefixed(self._head_name, MetricKey.LOSS):
-               _weighted_average_loss_metric_spec(self._eval_loss_fn,
-                                                  PredictionKey.LOGITS,
-                                                  self._label_name,
-                                                  self._weight_column_name)}
-    metrics[_head_prefixed(self._head_name, MetricKey.ACCURACY)] = (
+    metrics = {_head_prefixed(self._head_name, metric_key.MetricKey.LOSS):
+               _weighted_average_loss_metric_spec(
+                   self._eval_loss_fn,
+                   prediction_key.PredictionKey.LOGITS,
+                   self._label_name,
+                   self._weight_column_name)}
+    metrics[_head_prefixed(self._head_name, metric_key.MetricKey.ACCURACY)] = (
         metric_spec.MetricSpec(metrics_lib.streaming_accuracy,
-                               PredictionKey.CLASSES, self._label_name,
+                               prediction_key.PredictionKey.CLASSES,
+                               self._label_name,
                                self._weight_column_name))
     # TODO(sibyl-vie3Poto): add more metrics relevant for svms.
     return metrics
@@ -674,12 +690,14 @@ class _MultiLabelHead(_MultiClassHead):
         thresholds=thresholds)
 
   def _logits_to_prediction(self, logits=None):
-    predictions = {PredictionKey.LOGITS: logits}
+    predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
-      predictions[PredictionKey.LOGISTIC] = math_ops.sigmoid(logits)
+      predictions[prediction_key.PredictionKey.LOGISTIC] = math_ops.sigmoid(
+          logits)
       logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[PredictionKey.PROBABILITIES] = math_ops.sigmoid(logits)
-    predictions[PredictionKey.CLASSES] = math_ops.to_int64(
+    predictions[prediction_key.PredictionKey.PROBABILITIES] = math_ops.sigmoid(
+        logits)
+    predictions[prediction_key.PredictionKey.CLASSES] = math_ops.to_int64(
         math_ops.greater(logits, 0))
     return predictions
 
@@ -857,15 +875,3 @@ class PredictionKey(object):
   LOGITS = "logits"
   LOGISTIC = "logistic"
   SCORES = "scores"
-
-
-class MetricKey(object):
-  LOSS = "loss"
-  AUC = "auc"
-  PREDICTION_MEAN = "labels/prediction_mean"
-  LABEL_MEAN = "labels/actual_label_mean"
-  ACCURACY = "accuracy"
-  ACCURACY_BASELINE = "accuracy/baseline_label_mean"
-  ACCURACY_MEAN = "accuracy/threshold_%f_mean"
-  PRECISION_MEAN = "precision/positive_threshold_%f_mean"
-  RECALL_MEAN = "recall/positive_threshold_%f_mean"

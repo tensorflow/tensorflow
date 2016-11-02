@@ -913,6 +913,9 @@
   * [`Transformer`](../../api_docs/python/contrib.graph_editor.md#Transformer)
   * [`ts`](../../api_docs/python/contrib.graph_editor.md#ts)
 
+* **[Integrate (contrib)](../../api_docs/python/contrib.integrate.md)**:
+  * [`odeint`](../../api_docs/python/contrib.integrate.md#odeint)
+
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)
   * [`avg_pool2d`](../../api_docs/python/contrib.layers.md#avg_pool2d)

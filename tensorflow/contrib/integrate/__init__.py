@@ -22,10 +22,6 @@ We can use `odeint` to solve the
 differential equations, a prototypical example of chaotic dynamics:
 
 ```python
-import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
-
 rho = 28.0
 sigma = 10.0
 beta = 8.0/3.0

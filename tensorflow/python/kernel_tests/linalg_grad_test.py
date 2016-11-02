@@ -163,8 +163,19 @@ if __name__ == '__main__':
                 _GetMatrixUnaryFunctorGradientTest(tf.matrix_inverse,
                                                    dtype, shape))
         setattr(MatrixUnaryFunctorGradientTest,
-                'testMatrixUnaryFunctorGradient_' + name,
-                _GetMatrixUnaryFunctorGradientTest(tf.matrix_determinant,
-                                                   dtype, shape))
+                'testMatrixDeterminantGradient_' + name,
+                _GetMatrixUnaryFunctorGradientTest(tf.matrix_determinant, dtype,
+                                                   shape))
+
+  # Tests for gradients of matrix_solve_ls
+  for dtype in np.float32, np.float64:
+    for rows in 2, 5, 10:
+      for cols in 2, 5, 10:
+        for l2_regularization in 0.0, 0.001, 1.0:
+          shape = (rows, cols)
+          setattr(MatrixBinaryFunctorGradientTest,
+                  'testMatrixSolveLsGradient_' + name,
+                  _GetMatrixBinaryFunctorGradientTest(tf.matrix_solve_ls, dtype,
+                                                      shape))
 
   tf.test.main()
