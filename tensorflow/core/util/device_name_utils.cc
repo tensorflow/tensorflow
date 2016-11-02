@@ -142,6 +142,7 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
       progress = true;
     }
 
+    // Handle legacy naming convention for cpu and gpu.
     if (str_util::ConsumePrefix(&fullname, "/cpu:") ||
         str_util::ConsumePrefix(&fullname, "/CPU:")) {
       p->has_type = true;
@@ -156,16 +157,6 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
         str_util::ConsumePrefix(&fullname, "/GPU:")) {
       p->has_type = true;
       p->type = "GPU";  // Treat '/gpu:..' as uppercase '/device:GPU:...'
-      p->has_id = !str_util::ConsumePrefix(&fullname, "*");
-      if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
-        return false;
-      }
-      progress = true;
-    }
-    if (str_util::ConsumePrefix(&fullname, "/sycl:") ||
-        str_util::ConsumePrefix(&fullname, "/SYCL:")) {
-      p->has_type = true;
-      p->type = "SYCL";  // Treat '/sycl:..' as uppercase '/device:SYCL:...'
       p->has_id = !str_util::ConsumePrefix(&fullname, "*");
       if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
         return false;
