@@ -21,6 +21,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
@@ -149,7 +150,7 @@ def _ExitGrad(op, grad):
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)
   else:
-    if not isinstance(grad, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(grad, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(grad))
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)

@@ -29,6 +29,7 @@ from tensorflow.contrib.tensor_forest.python.ops import training_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -629,7 +630,7 @@ class RandomTreeGraphs(object):
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
-    if isinstance(input_data, ops.SparseTensor):
+    if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
       sparse_shape = input_data.shape
@@ -780,6 +781,7 @@ class RandomTreeGraphs(object):
            self.variables.accumulator_sums,
            self.variables.node_to_accumulator_map,
            stale,
+           self.variables.node_sums,
            regression=self.params.regression))
 
     # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has
@@ -881,7 +883,7 @@ class RandomTreeGraphs(object):
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
-    if isinstance(input_data, ops.SparseTensor):
+    if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
       sparse_shape = input_data.shape

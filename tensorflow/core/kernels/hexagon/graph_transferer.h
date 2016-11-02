@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
@@ -67,17 +68,25 @@ class GraphTransferer {
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
 
+  // Return op node parameters for transfer
+  const std::vector<NodeTransferParams>& GetOpNodeParams() const;
+
  private:
   int CacheNode(const Node& node);
   bool AreAllInputsCached(const Node& node) const;
   void RegisterConstantNode(const ShapeRefiner& shape_refiner,
                             const Node& node);
+  int RegisterConstantShape(const std::vector<int>& shape);
+  bool HasPaddingAndStrides(const Node& node);
+  void RegisterNodeWithPaddingAndStrides(const ShapeRefiner& shape_refiner,
+                                         const Node& node);
   void RegisterNode(const ShapeRefiner& shape_refiner, const Node& node);
   bool RegisterNodeIfAllInputsAreCached(const ShapeRefiner& shape_refiner,
                                         const Node& node,
                                         const bool only_register_const_node);
   void AppendNodeParams(const string& name, const int id, const string& type,
-                        const string& padding, const int inputs_size,
+                        const Padding& padding, const int inputs_size,
+                        const std::vector<int>& extra_inputs,
                         const int outputs_size);
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
       const shape_inference::ShapeHandle& shape_handle,

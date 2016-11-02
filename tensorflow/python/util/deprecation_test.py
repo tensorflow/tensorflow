@@ -20,8 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from tensorflow.contrib.framework.python.framework import deprecation
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 
 
 class DeprecationTest(tf.test.TestCase):

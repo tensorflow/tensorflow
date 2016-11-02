@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -166,7 +167,7 @@ class InitializableLookupTableBase(LookupInterface):
       name = "%s_lookup_table_find" % self._name
 
     key_tensor = keys
-    if isinstance(keys, ops.SparseTensor):
+    if isinstance(keys, sparse_tensor.SparseTensor):
       key_tensor = keys.values
 
     if keys.dtype != self._key_dtype:
@@ -181,8 +182,8 @@ class InitializableLookupTableBase(LookupInterface):
     # pylint: enable=protected-access
 
     values.set_shape(key_tensor.get_shape())
-    if isinstance(keys, ops.SparseTensor):
-      return ops.SparseTensor(keys.indices, values, keys.shape)
+    if isinstance(keys, sparse_tensor.SparseTensor):
+      return sparse_tensor.SparseTensor(keys.indices, values, keys.shape)
     else:
       return values
 

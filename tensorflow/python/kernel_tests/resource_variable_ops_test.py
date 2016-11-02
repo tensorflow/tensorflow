@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -45,6 +46,42 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       id_handle = array_ops.identity(handle)
       resource_variable_ops.create_variable_op(
           id_handle, constant_op.constant(0, dtype=dtypes.int32)).run()
+
+  def testCreateRead(self):
+    with self.test_session():
+      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+      resource_variable_ops.create_variable_op(
+          handle, constant_op.constant(1, dtype=dtypes.int32)).run()
+      value = resource_variable_ops.read_variable_op(
+          handle, dtype=dtypes.int32).eval()
+      self.assertAllEqual(1, value)
+
+  def testManyAssigns(self):
+    with self.test_session() as session:
+      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+      create = resource_variable_ops.create_variable_op(
+          handle, constant_op.constant(1, dtype=dtypes.int32))
+      with ops.control_dependencies([create]):
+        first_read = resource_variable_ops.read_variable_op(
+            handle, dtype=dtypes.int32)
+      with ops.control_dependencies([first_read]):
+        write = resource_variable_ops.assign_variable_op(
+            handle, constant_op.constant(2, dtype=dtypes.int32))
+      with ops.control_dependencies([write]):
+        second_read = resource_variable_ops.read_variable_op(
+            handle, dtype=dtypes.int32)
+      f, s = session.run([first_read, second_read])
+      self.assertEqual(f, 1)
+      self.assertEqual(s, 2)
+
+  def testAssignAdd(self):
+    with self.test_session():
+      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+      resource_variable_ops.create_variable_op(
+          handle, constant_op.constant(1, dtype=dtypes.int32)).run()
+      assign_add = resource_variable_ops.assign_add_variable_op(
+          handle, constant_op.constant(1, dtype=dtypes.int32))
+      self.assertEqual(assign_add.eval(), 2)
 
 
 if __name__ == "__main__":

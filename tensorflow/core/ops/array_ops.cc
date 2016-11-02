@@ -151,7 +151,7 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
         TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
       }
     }
-    if (!too_many_unknown) {
+    if (!too_many_unknown && c->Value(known_elems) != 0) {
       DimensionHandle inferred_dim;
       TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
                                    true /* evenly_divisible */, &inferred_dim));

@@ -75,6 +75,17 @@ Creates a `SparseTensor`.
 
 - - -
 
+#### `tf.SparseTensor.get_shape()` {#SparseTensor.get_shape}
+
+Get the `TensorShape` that represents the shape of the dense tensor.
+
+##### Returns:
+
+  A `TensorShape` object.
+
+
+- - -
+
 #### `tf.SparseTensor.indices` {#SparseTensor.indices}
 
 The indices of non-zero values in the represented dense tensor.
