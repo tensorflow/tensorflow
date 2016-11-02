@@ -49,10 +49,9 @@ class SavedModelBuilder(object):
 
   To build a SavedModel, the first meta graph must be saved with variables.
   Subsequent meta graphs will simply be saved with their graph definitions. If
-  assets need to be saved and written or copied to disk, they must be provided
-  as part of the first meta graph to be saved. Subsequent meta graphs can
-  provide a subset of the initial assets to be added to the SavedModel
-  definition.
+  assets need to be saved and written or copied to disk, they can be provided
+  when the meta graph def is added. If multiple meta graph defs are associated
+  an asset of the same name, only the first version is retained.
 
   Each meta graph added to the SavedModel must be annotated with tags. The tags
   provide a means to identify the specific meta graph to load and restore, along
