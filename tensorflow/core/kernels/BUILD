@@ -2138,6 +2138,7 @@ tf_cc_test(
     name = "scatter_nd_op_test",
     size = "small",
     srcs = ["scatter_nd_op_test.cc"],
+    tags = ["noasan"],  # http://b/32635055
     deps = [
         ":ops_testutil",
         ":ops_util",
