@@ -1,4 +1,4 @@
-### `tf.local_variables_initializer(*args, **kwargs)` {#local_variables_initializer}
+### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
 
 See `tf.local_variables_initializer`. (deprecated)
 

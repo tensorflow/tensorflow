@@ -1,4 +1,4 @@
-### `tf.global_variables_initializer(*args, **kwargs)` {#global_variables_initializer}
+### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
 
 See `tf.global_variables_initializer`. (deprecated)
 

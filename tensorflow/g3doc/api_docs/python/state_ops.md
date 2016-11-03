@@ -3539,7 +3539,7 @@ Please use tf.global_variables instead.
 
 - - -
 
-### `tf.global_variables_initializer(*args, **kwargs)` {#global_variables_initializer}
+### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
 
 See `tf.global_variables_initializer`. (deprecated)
 
@@ -3550,7 +3550,7 @@ Use `tf.global_variables_initializer` instead.
 
 - - -
 
-### `tf.local_variables_initializer(*args, **kwargs)` {#local_variables_initializer}
+### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
 
 See `tf.local_variables_initializer`. (deprecated)
 
