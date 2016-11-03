@@ -36,6 +36,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
@@ -69,6 +70,13 @@ AS_ITERABLE_INSTRUCTIONS = (
     'The default behavior of predict() is changing. The default value for\n'
     'as_iterable will change to True, and then the flag will be removed\n'
     'altogether. The behavior of this flag is described below.')
+SCIKIT_DECOUPLE_DATE = '2016-12-01'
+SCIKIT_DECOUPLE_INSTRUCTIONS = (
+    'Estimator is decoupled from Scikit Learn interface by moving into\n'
+    'separate class SKCompat. Arguments x, y and batch_size are only\n'
+    'available in the SKCompat class, Estimator will only accept input_fn.\n'
+    'Example conversion:\n'
+    '  est = Estimator(...) -> est = SKCompat(Estimator(...))')
 
 
 class ModeKeys(object):
@@ -386,6 +394,9 @@ class BaseEstimator(
     # TODO(wicke): make RunConfig immutable, and then return it without a copy.
     return copy.deepcopy(self._config)
 
+  @deprecated_args(
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+  )
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -409,6 +420,9 @@ class BaseEstimator(
     logging.info('Loss for final step: %s.', loss)
     return self
 
+  @deprecated_args(
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+  )
   def partial_fit(
       self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
       monitors=None):
@@ -450,6 +464,9 @@ class BaseEstimator(
     return self.fit(x=x, y=y, input_fn=input_fn, steps=steps,
                     batch_size=batch_size, monitors=monitors)
 
+  @deprecated_args(
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+  )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
       steps=None, metrics=None, name=None):
@@ -476,8 +493,10 @@ class BaseEstimator(
       eval_results.update({'global_step': global_step})
     return eval_results
 
-  @deprecated_arg_values(
-      AS_ITERABLE_DATE, AS_ITERABLE_INSTRUCTIONS, as_iterable=False)
+  @deprecated_args(
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'batch_size',
+      'as_iterable'
+  )
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
       as_iterable=True):
@@ -1132,3 +1151,53 @@ class Estimator(BaseEstimator):
     model_fn_ops = self._call_model_fn(features, labels, ModeKeys.INFER)
     return model_fn_ops.predictions
 
+
+# For time of deprecation x,y from Estimator allow direct access.
+# pylint: disable=protected-access
+class SKCompat(sklearn.BaseEstimator):
+  """Scikit learn wrapper for TensorFlow Learn Estimator."""
+
+  def __init__(self, estimator):
+    self._estimator = estimator
+
+  def fit(self, x, y, batch_size=128, steps=None, max_steps=None,
+          monitors=None):
+    if (steps is not None) and (max_steps is not None):
+      raise ValueError('Can not provide both steps and max_steps.')
+
+    input_fn, feed_fn = _get_input_fn(x, y, input_fn=None, feed_fn=None,
+                                      batch_size=batch_size, shuffle=True,
+                                      epochs=None)
+    loss = self._estimator._train_model(
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        steps=steps,
+        monitors=monitors,
+        max_steps=max_steps)
+    logging.info('Loss for final step: %s.', loss)
+    return self
+
+  def score(self, x, y, batch_size=128, steps=None, metrics=None):
+    input_fn, feed_fn = _get_input_fn(x, y, input_fn=None,
+                                      feed_fn=None, batch_size=batch_size,
+                                      shuffle=False, epochs=1)
+    if metrics is not None and not isinstance(metrics, dict):
+      raise ValueError('Metrics argument should be None or dict. '
+                       'Got %s.' % metrics)
+    eval_results, global_step = self._estimator._evaluate_model(
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        steps=steps,
+        metrics=metrics,
+        name='score')
+    if eval_results is not None:
+      eval_results.update({'global_step': global_step})
+    return eval_results
+
+  def predict(self, x, batch_size=128, outputs=None):
+    input_fn, feed_fn = _get_input_fn(
+        x, None, input_fn=None, feed_fn=None, batch_size=batch_size,
+        shuffle=False, epochs=1)
+    return self._estimator._infer_model(
+        input_fn=input_fn, feed_fn=feed_fn, outputs=outputs,
+        as_iterable=False)
