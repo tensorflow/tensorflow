@@ -110,19 +110,14 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const ops::Output& x,
   return Status::OK();
 }
 
-}  // namespace
-
 template <typename T>
-Status ComputeGradientError(const Scope& scope, const ops::Output& x,
-                            const TensorShape& x_shape, const ops::Output& y,
-                            const TensorShape& y_shape, T* max_error) {
+Status ComputeGradientErrorInternal(const Scope& scope, const ops::Output& x,
+                                    const TensorShape& x_shape,
+                                    const ops::Output& y,
+                                    const TensorShape& y_shape, Tensor* x_data,
+                                    T* max_error) {
   const int64 x_size = x_shape.num_elements();
   const int64 y_size = y_shape.num_elements();
-
-  // Initialize 'x_data' to random values.
-  Tensor x_data(x.type(), x_shape);
-  auto x_data_flat = x_data.flat<T>();
-  x_data_flat.setRandom();
 
   // Initialize theoretical Jacobian to zeros.
   Tensor jacobian_t(x.type(), {x_size, y_size});
@@ -131,7 +126,7 @@ Status ComputeGradientError(const Scope& scope, const ops::Output& x,
 
   // Compute theoretical Jacobian.
   TF_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose<T>(
-      scope, x, x_shape, x_data, y, y_shape, &jacobian_t));
+      scope, x, x_shape, *x_data, y, y_shape, &jacobian_t));
 
   // Initialize numeric Jacobian to zeros.
   Tensor jacobian_n(x.type(), {x_size, y_size});
@@ -140,7 +135,7 @@ Status ComputeGradientError(const Scope& scope, const ops::Output& x,
 
   // Compute numeric Jacobian.
   TF_RETURN_IF_ERROR(ComputeNumericJacobianTranspose<T>(
-      scope, x, x_shape, y, y_shape, 1e-3, &x_data, &jacobian_n));
+      scope, x, x_shape, y, y_shape, 1e-3, x_data, &jacobian_n));
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
@@ -154,10 +149,39 @@ Status ComputeGradientError(const Scope& scope, const ops::Output& x,
   return Status::OK();
 }
 
+}  // namespace
+
+template <typename T>
+Status ComputeGradientError(const Scope& scope, const ops::Output& x,
+                            const TensorShape& x_shape, const ops::Output& y,
+                            const TensorShape& y_shape, T* max_error) {
+  // Initialize 'x_data' to random values.
+  Tensor x_data(x.type(), x_shape);
+  auto x_data_flat = x_data.flat<T>();
+  x_data_flat.setRandom();
+  // Compute gradient error.
+  return ComputeGradientErrorInternal(scope, x, x_shape, y, y_shape, &x_data,
+                                      max_error);
+}
+
+template <typename T>
+Status ComputeGradientError(const Scope& scope, const ops::Output& x,
+                            const Tensor& x_init_value, const ops::Output& y,
+                            const TensorShape& y_shape, T* max_error) {
+  // Initialize 'x_data' from 'x_init_value'.
+  Tensor x_data(x_init_value);
+  // Compute gradient error.
+  return ComputeGradientErrorInternal(scope, x, x_data.shape(), y, y_shape,
+                                      &x_data, max_error);
+}
+
 #define INSTANTIATE_GRAD_ERR_TYPE(T)                                        \
   template Status ComputeGradientError<T>(                                  \
       const Scope& scope, const ops::Output& x, const TensorShape& x_shape, \
-      const ops::Output& y, const TensorShape& y_shape, T* max_error)
+      const ops::Output& y, const TensorShape& y_shape, T* max_error);      \
+  template Status ComputeGradientError<T>(                                  \
+      const Scope& scope, const ops::Output& x, const Tensor& x_init_value, \
+      const ops::Output& y, const TensorShape& y_shape, T* max_error);
 
 INSTANTIATE_GRAD_ERR_TYPE(float);
 INSTANTIATE_GRAD_ERR_TYPE(double);
