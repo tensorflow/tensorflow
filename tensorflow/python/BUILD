@@ -870,7 +870,10 @@ py_library(
 
 py_library(
     name = "gradients",
-    srcs = ["ops/gradients.py"],
+    srcs = [
+        "ops/gradients.py",
+        "ops/gradients_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_grad",

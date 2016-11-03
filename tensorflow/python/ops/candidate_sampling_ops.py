@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Wrappers for primitive Neural Net (NN) Operations."""
+"""Wrappers for candidate sampling operations."""
 
 from __future__ import absolute_import
 from __future__ import division

@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -66,8 +67,8 @@ def _OpsBetween(graph, to_ops, from_ops):
   # output ops as reached to avoid recursing past them.
   for op in to_ops:
     reached_ops[op._id] = True
-  gradients._MarkReachedOps(from_ops, reached_ops)
-  between_ops = gradients._GatherInputs(to_ops, reached_ops)
+  gradients_impl._MarkReachedOps(from_ops, reached_ops)
+  between_ops = gradients_impl._GatherInputs(to_ops, reached_ops)
   between_ops.sort(key=lambda x: -x._id)
   return between_ops
 
@@ -414,7 +415,7 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
         x = constant_op.constant(x_value)
         mat_x = math_ops.matmul(mat, x, name="Ax")
         x_mat_x = math_ops.matmul(array_ops.transpose(x), mat_x, name="xAx")
-        hess_v = gradients._hessian_vector_product(x_mat_x, [x], [v])[0]
+        hess_v = gradients_impl._hessian_vector_product(x_mat_x, [x], [v])[0]
         hess_v_actual = hess_v.eval()
       self.assertAllClose(hess_v_value, hess_v_actual)
 
