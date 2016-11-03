@@ -37,6 +37,7 @@ py_test(
     size = "medium",
     srcs = ["python/training/batch_sequences_with_states_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":training_py",
         "//tensorflow:tensorflow_py",
@@ -73,7 +74,10 @@ py_test(
     size = "small",
     srcs = ["python/training/sampling_ops_threading_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "manual",
+        "notsan",
+    ],
     deps = [
         ":training_py",
         "//tensorflow:tensorflow_py",
@@ -86,6 +90,7 @@ py_test(
     size = "medium",
     srcs = ["python/training/bucket_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":training_py",
         "//tensorflow:tensorflow_py",
