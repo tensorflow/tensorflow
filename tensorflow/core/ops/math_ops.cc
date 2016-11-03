@@ -976,7 +976,7 @@ REGISTER_OP("Select")
       c->set_output(0, data);
 
       return Status::OK();
-   })
+    })
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 
