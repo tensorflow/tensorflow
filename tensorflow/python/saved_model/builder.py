@@ -248,12 +248,6 @@ class SavedModelBuilder(object):
     proto_meta_graph_def = self._saved_model.meta_graphs.add()
     proto_meta_graph_def.CopyFrom(meta_graph_def)
 
-  def _maybe_clear_devices(self, clear_devices):
-    if not clear_devices:
-      return
-    for node in ops.get_default_graph().as_graph_def().node:
-      node.device = ""
-
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
@@ -287,8 +281,6 @@ class SavedModelBuilder(object):
           "Variables and assets have not been saved yet. "
           "Please invoke `add_meta_graph_and_variables()` first.")
 
-    self._maybe_clear_devices(clear_devices)
-
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
@@ -300,7 +292,7 @@ class SavedModelBuilder(object):
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
 
-    meta_graph_def = saver.export_meta_graph()
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -336,8 +328,6 @@ class SavedModelBuilder(object):
       raise AssertionError("Variables and assets have already been saved. "
                            "Please invoke `add_meta_graph()` instead.")
 
-    self._maybe_clear_devices(clear_devices)
-
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
@@ -361,7 +351,7 @@ class SavedModelBuilder(object):
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
     saver.save(sess, variables_path, write_meta_graph=False)
-    meta_graph_def = saver.export_meta_graph()
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
