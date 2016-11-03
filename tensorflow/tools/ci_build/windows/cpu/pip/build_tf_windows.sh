@@ -11,6 +11,10 @@
 #   - Anaconda3
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
 
+# All commands shall pass, and all should be visible.
+set -x
+set -e
+
 # This script is under <repo_root>/tensorflow/tools/ci_build/windows/cpu/pip/
 # Change into repository root.
 script_dir=$(dirname $0)
