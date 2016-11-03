@@ -2844,3 +2844,175 @@ Returns the difference between the `x` and `y` treated as sets.
   A `Tensor` that is of type `index_dtype` representing indices from .
 
 
+
+## Fake quantization
+Operations used to help train for better quantization accuracy.
+
+- - -
+
+### `tf.fake_quant_with_min_max_args(inputs, min=None, max=None, name=None)` {#fake_quant_with_min_max_args}
+
+Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+
+Attributes [min; max] define the clamping range for the 'inputs' data.  Op
+divides this range into 255 steps (total of 256 values), then replaces each
+'inputs' value with the closest of the quantized step values.
+
+Quantization is called fake since the output is still in floating point.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+*  <b>`min`</b>: An optional `float`. Defaults to `-6`.
+*  <b>`max`</b>: An optional `float`. Defaults to `6`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`.
+
+
+- - -
+
+### `tf.fake_quant_with_min_max_args_gradient(gradients, inputs, min=None, max=None, name=None)` {#fake_quant_with_min_max_args_gradient}
+
+Compute gradients for a FakeQuantWithMinMaxArgs operation.
+
+##### Args:
+
+
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
+    Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+    Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
+*  <b>`min`</b>: An optional `float`. Defaults to `-6`.
+*  <b>`max`</b>: An optional `float`. Defaults to `6`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`.
+  Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
+  `gradients * (inputs >= min && inputs <= max)`.
+
+
+- - -
+
+### `tf.fake_quant_with_min_max_vars(inputs, min, max, name=None)` {#fake_quant_with_min_max_vars}
+
+Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+
+global float scalars `min` and `max` to 'outputs' tensor of same shape as
+`inputs`.
+
+[min; max] is the clamping range for the 'inputs' data.  Op divides this range
+into 255 steps (total of 256 values), then replaces each 'inputs' value with the
+closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`.
+
+
+- - -
+
+### `tf.fake_quant_with_min_max_vars_gradient(gradients, inputs, min, max, name=None)` {#fake_quant_with_min_max_vars_gradient}
+
+Compute gradients for a FakeQuantWithMinMaxVars operation.
+
+##### Args:
+
+
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
+    Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+    Values passed as inputs to the FakeQuantWithMinMaxVars operation.
+    min, max: Quantization interval, scalar floats.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
+
+*  <b>`backprops_wrt_input`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. inputs:
+    `gradients * (inputs >= min && inputs <= max)`.
+*  <b>`backprop_wrt_min`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. min parameter:
+    `sum(gradients * (inputs < min))`.
+*  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter:
+    `sum(gradients * (inputs > max))`.
+
+
+- - -
+
+### `tf.fake_quant_with_min_max_vars_per_channel(inputs, min, max, name=None)` {#fake_quant_with_min_max_vars_per_channel}
+
+Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+
+`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
+to 'outputs' tensor of same shape as `inputs`.
+
+[min; max] is the clamping range for the 'inputs' data in the corresponding
+depth channel.  Op divides this range into 255 steps (total of 256 values), then
+replaces each 'inputs' value with the closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`.
+
+
+- - -
+
+### `tf.fake_quant_with_min_max_vars_per_channel_gradient(gradients, inputs, min, max, name=None)` {#fake_quant_with_min_max_vars_per_channel_gradient}
+
+Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
+
+##### Args:
+
+
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
+    Backpropagated gradients above the FakeQuantWithMinMaxVars operation,
+    shape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+    Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
+      same as `gradients`.
+    min, max: Quantization interval, floats of shape `[d]`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
+
+*  <b>`backprops_wrt_input`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. inputs, shape same as
+    `inputs`:
+      `gradients * (inputs >= min && inputs <= max)`.
+*  <b>`backprop_wrt_min`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. min parameter, shape `[d]`:
+    `sum_per_d(gradients * (inputs < min))`.
+*  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter, shape `[d]`:
+    `sum_per_d(gradients * (inputs > max))`.
+
+
