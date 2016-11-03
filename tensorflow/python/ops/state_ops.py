@@ -22,15 +22,15 @@
 TensorFlow provides a set of functions to help manage the set of variables
 collected in the graph.
 
-@@all_variables
-@@trainable_variables
+@@global_variables
 @@local_variables
 @@model_variables
+@@trainable_variables
 @@moving_average_variables
 
-@@initialize_all_variables
-@@initialize_variables
-@@initialize_local_variables
+@@global_variables_initializer
+@@local_variables_initializer
+@@variables_initializer
 @@is_variable_initialized
 @@report_uninitialized_variables
 @@assert_variables_initialized
@@ -112,6 +112,13 @@ automatically by the optimizers in most cases.
 
 @@export_meta_graph
 @@import_meta_graph
+
+# Deprecated functions (removed after 2017-03-02). Please don't use them.
+
+@@all_variables
+@@initialize_all_variables
+@@initialize_local_variables
+@@initialize_variables
 
 """
 

@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import decorator_utils
 
 
 def _override_helper(clazz_object, operator, func):
@@ -3823,10 +3824,18 @@ class GraphKeys(object):
 
   The following standard keys are defined:
 
-  * `VARIABLES`: the `Variable` objects that comprise a model, and
-    must be saved and restored together. See
-    [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+  * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+    across distributed environment (model variables are subset of these). See
+    [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
     for more details.
+    Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+    and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+  * `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+    machine. Usually used for temporarily variables, like counters.
+    Note: use `tf.contrib.framework.local_variable` to add to this collection.
+  * `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+    model for inference (feed forward). Note: use
+    `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
     [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
@@ -3850,16 +3859,17 @@ class GraphKeys(object):
   * `ACTIVATIONS`: activations of neural network layers
   """
 
-  # Key to collect Variable objects that must be saved and restored
-  # by the model.
-  VARIABLES = "variables"
-  # Key to collect Variable objects that will be trained by the
-  # optimizers.
-  TRAINABLE_VARIABLES = "trainable_variables"
-  # Key to collect local variables that are not saved/restored.
+  # Key to collect Variable objects that are global (shared across machines).
+  # Default collection for all variables, except local ones.
+  GLOBAL_VARIABLES = "variables"
+  # Key to collect local variables that are local to the machine and are not
+  # saved/restored.
   LOCAL_VARIABLES = "local_variables"
   # Key to collect model variables defined by layers.
   MODEL_VARIABLES = "model_variables"
+  # Key to collect Variable objects that will be trained by the
+  # optimizers.
+  TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.
@@ -3908,6 +3918,13 @@ class GraphKeys(object):
   # Key for control flow context.
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
+
+  @decorator_utils.classproperty
+  def VARIABLES(cls):  # pylint: disable=no-self-argument
+    logging.warning("VARIABLES collection name is deprecated, "
+                    "please use GLOBAL_VARIABLES instead.\n"
+                    "VARIABLES will be removed after 2017-03-02.")
+    return cls.GLOBAL_VARIABLES
 
 
 def add_to_collection(name, value):

@@ -36,7 +36,7 @@ class LocalVariableTest(tf.test.TestCase):
       variables = tf.local_variables()
       self.assertEquals(2, len(variables))
       self.assertRaises(tf.OpError, sess.run, variables)
-      tf.initialize_variables(variables).run()
+      tf.variables_initializer(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
   def testLocalVariableNameAndShape(self):
@@ -51,7 +51,7 @@ class LocalVariableTest(tf.test.TestCase):
     with self.test_session():
       with tf.variable_scope('A'):
         a = tf.contrib.framework.local_variable(0)
-        self.assertFalse(a in tf.all_variables())
+        self.assertFalse(a in tf.global_variables())
         self.assertTrue(a in tf.local_variables())
 
   def testLocalVariableNotInVariablesToRestore(self):
@@ -82,7 +82,7 @@ class LocalVariableTest(tf.test.TestCase):
   def testInitializedVariableValue(self):
     with self.test_session() as sess:
       a = tf.contrib.framework.local_variable([0, 0, 0, 0, 0], name='a')
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAllEqual(a.eval(), [0]*5)
 
 
@@ -439,7 +439,7 @@ class ModelVariablesTest(tf.test.TestCase):
     with self.test_session():
       with tf.variable_scope('A'):
         a = tf.contrib.framework.model_variable('a', [5])
-        self.assertTrue(a in tf.all_variables())
+        self.assertTrue(a in tf.global_variables())
         self.assertTrue(a in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES))
         self.assertFalse(a in tf.local_variables())
 
@@ -474,7 +474,7 @@ class ModelVariablesTest(tf.test.TestCase):
     with self.test_session() as sess:
       a = tf.contrib.framework.model_variable(
           'a', [5], initializer=tf.ones_initializer)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertAllEqual(a.eval(), [1]*5)
 
   def testDeviceFn(self):
@@ -667,7 +667,7 @@ class AssignFromValuesTest(tf.test.TestCase):
           var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(assign_op, feed_dict)
@@ -697,7 +697,7 @@ class AssignFromValuesTest(tf.test.TestCase):
           var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(assign_op, feed_dict)
@@ -725,7 +725,7 @@ class AssignFromValuesFnTest(tf.test.TestCase):
       init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -754,7 +754,7 @@ class AssignFromValuesFnTest(tf.test.TestCase):
       init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -786,7 +786,7 @@ class AssignFromCheckpointTest(tf.test.TestCase):
         var_value = var_names_to_values[var_name]
         var_list.append(tf.Variable(var_value, name=var_name))
       saver = tf.train.Saver(var_list)
-      init_op = tf.initialize_variables(var_list)
+      init_op = tf.variables_initializer(var_list)
       sess.run(init_op)
       # Save the initialized values in the file at 'checkpoint_dir'
       return saver.save(sess, checkpoint_dir, global_step=global_step)
@@ -808,7 +808,7 @@ class AssignFromCheckpointTest(tf.test.TestCase):
           model_path, vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(op, feed_dict)
@@ -859,7 +859,7 @@ class AssignFromCheckpointTest(tf.test.TestCase):
           vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(op, feed_dict)
@@ -890,7 +890,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
         var_value = var_names_to_values[var_name]
         var_list.append(tf.Variable(var_value, name=var_name))
       saver = tf.train.Saver(var_list)
-      init_op = tf.initialize_variables(var_list)
+      init_op = tf.variables_initializer(var_list)
       sess.run(init_op)
       # Save the initialized values in the file at 'checkpoint_dir'
       return saver.save(sess, checkpoint_dir, global_step=global_step)
@@ -912,7 +912,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           model_path, vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -938,7 +938,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           model_path, vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       with self.assertRaises(tf.errors.InvalidArgumentError):
@@ -961,7 +961,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           model_path, vars_to_restore, reshape_variables=True)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -989,7 +989,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       with self.assertRaises(tf.errors.NotFoundError):
@@ -1015,7 +1015,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           ignore_missing_vars=True)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -1044,7 +1044,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           ignore_missing_vars=True)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
