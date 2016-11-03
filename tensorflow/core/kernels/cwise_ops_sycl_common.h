@@ -42,7 +42,7 @@ template <typename Functor>
 struct UnaryFunctor<SYCLDevice, Functor> {
   void operator()(const SYCLDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(typename Functor::func());
+    LOG(FATAL) << "UnaryFunctor::operator() NOT IMPLEMENTED ! ";
   }
 };
 
@@ -64,11 +64,7 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
   void Right(const SYCLDevice& d, typename Functor::tout_type out,
              typename Functor::tin_type in,
              typename Functor::tscalar_type scalar, bool* error) {
-    typedef typename Functor::out_type Tout;
-    typedef typename Functor::in_type Tin;
-    typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
-    Assign(d, out, in.unaryExpr(Unary(scalar.data())));
+    LOG(FATAL) << "BinaryFunctor::Right NOT IMPLEMENTED ! ";
   }
 
   void BCast(const SYCLDevice& d,
