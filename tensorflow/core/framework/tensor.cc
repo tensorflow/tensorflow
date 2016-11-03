@@ -717,6 +717,7 @@ string SummarizeArray(int64 limit, int64 num_elts, const TensorShape& tensor_sha
 
   int64 data_index = 0;
   const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
+  if (shape.size() == 0) return "";
   const int shape_size = tensor_shape.dims();
   PrintOneDim(0, shape, limit, shape_size, 
               array, &data_index, &ret);  
