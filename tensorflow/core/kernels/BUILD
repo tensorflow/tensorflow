@@ -2592,7 +2592,7 @@ filegroup(
             "debug_ops.*",
             # Ops excluded because they do not build correctly for Android.
             # See b/29213790
-            "scatter_nd_op.*",
+            "scatter_nd_op*",
             "sparse_matmul_op.*",
         ],
     ),
