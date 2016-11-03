@@ -131,7 +131,7 @@ class ReluTest(tf.test.TestCase):
       loss = y**2
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.25)
       train_op = optimizer.minimize(loss)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(train_op)
       self.assertAllClose(x.eval(), 50.0)
 

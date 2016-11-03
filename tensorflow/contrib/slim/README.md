@@ -833,8 +833,8 @@ names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
 num_batches = 1000
 
 with tf.Session() as sess:
-  sess.run(tf.initialize_all_variables())
-  sess.run(tf.initialize_local_variables())
+  sess.run(tf.global_variables_initializer())
+  sess.run(tf.local_variables_initializer())
 
   for batch_id in range(num_batches):
     sess.run(names_to_updates.values())

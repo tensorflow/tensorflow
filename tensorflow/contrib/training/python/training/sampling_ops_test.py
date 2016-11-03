@@ -236,7 +236,7 @@ class StratifiedSampleTest(tf.test.TestCase):
     label_l = []
     with self.test_session() as sess:
       # Need to initialize variables that keep running total of classes seen.
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(coord=coord)

@@ -810,7 +810,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
       state0_grad = tf.gradients([vout], [state0], [grad_val])[0]
       var_grad = tf.gradients([vout], [var], [grad_val])[0]
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       state0_t, var_t, v0_t, vout_t, v0_grad_t, var_grad_t, state0_grad_t = (
           session.run([state0, var, v0, vout, v0_grad, var_grad, state0_grad]))
       just_v0_grad_t, = session.run([v0_grad])

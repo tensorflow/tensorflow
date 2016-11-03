@@ -564,7 +564,7 @@ For example,
 import tensorflow as tf
 A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
 with tf.Session() as sess:
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
 
   op = A[:2,:2].assign(22. * tf.ones((2, 2)))
@@ -3539,7 +3539,7 @@ Please use tf.global_variables instead.
 
 - - -
 
-### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
+### `tf.global_variables_initializer(*args, **kwargs)` {#global_variables_initializer}
 
 See `tf.global_variables_initializer`. (deprecated)
 
@@ -3550,7 +3550,7 @@ Use `tf.global_variables_initializer` instead.
 
 - - -
 
-### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
+### `tf.local_variables_initializer(*args, **kwargs)` {#local_variables_initializer}
 
 See `tf.local_variables_initializer`. (deprecated)
 

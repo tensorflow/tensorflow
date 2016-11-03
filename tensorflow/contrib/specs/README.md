@@ -166,7 +166,7 @@ use the `specs.ops` context manager, which will temporarily make the
     outputs = net.funcall(inputs)
 
     sess = tf.InteractiveSession()
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     sess.run([outputs], feed_dict={inputs: npr.uniform(size=(17, 28, 28, 1))})
 
 # Sharing and Variables

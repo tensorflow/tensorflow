@@ -31,7 +31,7 @@ class MovingAveragesTest(tf.test.TestCase):
       val = tf.constant([1.0, 2.0], tf.float32)
       decay = 0.25
       assign = moving_averages.assign_moving_average(var, val, decay)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
       assign.op.run()
       self.assertAllClose([10.0 * 0.25 + 1.0 * (1.0 - 0.25),
@@ -45,7 +45,7 @@ class MovingAveragesTest(tf.test.TestCase):
       val = tf.placeholder(tf.float32, [])
 
       wma = moving_averages.weighted_moving_average(val, decay, weight)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Get the first weighted moving average.
       val_1 = 3.0
@@ -79,7 +79,7 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     thirties = _Repeat(30.0, dim)
     var0 = tf.Variable(tens, name="v0")
     var1 = tf.Variable(thirties, name="v1")
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     # Note that tensor2 is not a Variable but just a plain Tensor resulting
     # from the sum operation.
     tensor2 = var0 + var1
@@ -93,7 +93,7 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     self.assertFalse(avg0 in tf.trainable_variables())
     self.assertFalse(avg1 in tf.trainable_variables())
     self.assertFalse(avg2 in tf.trainable_variables())
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
 
     self.assertEqual("v0/ExponentialMovingAverage:0", avg0.name)
     self.assertEqual("v1/ExponentialMovingAverage:0", avg1.name)

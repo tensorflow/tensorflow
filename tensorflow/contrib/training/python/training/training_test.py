@@ -65,7 +65,7 @@ class CreateTrainOpTest(tf.test.TestCase):
 
       with tf.Session() as sess:
         # Initialize all variables
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         mean, variance = sess.run([moving_mean, moving_variance])
         # After initialization moving_mean == 0 and moving_variance == 1.
         self.assertAllClose(mean, [0] * 4)
@@ -100,7 +100,7 @@ class CreateTrainOpTest(tf.test.TestCase):
 
       with tf.Session() as sess:
         # Initialize all variables
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         mean, variance = sess.run([moving_mean, moving_variance])
         # After initialization moving_mean == 0 and moving_variance == 1.
         self.assertAllClose(mean, [0] * 4)
@@ -414,7 +414,7 @@ class TrainTest(tf.test.TestCase):
 
       with tf.Session() as sess:
         # Initialize the variables.
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
 
         # Get the intial weights and biases values.
         weights_values, biases_values = sess.run([weights, biases])

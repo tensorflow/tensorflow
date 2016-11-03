@@ -311,7 +311,7 @@ class MutableHashTableOpTest(tf.test.TestCase):
           tf.string, tf.int64, default_val, name="t1", checkpoint=True)
 
       save = tf.train.Saver()
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Check that the parameter nodes have been initialized.
       self.assertEqual(10.0, v0.eval())

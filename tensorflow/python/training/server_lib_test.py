@@ -85,7 +85,7 @@ class GrpcServerTest(tf.test.TestCase):
     # the same results.
     sess_1 = tf.Session(server.target)
     sess_2 = tf.Session(server.target)
-    sess_1.run(tf.initialize_all_variables())
+    sess_1.run(tf.global_variables_initializer())
     self.assertAllEqual([[4]], sess_1.run(v2))
     self.assertAllEqual([[4]], sess_2.run(v2))
 
@@ -100,7 +100,7 @@ class GrpcServerTest(tf.test.TestCase):
     with self.assertRaises(tf.errors.FailedPreconditionError):
       sess_2.run(v2)
     # Reinitializes the variables.
-    sess_2.run(tf.initialize_all_variables())
+    sess_2.run(tf.global_variables_initializer())
     self.assertAllEqual([[4]], sess_2.run(v2))
     sess_2.close()
 
@@ -155,7 +155,7 @@ class GrpcServerTest(tf.test.TestCase):
       v1 = tf.Variable(2.0, name="v0")
     server = tf.train.Server.create_local_server()
     sess = tf.Session(server.target)
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     self.assertAllEqual(1.0, sess.run(v0))
     self.assertAllEqual(2.0, sess.run(v1))
 
@@ -193,7 +193,7 @@ class GrpcServerTest(tf.test.TestCase):
     # Verifies no containers are reset with non-existent container.
     server = tf.train.Server.create_local_server()
     sess = tf.Session(server.target)
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     self.assertAllEqual(1.0, sess.run(v0))
     self.assertAllEqual(2.0, sess.run(v1))
     # No container is reset, but the server is reset.

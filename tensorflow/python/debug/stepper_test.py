@@ -38,7 +38,7 @@ class StepperTest(test_util.TensorFlowTestCase):
     self.f = tf.div(self.b, 0.30, name="f")  # Should be 20.0.
 
     self.sess = tf.Session()
-    self.sess.run(tf.initialize_all_variables())
+    self.sess.run(tf.global_variables_initializer())
 
   def tearDown(self):
     tf.reset_default_graph()
@@ -380,7 +380,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     tf.train.GradientDescentOptimizer(0.01).minimize(self.f, name="optim")
 
     self.sess = tf.Session()
-    self.sess.run(tf.initialize_all_variables())
+    self.sess.run(tf.global_variables_initializer())
 
   def tearDown(self):
     tf.reset_default_graph()

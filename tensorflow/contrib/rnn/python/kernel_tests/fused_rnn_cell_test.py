@@ -41,7 +41,7 @@ class FusedRnnCellTest(tf.test.TestCase):
         packed_outputs = tf.pack(outputs)
         basic_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("basic/")]
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([packed_outputs, state])
         basic_grads = sess.run(tf.gradients(packed_outputs, inputs))
         basic_wgrads = sess.run(tf.gradients(packed_outputs, basic_vars))
@@ -51,7 +51,7 @@ class FusedRnnCellTest(tf.test.TestCase):
         outputs, state = fused_cell(inputs, dtype=tf.float64)
         fused_static_vars = [v for v in tf.trainable_variables()
                              if v.name.startswith("fused_static/")]
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         fused_static_outputs, fused_static_state = sess.run([outputs, state])
         fused_static_grads = sess.run(tf.gradients(outputs, inputs))
         fused_static_wgrads = sess.run(tf.gradients(outputs, fused_static_vars))
@@ -68,7 +68,7 @@ class FusedRnnCellTest(tf.test.TestCase):
         outputs, state = fused_cell(inputs, dtype=tf.float64)
         fused_dynamic_vars = [v for v in tf.trainable_variables()
                               if v.name.startswith("fused_dynamic/")]
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         fused_dynamic_outputs, fused_dynamic_state = sess.run([outputs, state])
         fused_dynamic_grads = sess.run(tf.gradients(outputs, inputs))
         fused_dynamic_wgrads = sess.run(
@@ -97,7 +97,7 @@ class FusedRnnCellTest(tf.test.TestCase):
         packed_outputs = tf.pack(outputs)
         basic_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("basic/")]
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         basic_outputs, basic_fw_state, basic_bw_state = sess.run(
             [packed_outputs, fw_state, bw_state])
         basic_grads = sess.run(tf.gradients(packed_outputs, inputs))
@@ -112,7 +112,7 @@ class FusedRnnCellTest(tf.test.TestCase):
         outputs = tf.concat(2, [fw_outputs, bw_outputs])
         fused_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("fused/")]
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         fused_outputs, fused_fw_state, fused_bw_state = sess.run(
             [outputs, fw_state, bw_state])
         fused_grads = sess.run(tf.gradients(outputs, inputs))

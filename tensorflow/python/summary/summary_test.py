@@ -45,7 +45,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       c = tf.constant(42.0)
       v = tf.Variable(c)
       ss = tf.summary.scalar('summary', v)
-      init = tf.initialize_all_variables()
+      init = tf.global_variables_initializer()
       s.run(init)
       summ_str = s.run(ss)
     summary = tf.Summary()

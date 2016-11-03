@@ -81,8 +81,8 @@ class MultiClassTargetColumnTest(tf.test.TestCase):
       eval_dict = target_column.get_eval_ops({}, logits, labels)
       # TODO(zakaria): test all metrics
       accuracy_op, update_op = eval_dict["accuracy/threshold_0.500000_mean"]
-      sess.run(tf.initialize_all_variables())
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.global_variables_initializer())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertAlmostEqual(1.0 / 3, sess.run(accuracy_op))
 
@@ -123,8 +123,8 @@ class MultiClassTargetColumnTest(tf.test.TestCase):
       labels = tf.constant([2])
       eval_dict = target_column.get_eval_ops({}, logits, labels)
       loss_op, update_op = eval_dict["loss"]
-      sess.run(tf.initialize_all_variables())
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.global_variables_initializer())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))

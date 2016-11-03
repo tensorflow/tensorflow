@@ -82,7 +82,7 @@ the [Variables How To](../../how_tos/variables/index.md).
 # Use random uniform values in [0, 1) as the initializer for a variable of shape
 # [2, 3]. The default type is float32.
 var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 sess = tf.Session()
 sess.run(init)

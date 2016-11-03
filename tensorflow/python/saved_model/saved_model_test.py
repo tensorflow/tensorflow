@@ -40,7 +40,7 @@ class SavedModelTest(tf.test.TestCase):
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = tf.Variable(variable_value, name=variable_name)
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     self.assertEqual(variable_value, v.eval())
 
   def _build_asset_collection(self, asset_file_name, asset_file_contents,
@@ -259,7 +259,7 @@ class SavedModelTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       v = tf.Variable(42, name="v")
       tf.add_to_collection("foo_vars", v)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(42, v.eval())
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
@@ -269,7 +269,7 @@ class SavedModelTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       v = tf.Variable(43, name="v")
       tf.add_to_collection("bar_vars", v)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(43, v.eval())
       builder.add_meta_graph(["bar"])
 
@@ -405,7 +405,7 @@ class SavedModelTest(tf.test.TestCase):
       assign_v3 = tf.assign(v3, tf.add(v1, v2))
       legacy_init_op = tf.group(assign_v3, name="legacy_init_op")
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       builder.add_meta_graph_and_variables(
           sess, ["foo"], legacy_init_op=legacy_init_op)
 
@@ -533,7 +533,7 @@ class SavedModelTest(tf.test.TestCase):
       tf.add_to_collection("v", v3)
       tf.add_to_collection("init_op", init_op)
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(1, tf.get_collection("v")[0].eval())
       self.assertEqual(2, tf.get_collection("v")[1].eval())
 

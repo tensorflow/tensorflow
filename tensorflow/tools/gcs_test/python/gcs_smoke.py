@@ -148,8 +148,8 @@ if __name__ == "__main__":
     _, serialized_example = reader.read(filename_queue)
 
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.global_variables_initializer())
+      sess.run(tf.local_variables_initializer())
       tf.train.start_queue_runners()
       index = 0
       for _ in range(FLAGS.num_examples):

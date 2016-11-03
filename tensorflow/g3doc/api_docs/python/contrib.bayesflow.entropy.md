@@ -36,7 +36,7 @@ loss = -elbo
 
 # Minimize the loss
 train_op = tf.train.GradientDescentOptimizer(0.1).minimize(loss)
-tf.initialize_all_variables().run()
+tf.global_variables_initializer().run()
 for step in range(100):
   train_op.run()
 ```

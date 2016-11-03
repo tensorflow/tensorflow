@@ -32,7 +32,7 @@ class OptimizerTest(tf.test.TestCase):
         sgd_op = tf.train.GradientDescentOptimizer(3.0)
         opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
@@ -56,7 +56,7 @@ class OptimizerTest(tf.test.TestCase):
             [var0, var1],
             aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
@@ -79,7 +79,7 @@ class OptimizerTest(tf.test.TestCase):
                                  global_step, [var0, var1],
                                  grad_loss=grad_loss)
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
@@ -129,7 +129,7 @@ class OptimizerTest(tf.test.TestCase):
         converted_grads_and_vars = list(zip(converted_grads, [var0, var1]))
         opt_op = sgd_op.apply_gradients(converted_grads_and_vars, global_step)
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Run convert_ops to achieve the gradietns converting
         sess.run(convert_ops)
         # Fetch params to validate initial values

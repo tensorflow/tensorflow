@@ -83,7 +83,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createStackBidirectionalRNN(use_gpu, use_shape, True))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # Run with pre-specified sequence lengths of 2, 3.
       out, s_fw, s_bw = sess.run([outputs, state_fw, state_bw],
                                  feed_dict={inputs[0]: input_value,
@@ -150,7 +150,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createStackBidirectionalRNN(use_gpu, True, True,
               initial_states_fw, initial_states_bw))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Run 3 steps.
       feed_dict = {inputs[0]: input_value, sequence_length: [3, 2]}
@@ -249,7 +249,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createStackBidirectionalDynamicRNN(use_gpu, use_shape,
                                                    use_state_tuple))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # Run with pre-specified sequence length of 2, 3
       out, s_fw, s_bw = sess.run([outputs, state_fw, state_bw],
                                  feed_dict={inputs[0]: input_value,
@@ -321,7 +321,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
               use_state_tuple=False,
               initial_states_fw=initial_states_fw,
               initial_states_bw=initial_states_bw))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Run 3 steps.
       feed_dict = {inputs[0]: input_value, sequence_length: [3, 2]}
@@ -381,7 +381,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
         factory(prefix)
 
       # check that all the variables names starts with the proper scope.
-      tf.initialize_all_variables()
+      tf.global_variables_initializer()
       all_vars = tf.all_variables()
       prefix = prefix or "StackRNN"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]

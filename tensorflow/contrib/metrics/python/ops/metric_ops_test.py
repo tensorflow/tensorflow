@@ -166,7 +166,7 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(4):
         sess.run(update_op)
       self.assertAlmostEqual(1.65, sess.run(mean), 5)
@@ -182,7 +182,7 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAlmostEqual(0.5, sess.run(update_op), 5)
       self.assertAlmostEqual(1.475, sess.run(update_op), 5)
@@ -211,7 +211,7 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values, weights)
 
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       for _ in range(4):
         update_op.eval()
       self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
@@ -237,7 +237,7 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values, weights)
 
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       for i in range(4):
         update_op.eval(feed_dict={values: feed_values[i]})
       self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
@@ -262,7 +262,7 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values, weights)
 
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       for _ in range(4):
         update_op.eval()
       self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
@@ -288,7 +288,7 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values, weights)
 
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       for i in range(4):
         update_op.eval(feed_dict={values: feed_values[i]})
       self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
@@ -324,7 +324,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean_tensor(values)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[-0.9/4., 3.525]], sess.run(mean))
@@ -344,7 +344,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean_tensor(values)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(2):
         sess.run(update_op)
       self.assertAllClose([[[1, 2], [1, 2]], [[2, 3], [5, 6]]],
@@ -361,7 +361,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean_tensor(values)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAllClose([[0, 1]], sess.run(update_op), 5)
       self.assertAllClose([[-2.1, 5.05]], sess.run(update_op), 5)
@@ -390,7 +390,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean_tensor(values, weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
@@ -415,7 +415,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean_tensor(values, weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[-2.1, 0.5]], sess.run(mean), 5)
@@ -440,7 +440,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean_tensor(values, weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[0, 0.5]], sess.run(mean), 5)
@@ -487,7 +487,7 @@ class StreamingAccuracyTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -519,7 +519,7 @@ class StreamingAccuracyTest(tf.test.TestCase):
       accuracy, update_op = metrics.streaming_accuracy(
           predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in xrange(3):
         sess.run(update_op)
       self.assertEqual(0.5, sess.run(update_op))
@@ -532,7 +532,7 @@ class StreamingAccuracyTest(tf.test.TestCase):
       accuracy, update_op = metrics.streaming_accuracy(
           predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
@@ -545,7 +545,7 @@ class StreamingAccuracyTest(tf.test.TestCase):
       accuracy, update_op = metrics.streaming_accuracy(
           predictions, labels, weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       # if streaming_accuracy does not flatten the weight, accuracy would be
       # 0.33333334 due to an intended broadcast of weight. Due to flattening,
       # it will be higher than .95
@@ -564,7 +564,7 @@ class StreamingAccuracyTest(tf.test.TestCase):
       accuracy, update_op = metrics.streaming_accuracy(
           predictions, labels, weights_placeholder)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       # if streaming_accuracy does not flatten the weight, accuracy would be
       # 0.33333334 due to an intended broadcast of weight. Due to flattening,
       # it will be higher than .95
@@ -600,7 +600,7 @@ class StreamingAccuracyTest(tf.test.TestCase):
       accuracy, update_op = metrics.streaming_accuracy(
           predictions, labels, weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in xrange(3):
         sess.run(update_op)
       self.assertEqual(1.0, sess.run(update_op))
@@ -636,7 +636,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -656,7 +656,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(1, sess.run(update_op))
       self.assertAlmostEqual(1, precision.eval())
 
@@ -667,7 +667,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, precision.eval())
 
@@ -678,7 +678,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels, weights=tf.constant([[2], [5]]))
 
     with self.test_session():
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       weighted_tp = 2.0 + 5.0
       weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
       expected_precision = weighted_tp / weighted_positives
@@ -696,7 +696,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels, weights=tf.constant([[2], [5]]))
 
     with self.test_session():
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       weighted_tp = 2.0 + 5.0
       weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
       expected_precision = weighted_tp / weighted_positives
@@ -712,7 +712,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels, weights=tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
 
     with self.test_session():
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       weighted_tp = 3.0 + 4.0
       weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
       expected_precision = weighted_tp / weighted_positives
@@ -730,7 +730,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels, weights=tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
 
     with self.test_session():
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       weighted_tp = 3.0 + 4.0
       weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
       expected_precision = weighted_tp / weighted_positives
@@ -748,7 +748,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertAlmostEqual(0, precision.eval())
 
@@ -759,7 +759,7 @@ class StreamingPrecisionTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertEqual(0.0, precision.eval())
 
@@ -793,7 +793,7 @@ class StreamingRecallTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -812,7 +812,7 @@ class StreamingRecallTest(tf.test.TestCase):
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertEqual(1, recall.eval())
 
@@ -822,7 +822,7 @@ class StreamingRecallTest(tf.test.TestCase):
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, recall.eval())
 
@@ -834,7 +834,7 @@ class StreamingRecallTest(tf.test.TestCase):
         predictions, labels, weights=weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       weighted_tp = 2.0 + 5.0
       weighted_t = (2.0 + 2.0) + (5.0 + 5.0)
       expected_precision = weighted_tp / weighted_t
@@ -849,7 +849,7 @@ class StreamingRecallTest(tf.test.TestCase):
         predictions, labels, weights=weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       weighted_tp = 3.0 + 1.0
       weighted_t = (2.0 + 3.0) + (4.0 + 1.0)
       expected_precision = weighted_tp / weighted_t
@@ -864,7 +864,7 @@ class StreamingRecallTest(tf.test.TestCase):
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertEqual(0, recall.eval())
 
@@ -874,7 +874,7 @@ class StreamingRecallTest(tf.test.TestCase):
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertEqual(0, recall.eval())
 
@@ -908,7 +908,7 @@ class StreamingAUCTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -930,7 +930,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.constant(inputs)
       auc, update_op = metrics.streaming_auc(predictions, labels, curve=curve)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1, sess.run(update_op))
 
       self.assertEqual(1, auc.eval())
@@ -941,7 +941,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
       auc, update_op = metrics.streaming_auc(predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.5, sess.run(update_op))
 
       self.assertAlmostEqual(0.5, auc.eval())
@@ -954,7 +954,7 @@ class StreamingAUCTest(tf.test.TestCase):
       auc, update_op = metrics.streaming_auc(predictions, labels,
                                              weights=weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.5, sess.run(update_op), 5)
 
       self.assertAlmostEqual(0.5, auc.eval(), 5)
@@ -967,7 +967,7 @@ class StreamingAUCTest(tf.test.TestCase):
       auc, update_op = metrics.streaming_auc(predictions, labels,
                                              weights=weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.7, sess.run(update_op), 5)
 
       self.assertAlmostEqual(0.7, auc.eval(), 5)
@@ -979,7 +979,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.constant([0, 0, 1, 1], shape=(1, 4))
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
 
       self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
@@ -991,7 +991,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.constant([0, 0, 1, 0, 1, 0, 1], shape=(1, 7))
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
 
       self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
@@ -1003,7 +1003,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)
 
       self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-3)
@@ -1016,7 +1016,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.constant(1 - inputs, dtype=tf.float32)
       auc, update_op = metrics.streaming_auc(predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0, sess.run(update_op))
 
       self.assertAlmostEqual(0, auc.eval())
@@ -1027,7 +1027,7 @@ class StreamingAUCTest(tf.test.TestCase):
       labels = tf.zeros([4])
       auc, update_op = metrics.streaming_auc(predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(1, sess.run(update_op), 6)
 
       self.assertAlmostEqual(1, auc.eval(), 6)
@@ -1040,7 +1040,7 @@ class StreamingAUCTest(tf.test.TestCase):
                                              labels,
                                              curve='PR')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(1, sess.run(update_op), 6)
 
       self.assertAlmostEqual(1, auc.eval(), 6)
@@ -1111,7 +1111,7 @@ class StreamingAUCTest(tf.test.TestCase):
             tf_predictions, tf_labels, curve='ROC', num_thresholds=500,
             weights=tf_weights)
 
-        sess.run(tf.initialize_local_variables())
+        sess.run(tf.local_variables_initializer())
         for i in range(num_batches):
           sess.run(update_op)
 
@@ -1152,7 +1152,7 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
         predictions, labels, sensitivity=0.7)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -1172,7 +1172,7 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
         predictions, labels, sensitivity=0.7)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1, sess.run(update_op))
       self.assertEqual(1, specificity.eval())
 
@@ -1187,7 +1187,7 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
         predictions, labels, sensitivity=0.8)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(1.0, sess.run(update_op))
       self.assertAlmostEqual(1.0, specificity.eval())
 
@@ -1202,7 +1202,7 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
         predictions, labels, sensitivity=0.4)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
@@ -1220,7 +1220,7 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
         predictions, labels, weights=weights, sensitivity=0.4)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
@@ -1238,7 +1238,7 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
         predictions, labels, weights=weights, sensitivity=0.4)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAlmostEqual(8.0 / 15.0, sess.run(update_op))
       self.assertAlmostEqual(8.0 / 15.0, specificity.eval())
@@ -1275,7 +1275,7 @@ class StreamingSensitivityAtSpecificityTest(tf.test.TestCase):
         predictions, labels, specificity=0.7)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -1295,7 +1295,7 @@ class StreamingSensitivityAtSpecificityTest(tf.test.TestCase):
         predictions, labels, specificity=0.7)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1, sess.run(update_op))
       self.assertEqual(1, specificity.eval())
 
@@ -1310,7 +1310,7 @@ class StreamingSensitivityAtSpecificityTest(tf.test.TestCase):
         predictions, labels, specificity=0.8)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.8, sess.run(update_op))
       self.assertAlmostEqual(0.8, specificity.eval())
 
@@ -1325,7 +1325,7 @@ class StreamingSensitivityAtSpecificityTest(tf.test.TestCase):
         predictions, labels, specificity=0.4)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
@@ -1342,7 +1342,7 @@ class StreamingSensitivityAtSpecificityTest(tf.test.TestCase):
         predictions, labels, weights=weights, specificity=0.4)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(0.675, sess.run(update_op))
       self.assertAlmostEqual(0.675, specificity.eval())
 
@@ -1393,7 +1393,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
         predictions, labels, thresholds)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates, then verify idempotency.
       sess.run([prec_op, rec_op])
@@ -1417,7 +1417,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertEqual(1, prec.eval())
@@ -1433,7 +1433,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0.5, prec.eval())
@@ -1451,7 +1451,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0, prec.eval())
@@ -1476,7 +1476,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec_low = tf.reshape(rec_low, shape=())
       rec_high = tf.reshape(rec_high, shape=())
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
@@ -1503,7 +1503,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec_low = tf.reshape(rec_low, shape=())
       rec_high = tf.reshape(rec_high, shape=())
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
@@ -1524,7 +1524,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       [prec_low, prec_high] = tf.split(0, 2, prec)
       [rec_low, rec_high] = tf.split(0, 2, rec)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0.75, prec_low.eval())
@@ -1542,7 +1542,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0, prec.eval(), 6)
@@ -1608,7 +1608,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           tf_predictions, tf_labels, thresholds)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(int(num_samples / batch_size)):
         sess.run([prec_op, rec_op])
       # Since this is only approximate, we can't expect a 6 digits match.
@@ -1665,7 +1665,7 @@ class StreamingRecallAtKTest(tf.test.TestCase):
         predictions, tf.reshape(labels, (self._batch_size, 1)), k=1)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0.25, sess.run(update_op))
       self.assertEqual(0.25, recall.eval())
       self.assertEqual(0.25, sess.run(sp_update_op))
@@ -1683,7 +1683,7 @@ class StreamingRecallAtKTest(tf.test.TestCase):
         predictions, tf.reshape(labels, (self._batch_size, 1)), k=2)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0.5, sess.run(update_op))
       self.assertEqual(0.5, recall.eval())
       self.assertEqual(0.5, sess.run(sp_update_op))
@@ -1701,7 +1701,7 @@ class StreamingRecallAtKTest(tf.test.TestCase):
         predictions, tf.reshape(labels, (self._batch_size, 1)), k=3)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1.0, sess.run(update_op))
       self.assertEqual(1.0, recall.eval())
       self.assertEqual(1.0, sess.run(sp_update_op))
@@ -1722,7 +1722,7 @@ class StreamingRecallAtKTest(tf.test.TestCase):
         weights=weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1.0, sess.run(update_op))
       self.assertEqual(1.0, recall.eval())
       self.assertEqual(1.0, sess.run(sp_update_op))
@@ -2790,7 +2790,7 @@ class StreamingMeanAbsoluteErrorTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -2810,7 +2810,7 @@ class StreamingMeanAbsoluteErrorTest(tf.test.TestCase):
         predictions, labels, weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(3, sess.run(update_op))
       self.assertEqual(3, error.eval())
 
@@ -2847,7 +2847,7 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
         predictions, labels, normalizer)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -2872,7 +2872,7 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
         predictions, labels, normalizer=labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(expected_error, sess.run(update_op))
       self.assertEqual(expected_error, error.eval())
 
@@ -2886,7 +2886,7 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
         predictions, labels, normalizer=tf.zeros_like(labels))
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0.0, sess.run(update_op))
       self.assertEqual(0.0, error.eval())
 
@@ -2919,7 +2919,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -2938,7 +2938,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0, sess.run(update_op))
       self.assertEqual(0, error.eval())
 
@@ -2950,7 +2950,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(6, sess.run(update_op))
       self.assertEqual(6, error.eval())
 
@@ -2963,7 +2963,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
         predictions, labels, weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(13, sess.run(update_op))
       self.assertEqual(13, error.eval())
 
@@ -2984,7 +2984,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
       error, update_op = metrics.streaming_mean_squared_error(
           predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run(update_op)
       self.assertAlmostEqual(208.0 / 6, sess.run(update_op), 5)
 
@@ -3021,7 +3021,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
       mse1, update_op1 = metrics.streaming_mean_squared_error(
           predictions1, labels1, name='msd1')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([update_op0, update_op1])
       sess.run([update_op0, update_op1])
 
@@ -3048,7 +3048,7 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
       mse, ms_update_op = metrics.streaming_mean_squared_error(
           predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([ma_update_op, ms_update_op])
       sess.run([ma_update_op, ms_update_op])
 
@@ -3084,7 +3084,7 @@ class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
         predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -3103,7 +3103,7 @@ class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
       rmse, update_op = metrics.streaming_root_mean_squared_error(
           predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0, sess.run(update_op))
 
       self.assertEqual(0, rmse.eval())
@@ -3116,7 +3116,7 @@ class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
       rmse, update_op = metrics.streaming_root_mean_squared_error(
           predictions, labels)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(math.sqrt(6), update_op.eval(), 5)
       self.assertAlmostEqual(math.sqrt(6), rmse.eval(), 5)
 
@@ -3129,7 +3129,7 @@ class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
       rmse, update_op = metrics.streaming_root_mean_squared_error(
           predictions, labels, weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(math.sqrt(13), sess.run(update_op))
 
       self.assertAlmostEqual(math.sqrt(13), rmse.eval(), 5)
@@ -3167,7 +3167,7 @@ class StreamingCovarianceTest(tf.test.TestCase):
     cov, update_op = metrics.streaming_covariance(predictions, labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -3186,7 +3186,7 @@ class StreamingCovarianceTest(tf.test.TestCase):
       cov, update_op = metrics.streaming_covariance(predictions, labels)
 
       expected_cov = np.cov(np.arange(10), np.arange(10))[0, 1]
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(expected_cov, sess.run(update_op), 5)
       self.assertAlmostEqual(expected_cov, cov.eval(), 5)
 
@@ -3198,7 +3198,7 @@ class StreamingCovarianceTest(tf.test.TestCase):
       cov, update_op = metrics.streaming_covariance(predictions, labels)
 
       expected_cov = np.cov([2, 4, 6], [1, 3, 2])[0, 1]
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(expected_cov, update_op.eval())
       self.assertAlmostEqual(expected_cov, cov.eval())
 
@@ -3213,7 +3213,7 @@ class StreamingCovarianceTest(tf.test.TestCase):
 
       p, l = _reweight([2, 4, 6, 8], [1, 3, 2, 7], [0, 1, 3, 1])
       expected_cov = np.cov(p, l)[0, 1]
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(expected_cov, sess.run(update_op))
       self.assertAlmostEqual(expected_cov, cov.eval())
 
@@ -3230,7 +3230,7 @@ class StreamingCovarianceTest(tf.test.TestCase):
 
       cov, update_op = metrics.streaming_covariance(predictions_t, labels_t)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       prev_expected_cov = 0.
       for i in range(n // stride):
         feed_dict = {
@@ -3264,7 +3264,7 @@ class StreamingCovarianceTest(tf.test.TestCase):
       cov, update_op = metrics.streaming_covariance(
           predictions_t, labels_t, weights=weights_t)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       prev_expected_cov = 0.
       for i in range(n // stride):
         feed_dict = {
@@ -3312,7 +3312,7 @@ class StreamingPearsonRTest(tf.test.TestCase):
                                                                  labels)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -3332,7 +3332,7 @@ class StreamingPearsonRTest(tf.test.TestCase):
                                                                    labels)
 
       expected_r = np.corrcoef(np.arange(10), np.arange(10))[0, 1]
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(expected_r, sess.run(update_op), 5)
       self.assertAlmostEqual(expected_r, pearson_r.eval(), 5)
 
@@ -3345,7 +3345,7 @@ class StreamingPearsonRTest(tf.test.TestCase):
                                                                    labels)
 
       expected_r = np.corrcoef([2, 4, 6], [1, 3, 2])[0, 1]
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(expected_r, update_op.eval())
       self.assertAlmostEqual(expected_r, pearson_r.eval())
 
@@ -3364,7 +3364,7 @@ class StreamingPearsonRTest(tf.test.TestCase):
       p, l = _reweight(predictions, labels, weights)
       cmat = np.cov(p, l)
       expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(expected_r, sess.run(update_op))
       self.assertAlmostEqual(expected_r, pearson_r.eval())
 
@@ -3382,7 +3382,7 @@ class StreamingPearsonRTest(tf.test.TestCase):
       pearson_r, update_op = metrics.streaming_pearson_correlation(
           predictions_t, labels_t)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       prev_expected_r = 0.
       for i in range(n // stride):
         feed_dict = {
@@ -3416,7 +3416,7 @@ class StreamingPearsonRTest(tf.test.TestCase):
       pearson_r, update_op = metrics.streaming_pearson_correlation(
           predictions_t, labels_t, weights=weights_t)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       prev_expected_r = 0.
       for i in range(n // stride):
         feed_dict = {
@@ -3467,7 +3467,7 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
         predictions, labels, dim=1)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -3490,7 +3490,7 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
         predictions, labels, dim=2)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0, sess.run(update_op))
       self.assertEqual(0, error.eval())
 
@@ -3509,7 +3509,7 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
         predictions, labels, dim=2)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(1, sess.run(update_op), 5)
       self.assertAlmostEqual(1, error.eval(), 5)
 
@@ -3529,7 +3529,7 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
         predictions, labels, dim=2)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAlmostEqual(1.0, sess.run(update_op), 5)
       self.assertAlmostEqual(1.0, error.eval(), 5)
 
@@ -3549,7 +3549,7 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
         predictions, labels, dim=2, weights=weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(0, sess.run(update_op))
       self.assertEqual(0, error.eval())
 
@@ -3569,7 +3569,7 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
         predictions, labels, dim=2, weights=weights)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1.5, update_op.eval())
       self.assertEqual(1.5, error.eval())
 
@@ -3606,7 +3606,7 @@ class PcntBelowThreshTest(tf.test.TestCase):
       pcnt2, update_op2 = metrics.streaming_percentage_less(
           values, 1, name='low')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       sess.run([update_op0, update_op1, update_op2])
 
       pcnt0, pcnt1, pcnt2 = sess.run([pcnt0, pcnt1, pcnt2])
@@ -3626,7 +3626,7 @@ class PcntBelowThreshTest(tf.test.TestCase):
       pcnt2, update_op2 = metrics.streaming_percentage_less(
           values, 1, weights=weights, name='low')
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertListEqual([1.0, 0.5, 0.0],
                            sess.run([update_op0, update_op1, update_op2]))
 
@@ -3685,7 +3685,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
         predictions, labels, num_classes=num_classes)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
@@ -3720,7 +3720,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(5):
         sess.run(update_op)
       desired_output = np.mean([1.0/2.0, 1.0/4.0, 0.])
@@ -3762,7 +3762,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes, weights=weights)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(6):
         sess.run(update_op)
       desired_output = np.mean([2.0/3.0, 1.0/2.0])
@@ -3797,7 +3797,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes)
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(5):
         sess.run(update_op)
       desired_output = np.mean([1.0/3.0, 2.0/4.0, 0.])
@@ -3814,7 +3814,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
     with self.test_session() as sess:
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       confusion_matrix = update_op.eval()
       self.assertAllEqual([[3, 2], [0, 5]], confusion_matrix)
       desired_miou = np.mean([3./5., 5./7.])
@@ -3827,7 +3827,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
     with self.test_session() as sess:
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(40, update_op.eval()[0])
       self.assertEqual(1.0, miou.eval())
 
@@ -3838,7 +3838,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
     with self.test_session() as sess:
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAllEqual([[0, 40], [0, 0]], update_op.eval())
       self.assertEqual(0., miou.eval())
 
@@ -3854,7 +3854,7 @@ class StreamingMeanIOUTest(tf.test.TestCase):
     with self.test_session() as sess:
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes, weights=weights)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAllEqual([[2, 2], [0, 4]], update_op.eval())
       desired_miou = np.mean([2./4., 4./6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
@@ -3892,7 +3892,7 @@ class StreamingConcatTest(tf.test.TestCase):
     with self.test_session() as sess:
       values = tf.placeholder(tf.int32, [None])
       concatenated, update_op = metrics.streaming_concat(values)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAllEqual([], concatenated.eval())
 
@@ -3909,7 +3909,7 @@ class StreamingConcatTest(tf.test.TestCase):
     with self.test_session() as sess:
       values = tf.range(3)
       concatenated, update_op = metrics.streaming_concat(values, max_size=5)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAllEqual([], concatenated.eval())
 
@@ -3926,7 +3926,7 @@ class StreamingConcatTest(tf.test.TestCase):
     with self.test_session() as sess:
       values = tf.reshape(tf.range(3), (3, 1))
       concatenated, update_op = metrics.streaming_concat(values, axis=-1)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       for _ in range(10):
         sess.run([update_op])
       self.assertAllEqual([[0] * 10, [1] * 10, [2] * 10],
@@ -3949,14 +3949,14 @@ class StreamingConcatTest(tf.test.TestCase):
     with self.test_session() as sess:
       values = tf.placeholder(tf.int32, [None])
       concatenated, update_op = metrics.streaming_concat(values)
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       self.assertAllEqual([], concatenated.eval())
 
       sess.run([update_op], feed_dict={values: [0, 1, 2]})
       self.assertAllEqual([0, 1, 2], concatenated.eval())
 
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
 
       sess.run([update_op], feed_dict={values: [3, 4]})
       self.assertAllEqual([3, 4], concatenated.eval())
@@ -3975,7 +3975,7 @@ class AggregateMetricsTest(tf.test.TestCase):
     self.assertEqual(len(value_tensors), 1)
     self.assertEqual(len(update_ops), 1)
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(1, update_ops[0].eval())
       self.assertEqual(1, value_tensors[0].eval())
 
@@ -3990,7 +3990,7 @@ class AggregateMetricsTest(tf.test.TestCase):
     self.assertEqual(len(value_tensors), 2)
     self.assertEqual(len(update_ops), 2)
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(2, update_ops[0].eval())
       self.assertEqual(4, update_ops[1].eval())
       self.assertEqual(2, value_tensors[0].eval())
@@ -4014,7 +4014,7 @@ class AggregateMetricMapTest(tf.test.TestCase):
     self.assertEqual(2, len(names_to_updates))
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertEqual(2, names_to_updates['m1'].eval())
       self.assertEqual(4, names_to_updates['m2'].eval())
       self.assertEqual(2, names_to_values['m1'].eval())

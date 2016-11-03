@@ -174,7 +174,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
   def testAcceptsRefs(self):
     var = variables.Variable(10)
     result = math_ops.scalar_mul(3, var)
-    init = variables.initialize_all_variables()
+    init = variables.global_variables_initializer()
     with self.test_session(use_gpu=True) as sess:
       sess.run(init)
       self.assertEqual(30, result.eval())

@@ -118,7 +118,7 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
         signature_constants.REGRESS_METHOD_NAME)
 
     # Initialize all variables and then save the SavedModel.
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     builder.add_meta_graph_and_variables(
         sess, [tag_constants.SERVING],
         signature_def_map={

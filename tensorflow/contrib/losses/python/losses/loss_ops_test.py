@@ -1064,7 +1064,7 @@ class MeanPairwiseSquaresErrorTest(tf.test.TestCase):
 
       gradients_to_variables = optimizer.compute_gradients(loss)
 
-      init_op = tf.initialize_all_variables()
+      init_op = tf.global_variables_initializer()
 
       with self.test_session() as sess:
         sess.run(init_op)
