@@ -29,7 +29,7 @@ class SYCLDeviceFactory : public DeviceFactory {
       n = iter->second;
     }
     for (int i = 0; i < n; i++) {
-      string name = strings::StrCat(name_prefix, "/sycl:", i);
+      string name = strings::StrCat(name_prefix, "/device:SYCL:", i);
       devices->push_back(new SYCLDevice(
           options, name, Bytes(256 << 20), DeviceLocality(),
           SYCLDevice::GetShortDeviceDescription(), cpu_allocator()));
