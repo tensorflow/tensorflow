@@ -132,8 +132,11 @@ class Env {
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
-  /// Returns true iff the named file exists.
-  bool FileExists(const string& fname);
+  /// \brief Stores in *result true if the named file exists, else false.
+  ///
+  /// On success, set *result and returns OK. On failure *result is undefined
+  /// and returns non-OK.
+  Status FileExists(const string& fname, bool* result);
 
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".

@@ -364,7 +364,9 @@ TEST(TensorBundleTest, DirectoryStructure) {
                              gtl::ArraySlice<string> expected_files) {
     StringPiece dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
-      EXPECT_TRUE(env->FileExists(io::JoinPath(dir, expected_file)));
+      bool result;
+      EXPECT_TRUE(env->FileExists(
+            io::JoinPath(dir, expected_file), &result).ok() && result);
     }
   };
 

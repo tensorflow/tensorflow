@@ -496,7 +496,9 @@ TEST(GcsFileSystemTest, FileExists_YesAsObject) {
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  EXPECT_TRUE(fs.FileExists("gs://bucket/path/file1.txt"));
+  bool result;
+  EXPECT_TRUE(fs.FileExists("gs://bucket/path/file1.txt", &result).ok() &&
+              result);
 }
 
 TEST(GcsFileSystemTest, FileExists_YesAsFolder) {
@@ -518,7 +520,9 @@ TEST(GcsFileSystemTest, FileExists_YesAsFolder) {
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  EXPECT_TRUE(fs.FileExists("gs://bucket/path/subfolder"));
+  bool result;
+  EXPECT_TRUE(fs.FileExists("gs://bucket/path/subfolder", &result).ok() &&
+              result);
 }
 
 TEST(GcsFileSystemTest, FileExists_YesAsBucket) {
@@ -536,8 +540,9 @@ TEST(GcsFileSystemTest, FileExists_YesAsBucket) {
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  EXPECT_TRUE(fs.FileExists("gs://bucket1"));
-  EXPECT_TRUE(fs.FileExists("gs://bucket1/"));
+  bool result;
+  EXPECT_TRUE(fs.FileExists("gs://bucket1", &result).ok() && result);
+  EXPECT_TRUE(fs.FileExists("gs://bucket1/", &result).ok() && result);
 }
 
 TEST(GcsFileSystemTest, FileExists_NotAsObjectOrFolder) {
@@ -558,7 +563,9 @@ TEST(GcsFileSystemTest, FileExists_NotAsObjectOrFolder) {
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  EXPECT_FALSE(fs.FileExists("gs://bucket/path/file1.txt"));
+  bool result;
+  EXPECT_TRUE(fs.FileExists("gs://bucket/path/file1.txt", &result).ok() &&
+              !result);
 }
 
 TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
@@ -575,8 +582,9 @@ TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
-  EXPECT_FALSE(fs.FileExists("gs://bucket2/"));
-  EXPECT_FALSE(fs.FileExists("gs://bucket2"));
+  bool result;
+  EXPECT_TRUE(fs.FileExists("gs://bucket2/", &result).ok() && !result);
+  EXPECT_TRUE(fs.FileExists("gs://bucket2", &result).ok() && !result);
 }
 
 TEST(GcsFileSystemTest, GetChildren_NoItems) {

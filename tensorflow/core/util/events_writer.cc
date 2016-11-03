@@ -154,7 +154,8 @@ bool EventsWriter::Close() {
 }
 
 bool EventsWriter::FileHasDisappeared() {
-  if (env_->FileExists(filename_)) {
+  bool result;
+  if (env_->FileExists(filename_, &result).ok() && result) {
     return false;
   } else {
     // This can happen even with non-null recordio_writer_ if some other

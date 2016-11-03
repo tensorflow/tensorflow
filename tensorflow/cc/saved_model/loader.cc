@@ -42,13 +42,17 @@ constexpr char kLoadAttemptSuccess[] = "success";
 Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
   const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
-  if (Env::Default()->FileExists(saved_model_pb_path)) {
+  bool result;
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(saved_model_pb_path, &result));
+  if (result) {
     return ReadBinaryProto(Env::Default(), saved_model_pb_path,
                            saved_model_proto);
   }
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  if (Env::Default()->FileExists(saved_model_pbtxt_path)) {
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(saved_model_pbtxt_path,
+                                                &result));
+  if(result) {
     return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                          saved_model_proto);
   }
@@ -118,7 +122,9 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   // variables are stored in the variables.data-?????-of-????? files.
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
-  if (!Env::Default()->FileExists(variables_index_path)) {
+  bool result;
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(variables_index_path, &result));
+  if (!result) {
     return errors::NotFound(
         "Checkpoint index file not found in SavedModel directory.");
   }
@@ -251,8 +257,11 @@ bool MaybeSavedModelDirectory(const string& export_dir) {
       io::JoinPath(export_dir, kSavedModelFilenamePb);
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  return Env::Default()->FileExists(saved_model_pb_path) ||
-         Env::Default()->FileExists(saved_model_pbtxt_path);
+  bool result;
+  return (Env::Default()->FileExists(saved_model_pb_path, &result).ok() &&
+          result) ||
+         (Env::Default()->FileExists(saved_model_pbtxt_path, &result).ok() &&
+          result);
 }
 
 }  // namespace tensorflow

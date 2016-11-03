@@ -290,15 +290,18 @@ Status HadoopFileSystem::NewReadOnlyMemoryRegionFromFile(
   return errors::Unimplemented("HDFS does not support ReadOnlyMemoryRegion");
 }
 
-bool HadoopFileSystem::FileExists(const string& fname) {
+Status HadoopFileSystem::FileExists(const string& fname, bool* result) {
   hdfsFS fs = nullptr;
-  Status status = Connect(fname, &fs);
-  if (!status.ok()) {
-    LOG(ERROR) << "Connect failed: " << status.error_message();
-    return false;
+  TF_RETURN_IF_ERROR(Connect(fname, &fs));
+  if(hdfs_->hdfsExists(fs, TranslateName(fname).c_str()) != 0) {
+    if (errno != ENOENT) { // See HDFS-1154 and HDFS-3579
+      return IOError(fname, errno);
+    }
+    *result = false;
+  } else {
+    *result = true;
   }
-
-  return hdfs_->hdfsExists(fs, TranslateName(fname).c_str()) == 0;
+  return Status::OK();
 }
 
 Status HadoopFileSystem::GetChildren(const string& dir,

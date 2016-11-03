@@ -62,7 +62,9 @@ string FileSystem::TranslateName(const string& name) const {
 
 Status FileSystem::IsDirectory(const string& name) {
   // Check if path exists.
-  if (!FileExists(name)) {
+  bool result;
+  TF_RETURN_IF_ERROR(FileExists(name, &result));
+  if (!result) {
     return Status(tensorflow::error::NOT_FOUND, "Path not found");
   }
   FileStatistics stat;
@@ -181,7 +183,13 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   *undeleted_files = 0;
   *undeleted_dirs = 0;
   // Make sure that dirname exists;
-  if (!FileExists(dirname)) {
+  bool result;
+  Status s = FileExists(dirname, &result);
+  if (!s.ok()) {
+    (*undeleted_dirs)++;
+    return s;
+  }
+  if (!result) {
     (*undeleted_dirs)++;
     return Status(error::NOT_FOUND, "Directory doesn't exist");
   }
@@ -239,8 +247,14 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   StringPiece scheme, host, remaining_dir;
   ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
-  while (!FileExists(CreateURI(scheme, host, remaining_dir)) &&
-         !remaining_dir.empty()) {
+  while (!remaining_dir.empty()) {
+    bool result;
+    TF_RETURN_IF_ERROR(
+        FileExists(CreateURI(scheme, host, remaining_dir), &result));
+    if (result) {
+      break;
+    }
+
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));

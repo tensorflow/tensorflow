@@ -100,9 +100,10 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
 TEST_F(HadoopFileSystemTest, FileExists) {
   const string fname =
       "file://" + io::JoinPath(testing::TmpDir(), "FileExists");
-  EXPECT_FALSE(hdfs.FileExists(fname));
+  bool result;
+  EXPECT_TRUE(hdfs.FileExists(fname, &result).ok() && !result);
   TF_ASSERT_OK(WriteString(fname, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname));
+  EXPECT_TRUE(hdfs.FileExists(fname, &result).ok() && result);
 }
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
@@ -175,7 +176,8 @@ TEST_F(HadoopFileSystemTest, RenameFile_Overwrite) {
       "file://" + io::JoinPath(testing::TmpDir(), "RenameFile2");
 
   TF_ASSERT_OK(WriteString(fname2, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname2));
+  bool result;
+  EXPECT_TRUE(hdfs.FileExists(fname2, &result).ok() && result);
 
   TF_ASSERT_OK(WriteString(fname1, "test"));
   TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));

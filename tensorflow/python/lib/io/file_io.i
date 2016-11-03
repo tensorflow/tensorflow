@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -32,12 +31,14 @@ limitations under the License.
 %}
 
 %{
-inline bool FileExists(const string& filename) {
-  return tensorflow::Env::Default()->FileExists(filename);
-}
-
-inline bool FileExists(const tensorflow::StringPiece& filename) {
-  return tensorflow::Env::Default()->FileExists(filename.ToString());
+inline bool FileExists(const string& filename, TF_Status* out_status) {
+  bool result;
+  tensorflow::Status status = tensorflow::Env::Default()->FileExists(filename,
+      &result);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+  return result;
 }
 
 inline void DeleteFile(const string& filename, TF_Status* out_status) {
@@ -104,14 +105,20 @@ void RecursivelyCreateDir(const string& dirname, TF_Status* out_status) {
 
 void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
               TF_Status* out_status) {
+  bool result;
+  tensorflow::Status status = tensorflow::Env::Default()->FileExists(newpath,
+      &result);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    return;
+  }
   // If overwrite is false and the newpath file exists then it's an error.
-  if (!overwrite && FileExists(newpath)) {
+  if (!overwrite && result) {
     TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
     return;
   }
   string file_content;
-  tensorflow::Status status = ReadFileToString(tensorflow::Env::Default(),
-      oldpath, &file_content);
+  status = ReadFileToString(tensorflow::Env::Default(), oldpath, &file_content);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
     return;
@@ -124,13 +131,19 @@ void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
 
 void RenameFile(const string& src, const string& target, bool overwrite,
                 TF_Status* out_status) {
+  bool result;
+  tensorflow::Status status = tensorflow::Env::Default()->FileExists(target,
+      &result);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    return;
+  }
   // If overwrite is false and the target file exists then its an error.
-  if (!overwrite && FileExists(target)) {
+  if (!overwrite && result) {
     TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
     return;
   }
-  tensorflow::Status status = tensorflow::Env::Default()->RenameFile(src,
-                                                                     target);
+  status = tensorflow::Env::Default()->RenameFile(src, target);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }
@@ -238,7 +251,7 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
 %newobject CreateWritableFile;
 
 // Wrap the above functions.
-inline bool FileExists(const string& filename);
+inline bool FileExists(const string& filename, TF_Status* out_status);
 inline void DeleteFile(const string& filename, TF_Status* out_status);
 string ReadFileToString(const string& filename, TF_Status* out_status);
 void WriteStringToFile(const string& filename, const string& file_content,

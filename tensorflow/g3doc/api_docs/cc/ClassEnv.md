@@ -78,7 +78,7 @@ The returned memory region can be accessed from many threads in parallel.
 
 The ownership of the returned ReadOnlyMemoryRegion is passed to the caller and the object should be deleted when is not used. The memory region object shouldn&apos;t live longer than the Env object.
 
-#### `bool tensorflow::Env::FileExists(const string &fname)` {#bool_tensorflow_Env_FileExists}
+#### `Status tensorflow::Env::FileExists(const string &fname, bool *result)` {#Status_tensorflow_Env_FileExists}
 
 Returns true iff the named file exists.
 
