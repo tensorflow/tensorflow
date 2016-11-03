@@ -1380,10 +1380,12 @@ cc_library(
     name = "sycl_runtime",
     srcs = if_not_windows([
         "common_runtime/sycl/sycl_device.cc",
+        "common_runtime/sycl/sycl_device_context.cc",
         "common_runtime/sycl/sycl_device_factory.cc",
     ]),
     hdrs = if_not_windows([
         "common_runtime/sycl/sycl_device.h",
+	"common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
     linkstatic = 1,

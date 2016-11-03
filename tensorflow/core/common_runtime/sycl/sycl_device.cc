@@ -34,11 +34,14 @@ SYCLDevice::SYCLDevice(const SessionOptions& options, const string& name,
                                                 locality, physical_device_desc),
                   allocator),
       allocator_(allocator),
+      device_context_(new SYCLDeviceContext()),
       device_(q) {
   set_eigen_sycl_device(&device_);
 }
 
-SYCLDevice::~SYCLDevice() {}
+SYCLDevice::~SYCLDevice() {
+  device_context_->Unref();
+}
 
 void SYCLDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   assert(context);
@@ -66,6 +69,20 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   *tensor = std::move(parsed);
   return Status::OK();
 }
+
+Status SYCLDevice::FillContextMap(const Graph* graph,
+				  DeviceContextMap* device_context_map) {
+  // Fill in the context map.  It is OK for this map to contain
+  // duplicate DeviceContexts so long as we increment the refcount.
+  device_context_map->resize(graph->num_node_ids());
+  for (Node* n : graph->nodes()) {
+    device_context_->Ref();
+    (*device_context_map)[n->id()] = device_context_;
+  }
+
+  return Status::OK();
 }
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_SYCL

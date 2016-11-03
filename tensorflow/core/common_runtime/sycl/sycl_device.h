@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -41,6 +42,9 @@ class SYCLDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
+  Status FillContextMap(const Graph* graph,
+                        DeviceContextMap* device_context_map) override;
+
   Status Sync() override { return Status::OK(); }
   static string GetShortDeviceDescription(/*int device_id,
                                           const DeviceDescription& desc*/) {
@@ -49,6 +53,7 @@ class SYCLDevice : public LocalDevice {
 
  private:
   Allocator* allocator_;  // Not owned
+  SYCLDeviceContext* device_context_;
   Eigen::SyclDevice device_;
 };
 
