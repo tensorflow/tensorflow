@@ -60,3 +60,25 @@ def validate_callable(func, decorator_name):
         ' @property appears before @%s in your source code:'
         '\n\n@property\n@%s\ndef method(...)' % (
             func, decorator_name, decorator_name))
+
+
+class classproperty(object):  # pylint: disable=invalid-name
+  """Class property decorator.
+
+  Example usage:
+
+  class MyClass(object):
+
+    @classproperty
+    def value(cls):
+      return '123'
+
+  > print MyClass.value
+  123
+  """
+
+  def __init__(self, func):
+    self._func = func
+
+  def __get__(self, owner_self, owner_cls):
+    return self._func(owner_cls)

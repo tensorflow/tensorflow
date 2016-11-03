@@ -95,6 +95,7 @@ from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import convert_to_tensor_or_indexed_slices
 from tensorflow.python.framework.random_seed import get_seed
 from tensorflow.python.framework.random_seed import set_random_seed
+from tensorflow.python.framework.subscribe import subscribe
 from tensorflow.python.framework.importer import import_graph_def
 
 # Needed when you defined a new Op in C++.

@@ -70,6 +70,11 @@ from tensorflow.contrib.training.python.training.bucket_ops import *
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *
+from tensorflow.contrib.training.python.training.training import add_gradients_summaries
+from tensorflow.contrib.training.python.training.training import clip_gradient_norms
+from tensorflow.contrib.training.python.training.training import create_train_op
+from tensorflow.contrib.training.python.training.training import multiply_gradients
+from tensorflow.contrib.training.python.training.training import train
 from tensorflow.python.util.all_util import make_all
 
 __all__ = make_all(__name__)

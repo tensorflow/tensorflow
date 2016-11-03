@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -78,43 +77,6 @@ RandomAccessFile::~RandomAccessFile() {}
 WritableFile::~WritableFile() {}
 
 FileSystemRegistry::~FileSystemRegistry() {}
-
-void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
-              StringPiece* path) {
-  // 0. Parse scheme
-  // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
-  // TODO(keveman): Allow "+" and "-" in the scheme.
-  if (!strings::Scanner(remaining)
-           .One(strings::Scanner::LETTER)
-           .Many(strings::Scanner::LETTER_DIGIT_DOT)
-           .StopCapture()
-           .OneLiteral("://")
-           .GetResult(&remaining, scheme)) {
-    // If there's no scheme, assume the entire string is a path.
-    scheme->clear();
-    host->clear();
-    *path = remaining;
-    return;
-  }
-
-  // 1. Parse host
-  if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
-    // No path, so the rest of the URI is the host.
-    *host = remaining;
-    path->clear();
-    return;
-  }
-
-  // 2. The rest is the path
-  *path = remaining;
-}
-
-string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
-  if (scheme.empty()) {
-    return path.ToString();
-  }
-  return strings::StrCat(scheme, "://", host, path);
-}
 
 Status FileSystem::GetMatchingPaths(const string& pattern,
                                     std::vector<string>* results) {
@@ -237,9 +199,9 @@ Status FileSystem::DeleteRecursively(const string& dirname,
 
 Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   StringPiece scheme, host, remaining_dir;
-  ParseURI(dirname, &scheme, &host, &remaining_dir);
+  io::ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
-  while (!FileExists(CreateURI(scheme, host, remaining_dir)) &&
+  while (!FileExists(io::CreateURI(scheme, host, remaining_dir)) &&
          !remaining_dir.empty()) {
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
@@ -255,7 +217,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   string built_path = remaining_dir.ToString();
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
-    TF_RETURN_IF_ERROR(CreateDir(CreateURI(scheme, host, built_path)));
+    TF_RETURN_IF_ERROR(CreateDir(io::CreateURI(scheme, host, built_path)));
   }
   return Status::OK();
 }

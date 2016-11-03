@@ -1832,7 +1832,7 @@ Computes the eigenvalues of one or more self-adjoint matrices.
 
 - - -
 
-### `tf.svd(tensor, compute_uv=True, full_matrices=False, name=None)` {#svd}
+### `tf.svd(tensor, full_matrices=False, compute_uv=True, name=None)` {#svd}
 
 Computes the singular value decompositions of one or more matrices.
 
@@ -1854,12 +1854,12 @@ s = svd(a, compute_uv=False)
 
 *  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
     `N`.
-*  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
-    computed and returned in `u` and `v`, respectively. Otherwise, only the
-    singular values will be computed, which can be significantly faster.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
     Ignored if `compute_uv` is `False`.
+*  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
+    computed and returned in `u` and `v`, respectively. Otherwise, only the
+    singular values will be computed, which can be significantly faster.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:

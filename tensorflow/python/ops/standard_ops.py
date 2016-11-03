@@ -67,6 +67,11 @@ from tensorflow.python.ops.state_ops import scatter_div
 from tensorflow.python.ops.state_ops import scatter_mul
 from tensorflow.python.ops.state_ops import scatter_sub
 from tensorflow.python.ops.state_ops import scatter_update
+from tensorflow.python.ops.state_ops import scatter_nd_add
+from tensorflow.python.ops.state_ops import scatter_nd_sub
+from tensorflow.python.ops.state_ops import scatter_nd_mul
+from tensorflow.python.ops.state_ops import scatter_nd_div
+from tensorflow.python.ops.state_ops import scatter_nd_update
 from tensorflow.python.ops.string_ops import *
 from tensorflow.python.ops.template import *
 from tensorflow.python.ops.tensor_array_ops import *

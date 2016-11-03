@@ -133,7 +133,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.polymerChangesTriggerReprojection = true;
   }
 
-  private updateTSNEPerplexityFromUIChange() {
+  private updateTSNEPerplexityFromSliderChange() {
     if (this.perplexitySlider) {
       this.perplexity = +this.perplexitySlider.value;
     }
@@ -161,8 +161,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
     this.perplexitySlider.value = this.perplexity.toString();
     this.perplexitySlider.addEventListener(
-        'change', () => this.updateTSNEPerplexityFromUIChange());
-    this.updateTSNEPerplexityFromUIChange();
+        'change', () => this.updateTSNEPerplexityFromSliderChange());
+    this.updateTSNEPerplexityFromSliderChange();
 
     this.learningRateInput.addEventListener(
         'change', () => this.updateTSNELearningRateFromUIChange());
@@ -217,7 +217,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.computeAllCentroids();
 
     this.setZDropdownEnabled(this.pcaIs3d);
-    this.updateTSNEPerplexityFromUIChange();
+    this.updateTSNEPerplexityFromSliderChange();
     this.updateTSNELearningRateFromUIChange();
     if (this.iterationLabel) {
       this.iterationLabel.text(bookmark.tSNEIteration.toString());
@@ -284,6 +284,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet = dataSet;
     this.originalDataSet = originalDataSet;
     this.dim = dim;
+    let perplexity =
+        Math.max(5, Math.ceil(Math.sqrt(dataSet.points.length) / 4));
+    this.perplexitySlider.value = perplexity.toString();
+    this.updateTSNEPerplexityFromSliderChange();
     this.clearCentroids();
 
     this.dom.select('#tsne-sampling')

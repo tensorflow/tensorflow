@@ -41,6 +41,7 @@ py_library(
         ":summary",
         ":training",
         ":ops",
+        ":test_ops",
         "//tensorflow/python/debug:debug_py",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
@@ -282,6 +283,7 @@ py_library(
         "framework/meta_graph.py",
         "framework/random_seed.py",
         "framework/sparse_tensor.py",
+        "framework/subscribe.py",
         "framework/tensor_util.py",
     ],
     srcs_version = "PY2AND3",
@@ -348,6 +350,19 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_subscribe_test",
+    size = "small",
+    srcs = ["framework/subscribe_test.py"],
+    main = "framework/subscribe_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -855,7 +870,10 @@ py_library(
 
 py_library(
     name = "gradients",
-    srcs = ["ops/gradients.py"],
+    srcs = [
+        "ops/gradients.py",
+        "ops/gradients_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_grad",

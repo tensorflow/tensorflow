@@ -325,7 +325,7 @@ class FillLowerTriangularTest(tf.test.TestCase):
 
   def testCorrectlyMakesNoBatchLowerTril(self):
     with self.test_session():
-      x = np.arange(9)
+      x = tf.convert_to_tensor(np.arange(9, dtype=np.float32))
       expected = np.array(
           [[0., 0., 0.],
            [1., 2., 0.],
@@ -333,6 +333,10 @@ class FillLowerTriangularTest(tf.test.TestCase):
       actual = distribution_util.fill_lower_triangular(x)
       self.assertAllEqual(expected.shape, actual.get_shape())
       self.assertAllEqual(expected, actual.eval())
+      self.assertAllEqual(
+          np.concatenate([np.ones(6, dtype=np.float32),
+                          np.zeros(3, dtype=np.float32)]),
+          tf.gradients(distribution_util.fill_lower_triangular(x), x)[0].eval())
 
   def testCorrectlyMakesBatchLowerTril(self):
     with self.test_session():

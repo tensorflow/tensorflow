@@ -1057,8 +1057,8 @@ def raw_rnn(cell, loop_fn,
         time=time + 1, cell_output=output, cell_state=cell_state,
         loop_state=loop_state)
     # Emit zeros and copy forward state for minibatch entries that are finished.
-    state = tf.select(finished, state, next_state)
-    emit = tf.select(finished, tf.zeros_like(emit), emit)
+    state = tf.where(finished, state, next_state)
+    emit = tf.where(finished, tf.zeros_like(emit), emit)
     emit_ta = emit_ta.write(time, emit)
     # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)
