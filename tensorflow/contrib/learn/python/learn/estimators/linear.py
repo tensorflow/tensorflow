@@ -32,6 +32,7 @@ from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
@@ -462,13 +463,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[head_lib.PredictionKey.CLASSES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.CLASSES
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.CLASSES)
-    return preds[head_lib.PredictionKey.CLASSES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -476,14 +480,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
                     as_iterable=True):
     """Runs inference to determine the class probability predictions."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[
-                                        head_lib.PredictionKey.PROBABILITIES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.PROBABILITIES
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.PROBABILITIES)
-    return preds[head_lib.PredictionKey.PROBABILITIES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   def get_variable_names(self):
     return self._estimator.get_variable_names()
@@ -509,9 +515,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
-        signature_fn=(
-            signature_fn or export.classification_signature_fn_with_prob),
-        prediction_key=head_lib.PredictionKey.PROBABILITIES,
+        signature_fn=(signature_fn or
+                      export.classification_signature_fn_with_prob),
+        prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
@@ -725,13 +731,16 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[head_lib.PredictionKey.SCORES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.SCORES
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.SCORES)
-    return preds[head_lib.PredictionKey.SCORES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   def get_variable_names(self):
     return self._estimator.get_variable_names()
@@ -758,7 +767,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         signature_fn=(signature_fn or export.regression_signature_fn),
-        prediction_key=head_lib.PredictionKey.SCORES,
+        prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 

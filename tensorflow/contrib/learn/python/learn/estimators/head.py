@@ -867,11 +867,3 @@ def _streaming_at_threshold(streaming_metrics_fn, threshold):
     return array_ops.squeeze(precision_tensor), update_op
 
   return _streaming_metrics
-
-
-class PredictionKey(object):
-  CLASSES = "classes"
-  PROBABILITIES = "probabilities"
-  LOGITS = "logits"
-  LOGISTIC = "logistic"
-  SCORES = "scores"
