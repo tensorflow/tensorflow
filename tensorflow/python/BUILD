@@ -1557,6 +1557,7 @@ cuda_py_test(
         ":image_ops",
         ":io_ops",
         ":lib",
+        "//tensorflow:tensorflow_py",
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,

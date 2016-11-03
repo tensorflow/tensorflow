@@ -1114,6 +1114,7 @@ tf_kernel_libraries(
     name = "image",
     prefixes = [
         "adjust_contrast_op",
+        "adjust_hue_op",
         "colorspace_op",
         "crop_and_resize_op",
         "decode_jpeg_op",
