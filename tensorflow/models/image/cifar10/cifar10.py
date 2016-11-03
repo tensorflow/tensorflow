@@ -257,7 +257,8 @@ def inference(images):
     _activation_summary(local4)
 
   # linear layer(WX + b),
-  # no softmax ops here because tf.nn.sparse_softmax_cross_entropy_with_logits() only accept unscaled logits.
+  # We don't apply softmax here because tf.nn.sparse_softmax_cross_entropy_with_logits
+  # accepts the unscaled logits and performs the softmax internally for efficiency.
   with tf.variable_scope('softmax_linear') as scope:
     weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
                                           stddev=1/192.0, wd=0.0)
