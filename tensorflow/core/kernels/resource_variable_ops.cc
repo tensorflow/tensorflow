@@ -184,4 +184,7 @@ class AssignAddVariableOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
+REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
+                        IsResourceInitialized<Var>);
+
 }  // namespace tensorflow

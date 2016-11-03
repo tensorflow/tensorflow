@@ -163,4 +163,16 @@ new_value: the new value of the variable.
 dtype: the dtype of the value.
 )");
 
+REGISTER_OP("VarIsInitializedOp")
+    .Input("resource: resource")
+    .Output("is_initialized: bool")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(R"doc(
+Checks whether a resource handle-basd variable has been initialized.
+
+resource: the input resource handle.
+is_initialized: a scalar boolean which is true if the variable has been
+initialized.
+)doc");
+
 }  // namespace tensorflow

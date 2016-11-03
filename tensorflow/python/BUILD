@@ -1035,6 +1035,7 @@ py_library(
     deps = [
         ":framework",
         ":resource_variable_ops_gen",
+        ":resources",
     ],
 )
 
@@ -1659,6 +1660,7 @@ py_library(
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":random_ops",
+        ":resource_variable_ops",
         ":sparse_ops",
         ":state_ops",
         ":string_ops",
