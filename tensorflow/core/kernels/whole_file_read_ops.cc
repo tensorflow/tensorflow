@@ -125,7 +125,6 @@ class WriteFileOp : public OpKernel {
     void Compute(OpKernelContext* context) override {
 	    const Tensor* filename_input;
 	    const Tensor* contents_input;
-	    Tensor* output = nullptr;
 	    OP_REQUIRES_OK(context, context->input("filename", &filename_input));
 	    OP_REQUIRES_OK(context, context->input("contents", &contents_input));
 	    OP_REQUIRES(context, TensorShapeUtils::IsScalar(filename_input->shape()),
@@ -136,15 +135,9 @@ class WriteFileOp : public OpKernel {
 			    errors::InvalidArgument(
 				    "Contents tensor must be scalar, but had shape: ",
 				    contents_input->shape().DebugString()));
-	    OP_REQUIRES_OK(context, context->allocate_output("output", TensorShape({}),
-				    &output));
-	    if(WriteStringToFile(context->env(),
+	    TF_CHECK_OK(WriteStringToFile(context->env(),
 				    filename_input->scalar<string>()(),
-				    contents_input->scalar<string>()()).ok()) {
-	    	output->scalar<int>()(0) = 0;
-	    } else {
-	    	output->scalar<int>()(0) = -1;
-	    }
+				    contents_input->scalar<string>()()));
     }
 };
 

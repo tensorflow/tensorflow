@@ -45,9 +45,9 @@ class IoOpsTest(tf.test.TestCase):
       contents = tf.compat.as_bytes(contents)
       temp = tempfile.NamedTemporaryFile(
           prefix='WriteFileTest', dir=self.get_temp_dir())
-      with self.test_session():
+      with self.test_session() as sess:
         w = tf.write_file(temp.name, contents)
-        w.eval()
+        sess.run(w)
         file_contents = open(temp.name, 'rb').read()
         self.assertEqual(file_contents, contents)
 

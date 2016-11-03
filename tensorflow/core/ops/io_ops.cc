@@ -585,14 +585,17 @@ Reads and outputs the entire contents of the input filename.
 REGISTER_OP("WriteFile")
     .Input("filename: string")
     .Input("contents: string")
-    .Output("output: int32")
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Writes contents to the file at input filename. Creates file if not existing.
 
 filename: scalar. The name of the file to which we write the contents.
 contents: scalar. The content to be written to the output file.
-output: scalar. The status of write opreation. 0 means success, -1 means failure.
 )doc");
 
 REGISTER_OP("MatchingFiles")
