@@ -676,6 +676,21 @@ op {
   }
 }
 op {
+  name: "AdjustHue"
+  input_arg {
+    name: "images"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "delta"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+}
+op {
   name: "All"
   input_arg {
     name: "input"
