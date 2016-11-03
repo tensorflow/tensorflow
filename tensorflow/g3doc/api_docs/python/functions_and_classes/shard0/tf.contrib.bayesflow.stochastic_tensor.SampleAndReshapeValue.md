@@ -23,8 +23,8 @@ with sg.value_type(sg.SampleAndReshapeValue(n=2)):
 st_value = st.value()
 assertEqual(st_value.get_shape(), (4, 3))
 
-dt_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
-assertEqual(dt_value_val.shape, (4, 3))
+st_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
+assertEqual(st_value_val.shape, (4, 3))
 ```
 - - -
 

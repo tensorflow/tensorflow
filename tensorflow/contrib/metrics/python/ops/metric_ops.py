@@ -29,6 +29,7 @@ from tensorflow.contrib.metrics.python.ops import confusion_matrix_ops
 from tensorflow.contrib.metrics.python.ops import set_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -762,7 +763,12 @@ def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
   computes the area under a discretized curve of precision versus recall values
   (computed using the aforementioned variables). The `num_thresholds` variable
   controls the degree of discretization with larger numbers of thresholds more
-  closely approximating the true AUC.
+  closely approximating the true AUC. The quality of the approximation may vary
+  dramatically depending on `num_thresholds`.
+
+  For best results, `predictions` should be distributed approximately uniformly
+  in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
+  approximation may be poor if this is not the case.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `auc`.
@@ -1601,7 +1607,8 @@ def num_relevant(labels, k):
     raise ValueError('Invalid k=%s.' % k)
   with ops.name_scope(None, 'num_relevant', (labels,)) as scope:
     # For SparseTensor, calculate separate count for each row.
-    if isinstance(labels, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        labels, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       labels_sizes = set_ops.set_size(labels)
       return math_ops.minimum(labels_sizes, k, name=scope)
 
@@ -1637,9 +1644,9 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
   with ops.name_scope(
       name, 'expand_and_tile', (tensor, multiple, dim)) as scope:
     # Sparse.
-    if isinstance(tensor, ops.SparseTensorValue):
-      tensor = ops.SparseTensor.from_value(tensor)
-    if isinstance(tensor, ops.SparseTensor):
+    if isinstance(tensor, sparse_tensor.SparseTensorValue):
+      tensor = sparse_tensor.SparseTensor.from_value(tensor)
+    if isinstance(tensor, sparse_tensor.SparseTensor):
       if dim < 0:
         expand_dims = array_ops.reshape(
             array_ops.size(tensor.shape) + dim, [1])
@@ -1871,7 +1878,8 @@ def _select_class_id(ids, selected_id):
     `SparseTensor` of same dimensions as `ids`. This contains only the entries
     equal to `selected_id`.
   """
-  if isinstance(ids, (ops.SparseTensor, ops.SparseTensorValue)):
+  if isinstance(
+      ids, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
     return sparse_ops.sparse_retain(
         ids, math_ops.equal(ids.values, selected_id))
 
@@ -1888,7 +1896,7 @@ def _select_class_id(ids, selected_id):
   filled_selected_id = array_ops.fill(
       filled_selected_id_shape, math_ops.to_int64(selected_id))
   result = set_ops.set_intersection(filled_selected_id, ids)
-  return ops.SparseTensor(
+  return sparse_tensor.SparseTensor(
       indices=result.indices, values=result.values, shape=ids_shape)
 
 

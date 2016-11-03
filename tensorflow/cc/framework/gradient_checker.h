@@ -30,6 +30,12 @@ Status ComputeGradientError(const Scope& scope, const ops::Output& x,
                             const TensorShape& x_shape, const ops::Output& y,
                             const TensorShape& y_shape, T* max_error);
 
+// Overload of ComputeGradientError which takes an initial value for 'x'.
+template <typename T>
+Status ComputeGradientError(const Scope& scope, const ops::Output& x,
+                            const Tensor& x_init_value, const ops::Output& y,
+                            const TensorShape& y_shape, T* max_error);
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENT_CHECKER_H_

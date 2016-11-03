@@ -221,13 +221,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "jpeg",
-    hdrs = ["lib/jpeg/jpeg_mem.h"],
-    visibility = ["//visibility:public"],
-    deps = [":jpeg_internal"],
-)
-
 # Test support library needed for all tests
 # This is currently public, but may be made internal in the
 # future.  Try to avoid depending on it.
@@ -700,9 +693,9 @@ filegroup(
             "platform/cuda.h",
             "platform/google/**/*",
             "platform/hadoop/**/*",
-            "platform/jpeg.*",
-            "platform/png.*",
-            "platform/gif.*",
+            "platform/gif.h",
+            "platform/jpeg.h",
+            "platform/png.h",
             "platform/stream_executor.*",
             "platform/windows/**/*",
             "user_ops/**/*.cu.cc",
@@ -982,7 +975,10 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/gif/**/*",
                 "lib/jpeg/**/*",
+                "platform/gif.h",
+                "platform/jpeg.h",
                 "platform/**/cuda.h",
                 "platform/**/stream_executor.h",
                 "platform/load_library.cc",
@@ -999,7 +995,10 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/gif/**/*",
                 "lib/jpeg/**/*",
+                "platform/gif.h",
+                "platform/jpeg.h",
                 "platform/**/cuda.h",
                 "platform/**/stream_executor.h",
             ],
@@ -1017,7 +1016,6 @@ cc_library(
     hdrs = tf_additional_lib_hdrs() + [
         "lib/core/blocking_counter.h",
         "lib/core/refcount.h",
-        "lib/gif/gif_io.h",
         "lib/gtl/edit_distance.h",
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
@@ -1062,17 +1060,31 @@ cc_library(
 )
 
 cc_library(
+    name = "gif_internal",
+    srcs = [
+        "lib/gif/gif_io.cc",
+        "platform/gif.h",
+    ],
+    hdrs = ["lib/gif/gif_io.h"],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        ":lib",
+        "//tensorflow/core/platform/default/build_config:gif",
+    ],
+)
+
+cc_library(
     name = "jpeg_internal",
-    srcs = glob(
-        [
-            "lib/jpeg/*h",
-            "lib/jpeg/*.cc",
-        ],
-        exclude = [
-            "**/*test*",
-        ],
-    ),
-    hdrs = ["lib/jpeg/jpeg_handle.h"],
+    srcs = [
+        "lib/jpeg/jpeg_handle.cc",
+        "lib/jpeg/jpeg_mem.cc",
+        "platform/jpeg.h",
+    ],
+    hdrs = [
+        "lib/jpeg/jpeg_handle.h",
+        "lib/jpeg/jpeg_mem.h",
+    ],
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
@@ -1569,7 +1581,6 @@ cc_test(
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
     deps = [
-        ":jpeg",
         ":jpeg_internal",
         ":lib",
         ":lib_internal",

@@ -42,6 +42,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -88,7 +89,7 @@ def assert_proper_iterable(values):
       `Tensor`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
   """
   unintentional_iterables = (
-      (ops.Tensor, ops.SparseTensor, np.ndarray)
+      (ops.Tensor, sparse_tensor.SparseTensor, np.ndarray)
       + compat.bytes_or_text_types
   )
   if isinstance(values, unintentional_iterables):

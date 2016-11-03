@@ -48,7 +48,8 @@ export let ProjectorPolymer = PolymerElement({
   properties: {
     routePrefix: String,
     dataProto: {type: String, observer: '_dataProtoChanged'},
-    servingMode: String
+    servingMode: String,
+    projectorConfigJsonPath: String
   }
 });
 
@@ -59,6 +60,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   // The working subset of the data source's original data set.
   dataSet: DataSet;
   servingMode: ServingMode;
+  // The path to the projector config JSON file for demo mode.
+  projectorConfigJsonPath: string;
 
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
@@ -247,7 +250,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private initializeDataProvider(dataProto?: DataProto) {
     if (this.servingMode === 'demo') {
-      this.dataProvider = new DemoDataProvider();
+      this.dataProvider = new DemoDataProvider(this.projectorConfigJsonPath);
     } else if (this.servingMode === 'server') {
       if (!this.routePrefix) {
         throw 'route-prefix is a required parameter';
@@ -494,6 +497,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       state.projections.push(projections);
     }
     state.selectedProjection = this.selectedProjection;
+    state.dataSetDimensions = this.dataSet.dim;
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
     state.cameraDef = this.scatterPlot.getCameraDef();

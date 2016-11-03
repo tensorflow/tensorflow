@@ -1,7 +1,8 @@
 ### TensorFlow Makefile
 
 The recommended way to build TensorFlow from source is using the Bazel
-open-source build system. Sometimes this isn't possible.
+open-source build system. Sometimes this isn't possible. For example,
+if you are building for iOS, you currently need to use the Makefile.
 
  - The build system may not have the RAM or processing power to support Bazel.
  - Bazel or its dependencies may not be available.

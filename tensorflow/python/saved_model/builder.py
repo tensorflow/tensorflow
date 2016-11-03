@@ -49,10 +49,9 @@ class SavedModelBuilder(object):
 
   To build a SavedModel, the first meta graph must be saved with variables.
   Subsequent meta graphs will simply be saved with their graph definitions. If
-  assets need to be saved and written or copied to disk, they must be provided
-  as part of the first meta graph to be saved. Subsequent meta graphs can
-  provide a subset of the initial assets to be added to the SavedModel
-  definition.
+  assets need to be saved and written or copied to disk, they can be provided
+  when the meta graph def is added. If multiple meta graph defs are associated
+  an asset of the same name, only the first version is retained.
 
   Each meta graph added to the SavedModel must be annotated with tags. The tags
   provide a means to identify the specific meta graph to load and restore, along
@@ -253,7 +252,8 @@ class SavedModelBuilder(object):
                      tags,
                      signature_def_map=None,
                      assets_collection=None,
-                     legacy_init_op=None):
+                     legacy_init_op=None,
+                     clear_devices=False):
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -268,7 +268,9 @@ class SavedModelBuilder(object):
           that this collection should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
       legacy_init_op: Op or group of ops to execute after the restore op upon a
-        load.
+          load.
+      clear_devices: Set to true if the device info on the default graph should
+          be cleared.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
@@ -290,7 +292,7 @@ class SavedModelBuilder(object):
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
 
-    meta_graph_def = saver.export_meta_graph()
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -300,7 +302,8 @@ class SavedModelBuilder(object):
                                    tags,
                                    signature_def_map=None,
                                    assets_collection=None,
-                                   legacy_init_op=None):
+                                   legacy_init_op=None,
+                                   clear_devices=False):
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -318,6 +321,8 @@ class SavedModelBuilder(object):
       assets_collection: Assets collection to be saved with SavedModel.
       legacy_init_op: Op or group of ops to execute after the restore op upon a
         load.
+      clear_devices: Set to true if the device info on the default graph should
+          be cleared.
     """
     if self._has_saved_variables:
       raise AssertionError("Variables and assets have already been saved. "
@@ -346,7 +351,7 @@ class SavedModelBuilder(object):
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
     saver.save(sess, variables_path, write_meta_graph=False)
-    meta_graph_def = saver.export_meta_graph()
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)

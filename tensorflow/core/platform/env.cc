@@ -70,7 +70,7 @@ Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   StringPiece scheme, host, path;
-  ParseURI(fname, &scheme, &host, &path);
+  io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,

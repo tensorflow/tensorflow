@@ -51,6 +51,8 @@ functions below.
 
 @@stop_gradient
 
+@@hessians
+
 
 ## Gradient Clipping
 

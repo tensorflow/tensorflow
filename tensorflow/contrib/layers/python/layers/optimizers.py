@@ -258,10 +258,11 @@ def optimize_loss(loss,
         grad_values = gradient
 
       if grad_values is not None:
+        var_name = variable.name.replace(":", "_")
         if "gradients" in summaries:
-          summary.histogram("gradients/" + variable.name, grad_values)
+          summary.histogram("gradients/%s" % var_name, grad_values)
         if "gradient_norm" in summaries:
-          summary.scalar("gradient_norm/" + variable.name,
+          summary.scalar("gradient_norm/%s" % var_name,
                          clip_ops.global_norm([grad_values]))
 
     if clip_gradients is not None and "gradient_norm" in summaries:

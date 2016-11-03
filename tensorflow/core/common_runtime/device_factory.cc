@@ -78,7 +78,7 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
 Status DeviceFactory::AddDevices(const SessionOptions& options,
                                  const string& name_prefix,
                                  std::vector<Device*>* devices) {
-  // CPU first.
+  // CPU first. A CPU device is required.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
     return errors::NotFound(
@@ -90,7 +90,7 @@ Status DeviceFactory::AddDevices(const SessionOptions& options,
     return errors::NotFound("No CPU devices are available in this process");
   }
 
-  // Then the rest.
+  // Then the rest (including GPU).
   mutex_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {
     auto factory = p.second.factory.get();

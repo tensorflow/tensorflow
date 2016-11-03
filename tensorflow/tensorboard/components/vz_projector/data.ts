@@ -23,6 +23,7 @@ import {SpriteMetadata} from './data-provider';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
 export type PointAccessor = (index: number) => number;
+export type PointAccessors3D = [PointAccessor, PointAccessor, PointAccessor];
 
 export interface PointMetadata {
   [key: string]: number | string;
@@ -118,7 +119,7 @@ export class DataSet {
   nearestK: number;
   tSNEIteration: number = 0;
   tSNEShouldStop = true;
-  dim = [0, 0];
+  dim: [number, number] = [0, 0];
   hasTSNERun: boolean = false;
   spriteAndMetadataInfo: SpriteAndMetadataInfo;
 
@@ -415,6 +416,9 @@ export class State {
 
   /** The selected projection tab. */
   selectedProjection: Projection;
+
+  /** Dimensions of the DataSet. */
+  dataSetDimensions: [number, number];
 
   /** t-SNE parameters */
   tSNEIteration: number = 0;

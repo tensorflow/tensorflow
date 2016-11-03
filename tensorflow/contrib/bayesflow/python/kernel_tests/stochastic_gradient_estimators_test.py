@@ -22,6 +22,7 @@ import tensorflow as tf
 
 st = tf.contrib.bayesflow.stochastic_tensor
 sge = tf.contrib.bayesflow.stochastic_gradient_estimators
+dists = tf.contrib.distributions
 
 
 class StochasticGradientEstimatorsTest(tf.test.TestCase):
@@ -31,7 +32,7 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
     self._final_loss = tf.constant(3.2)
 
   def _testScoreFunction(self, loss_fn, expected):
-    x = st.BernoulliTensor(p=self._p, loss_fn=loss_fn)
+    x = st.StochasticTensor(dists.Bernoulli(p=self._p), loss_fn=loss_fn)
     sf = x.loss(self._final_loss)
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())
@@ -62,8 +63,8 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
   def testScoreFunctionWithMeanBaseline(self):
     ema_decay = 0.8
     num_steps = 6
-    x = st.BernoulliTensor(
-        p=self._p,
+    x = st.StochasticTensor(
+        dists.Bernoulli(p=self._p),
         loss_fn=sge.get_score_function_with_baseline(
             sge.get_mean_baseline(ema_decay)))
     sf = x.loss(self._final_loss)
@@ -98,12 +99,12 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
 
   def testScoreFunctionWithMeanBaselineHasUniqueVarScope(self):
     ema_decay = 0.8
-    x = st.BernoulliTensor(
-        p=self._p,
+    x = st.StochasticTensor(
+        dists.Bernoulli(p=self._p),
         loss_fn=sge.get_score_function_with_baseline(
             sge.get_mean_baseline(ema_decay)))
-    y = st.BernoulliTensor(
-        p=self._p,
+    y = st.StochasticTensor(
+        dists.Bernoulli(p=self._p),
         loss_fn=sge.get_score_function_with_baseline(
             sge.get_mean_baseline(ema_decay)))
     sf_x = x.loss(self._final_loss)

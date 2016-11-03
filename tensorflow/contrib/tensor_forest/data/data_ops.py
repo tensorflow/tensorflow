@@ -25,6 +25,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -77,7 +78,7 @@ def _ParseSparse(data):
     ValueError: If data contains non-string Tensors.
   """
   for k in sorted(data.keys()):
-    if not isinstance(data[k], ops.SparseTensor):
+    if not isinstance(data[k], sparse_tensor.SparseTensor):
       raise NotImplementedError(
           'Features should be either all sparse or all dense.  Use a '
           'feature engineering function to convert some of them.')
@@ -133,7 +134,7 @@ def ParseDataTensorOrDict(data):
     # If there's at least one sparse tensor, everything has to be sparse.
     is_sparse = False
     for v in data.values():
-      if isinstance(v, ops.SparseTensor):
+      if isinstance(v, sparse_tensor.SparseTensor):
         is_sparse = True
         break
     if is_sparse:
@@ -161,11 +162,11 @@ def ParseLabelTensorOrDict(labels):
   """
   if isinstance(labels, dict):
     return math_ops.to_float(array_ops.concat(
-        1, [sparse_ops.sparse_tensor_to_dense(labels[
-            k], default_value=-1) if isinstance(labels, ops.SparseTensor) else
-            labels[k] for k in sorted(labels.keys())]))
+        1, [sparse_ops.sparse_tensor_to_dense(labels[k], default_value=-1)
+            if isinstance(labels, sparse_tensor.SparseTensor)
+            else labels[k] for k in sorted(labels.keys())]))
   else:
-    if isinstance(labels, ops.SparseTensor):
+    if isinstance(labels, sparse_tensor.SparseTensor):
       return math_ops.to_float(sparse_ops.sparse_tensor_to_dense(
           labels, default_value=-1))
     else:

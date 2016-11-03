@@ -92,6 +92,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 
 @@matching_files
 @@read_file
+@@write_file
 
 ## Input pipeline
 
@@ -521,4 +522,5 @@ ops.RegisterShape("ReaderReadUpTo")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ReaderReset")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ReaderRestoreState")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ReadFile")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("WriteFile")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("MatchingFiles")(common_shapes.call_cpp_shape_fn)

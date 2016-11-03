@@ -22,7 +22,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -41,7 +41,7 @@ class TensorSignature(collections.namedtuple(
   """
 
   def __new__(cls, tensor):
-    if isinstance(tensor, ops.SparseTensor):
+    if isinstance(tensor, sparse_tensor.SparseTensor):
       return super(TensorSignature, cls).__new__(
           cls, dtype=tensor.values.dtype, shape=None, is_sparse=True)
     return super(TensorSignature, cls).__new__(

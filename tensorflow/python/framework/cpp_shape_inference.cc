@@ -50,6 +50,7 @@ Status RunCppShapeInferenceImpl(
     const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
     const std::vector<PyObject*>& input_constant_tensor_values,
+    const std::vector<string>& input_constant_tensor_as_shape_values,
     std::vector<string>* output_tensor_shape_protos) {
   tensorflow::NodeDef node;
   if (!node.ParseFromString(serialized_node_def)) {
@@ -87,10 +88,9 @@ Status RunCppShapeInferenceImpl(
   }
 
   // Convert input tensor values;
-  const int num_input_tensors = input_constant_tensor_values.size();
-  std::vector<Tensor> input_tensor_values(num_input_tensors);
+  std::vector<Tensor> input_tensor_values(input_constant_tensor_values.size());
   std::vector<const Tensor*> input_tensors;
-  for (int i = 0; i < num_input_tensors; ++i) {
+  for (int i = 0; i < input_constant_tensor_values.size(); ++i) {
     auto* py_val = input_constant_tensor_values[i];
     if (py_val == Py_None) {
       input_tensors.push_back(nullptr);
@@ -101,11 +101,21 @@ Status RunCppShapeInferenceImpl(
     }
   }
 
+  // Convert input tensor-as-shape values;
+  std::vector<TensorShapeProto> input_tensor_as_shapes_protos(
+      input_constant_tensor_as_shape_values.size());
+  for (int i = 0; i < input_constant_tensor_as_shape_values.size(); ++i) {
+    if (!input_tensor_as_shapes_protos[i].ParseFromString(
+            input_constant_tensor_as_shape_values[i])) {
+      return errors::InvalidArgument(
+          "Error parsing shape proto during cpp shape inference");
+    }
+  }
+
   // Run shape inference.
   tensorflow::shape_inference::InferenceContext c(
       &node, op_reg_data->op_def, input_shapes, input_tensors,
-      {} /* input_tensors_as_shapes */, input_handle_shapes,
-      input_handle_dtypes);
+      input_tensor_as_shapes_protos, input_handle_shapes, input_handle_dtypes);
   TF_RETURN_IF_ERROR(c.construction_status());
 
   TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
@@ -130,16 +140,17 @@ Status RunCppShapeInferenceImpl(
 std::vector<string> RunCppShapeInference(
     const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
-    PyObject* input_constant_tensor_values, TF_Status* out_status) {
+    PyObject* input_constant_tensor_values,
+    const std::vector<string>& input_constant_tensor_as_shape_values,
+    TF_Status* out_status) {
   if (!PyList_Check(input_constant_tensor_values)) {
     TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Invalid python value");
     return std::vector<string>();
   }
 
   std::vector<PyObject*> input_constant_tensor_values_v;
-  int num_input_constant_tensor_values =
-      PyList_Size(input_constant_tensor_values);
-  for (int i = 0; i < num_input_constant_tensor_values; ++i) {
+  int cnt = PyList_Size(input_constant_tensor_values);
+  for (int i = 0; i < cnt; ++i) {
     input_constant_tensor_values_v.push_back(
         PyList_GetItem(input_constant_tensor_values, i));
   }
@@ -147,7 +158,8 @@ std::vector<string> RunCppShapeInference(
   std::vector<string> output_tensor_shape_protos;
   tensorflow::Status status = RunCppShapeInferenceImpl(
       serialized_node_def, input_serialized_shapes,
-      input_constant_tensor_values_v, &output_tensor_shape_protos);
+      input_constant_tensor_values_v, input_constant_tensor_as_shape_values,
+      &output_tensor_shape_protos);
 
   Set_TF_Status_from_Status(out_status, status);
   return status.ok() ? output_tensor_shape_protos : std::vector<string>();

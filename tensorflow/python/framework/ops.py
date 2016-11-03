@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import decorator_utils
 
 
 def _override_helper(clazz_object, operator, func):
@@ -186,7 +187,13 @@ def register_dense_tensor_like_type(tensor_type):
   _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
 
 
-class Tensor(object):
+# NOTE(ebrevdo): Do not subclass this.  If you do, I will break you on purpose.
+class _TensorLike(object):
+  """Internal cls for grouping Tensor, SparseTensor, ..., for is_instance."""
+  pass
+
+
+class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
 
   *Note:* the `Tensor` class will be replaced by `Output` in the future.
@@ -752,7 +759,7 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, (IndexedSlices, SparseTensor)):
+  if isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r"
@@ -858,7 +865,7 @@ def register_tensor_conversion_function(base_type, conversion_func,
   funcs_at_priority.append((base_type, conversion_func))
 
 
-class IndexedSlices(object):
+class IndexedSlices(_TensorLike):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -956,190 +963,6 @@ class IndexedSlices(object):
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
-
-
-class SparseTensor(object):
-  """Represents a sparse tensor.
-
-  TensorFlow represents a sparse tensor as three separate dense tensors:
-  `indices`, `values`, and `shape`.  In Python, the three tensors are
-  collected into a `SparseTensor` class for ease of use.  If you have separate
-  `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
-  object before passing to the ops below.
-
-  Concretely, the sparse tensor `SparseTensor(indices, values, shape)`
-  comprises the following components, where `N` and `ndims` are the number
-  of values and number of dimensions in the `SparseTensor`, respectively:
-
-  * `indices`: A 2-D int64 tensor of shape `[N, ndims]`, which specifies
-    the indices of the elements in the sparse tensor that contain nonzero
-    values (elements are zero-indexed). For example, `indices=[[1,3], [2,4]]`
-    specifies that the elements with indexes of [1,3] and [2,4] have
-    nonzero values.
-
-  * `values`: A 1-D tensor of any type and shape `[N]`, which supplies the
-    values for each element in `indices`. For example, given
-    `indices=[[1,3], [2,4]]`, the parameter `values=[18, 3.6]` specifies
-    that element [1,3] of the sparse tensor has a value of 18, and element
-    [2,4] of the tensor has a value of 3.6.
-
-  * `shape`: A 1-D int64 tensor of shape `[ndims]`, which specifies the shape
-    of the sparse tensor. Takes a list indicating the number of elements in
-    each dimension. For example, `shape=[3,6]` specifies a two-dimensional 3x6
-    tensor, `shape=[2,3,4]` specifies a three-dimensional 2x3x4 tensor, and
-    `shape=[9]` specifies a one-dimensional tensor with 9 elements.
-
-  The corresponding dense tensor satisfies:
-
-  ```python
-  dense.shape = shape
-  dense[tuple(indices[i])] = values[i]
-  ```
-
-  By convention, `indices` should be sorted in row-major order (or equivalently
-  lexicographic order on the tuples `indices[i]`). This is not enforced when
-  `SparseTensor` objects are constructed, but most ops assume correct ordering.
-  If the ordering of sparse tensor `st` is wrong, a fixed version can be
-  obtained by calling `tf.sparse_reorder(st)`.
-
-  Example: The sparse tensor
-
-  ```python
-  SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
-  ```
-
-  represents the dense tensor
-
-  ```python
-  [[1, 0, 0, 0]
-   [0, 0, 2, 0]
-   [0, 0, 0, 0]]
-  ```
-
-  @@__init__
-  @@indices
-  @@values
-  @@shape
-  @@dtype
-  @@op
-  @@graph
-  """
-
-  @classmethod
-  def from_value(cls, sparse_tensor_value):
-    return SparseTensor(
-        indices=sparse_tensor_value.indices,
-        values=sparse_tensor_value.values,
-        shape=sparse_tensor_value.shape)
-
-  def __init__(self, indices, values, shape):
-    """Creates a `SparseTensor`.
-
-    Args:
-      indices: A 2-D int64 tensor of shape `[N, ndims]`.
-      values: A 1-D tensor of any type and shape `[N]`.
-      shape: A 1-D int64 tensor of shape `[ndims]`.
-
-    Returns:
-      A `SparseTensor`
-    """
-    with name_scope(None, "SparseTensor", [indices, values, shape]):
-      indices = convert_to_tensor(indices, name="indices", dtype=dtypes.int64)
-      # Always pass as_ref=True because we want to be able to update
-      # values later if it is a VariableOp.
-      # TODO(touts): Consider adding mutable_values() when 'values'
-      # is a VariableOp and updating users of SparseTensor.
-      values = convert_to_tensor(values, name="values", as_ref=True)
-      shape = convert_to_tensor(shape, name="shape", dtype=dtypes.int64)
-    self._indices = indices
-    self._values = values
-    self._shape = shape
-
-    indices_shape = indices.get_shape().with_rank(2)
-    values_shape = values.get_shape().with_rank(1)
-    shape_shape = shape.get_shape().with_rank(1)
-
-    # Assert number of rows in indices match the number of elements in values.
-    indices_shape[0].merge_with(values_shape[0])
-    # Assert number of columns in indices matches the number of elements in
-    # shape.
-    indices_shape[1].merge_with(shape_shape[0])
-
-  @property
-  def indices(self):
-    """The indices of non-zero values in the represented dense tensor.
-
-    Returns:
-      A 2-D Tensor of int64 with shape `[N, ndims]`, where `N` is the
-        number of non-zero values in the tensor, and `ndims` is the rank.
-    """
-    return self._indices
-
-  @property
-  def values(self):
-    """The non-zero values in the represented dense tensor.
-
-    Returns:
-      A 1-D Tensor of any data type.
-    """
-    return self._values
-
-  @property
-  def op(self):
-    """The `Operation` that produces `values` as an output."""
-    return self.values.op
-
-  @property
-  def dtype(self):
-    """The `DType` of elements in this tensor."""
-    return self._values.dtype
-
-  @property
-  def shape(self):
-    """A 1-D Tensor of int64 representing the shape of the dense tensor."""
-    return self._shape
-
-  @property
-  def graph(self):
-    """The `Graph` that contains the index, value, and shape tensors."""
-    return self._indices.graph
-
-  def __str__(self):
-    return "SparseTensor(indices=%s, values=%s, shape=%s)" % (
-        self._indices, self._values, self._shape)
-
-  def eval(self, feed_dict=None, session=None):
-    """Evaluates this sparse tensor in a `Session`.
-
-    Calling this method will execute all preceding operations that
-    produce the inputs needed for the operation that produces this
-    tensor.
-
-    *N.B.* Before invoking `SparseTensor.eval()`, its graph must have been
-    launched in a session, and either a default session must be
-    available, or `session` must be specified explicitly.
-
-    Args:
-      feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
-        description of the valid feed values.
-      session: (Optional.) The `Session` to be used to evaluate this sparse
-        tensor. If none, the default session will be used.
-
-    Returns:
-      A `SparseTensorValue` object.
-    """
-    indices, values, shape = _eval_using_default_session(
-        [self.indices, self.values, self.shape], feed_dict, self.graph, session)
-    return SparseTensorValue(indices, values, shape)
-
-  @staticmethod
-  def _override_operator(operator, func):
-    _override_helper(SparseTensor, operator, func)
-
-
-SparseTensorValue = collections.namedtuple("SparseTensorValue",
-                                           ["indices", "values", "shape"])
 
 
 def _device_string(dev_spec):
@@ -1875,22 +1698,20 @@ class RegisterStatistics(object):
 
   Well-known types of statistics include these so far:
 
-  - weight_parameters: For operations like MatMul, Conv, and BiasAdd that take
-    learned weights as inputs, this statistic captures how many numerical values
-    are used. This is good to know because the weights take up most of the size
-    of a typical serialized graph on disk.
-
   - flops: When running a graph, the bulk of the computation happens doing
     numerical calculations like matrix multiplications. This type allows a node
     to return how many floating-point operations it takes to complete. The
     total number of FLOPs for a graph is a good guide to its expected latency.
 
   You can add your own statistics just by picking a new type string, registering
-  functions for the ops you care about, and then calling something like
-  python/tools/graph_metrics.py with the new type as an argument.
+  functions for the ops you care about, and then calling get_stats_for_node_def.
 
   If a statistic for an op is registered multiple times, a KeyError will be
   raised.
+
+  Since the statistics is counted on a per-op basis. It is not suitable for
+  model parameters (capacity), which is expected to be counted only once, even
+  if it is shared by multiple ops. (e.g. RNN)
 
   For example, you can define a new metric called doohickey for a Foo operation
   by placing this in your code:
@@ -3972,7 +3793,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   for op_input in op_input_list:
     # Determine if this is a valid graph_element.
     graph_element = None
-    if isinstance(op_input, (Operation, Tensor, SparseTensor, IndexedSlices)):
+    if isinstance(op_input, (Operation, _TensorLike)):
       graph_element = op_input
     else:
       graph_element = _as_graph_element(op_input)
@@ -4003,10 +3824,18 @@ class GraphKeys(object):
 
   The following standard keys are defined:
 
-  * `VARIABLES`: the `Variable` objects that comprise a model, and
-    must be saved and restored together. See
-    [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+  * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+    across distributed environment (model variables are subset of these). See
+    [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
     for more details.
+    Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+    and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+  * `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+    machine. Usually used for temporarily variables, like counters.
+    Note: use `tf.contrib.framework.local_variable` to add to this collection.
+  * `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+    model for inference (feed forward). Note: use
+    `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
     [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
@@ -4030,16 +3859,17 @@ class GraphKeys(object):
   * `ACTIVATIONS`: activations of neural network layers
   """
 
-  # Key to collect Variable objects that must be saved and restored
-  # by the model.
-  VARIABLES = "variables"
-  # Key to collect Variable objects that will be trained by the
-  # optimizers.
-  TRAINABLE_VARIABLES = "trainable_variables"
-  # Key to collect local variables that are not saved/restored.
+  # Key to collect Variable objects that are global (shared across machines).
+  # Default collection for all variables, except local ones.
+  GLOBAL_VARIABLES = "variables"
+  # Key to collect local variables that are local to the machine and are not
+  # saved/restored.
   LOCAL_VARIABLES = "local_variables"
   # Key to collect model variables defined by layers.
   MODEL_VARIABLES = "model_variables"
+  # Key to collect Variable objects that will be trained by the
+  # optimizers.
+  TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.
@@ -4088,6 +3918,13 @@ class GraphKeys(object):
   # Key for control flow context.
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
+
+  @decorator_utils.classproperty
+  def VARIABLES(cls):  # pylint: disable=no-self-argument
+    logging.warning("VARIABLES collection name is deprecated, "
+                    "please use GLOBAL_VARIABLES instead.\n"
+                    "VARIABLES will be removed after 2017-03-02.")
+    return cls.GLOBAL_VARIABLES
 
 
 def add_to_collection(name, value):

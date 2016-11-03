@@ -23,6 +23,7 @@ from math import ceil
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -301,8 +302,12 @@ def _GatherGrad(op, grad):
 
 
 @ops.RegisterGradient("GatherNd")
-def _GatherNdGrad(unused_op, unused_grad):
-  raise NotImplementedError("Gradient for gather_nd is not implemented.")
+def _GatherNdGrad(op, grad):
+  ref = op.inputs[0]
+  ref_shape = array_ops.shape(ref)
+  indices = op.inputs[1]
+  ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  return [ref_grad, None]
 
 
 @ops.RegisterGradient("CheckNumerics")
@@ -552,7 +557,7 @@ def _ExtractImagePatchesGrad(op, grad):
   sp_shape = (rows_in * cols_in,
               rows_out * cols_out * ksize_r * ksize_c)
 
-  sp_mat = ops.SparseTensor(
+  sp_mat = sparse_tensor.SparseTensor(
     array_ops.constant(idx, dtype=ops.dtypes.int64),
     array_ops.ones((len(idx),), dtype=ops.dtypes.float32),
     sp_shape
@@ -566,3 +571,10 @@ def _ExtractImagePatchesGrad(op, grad):
   grad_out = array_ops.transpose(grad_out, (2, 0, 1, 3))
 
   return [grad_out]
+
+
+@ops.RegisterGradient("ScatterNd")
+def _ScatterNdGrad(op, grad):
+  indices = op.inputs[0]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  return [None, updates_grad, None]

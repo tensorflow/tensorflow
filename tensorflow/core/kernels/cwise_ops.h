@@ -455,6 +455,9 @@ template <typename T>
 struct log : base<T, Eigen::internal::scalar_log_op<T> > {};
 
 template <typename T>
+struct log1p : base<T, Eigen::internal::scalar_log1p_op<T> > {};
+
+template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T> > {};
 
 template <typename T>

@@ -31,6 +31,7 @@ from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -407,7 +408,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, shared_map_ops=None):
   maybe_shared_map_ops = shared_map_ops or [None] * len(tensor_list)
 
   def _sparse_meta_data(t, storing_op, map_op):
-    if not isinstance(t, ops.SparseTensor):
+    if not isinstance(t, sparse_tensor.SparseTensor):
       return _SparseMetaData(False, None, None)
     rank = t.shape.get_shape().with_rank(1)[0]
     if enqueue_many:
@@ -418,7 +419,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, shared_map_ops=None):
         sparse=True, map_op=map_op or storing_op, rank=rank)
 
   def _maybe_store(t, shared_map_op):
-    if not isinstance(t, ops.SparseTensor):
+    if not isinstance(t, sparse_tensor.SparseTensor):
       return t
     map_op_name = shared_map_op.name if shared_map_op else None
     return (_store_many_sparse(t, shared_name=map_op_name) if enqueue_many

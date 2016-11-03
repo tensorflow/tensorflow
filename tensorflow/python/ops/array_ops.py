@@ -71,6 +71,7 @@ or join multiple tensors together.
 @@gather
 @@gather_nd
 @@unique_with_counts
+@@scatter_nd
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
@@ -81,6 +82,15 @@ or join multiple tensors together.
 @@quantized_concat
 @@setdiff1d
 
+## Fake quantization
+Operations used to help train for better quantization accuracy.
+
+@@fake_quant_with_min_max_args
+@@fake_quant_with_min_max_args_gradient
+@@fake_quant_with_min_max_vars
+@@fake_quant_with_min_max_vars_gradient
+@@fake_quant_with_min_max_vars_per_channel
+@@fake_quant_with_min_max_vars_per_channel_gradient
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -93,6 +103,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
@@ -176,7 +187,8 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 
   """
   with ops.name_scope(name, "Shape", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.shape, out_type)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -227,7 +239,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     A `Tensor` of type `out_type`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops._prod(
           gen_math_ops.cast(input.shape, out_type), 0, name=name)
     else:
@@ -279,7 +292,8 @@ def rank_internal(input, name=None, optimize=True):
     A `Tensor` of type `int32`.
   """
   with ops.name_scope(name, "Rank", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_array_ops.size(input.shape, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -1445,6 +1459,17 @@ def placeholder(dtype, shape=None, name=None):
   return ret
 
 
+# pylint: disable=redefined-outer-name
+def _normalize_sparse_shape(shape, name):
+  """Takes numpy array or Tensor or None and returns either None or Tensor."""
+  if shape is None: return None
+  if not isinstance(shape, ops.Tensor):
+    for el in shape:
+      if el is None:
+        return None
+  return ops.convert_to_tensor(shape, name=name)
+
+
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
 
@@ -1484,14 +1509,11 @@ def sparse_placeholder(dtype, shape=None, name=None):
     A `SparseTensor` that may be used as a handle for feeding a value, but not
     evaluated directly.
   """
+  shape_name = (name + "/shape") if name is not None else None
+  shape = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
-    shape = placeholder(
-        dtypes.int64, shape=[None],
-        name=(name + "/shape") if name is not None else None)
-  else:
-    shape = ops.convert_to_tensor(
-        shape, name=(name + "/shape") if name is not None else None)
-  return ops.SparseTensor(
+    shape = placeholder(dtypes.int64, shape=[None], name=shape_name)
+  return sparse_tensor.SparseTensor(
       values=placeholder(
           dtype, shape=[None],
           name=(name + "/values") if name is not None else None),
@@ -1500,6 +1522,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
           name=(name + "/indices") if name is not None else None),
       shape=shape
   )
+# pylint: enable=redefined-outer-name
 
 
 def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
@@ -1774,6 +1797,10 @@ ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Reshape")
+def _DelegateReshapeShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
+
+
 def _ReshapeShape(op):
   """Shape function for Reshape op."""
   input_shape = op.inputs[0].get_shape()
@@ -1991,9 +2018,13 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   Raises:
     TypeError: If either `hypothesis` or `truth` are not a `SparseTensor`.
   """
-  if not isinstance(hypothesis, (ops.SparseTensor, ops.SparseTensorValue)):
+  if not isinstance(
+      hypothesis, (sparse_tensor.SparseTensor,
+                   sparse_tensor.SparseTensorValue)):
     raise TypeError("Hypothesis must be a SparseTensor.")
-  if not isinstance(truth, (ops.SparseTensor, ops.SparseTensorValue)):
+  if not isinstance(
+      truth, (sparse_tensor.SparseTensor,
+              sparse_tensor.SparseTensorValue)):
     raise TypeError("Truth must be a SparseTensor.")
 
   return gen_array_ops._edit_distance(hypothesis.indices,
@@ -2022,8 +2053,14 @@ def _FakeQuantWithMinMaxArgsGradient(op, grad):
 
 
 ops.RegisterShape("FakeQuantWithMinMaxArgs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxArgsGradient")(
+    common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FakeQuantWithMinMaxVars")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVarsGradient")(
+    common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannelGradient")(
     common_shapes.call_cpp_shape_fn)
 
 
@@ -2516,3 +2553,49 @@ def _QuantizedReshapeShape(op):
 ops.RegisterShape("QuantizeV2")(None)
 ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
 ops.RegisterShape("QuantizedConcat")(None)
+
+
+@ops.RegisterShape("ScatterNd")
+def _ScatterNdShape(op):
+  """Shape function for the ScatterNd op.
+
+  The shape of the ouput is defined as a parameter on the Operation.
+
+  Args:
+    op: A ScatterNd Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: if the arguments have invalid rank
+  """
+  indices_shape = op.inputs[0].get_shape()
+  updates_shape = op.inputs[1].get_shape()
+  output_shape = tensor_util.constant_value_as_shape(op.inputs[2])
+
+  if output_shape.num_elements() == 0 and not (
+      indices_shape.num_elements() in
+      (None, 0) and updates_shape.num_elements() in (None, 0)):
+    raise ValueError("Indices and updates specified for empty output shape")
+
+  if indices_shape.ndims is not None and output_shape is not None:
+    outer_dims = len(indices_shape) - 1
+    ixdim = indices_shape[-1].value or 0
+
+    if not indices_shape[:outer_dims].is_compatible_with(
+        updates_shape[:outer_dims]):
+      raise ValueError("The outer %d dimensions of indices.shape=%s must "
+                       "match the outer %d dimensions of updates.shape=%s" % (
+                           outer_dims, indices_shape, outer_dims,
+                           updates_shape))
+    if output_shape.ndims is not None:
+      if not output_shape[ixdim:].is_compatible_with(updates_shape[
+          outer_dims:]):
+        raise ValueError("The inner %d dimensions of output.shape=%s must "
+                         "match the inner %d dimensions of updates.shape=%s" % (
+                             len(output_shape)-ixdim, output_shape,
+                             len(updates_shape)-outer_dims, updates_shape))
+
+    return [output_shape]
+  return [None]

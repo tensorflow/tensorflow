@@ -70,8 +70,6 @@ Status Get3dOutputSize(const std::array<int64, 3>& input,
 
 namespace shape_inference {
 
-namespace {
-
 Status GetWindowedOutputSizeFromDims(
     shape_inference::InferenceContext* c,
     shape_inference::DimensionHandle input_size,
@@ -97,7 +95,6 @@ Status GetWindowedOutputSizeFromDims(
   }
   return Status::OK();
 }
-}  // namespace
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->input(0));

@@ -6,21 +6,18 @@ classes. When number of possible classes is 2, this is binary classification.
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_column_a = sparse_column_with_hash_bucket(...)
+sparse_column_b = sparse_column_with_hash_bucket(...)
 
-education_x_occupation = crossed_column(columns=[education, occupation],
-                                        hash_bucket_size=10000)
+sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
 # Estimator using the default optimizer.
 estimator = LinearClassifier(
-    feature_columns=[occupation, education_x_occupation])
+    feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
 
 # Or estimator using the FTRL optimizer with regularization.
 estimator = LinearClassifier(
-    feature_columns=[occupation, education_x_occupation],
+    feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
     optimizer=tf.train.FtrlOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001
@@ -28,7 +25,7 @@ estimator = LinearClassifier(
 
 # Or estimator using the SDCAOptimizer.
 estimator = LinearClassifier(
-   feature_columns=[occupation, education_x_occupation],
+   feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
    optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
      example_id_column='example_id',
      num_loss_partitions=...,

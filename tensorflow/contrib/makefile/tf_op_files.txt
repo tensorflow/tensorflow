@@ -43,6 +43,13 @@ tensorflow/core/kernels/sequence_ops.cc
 tensorflow/core/kernels/sendrecv_ops.cc
 tensorflow/core/kernels/scatter_op.cc
 tensorflow/core/kernels/scatter_functor.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_0.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_1.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_2.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_3.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_4.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_5.cc
+tensorflow/core/kernels/scatter_nd_op.cc
 tensorflow/core/kernels/save_restore_tensor.cc
 tensorflow/core/kernels/save_restore_v2_ops.cc
 tensorflow/core/kernels/save_op.cc

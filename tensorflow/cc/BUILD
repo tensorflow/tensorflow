@@ -264,6 +264,36 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "nn_grad",
+    srcs = ["gradients/nn_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "gradients_nn_grad_test",
+    srcs = ["gradients/nn_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":nn_grad",
+        ":testutil",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [
@@ -411,6 +441,7 @@ cc_library(
     srcs = ["training/queue_runner.cc"],
     hdrs = ["training/queue_runner.h"],
     deps = [
+        ":coordinator",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -425,7 +456,42 @@ tf_cc_test(
     name = "queue_runner_test",
     srcs = ["training/queue_runner_test.cc"],
     deps = [
+        "coordinator",
         ":cc_ops",
+        ":queue_runner",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "coordinator",
+    srcs = ["training/coordinator.cc"],
+    hdrs = ["training/coordinator.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_test(
+    name = "coordinator_test",
+    srcs = ["training/coordinator_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":coordinator",
         ":queue_runner",
         ":scope",
         "//tensorflow/core:core_cpu",

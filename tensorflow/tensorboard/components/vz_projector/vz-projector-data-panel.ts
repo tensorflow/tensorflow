@@ -144,7 +144,9 @@ export class DataPanel extends DataPanelPolymer {
               }
               let desc = stats.tooManyUniqueValues ?
                   'gradient' :
-                  stats.uniqueEntries.length + ' colors';
+                  stats.uniqueEntries.length +
+                      ((stats.uniqueEntries.length > 20) ? ' non-unique' : '') +
+                      ' colors';
               return {name: stats.name, desc, map, items, thresholds};
             });
     if (metadataColorOption.length > 0) {

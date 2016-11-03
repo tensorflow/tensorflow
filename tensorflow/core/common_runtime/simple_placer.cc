@@ -815,9 +815,11 @@ void SimplePlacer::AssignAndLog(const string& assigned_device,
   node->set_assigned_device_name(assigned_device);
   // Log placement if log_device_placement is set.
   if (options_ && options_->config.log_device_placement()) {
-    printf("%s: %s\n", node->name().c_str(),
+    printf("%s: (%s): %s\n", node->name().c_str(),
+           node->type_string().c_str(),
            node->assigned_device_name().c_str());
-    LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+    LOG(INFO) << node->name() << ": " << "(" << node->type_string() << ")" 
+              << node->assigned_device_name();
   }
 }
 

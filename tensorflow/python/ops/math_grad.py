@@ -326,6 +326,15 @@ def _LogGrad(op, grad):
     return grad * math_ops.inv(x)
 
 
+@ops.RegisterGradient("Log1p")
+def _Log1pGrad(op, grad):
+  """Returns grad * (1/(1 + x))."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.inv(1 + x)
+
+
 @ops.RegisterGradient("Tanh")
 def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
