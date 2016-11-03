@@ -67,7 +67,6 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = y_tf.eval()
         self.assertAllClose(y_tf_np, y_np)
-
  
   def testReductionIndices2(self):
     for dtype in [np.float16, np.float32, np.double]:
