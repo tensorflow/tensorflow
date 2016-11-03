@@ -158,24 +158,32 @@ if [[ $(echo ${WHL_PATH} | wc -w) -ne 1 ]]; then
 "directory: ${PIP_WHL_DIR}"
 fi
 
-# If on Linux, rename the whl file properly so it will have the python
+# Rename the whl file properly so it will have the python
 # version tags and platform tags that won't cause pip install issues.
 if [[ $(uname) == "Linux" ]]; then
   PY_TAGS=${WHL_TAGS[${PY_MAJOR_MINOR_VER}]}
+  PLATFORM_TAG=$(to_lower "$(uname)_$(uname -m)")
+# MAC has bash v3, which does not have associative array
+elif [[ $(uname) == "Darwin" ]]; then
+  if [[ ${PY_MAJOR_MINOR_VER} == "2.7" ]]; then
+    PY_TAGS="py2-none"
+  elif [[ ${PY_MAJOR_MINOR_VER} == "3.5" ]]; then
+    PY_TAGS="py3-none"
+  fi
+  PLATFORM_TAG="any"
+fi
 
-  if [[ ! -z "${PY_TAGS}" ]]; then
-    PLATFORM_TAG=$(to_lower "$(uname)_$(uname -m)")
-    WHL_DIR=$(dirname "${WHL_PATH}")
-    WHL_BASE_NAME=$(basename "${WHL_PATH}")
+if [[ ! -z "${PY_TAGS}" ]]; then
+  WHL_DIR=$(dirname "${WHL_PATH}")
+  WHL_BASE_NAME=$(basename "${WHL_PATH}")
 
-    NEW_WHL_BASE_NAME=$(echo ${WHL_BASE_NAME} | cut -d \- -f 1)-\
+  NEW_WHL_BASE_NAME=$(echo ${WHL_BASE_NAME} | cut -d \- -f 1)-\
 $(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
 
-    if [[ ! -f "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]]; then
-      cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}" && \
-        echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}" || \
-        die "ERROR: Failed to copy wheel file to ${NEW_WHL_BASE_NAME}"
-    fi
+  if [[ ! -f "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]]; then
+    cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}" && \
+      echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}" || \
+      die "ERROR: Failed to copy wheel file to ${NEW_WHL_BASE_NAME}"
   fi
 fi
 
@@ -211,6 +219,10 @@ source "${VENV_DIR}/bin/activate" || \
 
 
 # Install the pip file in virtual env (plus missing dependencies)
+
+# Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
+echo "Upgrade pip in virtualenv"
+pip install --upgrade pip==8.1.2
 
 # Force tensorflow reinstallation. Otherwise it may not get installed from
 # last build if it had the same version number as previous build.
