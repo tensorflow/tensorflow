@@ -126,7 +126,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   TF_RETURN_IF_ERROR(hdfs_->status());
 
   StringPiece scheme, namenode, path;
-  ParseURI(fname, &scheme, &namenode, &path);
+  io::ParseURI(fname, &scheme, &namenode, &path);
   const string nn = namenode.ToString();
 
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
@@ -144,7 +144,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 
 string HadoopFileSystem::TranslateName(const string& name) const {
   StringPiece scheme, namenode, path;
-  ParseURI(name, &scheme, &namenode, &path);
+  io::ParseURI(name, &scheme, &namenode, &path);
   return path.ToString();
 }
 
