@@ -4486,6 +4486,7 @@ REGISTER_OP("FakeQuantWithMinMaxArgsGradient")
     .Input("gradients: float")
     .Input("inputs: float")
     .Output("backprops: float")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Compute gradients for a FakeQuantWithMinMaxArgs operation.
 
@@ -4527,6 +4528,21 @@ REGISTER_OP("FakeQuantWithMinMaxVarsGradient")
     .Output("backprops_wrt_input: float")
     .Output("backprop_wrt_min: float")
     .Output("backprop_wrt_max: float")
+    .SetShapeFn([](InferenceContext* c) {
+      // gradients and inputs are same size.
+      ShapeHandle inputs;
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &inputs));
+
+      // min and max are scalars
+      ShapeHandle min_max;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &min_max));
+      TF_RETURN_IF_ERROR(c->Merge(min_max, c->input(3), &min_max));
+
+      c->set_output(0, inputs);
+      c->set_output(1, min_max);
+      c->set_output(2, min_max);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Compute gradients for a FakeQuantWithMinMaxVars operation.
 
@@ -4580,6 +4596,24 @@ REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
     .Output("backprops_wrt_input: float")
     .Output("backprop_wrt_min: float")
     .Output("backprop_wrt_max: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(inputs, 4, &inputs));
+      TF_RETURN_IF_ERROR(c->Merge(inputs, c->input(1), &inputs));
+
+      ShapeHandle last_dim = c->Vector(c->Dim(inputs, -1));
+
+      ShapeHandle min_max;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &min_max));
+      TF_RETURN_IF_ERROR(c->Merge(min_max, last_dim, &min_max));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(3), min_max, &min_max));
+
+      c->set_output(0, inputs);
+      c->set_output(1, min_max);
+      c->set_output(2, min_max);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 

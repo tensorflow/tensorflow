@@ -82,6 +82,15 @@ or join multiple tensors together.
 @@quantized_concat
 @@setdiff1d
 
+## Fake quantization
+Operations used to help train for better quantization accuracy.
+
+@@fake_quant_with_min_max_args
+@@fake_quant_with_min_max_args_gradient
+@@fake_quant_with_min_max_vars
+@@fake_quant_with_min_max_vars_gradient
+@@fake_quant_with_min_max_vars_per_channel
+@@fake_quant_with_min_max_vars_per_channel_gradient
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -2044,8 +2053,14 @@ def _FakeQuantWithMinMaxArgsGradient(op, grad):
 
 
 ops.RegisterShape("FakeQuantWithMinMaxArgs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxArgsGradient")(
+    common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FakeQuantWithMinMaxVars")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVarsGradient")(
+    common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannelGradient")(
     common_shapes.call_cpp_shape_fn)
 
 
