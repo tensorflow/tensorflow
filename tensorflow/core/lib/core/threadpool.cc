@@ -88,16 +88,12 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
 
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn) {
-#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
     CHECK_GE(total, 0);
     CHECK_EQ(total, (int64)(Eigen::Index)total);
     Eigen::ThreadPoolDevice device(this, this->NumThreads());
     device.parallelFor(
         total, Eigen::TensorOpCost(0, 0, cost_per_unit),
         [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
-#else
-    CHECK(0);  // should not be used with the old thread pool
-#endif
   }
 };
 

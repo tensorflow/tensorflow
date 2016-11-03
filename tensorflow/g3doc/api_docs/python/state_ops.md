@@ -66,16 +66,16 @@ with tf.Session() as sess:
 ```
 
 The most common initialization pattern is to use the convenience function
-`initialize_all_variables()` to add an Op to the graph that initializes
+`global_variable_initializers()` to add an Op to the graph that initializes
 all the variables. You then run that Op after launching the graph.
 
 ```python
-# Add an Op to initialize all variables.
-init_op = tf.initialize_all_variables()
+# Add an Op to initialize global variables.
+init_op = tf.global_variable_initializers()
 
 # Launch the graph in a session.
 with tf.Session() as sess:
-    # Run the Op that initializes all variables.
+    # Run the Op that initializes global variables.
     sess.run(init_op)
     # ...you can now run any Op that uses variable values...
 ```
@@ -86,8 +86,8 @@ variables are initialized in the right order.
 
 All variables are automatically collected in the graph where they are
 created. By default, the constructor adds the new variable to the graph
-collection `GraphKeys.VARIABLES`. The convenience function
-`all_variables()` returns the contents of that collection.
+collection `GraphKeys.GLOBAL_VARIABLES`. The convenience function
+`global_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
 between variables holding the trainable model parameters and other variables
@@ -109,7 +109,7 @@ Creating a variable.
 Creates a new variable with value `initial_value`.
 
 The new variable is added to the graph collections listed in `collections`,
-which defaults to `[GraphKeys.VARIABLES]`.
+which defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 
 If `trainable` is `True` the variable is also added to the graph collection
 `GraphKeys.TRAINABLE_VARIABLES`.
@@ -130,7 +130,7 @@ variable to its initial value.
     collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
     the default list of variables to use by the `Optimizer` classes.
 *  <b>`collections`</b>: List of graph collections keys. The new variable is added to
-    these collections. Defaults to `[GraphKeys.VARIABLES]`.
+    these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 *  <b>`validate_shape`</b>: If `False`, allows the variable to be initialized with a
     value of unknown shape. If `True`, the default, the shape of
     `initial_value` must be known.
@@ -316,7 +316,7 @@ more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
-init = tf.initialize_all_variables()
+init = tf.global_variable_initializers()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -1178,17 +1178,55 @@ collected in the graph.
 
 - - -
 
-### `tf.all_variables()` {#all_variables}
+### `tf.global_variables()` {#global_variables}
 
-Returns all variables that must be saved/restored.
+Returns global variables.
 
-The `Variable()` constructor automatically adds new variables to the graph
-collection `GraphKeys.VARIABLES`. This convenience function returns the
-contents of that collection.
+Global variables are variables that are shared across machines in a
+distributed environment. The `Variable()` constructor or `get_variable()`
+automatically adds new variables to the graph collection
+`GraphKeys.GLOBAL_VARIABLES`.
+This convenience function returns the contents of that collection.
+
+An alternative to global variables are local variables. See
+[`tf.local_variables()`](../../api_docs/python/state_ops.md#local_variables)
 
 ##### Returns:
 
   A list of `Variable` objects.
+
+
+- - -
+
+### `tf.local_variables()` {#local_variables}
+
+Returns local variables.
+
+Local variables - per process variables, usually not saved/restored to
+checkpoint and used for temporary or intermediate values.
+For example, they can be used as counters for metrics computation or
+number of epochs this machine has read data.
+The `local_variable()` automatically adds new variable to
+`GraphKeys.LOCAL_VARIABLES`.
+This convenience function returns the contents of that collection.
+
+An alternative to local variables are global variables. See
+[`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
+
+##### Returns:
+
+  A list of local `Variable` objects.
+
+
+- - -
+
+### `tf.model_variables()` {#model_variables}
+
+Returns all variables in the MODEL_VARIABLES collection.
+
+##### Returns:
+
+  A list of local Variable objects.
 
 
 - - -
@@ -1205,28 +1243,6 @@ contents of that collection.
 ##### Returns:
 
   A list of Variable objects.
-
-
-- - -
-
-### `tf.local_variables()` {#local_variables}
-
-Returns all variables created with collection=[LOCAL_VARIABLES].
-
-##### Returns:
-
-  A list of local Variable objects.
-
-
-- - -
-
-### `tf.model_variables()` {#model_variables}
-
-Returns all variables in the MODEL_VARIABLES collection.
-
-##### Returns:
-
-  A list of local Variable objects.
 
 
 - - -
@@ -1248,20 +1264,33 @@ This convenience function returns the contents of that collection.
 
 - - -
 
-### `tf.initialize_all_variables()` {#initialize_all_variables}
+### `tf.global_variables_initializer()` {#global_variables_initializer}
 
-Returns an Op that initializes all variables.
+Returns an Op that initializes global variables.
 
-This is just a shortcut for `initialize_variables(all_variables())`
+This is just a shortcut for `variable_initializers(global_variables())`
 
 ##### Returns:
 
-  An Op that initializes all variables in the graph.
+  An Op that initializes global variables in the graph.
 
 
 - - -
 
-### `tf.initialize_variables(var_list, name='init')` {#initialize_variables}
+### `tf.local_variables_initializer()` {#local_variables_initializer}
+
+Returns an Op that initializes all local variables.
+
+This is just a shortcut for `variable_initializers(local_variables())`
+
+##### Returns:
+
+  An Op that initializes all local variables in the graph.
+
+
+- - -
+
+### `tf.variables_initializer(var_list, name='init')` {#variables_initializer}
 
 Returns an Op that initializes a list of variables.
 
@@ -1284,19 +1313,6 @@ be run. That Op just has no effect.
 ##### Returns:
 
   An Op that run the initializers of all the specified variables.
-
-
-- - -
-
-### `tf.initialize_local_variables()` {#initialize_local_variables}
-
-Returns an Op that initializes all local variables.
-
-This is just a shortcut for `initialize_variables(local_variables())`
-
-##### Returns:
-
-  An Op that initializes all local variables in the graph.
 
 
 - - -
@@ -1329,7 +1345,7 @@ variables if there are any, or an empty array if there are none.
 
 
 *  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
-    value of `all_variables() + local_variables()`
+    value of `global_variables() + local_variables()`
 *  <b>`name`</b>: Optional name of the `Operation`.
 
 ##### Returns:
@@ -1358,7 +1374,7 @@ logged by the C++ runtime. This is expected.
 
 
 *  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
-    value of `all_variables().`
+    value of `global_variables().`
 
 ##### Returns:
 
@@ -1532,7 +1548,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=1, pad_step_number=False)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=2, pad_step_number=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -2944,6 +2960,280 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 - - -
 
+### `tf.scatter_nd_update(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_update}
+
+Applies sparse `updates` to individual values or slices within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to update 4 scattered elements to a rank-1 tensor to 8 elements. In Python, that update would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1] ,[7]])
+    updates = tf.constant([9, 10, 11, 12])
+    update = tf.scatter_nd_update(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(update)
+
+The resulting update to ref would look like this:
+
+    [1, 11, 3, 10, 9, 6, 7, 12]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values to add to ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `True`.
+    An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done.
+
+
+- - -
+
+### `tf.scatter_nd_add(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_add}
+
+Applies sparse addition between `updates` and individual values or slices within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to add 4 scattered elements to a rank-1 tensor to 8 elements. In Python, that addition would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    add = tf.scatter_nd_add(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(add)
+
+The resulting update to ref would look like this:
+
+    [1, 13, 3, 14, 14, 6, 7, 20]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values to add to ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done.
+
+
+- - -
+
+### `tf.scatter_nd_sub(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_sub}
+
+Applies sparse subtraction between `updates` and individual values or slices within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to subtract 4 scattered elements from a rank-1 tensor with 8 elements. In Python, that subtraction would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    sub = tf.scatter_nd_sub(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(sub)
+
+The resulting update to ref would look like this:
+
+    [1, -9, 3, -6, -4, 6, 7, -4]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values to subtract from ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done.
+
+
+- - -
+
+### `tf.scatter_nd_mul(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_mul}
+
+Applies sparse subtraction between `updates` and individual values or slices within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to multiply 4 scattered elements with a rank-1 tensor with 8 elements. In Python, that multiplication would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    sub = tf.scatter_nd_mul(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(sub)
+
+The resulting update to ref would look like this:
+
+    [1, 22, 3, 40, 45, 6, 7, 96]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values to subtract from ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done.
+
+
+- - -
+
+### `tf.scatter_nd_div(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_div}
+
+Applies sparse subtraction between `updates` and individual values or slices within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to divide a rank-1 tensor with 8 elements by 4 scattered elements. In Python, that division would look like this:
+
+    ref = tf.Variable([10, 20, 30, 40, 50, 60, 70, 80])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([2, 3, 4, 5])
+    sub = tf.scatter_nd_div(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(sub)
+
+The resulting update to ref would look like this:
+
+    [10, 5, 30, 13, 25, 60, 70, 16]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values to subtract from ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done.
+
+
+- - -
+
 ### `tf.sparse_mask(a, mask_indices, name=None)` {#sparse_mask}
 
 Masks elements of `IndexedSlices`.
@@ -3231,5 +3521,52 @@ device assignments have not changed.
 
   A None value is returned if no variables exist in the `MetaGraphDef`
   (i.e., there are no variables to restore).
+
+
+
+# Deprecated functions (removed after 2017-03-02). Please don't use them.
+
+- - -
+
+### `tf.all_variables(*args, **kwargs)` {#all_variables}
+
+See `tf.global_variables`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-03-02.
+Instructions for updating:
+Please use tf.global_variables instead.
+
+
+- - -
+
+### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
+
+See `tf.global_variables_initializer`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.global_variables_initializer` instead.
+
+
+- - -
+
+### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
+
+See `tf.local_variables_initializer`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.local_variables_initializer` instead.
+
+
+- - -
+
+### `tf.initialize_variables(*args, **kwargs)` {#initialize_variables}
+
+See `tf.variables_initializer`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.variables_initializer` instead.
 
 

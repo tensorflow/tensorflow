@@ -76,7 +76,7 @@ def build_split_apply_merge_model():
 
   # REINFORCE forward step
   route_selection = st.StochasticTensor(
-      distributions.Categorical, logits=logits)
+      distributions.Categorical(logits=logits))
 
   # Accessing route_selection as a Tensor below forces a sample of
   # the Categorical distribution based on its logits.

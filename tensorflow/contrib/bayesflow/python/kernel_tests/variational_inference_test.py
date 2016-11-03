@@ -44,7 +44,7 @@ def mini_vae():
   x = [[-6., 3., 6.], [-8., 4., 8.]]
   prior = distributions.Normal(mu=0., sigma=1.)
   variational = st.StochasticTensor(
-      distributions.Normal, mu=inference_net(x, 1), sigma=1.)
+      distributions.Normal(mu=inference_net(x, 1), sigma=1.))
   vi.register_prior(variational, prior)
   px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
   log_likelihood = tf.reduce_sum(px.log_prob(x), 1)
@@ -101,7 +101,7 @@ class VariationalInferenceTest(tf.test.TestCase):
 
     prior = distributions.Bernoulli(0.5)
     variational = st.StochasticTensor(
-        NormalNoEntropy, mu=inference_net(x, 1), sigma=1.)
+        NormalNoEntropy(mu=inference_net(x, 1), sigma=1.))
     vi.register_prior(variational, prior)
     px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
     log_likelihood = tf.reduce_sum(px.log_prob(x), 1)

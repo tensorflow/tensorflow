@@ -16,12 +16,29 @@
 
 package org.tensorflow.demo;
 
+import android.graphics.Bitmap;
+import android.graphics.Bitmap.Config;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.media.Image;
+import android.media.Image.Plane;
+import android.media.ImageReader;
+import android.media.ImageReader.OnImageAvailableListener;
+import android.os.SystemClock;
+import android.os.Trace;
+import android.util.Size;
+import android.util.TypedValue;
+import android.view.Display;
 import java.io.IOException;
-
-import android.app.Fragment;
+import java.util.List;
+import java.util.Vector;
+import org.tensorflow.demo.OverlayView.DrawCallback;
+import org.tensorflow.demo.env.BorderedText;
+import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
-public class ClassifierActivity extends CameraActivity {
+public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
 
   // These are the settings for the original v1 Inception model. If you want to
@@ -41,9 +58,58 @@ public class ClassifierActivity extends CameraActivity {
   private static final String LABEL_FILE =
       "file:///android_asset/imagenet_comp_graph_label_strings.txt";
 
+  private static final boolean SAVE_PREVIEW_BITMAP = false;
+
+  private static final boolean MAINTAIN_ASPECT = true;
+
+  private TensorFlowImageClassifier classifier;
+
+  private Integer sensorOrientation;
+
+  private int previewWidth = 0;
+  private int previewHeight = 0;
+  private byte[][] yuvBytes;
+  private int[] rgbBytes = null;
+  private Bitmap rgbFrameBitmap = null;
+  private Bitmap croppedBitmap = null;
+
+  private Bitmap cropCopyBitmap;
+
+  private boolean computing = false;
+
+  private long timestamp = 0;
+
+  private Matrix frameToCropTransform;
+  private Matrix cropToFrameTransform;
+
+  private ResultsView resultsView;
+
+  private OverlayView overlayView;
+
+  private BorderedText borderedText;
+
+  private long lastProcessingTimeMs;
+
   @Override
-  protected Fragment createFragment() {
-    final TensorFlowImageClassifier classifier = new TensorFlowImageClassifier();
+  protected int getLayoutId() {
+    return R.layout.camera_connection_fragment;
+  }
+
+  @Override
+  protected int getDesiredPreviewFrameSize() {
+    return INPUT_SIZE;
+  }
+
+  private static final float TEXT_SIZE_DIP = 18;
+
+  @Override
+  public void onPreviewSizeChosen(final Size size, final int rotation) {
+    final float textSizePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP,
+        getResources().getDisplayMetrics());
+    borderedText = new BorderedText(textSizePx);
+
+    classifier = new TensorFlowImageClassifier();
     try {
       classifier.initializeTensorFlow(
         getAssets(), MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
@@ -52,7 +118,151 @@ public class ClassifierActivity extends CameraActivity {
       LOGGER.e(e, "Exception!");
     }
 
-    return CameraConnectionFragment.newInstance(
-        classifier, R.layout.camera_connection_fragment, INPUT_SIZE);
+    overlayView = (OverlayView) findViewById(R.id.overlay);
+    resultsView = (ResultsView) findViewById(R.id.results);
+    previewWidth = size.getWidth();
+    previewHeight = size.getHeight();
+
+    final Display display = getWindowManager().getDefaultDisplay();
+    final int screenOrientation = display.getRotation();
+
+    LOGGER.i("Sensor orientation: %d, Screen orientation: %d",
+        rotation, screenOrientation);
+
+    sensorOrientation = rotation + screenOrientation;
+
+    if (sensorOrientation % 180 == 90) {
+      overlayView.setAspectRatio(size.getHeight(), size.getWidth());
+    } else {
+      overlayView.setAspectRatio(size.getWidth(), size.getHeight());
+    }
+
+    LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
+    rgbBytes = new int[previewWidth * previewHeight];
+    rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
+    croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
+
+    frameToCropTransform = ImageUtils.getTransformationMatrix(
+        previewWidth, previewHeight,
+        INPUT_SIZE, INPUT_SIZE,
+        sensorOrientation, MAINTAIN_ASPECT);
+
+    cropToFrameTransform = new Matrix();
+    frameToCropTransform.invert(cropToFrameTransform);
+
+    yuvBytes = new byte[3][];
+
+    overlayView.addCallback(new DrawCallback() {
+      @Override
+      public void drawCallback(final Canvas canvas) {
+        renderDebug(canvas);
+      }
+    });
+  }
+
+  @Override
+  public void onImageAvailable(final ImageReader reader) {
+    Image image = null;
+
+    ++timestamp;
+
+    try {
+      image = reader.acquireLatestImage();
+
+      if (image == null) {
+        return;
+      }
+
+      if (computing) {
+        image.close();
+        return;
+      }
+      computing = true;
+
+      Trace.beginSection("imageAvailable");
+
+      final Plane[] planes = image.getPlanes();
+      fillBytes(planes, yuvBytes);
+
+      final int yRowStride = planes[0].getRowStride();
+      final int uvRowStride = planes[1].getRowStride();
+      final int uvPixelStride = planes[1].getPixelStride();
+      ImageUtils.convertYUV420ToARGB8888(
+          yuvBytes[0],
+          yuvBytes[1],
+          yuvBytes[2],
+          rgbBytes,
+          previewWidth,
+          previewHeight,
+          yRowStride,
+          uvRowStride,
+          uvPixelStride,
+          false);
+
+      image.close();
+    } catch (final Exception e) {
+      if (image != null) {
+        image.close();
+      }
+      LOGGER.e(e, "Exception!");
+      Trace.endSection();
+      return;
+    }
+
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+    final Canvas canvas = new Canvas(croppedBitmap);
+    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
+
+    // For examining the actual TF input.
+    if (SAVE_PREVIEW_BITMAP) {
+      ImageUtils.saveBitmap(croppedBitmap);
+    }
+
+    runInBackground(
+        new Runnable() {
+          @Override
+          public void run() {
+            final long startTime = SystemClock.uptimeMillis();
+            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
+            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+            resultsView.setResults(results);
+            overlayView.postInvalidate();
+            computing = false;
+          }
+        });
+
+    Trace.endSection();
+  }
+
+  private void renderDebug(Canvas canvas) {
+    if (!isDebug()) {
+      return;
+    }
+    final Bitmap copy = cropCopyBitmap;
+    if (copy != null) {
+      final Matrix matrix = new Matrix();
+      final float scaleFactor = 2;
+      matrix.postScale(scaleFactor, scaleFactor);
+      matrix.postTranslate(
+          canvas.getWidth() - copy.getWidth() * scaleFactor,
+          canvas.getHeight() - copy.getHeight() * scaleFactor);
+      canvas.drawBitmap(copy, matrix, new Paint());
+
+      final Vector<String> lines = new Vector<String>();
+      lines.add("Frame: " + previewWidth + "x" + previewHeight);
+      lines.add("Crop: " + copy.getWidth() + "x" + copy.getHeight());
+      lines.add("View: " + canvas.getWidth() + "x" + canvas.getHeight());
+      lines.add("Rotation: " + sensorOrientation);
+      lines.add("Inference time: " + lastProcessingTimeMs + "ms");
+
+      int lineNum = 0;
+      for (final String line : lines) {
+        borderedText.drawText(canvas, 10,
+            canvas.getHeight() - 10 - borderedText.getTextSize() * lineNum, line);
+        ++lineNum;
+      }
+    }
   }
 }

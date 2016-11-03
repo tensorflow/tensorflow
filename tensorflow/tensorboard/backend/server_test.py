@@ -27,6 +27,7 @@ import json
 import numbers
 import os
 import shutil
+import tempfile
 import threading
 import zlib
 
@@ -51,10 +52,10 @@ class TensorboardServerTest(tf.test.TestCase):
   _SCALAR_COUNT = 99
 
   def setUp(self):
-    self._GenerateTestData()
+    temp_dir = self._GenerateTestData()
     self._multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
-    server.ReloadMultiplexer(self._multiplexer, {self.get_temp_dir(): None})
+    server.ReloadMultiplexer(self._multiplexer, {temp_dir: None})
     # 0 to pick an unused port.
     self._server = server.BuildServer(
         self._multiplexer, 'localhost', 0, '/foo/logdir/argument')
@@ -322,8 +323,11 @@ class TensorboardServerTest(tf.test.TestCase):
      - scalar events containing the value i at step 10 * i and wall time
          100 * i, for i in [1, _SCALAR_COUNT).
      - a graph definition
+
+    Returns:
+      temp_dir: The directory the test data is generated under.
     """
-    temp_dir = self.get_temp_dir()
+    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
     self.addCleanup(shutil.rmtree, temp_dir)
     run1_path = os.path.join(temp_dir, 'run1')
     os.makedirs(run1_path)
@@ -395,6 +399,8 @@ class TensorboardServerTest(tf.test.TestCase):
 
     if 'projector' in REGISTERED_PLUGINS:
       self._GenerateProjectorTestData(run1_path)
+
+    return temp_dir
 
   def _GenerateProjectorTestData(self, run_path):
     # Write a projector config file in run1.

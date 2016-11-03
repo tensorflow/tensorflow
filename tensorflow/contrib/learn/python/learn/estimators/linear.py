@@ -32,6 +32,7 @@ from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
@@ -267,21 +268,18 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   Example:
 
   ```python
-  education = sparse_column_with_hash_bucket(column_name="education",
-                                             hash_bucket_size=1000)
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
+  sparse_column_a = sparse_column_with_hash_bucket(...)
+  sparse_column_b = sparse_column_with_hash_bucket(...)
 
-  education_x_occupation = crossed_column(columns=[education, occupation],
-                                          hash_bucket_size=10000)
+  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
   # Estimator using the default optimizer.
   estimator = LinearClassifier(
-      feature_columns=[occupation, education_x_occupation])
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
 
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearClassifier(
-      feature_columns=[occupation, education_x_occupation],
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
       optimizer=tf.train.FtrlOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
@@ -289,7 +287,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 
   # Or estimator using the SDCAOptimizer.
   estimator = LinearClassifier(
-     feature_columns=[occupation, education_x_occupation],
+     feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
      optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
        example_id_column='example_id',
        num_loss_partitions=...,
@@ -465,13 +463,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[head_lib.PredictionKey.CLASSES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.CLASSES
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.CLASSES)
-    return preds[head_lib.PredictionKey.CLASSES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -479,14 +480,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
                     as_iterable=True):
     """Runs inference to determine the class probability predictions."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[
-                                        head_lib.PredictionKey.PROBABILITIES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.PROBABILITIES
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.PROBABILITIES)
-    return preds[head_lib.PredictionKey.PROBABILITIES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   def get_variable_names(self):
     return self._estimator.get_variable_names()
@@ -512,9 +515,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
-        signature_fn=(
-            signature_fn or export.classification_signature_fn_with_prob),
-        prediction_key=head_lib.PredictionKey.PROBABILITIES,
+        signature_fn=(signature_fn or
+                      export.classification_signature_fn_with_prob),
+        prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
@@ -561,16 +564,13 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
   Example:
 
   ```python
-  education = sparse_column_with_hash_bucket(column_name="education",
-                                             hash_bucket_size=1000)
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
+  sparse_column_a = sparse_column_with_hash_bucket(...)
+  sparse_column_b = sparse_column_with_hash_bucket(...)
 
-  education_x_occupation = crossed_column(columns=[education, occupation],
-                                          hash_bucket_size=10000)
+  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
   estimator = LinearRegressor(
-      feature_columns=[occupation, education_x_occupation])
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -731,13 +731,16 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[head_lib.PredictionKey.SCORES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.SCORES
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.SCORES)
-    return preds[head_lib.PredictionKey.SCORES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   def get_variable_names(self):
     return self._estimator.get_variable_names()
@@ -764,7 +767,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         signature_fn=(signature_fn or export.regression_signature_fn),
-        prediction_key=head_lib.PredictionKey.SCORES,
+        prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 

@@ -220,7 +220,7 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "parameterized_truncated_normal_op_test",
     size = "small",
     srcs = ["parameterized_truncated_normal_op_test.py"],
@@ -269,6 +269,13 @@ tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "scatter_nd_ops_test",
+    size = "medium",
+    srcs = ["scatter_nd_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 

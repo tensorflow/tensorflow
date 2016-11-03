@@ -44,7 +44,6 @@ from __future__ import print_function
 import abc
 import collections
 import contextlib
-import inspect
 import threading
 
 import six
@@ -77,10 +76,6 @@ class BaseStochasticTensor(object):
 
   @abc.abstractproperty
   def graph(self):
-    pass
-
-  @abc.abstractproperty
-  def input_dict(self):
     pass
 
   @abc.abstractmethod
@@ -120,6 +115,7 @@ class BaseStochasticTensor(object):
 # pylint: disable=protected-access
 ops.register_tensor_conversion_function(
     BaseStochasticTensor, BaseStochasticTensor._tensor_conversion_function)
+
 # pylint: enable=protected-access
 
 
@@ -223,8 +219,8 @@ class SampleAndReshapeValue(_StochasticValueType):
   st_value = st.value()
   assertEqual(st_value.get_shape(), (4, 3))
 
-  dt_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
-  assertEqual(dt_value_val.shape, (4, 3))
+  st_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
+  assertEqual(st_value_val.shape, (4, 3))
   ```
   """
 
@@ -312,17 +308,16 @@ class StochasticTensor(BaseStochasticTensor):
   """StochasticTensor is a BaseStochasticTensor backed by a distribution."""
 
   def __init__(self,
-               dist_cls,
-               name=None,
+               dist,
+               name="StochasticTensor",
                dist_value_type=None,
-               loss_fn=sge.score_function,
-               **dist_args):
+               loss_fn=sge.score_function):
     """Construct a `StochasticTensor`.
 
-    `StochasticTensor` will instantiate a distribution from `dist_cls` and
-    `dist_args` and its `value` method will return the same value each time
-    it is called. What `value` is returned is controlled by the
-    `dist_value_type` (defaults to `SampleAndReshapeValue`).
+    `StochasticTensor` is backed by the `dist` distribution and its `value`
+    method will return the same value each time it is called. What `value` is
+    returned is controlled by the `dist_value_type` (defaults to
+    `SampleAndReshapeValue`).
 
     Some distributions' sample functions are not differentiable (e.g. a sample
     from a discrete distribution like a Bernoulli) and so to differentiate
@@ -338,28 +333,25 @@ class StochasticTensor(BaseStochasticTensor):
     `MeanValueType` or if `loss_fn=None`.
 
     Args:
-      dist_cls: a `Distribution` class.
+      dist: an instance of `Distribution`.
       name: a name for this `StochasticTensor` and its ops.
       dist_value_type: a `_StochasticValueType`, which will determine what the
           `value` of this `StochasticTensor` will be. If not provided, the
           value type set with the `value_type` context manager will be used.
-      loss_fn: callable that takes `(st, st.value(), influenced_loss)`, where
+      loss_fn: callable that takes
+          `(st, st.value(), influenced_loss)`, where
           `st` is this `StochasticTensor`, and returns a `Tensor` loss. By
           default, `loss_fn` is the `score_function`, or more precisely, the
           integral of the score function, such that when the gradient is taken,
           the score function results. See the `stochastic_gradient_estimators`
           module for additional loss functions and baselines.
-      **dist_args: keyword arguments to be passed through to `dist_cls` on
-          construction.
 
     Raises:
-      TypeError: if `dist_cls` is not a `Distribution`.
+      TypeError: if `dist` is not an instance of `Distribution`.
       TypeError: if `loss_fn` is not `callable`.
     """
-    if not issubclass(dist_cls, distributions.Distribution):
-      raise TypeError("dist_cls must be a subclass of Distribution")
-    self._dist_cls = dist_cls
-    self._dist_args = dist_args
+    if not isinstance(dist, distributions.Distribution):
+      raise TypeError("dist must be an instance of Distribution")
     if dist_value_type is None:
       try:
         self._value_type = get_current_value_type()
@@ -371,23 +363,16 @@ class StochasticTensor(BaseStochasticTensor):
       with value_type(dist_value_type):
         self._value_type = get_current_value_type()
 
-    self._value_type.declare_inputs(self, dist_args)
-
     if loss_fn is not None and not callable(loss_fn):
       raise TypeError("loss_fn must be callable")
     self._loss_fn = loss_fn
 
-    with ops.name_scope(name, "StochasticTensor",
-                        dist_args.values()) as scope:
+    with ops.name_scope(name) as scope:
       self._name = scope
-      self._dist = dist_cls(**dist_args)
+      self._dist = dist
       self._value = self._create_value()
 
     super(StochasticTensor, self).__init__()
-
-  @property
-  def input_dict(self):
-    return self._dist_args
 
   @property
   def value_type(self):
@@ -396,9 +381,6 @@ class StochasticTensor(BaseStochasticTensor):
   @property
   def distribution(self):
     return self._dist
-
-  def clone(self, name=None, **dist_args):
-    return StochasticTensor(self._dist_cls, name=name, **dist_args)
 
   def _create_value(self):
     """Create the value Tensor based on the value type, store as self._value."""
@@ -494,33 +476,28 @@ class ObservedStochasticTensor(StochasticTensor):
   """A StochasticTensor with an observed value."""
 
   # pylint: disable=super-init-not-called
-  def __init__(self, dist_cls, value, name=None, **dist_args):
+  def __init__(self, dist, value, name=None):
     """Construct an `ObservedStochasticTensor`.
 
-    `ObservedStochasticTensor` will instantiate a distribution from `dist_cls`
-    and `dist_args` but use the provided value instead of sampling from the
-    distribution. The provided value argument must be appropriately shaped
-    to have come from the constructed distribution.
+    `ObservedStochasticTensor` is backed by distribution `dist` and uses the
+    provided value instead of using the current value type to draw a value from
+    the distribution. The provided value argument must be appropriately shaped
+    to have come from the distribution.
 
     Args:
-      dist_cls: a `Distribution` class.
+      dist: an instance of `Distribution`.
       value: a Tensor containing the observed value
       name: a name for this `ObservedStochasticTensor` and its ops.
-      **dist_args: keyword arguments to be passed through to `dist_cls` on
-          construction.
 
     Raises:
-      TypeError: if `dist_cls` is not a `Distribution`.
+      TypeError: if `dist` is not an instance of `Distribution`.
       ValueError: if `value` is not compatible with the distribution.
     """
-    if not issubclass(dist_cls, distributions.Distribution):
-      raise TypeError("dist_cls must be a subclass of Distribution")
-    self._dist_cls = dist_cls
-    self._dist_args = dist_args
-    with ops.name_scope(name, "ObservedStochasticTensor",
-                        list(dist_args.values()) + [value]) as scope:
+    if not isinstance(dist, distributions.Distribution):
+      raise TypeError("dist must be an instance of Distribution")
+    with ops.name_scope(name, "ObservedStochasticTensor", [value]) as scope:
       self._name = scope
-      self._dist = dist_cls(**dist_args)
+      self._dist = dist
       dist_shape = self._dist.get_batch_shape().concatenate(
           self._dist.get_event_shape())
       value = ops.convert_to_tensor(value)
@@ -538,7 +515,7 @@ class ObservedStochasticTensor(StochasticTensor):
               "sample from the distribution %s." % (value_shape, dist_shape))
       if value.dtype != self._dist.dtype:
         raise ValueError("Type of observed value (%s) does not match type of "
-                         "distribuiton (%s)." % (value.dtype, self._dist.dtype))
+                         "distribution (%s)." % (value.dtype, self._dist.dtype))
       self._value = array_ops.identity(value)
     # pylint: disable=non-parent-init-called
     BaseStochasticTensor.__init__(self)
@@ -557,39 +534,3 @@ __all__ = [
     "value_type",
     "get_current_value_type",
 ]
-
-_globals = globals()
-# pylint: disable=redefined-builtin
-__doc__ += "\n\n## Automatically Generated StochasticTensors\n\n"
-# pylint: enable=redefined-builtin
-for _name in sorted(dir(distributions)):
-  _candidate = getattr(distributions, _name)
-  if (inspect.isclass(_candidate)
-      and _candidate != distributions.Distribution
-      and issubclass(_candidate, distributions.Distribution)):
-    _local_name = "%sTensor" % _name
-
-    class _WrapperTensor(StochasticTensor):
-      _my_candidate = _candidate
-
-      def __init__(self, name=None, dist_value_type=None,
-                   loss_fn=sge.score_function, **dist_args):
-        StochasticTensor.__init__(
-            self,
-            dist_cls=self._my_candidate,
-            name=name,
-            dist_value_type=dist_value_type,
-            loss_fn=loss_fn, **dist_args)
-
-    _WrapperTensor.__name__ = _local_name
-    _WrapperTensor.__doc__ = (
-        "`%s` is a `StochasticTensor` backed by the distribution `%s`."""
-        % (_local_name, _name))
-    _globals[_local_name] = _WrapperTensor
-    del _WrapperTensor
-    del _candidate
-
-    __all__.append(_local_name)
-    __doc__ += "@@%s\n" % _local_name
-
-    del _local_name

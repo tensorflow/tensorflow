@@ -58,7 +58,7 @@ handle these situations gracefully.
             <paper-checkbox
               class="checkbox vertical-align-center"
               name="[[item]]"
-              checked$="[[_isChecked(item, runToIsCheckedMapping.*)]]"
+              checked$="[[_isChecked(item, runsDisabled.*)]]"
               on-change="_checkboxChange"
             ></paper-checkbox>
 
@@ -161,7 +161,10 @@ handle these situations gracefully.
   Polymer({
     is: "tf-multi-checkbox",
     properties: {
-      names: Array, // All the runs in consideration
+      names: {
+        type: Array,
+        value: function() {return [];},
+      }, // All the runs in consideration
       regexInput: {
         type: String,
         value: TF.URIStorage.getStringInitializer("regexInput", ""),
@@ -175,15 +178,15 @@ handle these situations gracefully.
         type: Array,
         computed: "computeNamesMatchingRegex(names.*, regex)"
       }, // Runs that match the regex
-      runToIsCheckedMapping: {
+      runsDisabled: {
         type: Object,
-        value: TF.URIStorage.getObjectInitializer('runToIsCheckedMapping', {}),
-      }, // run name -> Boolean (if its enabled)
+        value: TF.URIStorage.getObjectInitializer('runsDisabled', {}),
+      }, // Every run that is disabled is stored in the map (with value true)
       // (Allows state to persist across regex filtering)
       outSelected: {
         type: Array,
         notify: true,
-        computed: 'computeOutSelected(namesMatchingRegex.*, runToIsCheckedMapping.*)'
+        computed: 'computeOutSelected(namesMatchingRegex.*, runsDisabled.*)'
       },
       colorScale: {
         type: Object,
@@ -219,11 +222,10 @@ handle these situations gracefully.
       'dom-change': 'synchronizeColors',
     },
     observers: [
-      "_initializeRunToIsCheckedMapping(names.*)",
-      "_setIsolatorIcon(runToIsCheckedMapping)",
-      "_storeRunToIsCheckedMapping(runToIsCheckedMapping)",
+      "_setIsolatorIcon(runsDisabled, names)",
+      "_storeRunToIsCheckedMapping(runsDisabled)",
     ],
-    _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runToIsCheckedMapping', {}),
+    _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runsDisabled', {}),
     _makeRegex: function(regex) {
       try {
         return new RegExp(regex)
@@ -232,28 +234,17 @@ handle these situations gracefully.
       }
     },
     _setIsolatorIcon: function() {
-      var runMap = this.runToIsCheckedMapping;
-      var numChecked = _.filter(_.values(runMap)).length;
+      var runMap = this.runsDisabled;
+      var numChecked = this.names.length - _.filter(_.values(runMap)).length;
       var buttons = Array.prototype.slice.call(this.querySelectorAll(".isolator"));
 
       buttons.forEach(function(b) {
-        if (numChecked === 1 && runMap[b.name]) {
+        if (numChecked === 1 && !runMap[b.name]) {
           b.icon = "radio-button-checked";
         } else {
           b.icon = "radio-button-unchecked";
         }
       });
-    },
-    _initializeRunToIsCheckedMapping: function(change) {
-      var runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
-
-      this.names.forEach(function(n) {
-        if (runToIsCheckedMapping[n] == null) {
-          // runs default to on
-          runToIsCheckedMapping[n] = true;
-        }
-      });
-      this.runToIsCheckedMapping = runToIsCheckedMapping;
     },
     computeNamesMatchingRegex: function(__, ___) {
       var regex = this.regex;
@@ -262,9 +253,9 @@ handle these situations gracefully.
       });
     },
     computeOutSelected: function(__, ___) {
-      var runToIsCheckedMapping = this.runToIsCheckedMapping;
+      var runsDisabled = this.runsDisabled;
       return this.namesMatchingRegex.filter(function(n) {
-        return runToIsCheckedMapping[n];
+        return !runsDisabled[n];
       });
     },
     synchronizeColors: function(e) {
@@ -296,24 +287,25 @@ handle these situations gracefully.
       // If user clicks on the label for one run, enable it and disable all other runs.
 
       var name = Polymer.dom(e).localTarget.name;
-      var _this = this;
-      _.keys(this.runToIsCheckedMapping).forEach(function(k) {
-        _this.runToIsCheckedMapping[k] = false;
-      });
-      this.runToIsCheckedMapping[name] = true;
-      // we can't use notifyPath because the run names may have periods
-      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
+      var newDisabled = {};
+      this.names.forEach(function(n) {
+        newDisabled[n] = true;
+      })
+      delete newDisabled[name];
+      this.runsDisabled = newDisabled;
     },
     _checkboxChange: function(e) {
       var target = Polymer.dom(e).localTarget;
-      var name = target.name;
-      var checked = target.checked;
-      this.runToIsCheckedMapping[name] = checked;
+      if (target.checked) {
+        delete this.runsDisabled[target.name];
+      } else {
+        this.runsDisabled[target.name] = true;
+      }
       // n.b. notifyPath won't work because run names may have periods.
-      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
+      this.runsDisabled = _.clone(this.runsDisabled);
     },
     _isChecked: function(item, outSelectedChange) {
-      return this.runToIsCheckedMapping[item];
+      return this.runsDisabled[item] == undefined;
     },
     _initializeRuns: function(change) {
       this.outSelected = change.base.slice();
@@ -322,10 +314,15 @@ handle these situations gracefully.
     toggleAll: function() {
       var _this = this;
       var allOn = this.namesMatchingRegex
-                    .filter(function(n) {return !_this.runToIsCheckedMapping[n]})
+                    .filter(function(n) {return _this.runsDisabled[n]})
                     .length === 0;
-      this.namesMatchingRegex.forEach(function(n) {_this.runToIsCheckedMapping[n] = !allOn});
-      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
+      let newRunsDisabled = {}
+      if (allOn) {
+        this.names.forEach(function(n) {
+          newRunsDisabled[n] = true;
+        })
+      }
+      this.runsDisabled = newRunsDisabled;
     },
   });
   </script>

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_POSIX_POSIX_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_POSIX_POSIX_FILE_SYSTEM_H_
 
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -63,7 +64,7 @@ class LocalPosixFileSystem : public PosixFileSystem {
  public:
   string TranslateName(const string& name) const override {
     StringPiece scheme, host, path;
-    ParseURI(name, &scheme, &host, &path);
+    io::ParseURI(name, &scheme, &host, &path);
     return path.ToString();
   }
 };

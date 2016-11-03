@@ -46,16 +46,16 @@ function test() {
 
 test boston
 test iris
-test iris_custom_model
 test iris_custom_decay_dnn
+test iris_custom_model
 test iris_run_config
 test iris_val_based_early_stopping
 test iris_with_pipeline
+test random_forest_mnist
 test resnet
 test text_classification --test_with_fake_data
 test text_classification_builtin_rnn_model --test_with_fake_data
-test text_classification_cnn --test_with_fake_data
 test text_classification_character_cnn --test_with_fake_data
 test text_classification_character_rnn --test_with_fake_data
-test random_forest_mnist
+test text_classification_cnn --test_with_fake_data
 test wide_n_deep_tutorial
