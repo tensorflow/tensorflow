@@ -68,7 +68,7 @@ TEST_F(DeviceSetTest, PrioritizedDeviceTypeList) {
       (std::vector<DeviceType>{DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)}),
       types());
 
-  AddDevice("SYCL", "/job:a/replica:0/task:0/sycl:0");
+  AddDevice("SYCL", "/job:a/replica:0/task:0/device:sycl:0");
   EXPECT_EQ(
       (std::vector<DeviceType>{DeviceType(DEVICE_SYCL), DeviceType(DEVICE_GPU),
       DeviceType(DEVICE_CPU)}), types());
