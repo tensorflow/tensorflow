@@ -61,7 +61,8 @@ static bool ReadEventProto(io::RecordReader* reader, uint64* offset,
 }
 
 void VerifyFile(const string& filename) {
-  CHECK(env()->FileExists(filename));
+  bool result;
+  CHECK(env()->FileExists(filename, &result).ok() && result);
   std::unique_ptr<RandomAccessFile> event_file;
   TF_CHECK_OK(env()->NewRandomAccessFile(filename, &event_file));
   io::RecordReader* reader = new io::RecordReader(event_file.get());
@@ -139,11 +140,12 @@ TEST(EventWriter, FailFlush) {
   EventsWriter writer(file_prefix);
   string filename = writer.FileName();
   WriteFile(&writer);
-  EXPECT_TRUE(env()->FileExists(filename));
+  bool result;
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && result);
   env()->DeleteFile(filename);
-  EXPECT_FALSE(env()->FileExists(filename));
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && !result);
   EXPECT_FALSE(writer.Flush());
-  EXPECT_FALSE(env()->FileExists(filename));
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && !result);
 }
 
 TEST(EventWriter, FailClose) {
@@ -151,11 +153,12 @@ TEST(EventWriter, FailClose) {
   EventsWriter writer(file_prefix);
   string filename = writer.FileName();
   WriteFile(&writer);
-  EXPECT_TRUE(env()->FileExists(filename));
+  bool result;
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && result);
   env()->DeleteFile(filename);
-  EXPECT_FALSE(env()->FileExists(filename));
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && !result);
   EXPECT_FALSE(writer.Close());
-  EXPECT_FALSE(env()->FileExists(filename));
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && !result);
 }
 
 TEST(EventWriter, InitWriteClose) {
@@ -163,7 +166,8 @@ TEST(EventWriter, InitWriteClose) {
   EventsWriter writer(file_prefix);
   EXPECT_TRUE(writer.Init());
   string filename0 = writer.FileName();
-  EXPECT_TRUE(env()->FileExists(filename0));
+  bool result;
+  EXPECT_TRUE(env()->FileExists(filename0, &result).ok() && result);
   WriteFile(&writer);
   EXPECT_TRUE(writer.Close());
   string filename1 = writer.FileName();
@@ -175,7 +179,8 @@ TEST(EventWriter, NameWriteClose) {
   string file_prefix = GetDirName("/namewriteclose_test");
   EventsWriter writer(file_prefix);
   string filename = writer.FileName();
-  EXPECT_TRUE(env()->FileExists(filename));
+  bool result;
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && result);
   WriteFile(&writer);
   EXPECT_TRUE(writer.Close());
   VerifyFile(filename);
@@ -186,7 +191,8 @@ TEST(EventWriter, NameClose) {
   EventsWriter writer(file_prefix);
   string filename = writer.FileName();
   EXPECT_TRUE(writer.Close());
-  EXPECT_TRUE(env()->FileExists(filename));
+  bool result;
+  EXPECT_TRUE(env()->FileExists(filename, &result).ok() && result);
   env()->DeleteFile(filename);
 }
 
@@ -194,7 +200,8 @@ TEST(EventWriter, FileDeletionBeforeWriting) {
   string file_prefix = GetDirName("/fdbw_test");
   EventsWriter writer(file_prefix);
   string filename0 = writer.FileName();
-  EXPECT_TRUE(env()->FileExists(filename0));
+  bool result;
+  EXPECT_TRUE(env()->FileExists(filename0, &result).ok() && result);
   env()->SleepForMicroseconds(
       2000000);  // To make sure timestamp part of filename will differ.
   env()->DeleteFile(filename0);

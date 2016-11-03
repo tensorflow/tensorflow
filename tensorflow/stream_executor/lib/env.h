@@ -29,12 +29,12 @@ using tensorflow::ReadFileToString;
 using tensorflow::Thread;
 using tensorflow::WriteStringToFile;
 
-inline bool FileExists(const string& filename) {
-  return Env::Default()->FileExists(filename);
+inline Status FileExists(const string& filename, bool* result) {
+  return Env::Default()->FileExists(filename, result);
 }
 
-inline bool FileExists(const port::StringPiece& filename) {
-  return Env::Default()->FileExists(filename.ToString());
+inline Status FileExists(const port::StringPiece& filename, bool* result) {
+  return Env::Default()->FileExists(filename.ToString(), result);
 }
 
 }  // namespace port

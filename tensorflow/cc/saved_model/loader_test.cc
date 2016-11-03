@@ -50,7 +50,9 @@ class LoaderTest : public ::testing::Test {
         io::JoinPath(export_dir, kSavedModelAssetsDirectory);
     const string asset_filename = "foo.txt";
     const string asset_filepath = io::JoinPath(asset_directory, asset_filename);
-    EXPECT_TRUE(Env::Default()->FileExists(asset_filepath));
+    bool result;
+    EXPECT_TRUE(Env::Default()->FileExists(asset_filepath, &result).ok() &&
+                result);
 
     std::vector<Tensor> path_outputs;
     TF_ASSERT_OK(

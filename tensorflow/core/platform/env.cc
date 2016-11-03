@@ -117,12 +117,10 @@ Status Env::NewAppendableFile(const string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-bool Env::FileExists(const string& fname) {
+Status Env::FileExists(const string& fname, bool* result) {
   FileSystem* fs;
-  if (!GetFileSystemForFile(fname, &fs).ok()) {
-    return false;
-  }
-  return fs->FileExists(fname);
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->FileExists(fname, result);
 }
 
 Status Env::GetChildren(const string& dir, std::vector<string>* result) {

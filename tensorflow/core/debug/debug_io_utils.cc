@@ -175,13 +175,16 @@ Status DebugFileIO::DumpTensorToEventFile(
 
 // static
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
-  if (env->FileExists(dir) && env->IsDirectory(dir).ok()) {
+  bool result;
+  TF_RETURN_IF_ERROR(env->FileExists(dir, &result));
+  if (result && env->IsDirectory(dir).ok()) {
     // The path already exists as a directory. Return OK right away.
     return Status::OK();
   }
 
   string parent_dir = io::Dirname(dir).ToString();
-  if (!env->FileExists(parent_dir)) {
+  TF_RETURN_IF_ERROR(env->FileExists(parent_dir, &result));
+  if (!result) {
     // The parent path does not exist yet, create it first.
     Status s = RecursiveCreateDir(env, parent_dir);  // Recursive call
     if (!s.ok()) {
@@ -189,18 +192,21 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
           error::FAILED_PRECONDITION,
           strings::StrCat("Failed to create directory  ", parent_dir));
     }
-  } else if (env->FileExists(parent_dir) &&
-             !env->IsDirectory(parent_dir).ok()) {
-    // The path exists, but it is a file.
-    return Status(error::FAILED_PRECONDITION,
-                  strings::StrCat("Failed to create directory  ", parent_dir,
-                                  " because the path exists as a file "));
+  } else {
+    TF_RETURN_IF_ERROR(env->FileExists(parent_dir, &result));
+    if (result && !env->IsDirectory(parent_dir).ok()) {
+      // The path exists, but it is a file.
+      return Status(error::FAILED_PRECONDITION,
+                    strings::StrCat("Failed to create directory  ", parent_dir,
+                                    " because the path exists as a file "));
+    }
   }
 
   env->CreateDir(dir);
   // Guard against potential race in creating directories by doing a check
   // after the CreateDir call.
-  if (env->FileExists(dir) && env->IsDirectory(dir).ok()) {
+  TF_RETURN_IF_ERROR(env->FileExists(dir, &result));
+  if (result && env->IsDirectory(dir).ok()) {
     return Status::OK();
   } else {
     return Status(error::ABORTED,

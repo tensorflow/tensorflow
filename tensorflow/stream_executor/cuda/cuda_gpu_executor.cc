@@ -177,7 +177,8 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
   // have been migrated.
   string cc_specific = port::StrCat(filename.ToString(), ".cc", cc_major_,
                                     cc_minor_, canonical_suffix.ToString());
-  if (port::FileExists(cc_specific)) {
+  bool result;
+  if (port::FileExists(cc_specific, &result).ok() && result) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
     *found_filename = cc_specific;
@@ -186,7 +187,7 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
 
   VLOG(2) << "could not find compute-capability specific file at: "
           << cc_specific;
-  if (port::FileExists(filename.ToString())) {
+  if (port::FileExists(filename.ToString(), &result).ok() && result) {
     *found_filename = filename.ToString();
     return true;
   }

@@ -162,9 +162,10 @@ Status RetryingFileSystem::NewReadOnlyMemoryRegionFromFile(
                          initial_delay_microseconds_);
 }
 
-bool RetryingFileSystem::FileExists(const string& fname) {
-  // No status -- no retries.
-  return base_file_system_->FileExists(fname);
+Status RetryingFileSystem::FileExists(const string& fname, bool* result) {
+  return CallWithRetries(std::bind(&FileSystem::FileExists,
+                                   base_file_system_.get(), fname, result),
+                         initial_delay_microseconds_);
 }
 
 Status RetryingFileSystem::Stat(const string& fname, FileStatistics* stat) {

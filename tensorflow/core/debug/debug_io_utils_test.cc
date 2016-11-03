@@ -170,10 +170,11 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   const string test_dir = testing::TmpDir();
   const string txt_file_name = strings::StrCat(test_dir, "/baz");
 
-  if (!env_->FileExists(test_dir)) {
+  bool result;
+  if (env_->FileExists(test_dir, &result).ok() && !result) {
     ASSERT_TRUE(env_->CreateDir(test_dir).ok());
   }
-  ASSERT_FALSE(env_->FileExists(txt_file_name));
+  ASSERT_TRUE(env_->FileExists(txt_file_name, &result).ok() && !result);
 
   std::unique_ptr<WritableFile> file;
   ASSERT_TRUE(env_->NewWritableFile(txt_file_name, &file).ok());
@@ -182,7 +183,7 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   file->Close();
 
   // Verify that the path exists and that it is a file, not a directory.
-  ASSERT_TRUE(env_->FileExists(txt_file_name));
+  ASSERT_TRUE(env_->FileExists(txt_file_name, &result).ok() && result);
   ASSERT_FALSE(env_->IsDirectory(txt_file_name).ok());
 
   // Second, try to dump the tensor to a path that requires "baz" to be a
