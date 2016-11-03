@@ -208,7 +208,7 @@ public class ImageUtils {
       if (maintainAspectRatio) {
         // Scale by minimum factor so that dst is filled completely while
         // maintaining the aspect ratio. Some image may fall off the edge.
-        final float scaleFactor = Math.max(scaleFactorX, scaleFactorX);
+        final float scaleFactor = Math.max(scaleFactorX, scaleFactorY);
         matrix.postScale(scaleFactor, scaleFactor);
       } else {
         // Scale exactly to fill dst from src.
