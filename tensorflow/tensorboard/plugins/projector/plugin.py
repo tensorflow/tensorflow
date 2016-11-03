@@ -109,6 +109,15 @@ class ProjectorPlugin(TBPlugin):
         if not embedding.tensor_shape:
           embedding.tensor_shape.extend(tensor_shape)
 
+    # Remove configs that do not have any valid (2D) tensors.
+    runs_to_remove = []
+    for run, config in self.configs.items():
+      if not config.embeddings:
+        runs_to_remove.append(run)
+    for run in runs_to_remove:
+      del self.configs[run]
+      del self.config_fpaths[run]
+
   def _read_config_files(self, run_paths, logdir):
     # If there are no summary event files, the projector can still work,
     # thus treating the `logdir` as the model checkpoint directory.
@@ -137,7 +146,6 @@ class ProjectorPlugin(TBPlugin):
           # Or in the parent of logdir.
           ckpt_path = latest_checkpoint(os.path.join('../', logdir))
           if not ckpt_path and not has_tensor_files:
-            logging.warning('Cannot find model checkpoint in %s', logdir)
             continue
         if ckpt_path:
           config.model_checkpoint_path = ckpt_path
@@ -159,7 +167,10 @@ class ProjectorPlugin(TBPlugin):
     config = self.configs[run]
     reader = None
     if config.model_checkpoint_path:
-      reader = NewCheckpointReader(config.model_checkpoint_path)
+      try:
+        reader = NewCheckpointReader(config.model_checkpoint_path)
+      except Exception:  # pylint: disable=broad-except
+        logging.warning('Failed reading %s', config.model_checkpoint_path)
     self.readers[run] = reader
     return reader
 

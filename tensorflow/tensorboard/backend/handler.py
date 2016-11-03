@@ -503,11 +503,15 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     # prefix. For example if plugin z has two routes /a and /b, they will be
     # served as /data/plugin/z/a and /data/plugin/z/b.
     for name in REGISTERED_PLUGINS:
-      plugin = REGISTERED_PLUGINS[name]()
-      # Initialize the plugin by passing the main http handler.
-      plugin.initialize(self)
-      plugin_handlers = plugin.get_plugin_handlers(self._multiplexer.RunPaths(),
-                                                   self._logdir)
+      try:
+        plugin = REGISTERED_PLUGINS[name]()
+        # Initialize the plugin by passing the main http handler.
+        plugin.initialize(self)
+        plugin_handlers = plugin.get_plugin_handlers(
+            self._multiplexer.RunPaths(), self._logdir)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.warning('Plugin %s failed. Exception: %s', name, str(e))
+        continue
       for route, handler in six.iteritems(plugin_handlers):
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
         data_handlers[path] = handler
