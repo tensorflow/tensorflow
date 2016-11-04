@@ -240,6 +240,7 @@
   * [`lgamma`](../../api_docs/python/math_ops.md#lgamma)
   * [`listdiff`](../../api_docs/python/math_ops.md#listdiff)
   * [`log`](../../api_docs/python/math_ops.md#log)
+  * [`log1p`](../../api_docs/python/math_ops.md#log1p)
   * [`matmul`](../../api_docs/python/math_ops.md#matmul)
   * [`matrix_band_part`](../../api_docs/python/math_ops.md#matrix_band_part)
   * [`matrix_determinant`](../../api_docs/python/math_ops.md#matrix_determinant)
@@ -467,6 +468,7 @@
   * [`TFRecordReader`](../../api_docs/python/io_ops.md#TFRecordReader)
   * [`VarLenFeature`](../../api_docs/python/io_ops.md#VarLenFeature)
   * [`WholeFileReader`](../../api_docs/python/io_ops.md#WholeFileReader)
+  * [`write_file`](../../api_docs/python/io_ops.md#write_file)
 
 * **[Data IO (Python functions)](../../api_docs/python/python_io.md)**:
   * [`tf_record_iterator`](../../api_docs/python/python_io.md#tf_record_iterator)
@@ -609,6 +611,7 @@
   * [`global_step`](../../api_docs/python/train.md#global_step)
   * [`GradientDescentOptimizer`](../../api_docs/python/train.md#GradientDescentOptimizer)
   * [`gradients`](../../api_docs/python/train.md#gradients)
+  * [`hessians`](../../api_docs/python/train.md#hessians)
   * [`histogram_summary`](../../api_docs/python/train.md#histogram_summary)
   * [`image_summary`](../../api_docs/python/train.md#image_summary)
   * [`inverse_time_decay`](../../api_docs/python/train.md#inverse_time_decay)
