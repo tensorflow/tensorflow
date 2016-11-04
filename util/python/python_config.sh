@@ -121,7 +121,7 @@ function setup_python {
     python_lib_path=($(python_path))
     unset IFS
 
-    if [ 1 -eq $USE_DEFAULT_PYTHON_LIB_PATH ]; then
+    if [ 1 = "$USE_DEFAULT_PYTHON_LIB_PATH" ]; then
       PYTHON_LIB_PATH="$(default_python_path "${python_lib_path[0]}")"
       echo "Using python library path: $PYTHON_LIB_PATH"
 
@@ -135,13 +135,13 @@ function setup_python {
       read b || true
       if [ "$b" == "" ]; then
         PYTHON_LIB_PATH="$(default_python_path "${python_lib_path[0]}")"
-        echo $PYTHON_LIB_PATH
+        echo "Using python library path: $PYTHON_LIB_PATH"
       else
         PYTHON_LIB_PATH="$b"
       fi
     fi
   fi
-    
+
   if test -d "$PYTHON_LIB_PATH" -a -x "$PYTHON_LIB_PATH"; then
     python_lib="$PYTHON_LIB_PATH"
   else
