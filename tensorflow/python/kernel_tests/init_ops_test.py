@@ -472,9 +472,9 @@ class OrthogonalInitializerTest(tf.test.TestCase):
     for dtype in [tf.float32, tf.float64]:
       init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
       init2 = tf.orthogonal_initializer(gain=3.14, seed=1, dtype=dtype)
-      with self.test_session(graph=tf.Graph()):
+      with self.test_session(graph=tf.Graph(), use_gpu=True):
         t1 = init1([num]).eval()
-      with self.test_session(graph=tf.Graph()):
+      with self.test_session(graph=tf.Graph(), use_gpu=True):
         t2 = init2([num]).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
 
@@ -482,7 +482,7 @@ class OrthogonalInitializerTest(tf.test.TestCase):
     for dtype in [tf.float32, tf.float64]:
       for shape in [(10, 10), (10, 9, 8), (100, 5, 5)]:
         init = tf.orthogonal_initializer(dtype=dtype)
-        with self.test_session(graph=tf.Graph()):
+        with self.test_session(graph=tf.Graph(), use_gpu=True):
           t = init(shape).eval()
           self.assertAllEqual(shape, t.shape)
 
