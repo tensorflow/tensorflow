@@ -88,6 +88,9 @@ class ScalarSummaryTest(tf.test.TestCase):
     s2 = tf.summary.scalar('name with many $#illegal^: characters!', c)
     self.assertEqual(s2.op.name, 'name_with_many___illegal___characters_')
 
+    s3 = tf.summary.scalar('/name/with/leading/slash', c)
+    self.assertEqual(s3.op.name, 'name/with/leading/slash')
+
 
 if __name__ == '__main__':
   tf.test.main()
