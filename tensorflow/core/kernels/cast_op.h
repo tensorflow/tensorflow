@@ -120,7 +120,7 @@ struct scalar_cast_op<float, ::tensorflow::bfloat16> {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
   typedef ::tensorflow::bfloat16 result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const ::tensorflow::bfloat16 operator()(
-    i  const float a) const {
+      const float a) const {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);  
     return ::tensorflow::bfloat16(p[0]);  
