@@ -16,6 +16,9 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #define EIGEN_USE_THREADS
+#if TENSORFLOW_USE_SYCL
+#define EIGEN_USE_SYCL
+#endif
 
 #include "tensorflow/core/kernels/constant_op.h"
 
