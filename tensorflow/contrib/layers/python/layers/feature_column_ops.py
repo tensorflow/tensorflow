@@ -149,7 +149,7 @@ def _input_from_feature_columns(columns_to_tensors,
     transformer = _Transformer(columns_to_tensors)
     if weight_collections:
       weight_collections = list(set(list(weight_collections) +
-                                    [ops.GraphKeys.VARIABLES]))
+                                    [ops.GraphKeys.GLOBAL_VARIABLES]))
 
     for column in sorted(set(feature_columns), key=lambda x: x.key):
       with variable_scope.variable_scope(None,
@@ -818,7 +818,7 @@ class _Transformer(object):
 def _add_variable_collection(weight_collections):
   if weight_collections:
     weight_collections = list(
-        set(list(weight_collections) + [ops.GraphKeys.VARIABLES]))
+        set(list(weight_collections) + [ops.GraphKeys.GLOBAL_VARIABLES]))
   return weight_collections
 
 

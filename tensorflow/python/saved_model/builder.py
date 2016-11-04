@@ -290,7 +290,7 @@ class SavedModelBuilder(object):
     # Initialize a saver to generate a sharded output for all variables in the
     # current scope.
     saver = tf_saver.Saver(
-        variables.all_variables(),
+        variables.global_variables(),
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
 
@@ -350,7 +350,7 @@ class SavedModelBuilder(object):
     # Initialize a saver to generate a sharded output for all variables in the
     # current scope.
     saver = tf_saver.Saver(
-        variables.all_variables(),
+        variables.global_variables(),
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
 

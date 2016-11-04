@@ -229,7 +229,7 @@ class VariablesTestCase(tf.test.TestCase):
       var_t = tf.Variable(
           2.0, trainable=True,
           collections=[tf.GraphKeys.TRAINABLE_VARIABLES,
-                       tf.GraphKeys.VARIABLES])
+                       tf.GraphKeys.GLOBAL_VARIABLES])
       self.assertEqual([var_x, var_y, var_z, var_t], tf.global_variables())
       self.assertEqual([var_x, var_z, var_t], tf.trainable_variables())
 
