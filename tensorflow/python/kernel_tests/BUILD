@@ -1364,9 +1364,9 @@ cuda_py_test(
 )
 
 sycl_py_test(
-    name = "basic_sycl_test",
+    name = "basic_gpu_test",
     size = "small",
-    srcs = ["basic_sycl_test.py"],
+    srcs = ["basic_gpu_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 

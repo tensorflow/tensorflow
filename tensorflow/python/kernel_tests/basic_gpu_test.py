@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functional tests for basic component wise operations using SYCL device."""
+"""Functional tests for basic component wise operations using a GPU device."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,26 +23,29 @@ import math
 import numpy as np
 from tensorflow.python.ops import gen_math_ops
 
-class SYCLBinaryOpsTest(tf.test.TestCase):
-    def _compareSycl(self, x, y, np_func, tf_func):
-        np_ans = np_func(x, y)
-        with self.test_session(force_gpu=True):
-            with tf.device('/job:localhost/replica:0/task:0/device:SYCL:0'):
-                inx = tf.convert_to_tensor(x)
-                iny = tf.convert_to_tensor(y)
-                out = tf_func(inx, iny)
-                tf_gpu = out.eval()
-                print(tf_gpu)
-        self.assertAllClose(np_ans, tf_gpu)
-        self.assertShapeEqual(np_ans, out)
+class GPUBinaryOpsTest(tf.test.TestCase):
+  def _compareGPU(self, x, y, np_func, tf_func):
+    with self.test_session(use_gpu=True) as sess:
+      inx = tf.convert_to_tensor(x)
+      iny = tf.convert_to_tensor(y)
+      out = tf_func(inx, iny)
+      tf_gpu = sess.run(out)
+
+    with self.test_session(use_gpu=False) as sess:
+      inx = tf.convert_to_tensor(x)
+      iny = tf.convert_to_tensor(y)
+      out = tf_func(inx, iny)
+      tf_cpu = sess.run(out)
+
+    self.assertAllClose(tf_cpu, tf_gpu)
     
-    def testFloatBasic(self):
-      x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)
-      y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)
-      self._compareSycl(x, y, np.add, tf.add)
-      self._compareSycl(x, y, np.subtract, tf.sub)
-      self._compareSycl(x, y, np.multiply, tf.mul)
-      self._compareSycl(x, y + 0.1, np.true_divide, tf.truediv)
+  def testFloatBasic(self):
+    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)
+    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)
+    self._compareGPU(x, y, np.add, tf.add)
+    self._compareGPU(x, y, np.subtract, tf.sub)
+    self._compareGPU(x, y, np.multiply, tf.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
       
 if __name__ == "__main__":
   tf.test.main()
