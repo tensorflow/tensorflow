@@ -191,8 +191,8 @@ class SaverTest(tf.test.TestCase):
     v0 = tf.Variable(0, name="v0")
     with self.test_session() as sess:
       save = tf.train.Saver({"v0": v0})
-      with self.assertRaisesRegexp(ValueError,
-                                   "^Restore called with invalid save path.*"):
+      with self.assertRaisesRegexp(errors.NotFoundError,
+                                   "Failed to find any matching files for"):
         save.restore(sess, "invalid path")
 
   def testInt64(self):
