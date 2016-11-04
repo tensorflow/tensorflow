@@ -48,6 +48,7 @@ tf_cc_test(
     size = "small",
     srcs = ["graph_transferer_test.cc"],
     deps = [
+        ":graph_transferer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
@@ -57,7 +58,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/hexagon:graph_transferer",
     ],
 )
 
