@@ -715,7 +715,6 @@ string SummarizeArray(int64 limit, int64 num_elts, const TensorShape& tensor_sha
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
 
-  int64 data_index = 0;
   const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
   if(shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
@@ -725,6 +724,7 @@ string SummarizeArray(int64 limit, int64 num_elts, const TensorShape& tensor_sha
     if (num_elts > limit) strings::StrAppend(&ret, "...");
     return ret;
   }
+  int64 data_index = 0;
   const int shape_size = tensor_shape.dims();
   PrintOneDim(0, shape, limit, shape_size, 
               array, &data_index, &ret);  
