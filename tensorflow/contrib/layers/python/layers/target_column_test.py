@@ -71,7 +71,9 @@ class MultiClassTargetColumnTest(tf.test.TestCase):
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       self.assertAlmostEqual(
-          .31326166, sess.run(target_column.loss(logits, labels, features)))
+          .31326166,
+          sess.run(target_column.loss(logits, labels, features)),
+          delta=1e-6)
 
   def testBinaryEvalMetrics(self):
     target_column = tf.contrib.layers.multi_class_target(n_classes=2)
