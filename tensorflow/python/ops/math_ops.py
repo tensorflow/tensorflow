@@ -1389,7 +1389,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
         reduction_indices,
         keep_dims=True)) + my_max
     if not keep_dims:
-      reduction_indices = _ReductionDims(input_tensor, reduction_indices)
+      reduction_indices = [reduction_indices] if isinstance(reduction_indices, int) else reduction_indices
       result = array_ops.squeeze(result, reduction_indices)
     return result
 
