@@ -68,6 +68,7 @@ py_binary(
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:all_files",
         "//tensorflow/python/saved_model:all_files",
+        "//tensorflow/python/tools:all_files",
         # The following two targets have an issue when archiving them into
         # the python zip, exclude them for now.
         # "//tensorflow/models/image/mnist:convolutional",
@@ -109,6 +110,7 @@ sh_binary(
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:all_files",
             "//tensorflow/python/saved_model:all_files",
+            "//tensorflow/python/tools:all_files",
             "//tensorflow/tensorboard",
         ],
     }),

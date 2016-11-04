@@ -88,6 +88,11 @@ namespace dynload {
   const char *DynLoadShim__##__name::kName = #__name;
 
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxCreate_v2);
+#if CUDA_VERSION >= 7000
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuDevicePrimaryCtxRetain);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuDevicePrimaryCtxRelease);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuDevicePrimaryCtxSetFlags);
+#endif
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxDestroy);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxEnablePeerAccess);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxGetCurrent);
@@ -597,7 +602,12 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
     // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
     // context creation: see http://b/13248943
 
+#if CUDA_VERSION >= 7000
+    res = dynload::cuDevicePrimaryCtxSetFlags(device, flags);
+    res = dynload::cuDevicePrimaryCtxRetain(&new_context, device);
+#else
     res = dynload::cuCtxCreate_v2(&new_context, flags, device);
+#endif
   }
   CHECK_EQ(CUDA_SUCCESS, dynload::cuCtxSetCurrent(former_context));
 
@@ -609,7 +619,11 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
     return port::Status::OK();
   }
 
+#if CUDA_VERSION >= 7000
+  string message = "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
+#else
   string message = "failed call to cuCtxCreate: " + ToString(res);
+#endif
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
@@ -626,10 +640,20 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
   if (context == nullptr) {
     return;
   }
+#if CUDA_VERSION >= 7000
+  CUcontext former_context = CurrentContext();
+  CUresult res = dynload::cuCtxSetCurrent(context->context());
+  CUdevice device;
+  dynload::cuCtxGetDevice(&device);
+  dynload::cuCtxSetCurrent(former_context);
 
+  res = dynload::cuDevicePrimaryCtxRelease(device);
+#else
   CUresult res = dynload::cuCtxDestroy_v2(context->context());
+#endif
+
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to destroy CUDA context; leaking: " << ToString(res);
+    LOG(ERROR) << "failed to release CUDA context; leaking: " << ToString(res);
   }
 
   CreatedContexts::Remove(context->context());

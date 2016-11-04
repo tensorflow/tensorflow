@@ -51,6 +51,7 @@ mathematical functions to your graph.
 @@pow
 @@exp
 @@log
+@@log1p
 @@ceil
 @@floor
 @@maximum
@@ -1885,6 +1886,7 @@ ops.RegisterShape("IsFinite")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IsInf")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IsNan")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Log")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Log1p")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("LogicalNot")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Neg")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Real")(common_shapes.call_cpp_shape_fn)

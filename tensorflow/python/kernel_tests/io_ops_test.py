@@ -39,6 +39,18 @@ class IoOpsTest(tf.test.TestCase):
         self.assertEqual([], read.get_shape())
         self.assertEqual(read.eval(), contents)
 
+  def testWriteFile(self):
+    cases = ['', 'Some contents']
+    for contents in cases:
+      contents = tf.compat.as_bytes(contents)
+      temp = tempfile.NamedTemporaryFile(
+          prefix='WriteFileTest', dir=self.get_temp_dir())
+      with self.test_session() as sess:
+        w = tf.write_file(temp.name, contents)
+        sess.run(w)
+        file_contents = open(temp.name, 'rb').read()
+        self.assertEqual(file_contents, contents)
+
   def _subset(self, files, indices):
     return set(tf.compat.as_bytes(files[i].name)
                for i in range(len(files)) if i in indices)

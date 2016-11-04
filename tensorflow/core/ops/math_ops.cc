@@ -296,6 +296,13 @@ Computes natural logarithm of x element-wise.
 I.e., \\(y = \log_e x\\).
 )doc");
 
+REGISTER_OP("Log1p")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
+Computes natural logarithm of (1 + x) element-wise.
+I.e., \\(y = \log_e (1 + x)\\).
+)doc");
+
 REGISTER_OP("Tanh")
     .UNARY_COMPLEX()
     .Doc(R"doc(

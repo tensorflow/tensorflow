@@ -24,8 +24,8 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 
 
@@ -535,7 +535,8 @@ class VariableContainerTest(tf.test.TestCase):
         v1 = tf.Variable([1])
         with tf.container("l2"):
           v2 = tf.Variable([2])
-          special_v = state_ops.variable_op([1], tf.float32, container="l3")
+          special_v = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+              name="VariableInL3", container="l3", shared_name="")
         v3 = tf.Variable([3])
       v4 = tf.Variable([4])
     self.assertEqual(tf.compat.as_bytes(""), v0.op.get_attr("container"))

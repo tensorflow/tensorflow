@@ -117,7 +117,10 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
       port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
   if (!s.ok()) {
     LOG(INFO) << "Couldn't open CUDA library " << path
-              << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
+#if !defined(PLATFORM_WINDOWS)
+              << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH")
+#endif
+    ;
     return port::Status(port::error::FAILED_PRECONDITION,
                         port::StrCat("could not dlopen DSO: ", path,
                                      "; dlerror: ", s.error_message()));

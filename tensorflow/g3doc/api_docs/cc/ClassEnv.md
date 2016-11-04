@@ -90,6 +90,24 @@ Stores in *result the names of the children of the specified directory. The name
 
 Original contents of *results are dropped.
 
+#### `virtual bool tensorflow::Env::MatchPath(const string &path, const string &pattern)=0` {#virtual_bool_tensorflow_Env_MatchPath}
+
+Returns true if the path matches the given pattern. The wildcards allowed in pattern are described below (GetMatchingPaths).
+
+
+
+#### `Status tensorflow::Env::GetMatchingPaths(const string &pattern, std::vector< string > *results)` {#Status_tensorflow_Env_GetMatchingPaths}
+
+Given a pattern, stores in *results the set of paths that matches that pattern. *results is cleared.
+
+pattern must match all of a name, not just a substring. pattern: { term } term: &apos;*&apos;: matches any sequence of non-&apos;/&apos; characters &apos;?&apos;: matches a single non-&apos;/&apos; character &apos;[&apos; [ &apos;^&apos; ] { match-list } &apos;]&apos;: matches any single character (not) on the list c: matches character c (c != &apos;*&apos;, &apos;?&apos;, &apos;\&apos;, &apos;[&apos;) &apos;\&apos; c: matches character c character-range: c: matches character c (c != &apos;\&apos;, &apos;-&apos;, &apos;]&apos;) &apos;\&apos; c: matches character c lo &apos;-&apos; hi: matches character c for lo <= c <= hi
+
+Typical return codes
+
+OK - no errors
+
+UNIMPLEMENTED - Some underlying functions (like GetChildren) are not implemented The default implementation uses a combination of GetChildren, MatchPath and IsDirectory.
+
 #### `Status tensorflow::Env::DeleteFile(const string &fname)` {#Status_tensorflow_Env_DeleteFile}
 
 Deletes the named file.
@@ -110,11 +128,27 @@ PERMISSION_DENIED - dirname or some descendant is not writable
 
 UNIMPLEMENTED - Some underlying functions (like Delete) are not implemented
 
+#### `Status tensorflow::Env::RecursivelyCreateDir(const string &dirname)` {#Status_tensorflow_Env_RecursivelyCreateDir}
+
+Creates the specified directory and all the necessary subdirectories. Typical return codes.
+
+
+
+OK - successfully created the directory and sub directories, even if they were already created.
+
+PERMISSION_DENIED - dirname or some subdirectory is not writable.
+
 #### `Status tensorflow::Env::CreateDir(const string &dirname)` {#Status_tensorflow_Env_CreateDir}
 
-Creates the specified directory.
+Creates the specified directory. Typical return codes.
 
 
+
+OK - successfully created the directory.
+
+ALREADY_EXISTS - directory already exists.
+
+PERMISSION_DENIED - dirname is not writable.
 
 #### `Status tensorflow::Env::DeleteDir(const string &dirname)` {#Status_tensorflow_Env_DeleteDir}
 

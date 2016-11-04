@@ -95,6 +95,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     highwayhash_copy_headers_to_destination
     protobuf
     eigen
+    gemmlowp
 )
 
 include_directories(
@@ -197,6 +198,7 @@ endif()
 include(tf_cc_ops.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
+  include(tf_label_image_example.cmake)
 endif()
 if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tf_python.cmake)

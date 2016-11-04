@@ -1371,7 +1371,7 @@ def layer_norm(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     A `Tensor` representing the output of the operation.

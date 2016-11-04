@@ -99,7 +99,7 @@ sess = tf.Session()
 # The call 'run(product)' thus causes the execution of three ops in the
 # graph: the two constants and matmul.
 #
-# The output of the op is returned in 'result' as a numpy `ndarray` object.
+# The output of the matmul is returned in 'result' as a numpy `ndarray` object.
 result = sess.run(product)
 print(result)
 # ==> [[ 12.]]

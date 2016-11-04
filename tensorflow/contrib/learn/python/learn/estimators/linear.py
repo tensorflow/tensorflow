@@ -125,8 +125,8 @@ def _linear_model_fn(features, labels, mode, params):
       max_partitions=num_ps_replicas,
       min_slice_size=64 << 20)
 
-  with variable_scope.variable_op_scope(
-      features.values(), parent_scope, partitioner=partitioner) as scope:
+  with variable_scope.variable_scope(
+      parent_scope, values=features.values(), partitioner=partitioner) as scope:
     if joint_weights:
       logits, _, _ = (
           layers.joint_weighted_sum_from_feature_columns(
