@@ -200,7 +200,8 @@ class EstimatorTest(tf.test.TestCase):
     self.assertEquals(test_random_seed, test_input.random_seed)
 
   def testCheckInputs(self):
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn))
     # Lambdas so we have to different objects to compare
     right_features = lambda: np.ones(shape=[7, 8], dtype=np.float32)
     right_labels = lambda: np.ones(shape=[7, 10], dtype=np.int32)
@@ -240,9 +241,10 @@ class EstimatorTest(tf.test.TestCase):
 
   def testUntrained(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn))
     with self.assertRaises(tf.contrib.learn.NotFittedError):
-      _ = est.evaluate(
+      _ = est.score(
           x=boston.data,
           y=boston.target.astype(np.float64))
     with self.assertRaises(tf.contrib.learn.NotFittedError):
@@ -251,21 +253,23 @@ class EstimatorTest(tf.test.TestCase):
   def testContinueTraining(self):
     boston = tf.contrib.learn.datasets.load_boston()
     output_dir = tempfile.mkdtemp()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     model_dir=output_dir)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                   model_dir=output_dir))
     float64_labels = boston.target.astype(np.float64)
     est.fit(x=boston.data, y=float64_labels, steps=50)
-    scores = est.evaluate(
+    scores = est.score(
         x=boston.data,
         y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
     del est
     # Create another estimator object with the same output dir.
-    est2 = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                      model_dir=output_dir)
+    est2 = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                   model_dir=output_dir))
 
     # Check we can evaluate and predict.
-    scores2 = est2.evaluate(
+    scores2 = est2.score(
         x=boston.data,
         y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
@@ -276,7 +280,7 @@ class EstimatorTest(tf.test.TestCase):
 
     # Check we can keep training.
     est2.fit(x=boston.data, y=float64_labels, steps=100)
-    scores3 = est2.evaluate(
+    scores3 = est2.score(
         x=boston.data,
         y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
@@ -284,16 +288,18 @@ class EstimatorTest(tf.test.TestCase):
 
   def testEstimatorParams(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_params_fn,
-                                     params={'learning_rate': 0.01})
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_params_fn,
+                                   params={'learning_rate': 0.01}))
     est.fit(x=boston.data, y=boston.target, steps=100)
 
   def testBostonAll(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn))
     float64_labels = boston.target.astype(np.float64)
     est.fit(x=boston.data, y=float64_labels, steps=100)
-    scores = est.evaluate(
+    scores = est.score(
         x=boston.data,
         y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
@@ -305,23 +311,23 @@ class EstimatorTest(tf.test.TestCase):
 
   def testIrisAll(self):
     iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn))
     est.fit(iris.data, iris.target, steps=100)
-    scores = est.evaluate(
+    scores = est.score(
         x=iris.data,
         y=iris.target,
         metrics={('accuracy', 'class'): tf.contrib.metrics.streaming_accuracy})
-    predictions = list(est.predict(x=iris.data))
-    predictions_class = list(est.predict(x=iris.data, outputs=['class']))
-    self.assertEqual(len(predictions), iris.target.shape[0])
-    classes_batch = np.array([p['class'] for p in predictions])
+    predictions = est.predict(x=iris.data)
+    predictions_class = est.predict(x=iris.data, outputs=['class'])['class']
+    self.assertEqual(predictions['prob'].shape[0], iris.target.shape[0])
     self.assertAllClose(
-        classes_batch,
-        np.array([p['class'] for p in predictions_class]))
+        predictions['class'],
+        predictions_class)
     self.assertAllClose(
-        classes_batch,
-        np.argmax(np.array([p['prob'] for p in predictions]), axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, classes_batch)
+        predictions['class'],
+        np.argmax(predictions['prob'], axis=1))
+    other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
     self.assertAllClose(scores['accuracy'], other_score)
     self.assertTrue('global_step' in scores)
     self.assertEqual(100, scores['global_step'])

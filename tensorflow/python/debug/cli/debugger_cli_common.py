@@ -223,11 +223,15 @@ def wrap_rich_text_lines(inp, cols):
     cols: Number of columns, as an int.
 
   Returns:
-    A new instance of RichTextLines, with line lengths limited to cols.
-
+    1) A new instance of RichTextLines, with line lengths limited to cols.
+    2) A list of new (wrapped) line index. For example, if the original input
+      consists of three lines and only the second line is wrapped, and it's
+      wrapped into two lines, this return value will be: [0, 1, 3].
   Raises:
     ValueError: If inputs have invalid types.
   """
+
+  new_line_indices = []
 
   if not isinstance(inp, RichTextLines):
     raise ValueError("Invalid type of input screen_output")
@@ -239,6 +243,8 @@ def wrap_rich_text_lines(inp, cols):
 
   row_counter = 0  # Counter for new row index
   for i in xrange(len(inp.lines)):
+    new_line_indices.append(out.num_lines())
+
     line = inp.lines[i]
 
     if i in inp.annotations:
@@ -298,7 +304,7 @@ def wrap_rich_text_lines(inp, cols):
     if not isinstance(key, int):
       out.annotations[key] = inp.annotations[key]
 
-  return out
+  return out, new_line_indices
 
 
 class CommandHandlerRegistry(object):

@@ -66,12 +66,14 @@ def _clean_tag(name):
   # take advantage of the tf name scope system) but risks breaking existing
   # usage, because a much smaller set of characters are allowed in node names.
   # This function replaces all illegal characters with _s, and logs a warning.
+  # It also strips leading slashes from the name.
   if name is not None:
     new_name = _INVALID_TAG_CHARACTERS.sub('_', name)
+    new_name = new_name.lstrip('/')  # Remove leading slashes
     if new_name != name:
-      _logging.warning(
-          'Summary tag name %s has illegal chars; replacing with underscores.' %
-          name)
+      _logging.info(
+          'Summary name %s is illegal; using %s instead.' %
+          (name, new_name))
       name = new_name
   return name
 

@@ -48,7 +48,7 @@ class MovingAverageOptimizerTest(tf.test.TestCase):
               list(six.moves.zip([grads0, grads1], [var0, var1])))
           train_saver = opt.swapping_saver()
           inference_saver = tf.train.Saver()
-          tf.initialize_all_variables().run()
+          tf.global_variables_initializer().run()
           # Step 1.
           update.run()
           val0 = var0.eval()

@@ -173,7 +173,7 @@ class DeviceFunctionsTest(tf.test.TestCase):
 
         # Then initialize the unused variable, and get another
         # constant_graph_def when variable_names_whitelist is not set.
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         constant_graph_def_without_variable_whitelist = (
             graph_util.convert_variables_to_constants(
                 sess, variable_graph_def, ["output_node"]))

@@ -37,7 +37,7 @@ class SummariesTest(tf.test.TestCase):
       inputs = tf.constant(_rand(*inputs_shape))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure(spec,
@@ -49,7 +49,7 @@ class SummariesTest(tf.test.TestCase):
       inputs = tf.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -60,7 +60,7 @@ class SummariesTest(tf.test.TestCase):
       inputs = tf.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       summaries.tf_spec_print(spec, inputs)
@@ -70,7 +70,7 @@ class SummariesTest(tf.test.TestCase):
       inputs = tf.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       summaries.tf_spec_summary(spec, inputs)

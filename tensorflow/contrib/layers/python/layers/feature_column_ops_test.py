@@ -228,7 +228,7 @@ class TransformerTest(tf.test.TestCase):
       weights = column_to_variable[country_price][0]
       grad = tf.squeeze(tf.gradients(output, weights)[0].values)
       with self.test_session():
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         self.assertEqual(len(grad.eval()), 6)
 
   def testCrossWithCrossedColumn(self):
@@ -285,7 +285,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
                                                            embedding_column,
                                                            real_valued_column])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
 
@@ -379,7 +379,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     features = {"ids": ids_tensor, "weights": weights_tensor}
     one_hot_column = tf.contrib.layers.one_hot_column(weighted_ids_column)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       with self.assertRaisesRegexp(
           ValueError,
@@ -398,7 +398,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
                                                           [one_hot_sparse])
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
                           output.eval())
@@ -416,7 +416,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
                                                           [one_hot_sparse])
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
                           output.eval())
@@ -432,7 +432,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [one_hot_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
                           output.eval())
 
@@ -447,7 +447,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [one_hot_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual([3, 10], output.eval().shape)
 
@@ -462,7 +462,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [4, 10])
 
   def testHashedEmbeddingColumnSucceedsForDNN(self):
@@ -478,7 +478,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     weights = tf.get_collection("my_collection")
     grad = tf.gradients(output, weights)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       gradient_values = []
       # Collect the gradient from the different partitions (one in this test)
       for p in range(len(grad)):
@@ -500,7 +500,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
                                                           [embeded_sparse])
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       output_eval = output.eval()
       self.assertAllEqual(output_eval.shape, [2, 10])
       self.assertAllClose(output_eval, np.tile(init_value, [2, 10]))
@@ -547,7 +547,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
@@ -566,7 +566,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
   def testSparseColumnFailsForDNN(self):
@@ -578,7 +578,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(
           ValueError, "Error creating input layer for column: wire"):
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.contrib.layers.input_from_feature_columns(features, [hashed_sparse])
 
   def testWeightedSparseColumnFailsForDNN(self):
@@ -614,7 +614,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(
           ValueError, "Error creating input layer for column: aaa_X_bbb"):
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.contrib.layers.input_from_feature_columns(features, [crossed])
 
   def testDeepColumnsSucceedForDNN(self):
@@ -636,7 +636,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(
         features, [real_valued, bucket, embeded_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # size of output = 3 (real_valued) + 2 * 4 (bucket) + 10 (embedding) = 21
       self.assertAllEqual(output.eval().shape, [3, 21])
 
@@ -651,7 +651,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # score: (number of values)
       self.assertAllEqual(output.eval(), [[1.], [2.], [0.]])
 
@@ -672,7 +672,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       # score: (sum of weights)
       self.assertAllEqual(output.eval(), [[10.], [50.], [0.]])
@@ -858,7 +858,7 @@ class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
         columns_to_tensors, [one_hot_column])
 
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       model_input = sess.run(model_input_tensor)
 
@@ -891,7 +891,7 @@ class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
         columns_to_tensors, [one_hot_column])
 
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       model_input = sess.run(model_input_tensor)
 
@@ -921,7 +921,7 @@ class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
         columns_to_tensors, [embedded_column])
 
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       model_input = sess.run(model_input_tensor)
 
@@ -951,7 +951,7 @@ class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
     embedding_weights = tf.get_collection("my_collection")
     gradient_tensor = tf.gradients(model_input_tensor, embedding_weights)
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       model_input, gradients = sess.run([model_input_tensor, gradient_tensor])
 
@@ -1016,7 +1016,7 @@ class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
     self.assertEqual(tf.float32, model_input_tensor.dtype)
 
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       model_input = sess.run(model_input_tensor)
 
@@ -1038,7 +1038,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testSparseIntColumn(self):
@@ -1052,7 +1052,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testWeightedSparseColumn(self):
@@ -1070,7 +1070,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [weighted_ids], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
@@ -1088,7 +1088,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [crossed], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testEmbeddingColumn(self):
@@ -1101,7 +1101,7 @@ class WeightedSumTest(tf.test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(
           ValueError, "Error creating weighted sum for column: wire_embedding"):
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                             [embeded_sparse],
                                                             num_outputs=5)
@@ -1112,7 +1112,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [real_valued], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [3, 5])
 
   def testBucketizedColumnWithMultiDimensions(self):
@@ -1123,7 +1123,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [bucket], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [3, 5])
 
   def testAllWideColumns(self):
@@ -1144,7 +1144,7 @@ class WeightedSumTest(tf.test.TestCase):
         features, [real_valued, bucket, hashed_sparse, crossed],
         num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [3, 5])
 
   def testPredictions(self):
@@ -1164,7 +1164,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [age, language],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         self.assertAllClose(output.eval(), [[0.], [0.]])
@@ -1202,7 +1202,7 @@ class WeightedSumTest(tf.test.TestCase):
       # Assert that only a single weight is created.
       self.assertEqual(len(variables), 1)
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         self.assertAllClose(output.eval(), [[0.], [0.]])
@@ -1264,7 +1264,7 @@ class WeightedSumTest(tf.test.TestCase):
           tf.contrib.layers.weighted_sum_from_feature_columns(
               features, [weighted_language], num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         self.assertAllClose(output.eval(), [[0.], [0.]])
@@ -1292,7 +1292,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [language],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         # score: 0.1 + language_weight['hindi'] + language_weight['english']
@@ -1315,7 +1315,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [movies],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[movies][0]
@@ -1346,7 +1346,7 @@ class WeightedSumTest(tf.test.TestCase):
               features, [country_language],
               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[country_language][0]
@@ -1369,7 +1369,7 @@ class WeightedSumTest(tf.test.TestCase):
               features, [language_language],
               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[language_language][0]
@@ -1399,7 +1399,7 @@ class WeightedSumTest(tf.test.TestCase):
               features, [country_language],
               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[country_language][0]
@@ -1436,7 +1436,7 @@ class WeightedSumTest(tf.test.TestCase):
                 num_outputs=1,
                 scope=scope))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         self.assertEqual(2, len(column_to_variable[country]))
@@ -1468,7 +1468,7 @@ class WeightedSumTest(tf.test.TestCase):
               features, [country, age, incomes],
               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         incomes_weights = column_to_variable[incomes][0]
@@ -1492,7 +1492,7 @@ class WeightedSumTest(tf.test.TestCase):
               features, [country, age, incomes],
               num_outputs=5))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         incomes_weights = column_to_variable[incomes][0]
@@ -1514,7 +1514,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [bucket],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         sess.run(column_to_variable[bucket][0].assign([[0.1], [0.2], [0.3], [0.4
@@ -1538,7 +1538,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [bucket, country],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         # dimension = 2, bucket_size = 4, num_classes = 1
@@ -1563,7 +1563,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [bucket, country],
                                                               num_outputs=5))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         # dimension = 2, bucket_size = 4, num_classes = 5
@@ -1598,7 +1598,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [country_price],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[country_price][0]
@@ -1635,7 +1635,7 @@ class WeightedSumTest(tf.test.TestCase):
               features, [country_language_price],
               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[country_language_price][0]
@@ -1656,7 +1656,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [product],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
@@ -1674,7 +1674,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [product],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
@@ -1687,7 +1687,7 @@ class WeightedSumTest(tf.test.TestCase):
           features, [tf.contrib.layers.real_valued_column("age")],
           num_outputs=3)
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         sess.run(bias.assign([0.1, 0.2, 0.3]))
         self.assertAllClose(output.eval(), [[0.1, 0.2, 0.3], [0.1, 0.2, 0.3],
@@ -1702,7 +1702,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [column],
                                                               num_outputs=3))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (1, 3))
@@ -1726,7 +1726,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [column],
                                                               num_outputs=3))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (5, 3))
@@ -1748,7 +1748,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [column],
                                                               num_outputs=3))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[column][0]
@@ -1781,7 +1781,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [column],
                                                               num_outputs=3))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[column][0]
@@ -1807,7 +1807,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [column],
                                                               num_outputs=3))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
         weights = column_to_variable[column][0]

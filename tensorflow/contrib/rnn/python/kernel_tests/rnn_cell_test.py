@@ -46,7 +46,7 @@ class RNNCellTest(tf.test.TestCase):
         m = tf.zeros([batch_size, state_size])
         output, state = tf.contrib.rnn.CoupledInputForgetGateLSTMCell(
             num_units=num_units, forget_bias=1.0)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state],
                        {x.name: np.array([[1., 1., 1., 1.],
                                           [2., 2., 2., 2.],
@@ -72,7 +72,7 @@ class RNNCellTest(tf.test.TestCase):
         output, state = tf.contrib.rnn.TimeFreqLSTMCell(
             num_units=num_units, feature_size=feature_size,
             frequency_skip=frequency_skip, forget_bias=1.0)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state],
                        {x.name: np.array([[1., 1., 1., 1.],
                                           [2., 2., 2., 2.],
@@ -116,7 +116,7 @@ class RNNCellTest(tf.test.TestCase):
         init_state = cell.state_tuple_type(
             *([state_value, state_value] * num_shifts))
         output, state = cell(inputs, init_state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state])
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
@@ -162,7 +162,7 @@ class RNNCellTest(tf.test.TestCase):
         init_state = cell.state_tuple_type(
             *([state_value, state_value] * total_blocks))
         output, state = cell(inputs, init_state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state])
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
@@ -228,7 +228,7 @@ class RNNCellTest(tf.test.TestCase):
                               dtype=np.float32),
                 dtype=tf.float32)
           output, state = cell(inputs, init_state)
-          sess.run([tf.initialize_all_variables()])
+          sess.run([tf.global_variables_initializer()])
           res = sess.run([output, state])
           # This is a smoke test: Only making sure expected values not change.
           self.assertEqual(len(res), 2)
@@ -296,7 +296,7 @@ class RNNCellTest(tf.test.TestCase):
         init_state = cell.state_tuple_type(
             *([state_value, state_value] * num_shifts * 2))
         output, state = cell(inputs, init_state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state])
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
@@ -364,7 +364,7 @@ class RNNCellTest(tf.test.TestCase):
         init_state = cell.state_tuple_type(
             *([state_value, state_value] * num_shifts * 2))
         output, state = cell(inputs, init_state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state])
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
@@ -449,7 +449,7 @@ class RNNCellTest(tf.test.TestCase):
                                       + attn_length * num_units])
               tensors = [output, state]
             zero_result = sum([tf.reduce_sum(tf.abs(x)) for x in tensors])
-            sess.run(tf.initialize_all_variables())
+            sess.run(tf.global_variables_initializer())
             self.assertTrue(sess.run(zero_result) < 1e-6)
 
   def testAttentionCellWrapperValues(self):
@@ -487,7 +487,7 @@ class RNNCellTest(tf.test.TestCase):
                   1, [state[0][0], state[0][1], state[1], state[2]])
             else:
               concat_state = state
-            sess.run(tf.initialize_all_variables())
+            sess.run(tf.global_variables_initializer())
             output, state = sess.run([output, concat_state])
             # Different inputs so different outputs and states
             for i in range(1, batch_size):
@@ -548,7 +548,7 @@ class RNNCellTest(tf.test.TestCase):
           output, state = cell(inputs, zero_state)
           if state_is_tuple:
             state = tf.concat(1, [state[0][0], state[0][1], state[1], state[2]])
-          sess.run(tf.initialize_all_variables())
+          sess.run(tf.global_variables_initializer())
           self.assertAllClose(sess.run(output), expected_output)
           self.assertAllClose(sess.run(state), expected_state)
 
@@ -571,7 +571,7 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(2)
         cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 2)
         g, out_m = cell(x, state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, out_m],
                        {
                            x.name: np.array([[1., 1.]]),
@@ -606,7 +606,7 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         state = tf.nn.rnn_cell.LSTMStateTuple(c, h)
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(2)
         g, out_m = cell(x, state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, out_m],
                        {
                            x.name: np.array([[1., 1., 1.]]),
@@ -634,7 +634,7 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(2)
         cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 2)
         h, (s0, s1) = cell(x, (state0, state1))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([h, s0, s1],
                        {
                            x.name: np.array([[1., 1.]]),
@@ -687,7 +687,7 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
             num_units, layer_norm=False, dropout_keep_prob=keep_prob)
 
         g, s = cell(x, state)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s],
                        {
                            x.name: np.ones([1, 5]),

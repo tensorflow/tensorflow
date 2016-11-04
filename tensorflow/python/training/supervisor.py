@@ -422,7 +422,7 @@ class Supervisor(object):
     if init_op is Supervisor.USE_DEFAULT:
       init_op = self._get_first_op_from_collection(ops.GraphKeys.INIT_OP)
       if init_op is None:
-        init_op = variables.initialize_all_variables()
+        init_op = variables.global_variables_initializer()
         ops.add_to_collection(ops.GraphKeys.INIT_OP, init_op)
     self._init_op = init_op
     self._init_feed_dict = init_feed_dict
@@ -440,7 +440,7 @@ class Supervisor(object):
       local_init_op = self._get_first_op_from_collection(
           ops.GraphKeys.LOCAL_INIT_OP)
       if local_init_op is None:
-        op_list = [variables.initialize_local_variables(),
+        op_list = [variables.local_variables_initializer(),
                    data_flow_ops.initialize_all_tables()]
         if op_list:
           local_init_op = control_flow_ops.group(*op_list)

@@ -65,7 +65,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       assign_100 = step.assign(100)
       decayed_lr = learning_rate_decay.exponential_decay(.1, step, 3, 0.96,
                                                          staircase=True)
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
       # No change to learning rate
       assign_1.op.run()
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
@@ -87,7 +87,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       pc = learning_rate_decay.piecewise_constant(x, [100, 110, 120],
                                                   [1.0, 0.1, 0.01, 0.001])
 
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
       self.assertAllClose(pc.eval(), 1.0, 1e-6)
       assign_100.op.run()
       self.assertAllClose(pc.eval(), 1.0, 1e-6)

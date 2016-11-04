@@ -38,7 +38,7 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       x = tf.placeholder(tf.float32, shape=(None, None, input_size))
       _, output = tf.nn.dynamic_rnn(cell, x, time_major=True, dtype=tf.float32)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       feed = {}
       feed[x] = np.random.randn(num_steps, batch_size, input_size)
       sess.run(output, feed)
@@ -63,13 +63,13 @@ class GRUBlockCellTest(tf.test.TestCase):
       # Output from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
         output = tf.nn.rnn_cell.GRUCell(cell_size)(x, h)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         basic_res = sess.run([output], {x: x_value, h: h_value})
 
       # Output from the block GRU cell implementation.
       with tf.variable_scope("block", initializer=initializer):
         output = gru_ops.GRUBlockCell(cell_size)(x, h)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         block_res = sess.run([output], {x: x_value, h: h_value})
 
       self.assertEqual(len(block_res), len(basic_res))
@@ -107,7 +107,7 @@ class GRUBlockCellTest(tf.test.TestCase):
             time_major=True,
             dtype=tf.float32)
         feeds = {concat_x: x_values, h: h_value}
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         block_res = sess.run([outputs_dynamic, state_dynamic], feeds)
 
       # Output from the basic GRU cell implementation.
@@ -120,7 +120,7 @@ class GRUBlockCellTest(tf.test.TestCase):
             time_major=True,
             dtype=tf.float32)
         feeds = {concat_x: x_values, h: h_value}
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         basic_res = sess.run([outputs_dynamic, state_dynamic], feeds)
 
       # Check the lengths of the outputs_dynamic, and states.
@@ -156,7 +156,7 @@ class GRUBlockCellTest(tf.test.TestCase):
       # Gradients from the block GRU cell implementation.
       with tf.variable_scope("block", initializer=initializer):
         output = gru_ops.GRUBlockCell(cell_size)(x, h)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
 
         all_variables = tf.all_variables()[0:4]
         [w_ru, b_ru, w_c, b_c] = all_variables
@@ -176,7 +176,7 @@ class GRUBlockCellTest(tf.test.TestCase):
       # Gradients from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
         output = tf.nn.rnn_cell.GRUCell(cell_size)(x, h)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
 
         all_variables = tf.all_variables()[4:8]
         [w_ru, b_ru, w_c, b_c] = all_variables
@@ -233,7 +233,7 @@ class GRUBlockCellTest(tf.test.TestCase):
         grad_output_wrt_x = tf.gradients([outputs_dynamic[0]], concat_x)
         grad_output_wrt_h = tf.gradients([outputs_dynamic[0]], h)
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         block_grad_res_x, block_grad_res_h = sess.run(
             [grad_output_wrt_x, grad_output_wrt_h], feeds)
 
@@ -250,7 +250,7 @@ class GRUBlockCellTest(tf.test.TestCase):
         grad_output_wrt_x = tf.gradients([outputs_dynamic[0]], concat_x)
         grad_output_wrt_h = tf.gradients([outputs_dynamic[0]], h)
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         basic_grad_res_x, basic_grad_res_h = sess.run(
             [grad_output_wrt_x, grad_output_wrt_h], feeds)
 
@@ -279,7 +279,7 @@ class GRUBlockCellTest(tf.test.TestCase):
       h = tf.zeros([batch_size, cell_size])
       output = gru_ops.GRUBlockCell(cell_size)(x, h)
 
-      sess.run([tf.initialize_all_variables()])
+      sess.run([tf.global_variables_initializer()])
 
       all_variables = tf.all_variables()
 
@@ -366,7 +366,7 @@ def training_gru_block_vs_gru_cell(batch_size,
             initial_state=h,
             time_major=True,
             dtype=tf.float32)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         cost = tf.reduce_mean(tf.square(outputs_dynamic - y))
         learning_rate = 0.01
         optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(
@@ -385,7 +385,7 @@ def training_gru_block_vs_gru_cell(batch_size,
             initial_state=h,
             time_major=True,
             dtype=tf.float32)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         cost = tf.reduce_mean(tf.square(outputs_dynamic - y))
         learning_rate = 0.01
         optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(
@@ -434,7 +434,7 @@ def inference_gru_block_vs_gru_cell(batch_size,
             initial_state=h,
             time_major=True,
             dtype=tf.float32)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         basic_time_inference = time_taken_by_op(outputs_dynamic, sess, iters)
 
       # Output from the block GRU cell implementation.
@@ -446,7 +446,7 @@ def inference_gru_block_vs_gru_cell(batch_size,
             initial_state=h,
             time_major=True,
             dtype=tf.float32)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         block_time_inference = time_taken_by_op(outputs_dynamic, sess, iters)
 
     performance_inference = (basic_time_inference - block_time_inference
@@ -476,14 +476,14 @@ def single_bprop_step_gru_block_vs_gru_cell(batch_size,
       with tf.variable_scope("basic", initializer=initializer):
         output = tf.nn.rnn_cell.GRUCell(cell_size)(tf.identity(x),
                                                    tf.identity(h))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         grad_output_wrt_input = tf.gradients([output], h)
         basic_time_bprop = time_taken_by_op(grad_output_wrt_input, sess, iters)
 
       # Output from the block GRU cell implementation.
       with tf.variable_scope("block", initializer=initializer):
         output = gru_ops.GRUBlockCell(cell_size)(tf.identity(x), tf.identity(h))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         grad_output_wrt_input = tf.gradients([output], h)
         block_time_bprop = time_taken_by_op(grad_output_wrt_input, sess, iters)
 

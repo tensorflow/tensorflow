@@ -140,7 +140,7 @@ def train():
   train_writer = tf.train.SummaryWriter(FLAGS.log_dir + '/train',
                                         sess.graph)
   test_writer = tf.train.SummaryWriter(FLAGS.log_dir + '/test')
-  tf.initialize_all_variables().run()
+  tf.global_variables_initializer().run()
 
   # Train the model, and also write summaries.
   # Every 10th step, measure test-set accuracy, and write test summaries

@@ -3905,6 +3905,8 @@ class GraphKeys(object):
   # Key to collect all shared resources used in this graph which need to be
   # initialized once per session.
   LOCAL_RESOURCES = "local_resources"
+  # Trainable resource-style variables.
+  TRAINABLE_RESOURCE_VARIABLES = "trainable_resource_variables"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
@@ -3922,7 +3924,7 @@ class GraphKeys(object):
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument
     logging.warning("VARIABLES collection name is deprecated, "
-                    "please use GLOBAL_VARIABLES instead.\n"
+                    "please use GLOBAL_VARIABLES instead; "
                     "VARIABLES will be removed after 2017-03-02.")
     return cls.GLOBAL_VARIABLES
 

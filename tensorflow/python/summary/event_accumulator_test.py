@@ -328,26 +328,20 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testCompressHistogram_uglyHistogram(self):
     bps = (0, 668, 1587, 3085, 5000, 6915, 8413, 9332, 10000)
-    vals = ea._CompressHistogram(
-        ea.HistogramValue(
-            min=0.0,
-            max=1.0,
-            num=960.0,
-            sum=64.0,
-            sum_squares=64.0,
-            bucket_limit=[
-                0.0,
-                1e-12,
-                0.917246389039776,
-                1.0089710279437536,
-                1.7976931348623157e+308],
-            bucket=[
-                0.0,
-                896.0,
-                0.0,
-                64.0,
-                0.0]),
-        bps)
+    histogram_values = ea.HistogramValue(
+        min=0.0,
+        max=1.0,
+        num=960.0,
+        sum=64.0,
+        sum_squares=64.0,
+        bucket_limit=[
+            0.0, 1e-12, 0.917246389039776, 1.0089710279437536,
+            1.7976931348623157e+308
+        ],
+        bucket=[0.0, 896.0, 0.0, 64.0, 0.0])
+    histogram_event = ea.HistogramEvent(0, 0, histogram_values)
+    compressed_event = ea._CompressHistogram(histogram_event, bps)
+    vals = compressed_event.compressed_histogram_values
     self.assertEquals(tuple(v.basis_point for v in vals), bps)
     self.assertAlmostEqual(vals[0].value, 0.0)
     self.assertAlmostEqual(vals[1].value, 7.157142857142856e-14)

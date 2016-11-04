@@ -613,11 +613,11 @@ class ConstantValueTest(tf.test.TestCase):
   def testPack(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
-    tf_val = tf.pack(inputs)
+    tf_val = tf.stack(inputs)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = tf.pack([inputs[0], tf.placeholder(tf.float32), inputs[2]])
+    tf_val = tf.stack([inputs[0], tf.placeholder(tf.float32), inputs[2]])
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
@@ -640,7 +640,7 @@ class ConstantValueAsShapeTest(tf.test.TestCase):
     self.assertEqual(tf.TensorShape([1, 2, 3]), c_val)
 
   def testPack(self):
-    tf_val = tf.pack([tf.constant(16), 37, tf.placeholder(tf.int32)])
+    tf_val = tf.stack([tf.constant(16), 37, tf.placeholder(tf.int32)])
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None], c_val.as_list())
 

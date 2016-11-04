@@ -418,7 +418,7 @@ class TensorboardServerTest(tf.test.TestCase):
           'var1', [1, 2], initializer=tf.constant_initializer(6.0))
       tf.get_variable('var2', [10, 10])
       tf.get_variable('var3', [100, 100])
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       saver = tf.train.Saver(write_version=tf.train.SaverDef.V1)
       saver.save(sess, checkpoint_path)
 

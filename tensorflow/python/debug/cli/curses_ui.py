@@ -168,7 +168,7 @@ class CursesUI(object):
 
     # Regex search state.
     self._curr_search_regex = None
-    self._regex_match_lines = None
+    self._unwrapped_regex_match_lines = []
 
     # Size of view port on screen, which is always smaller or equal to the
     # screen size.
@@ -433,7 +433,7 @@ class CursesUI(object):
 
         self._curr_search_regex = regex
         self._display_output(self._curr_unwrapped_output, highlight_regex=regex)
-      elif self._regex_match_lines:
+      elif self._unwrapped_regex_match_lines:
         # Command is "/". Continue scrolling down matching lines.
         self._display_output(
             self._curr_unwrapped_output,
@@ -682,11 +682,15 @@ class CursesUI(object):
       output: (RichTextLines) text lines to display on the screen. These lines
         may have widths exceeding the screen width. This method will take care
         of the wrapping.
+
+    Returns:
+      (List of int) A list of line indices, in the wrapped output, where there
+        are regex matches.
     """
 
     # Wrap the output lines according to screen width.
-    self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
-        output, self._max_x - 1)
+    self._curr_wrapped_output, wrapped_line_indices = (
+        debugger_cli_common.wrap_rich_text_lines(output, self._max_x - 1))
 
     # Append lines to curr_wrapped_output so that the user can scroll to a
     # state where the last text line is on the top of the output area.
@@ -706,13 +710,20 @@ class CursesUI(object):
      self._output_pad_width) = self._display_lines(self._curr_wrapped_output,
                                                    self._output_num_rows)
 
+    # The indices of lines with regex matches (if any) need to be mapped to
+    # indices of wrapped lines.
+    return [
+        wrapped_line_indices[line]
+        for line in self._unwrapped_regex_match_lines
+    ]
+
   def _display_output(self, output, is_refresh=False, highlight_regex=None):
     """Display text output in a scrollable text pad.
 
     This method does some preprocessing on the text lines, render them on the
     screen and scroll to the appropriate line. These are done according to regex
     highlighting requests (if any), scroll-to-next-match requests (if any),
-    and screen refrexh requests (if any).
+    and screen refresh requests (if any).
 
     TODO(cais): Separate these unrelated request to increase clarity and
       maintainability.
@@ -734,16 +745,17 @@ class CursesUI(object):
 
       if not is_refresh:
         # Perform new regex search on the current output.
-        self._regex_match_lines = output.annotations[
+        self._unwrapped_regex_match_lines = output.annotations[
             debugger_cli_common.REGEX_MATCH_LINES_KEY]
       else:
         # Continue scrolling down.
         self._output_pad_row += 1
     else:
       self._curr_unwrapped_output = output
+      self._unwrapped_regex_match_lines = []
 
     # Display output on the screen.
-    self._screen_display_output(output)
+    wrapped_regex_match_lines = self._screen_display_output(output)
 
     # Now that the text lines are displayed on the screen scroll to the
     # appropriate line according to previous scrolling state and regex search
@@ -751,7 +763,7 @@ class CursesUI(object):
 
     if highlight_regex:
       next_match_line = -1
-      for match_line in self._regex_match_lines:
+      for match_line in wrapped_regex_match_lines:
         if match_line >= self._output_pad_row:
           next_match_line = match_line
           break
@@ -1099,7 +1111,7 @@ class CursesUI(object):
             0: [(len(candidates_prefix), len(candidates_line), "yellow")]
         })
 
-    candidates_output = debugger_cli_common.wrap_rich_text_lines(
+    candidates_output, _ = debugger_cli_common.wrap_rich_text_lines(
         candidates_output, self._max_x - 2)
 
     # Calculate how many lines the candidate text should occupy. Limit it to

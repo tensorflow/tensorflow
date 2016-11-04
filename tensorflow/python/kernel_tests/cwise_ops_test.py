@@ -479,7 +479,7 @@ class BinaryOpTest(tf.test.TestCase):
       if also_compare_variables:
         var_x = tf.Variable(x)
         var_y = tf.Variable(y)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         print(type(x), type(y), type(var_x), type(var_y))
         print(type(tf_func(x, var_y)), type(tf_func(var_x, y)))
         np_var_left = tf_func(x, var_y).eval()

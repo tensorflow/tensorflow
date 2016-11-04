@@ -30,7 +30,7 @@ tf_gen_op_libs(
 
 tf_gen_op_wrapper_py(
     name = "bucketization_op",
-    deps = ["//tensorflow/contrib/layers:bucketization_op_op_lib"],
+    deps = [":bucketization_op_op_lib"],
 )
 
 tf_kernel_library(
@@ -59,7 +59,7 @@ tf_gen_op_libs(
 
 tf_gen_op_wrapper_py(
     name = "sparse_feature_cross_op",
-    deps = ["//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib"],
+    deps = [":sparse_feature_cross_op_op_lib"],
 )
 
 tf_kernel_library(

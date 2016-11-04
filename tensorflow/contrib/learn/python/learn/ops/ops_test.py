@@ -63,7 +63,7 @@ class OpsTest(tf.test.TestCase):
                                             n_classes=5,
                                             embedding_size=10,
                                             name="my_cat_var")
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       emb1 = sess.run(embeddings,
                       feed_dict={cat_var_idx.name: [[0, 1], [2, 3]]})
       emb2 = sess.run(embeddings,

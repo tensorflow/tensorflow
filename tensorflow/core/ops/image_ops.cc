@@ -441,6 +441,29 @@ output: The contrast-adjusted image or images.
 )Doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("AdjustHue")
+    .Input("images: float")
+    .Input("delta: float")
+    .Output("output: float")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
+    .Doc(R"Doc(
+Adjust the hue of one or more images.
+
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpretted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A delta is then applied all the hue values,
+and then remapped back to RGB colorspace.
+
+images: Images to adjust.  At least 3-D.
+delta: A float delta to add to the hue.
+output: The hue-adjusted image or images.
+)Doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("DecodePng")
     .Input("contents: string")
     .Attr("channels: int = 0")

@@ -48,8 +48,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
+        ":slim",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

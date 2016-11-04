@@ -208,7 +208,7 @@ class UniformTest(tf.test.TestCase):
       no_nans = tf.constant(1.0)
       nans = tf.constant(0.0) / tf.constant(0.0)
       self.assertTrue(tf.is_nan(nans).eval())
-      with_nans = tf.pack([no_nans, nans])
+      with_nans = tf.stack([no_nans, nans])
 
       pdf = uniform.pdf(with_nans)
 

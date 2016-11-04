@@ -624,7 +624,7 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   scale_value = tf.mul(margin_scale_value, resize_scale_value)
   precrop_width = tf.mul(scale_value, MODEL_INPUT_WIDTH)
   precrop_height = tf.mul(scale_value, MODEL_INPUT_HEIGHT)
-  precrop_shape = tf.pack([precrop_height, precrop_width])
+  precrop_shape = tf.stack([precrop_height, precrop_width])
   precrop_shape_as_int = tf.cast(precrop_shape, dtype=tf.int32)
   precropped_image = tf.image.resize_bilinear(decoded_image_4d,
                                               precrop_shape_as_int)
@@ -797,7 +797,7 @@ def main(_):
   validation_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/validation')
 
   # Set up all our weights to their initial default values.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
   sess.run(init)
 
   # Run the training for as many cycles as requested on the command line.

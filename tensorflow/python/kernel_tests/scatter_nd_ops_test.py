@@ -344,7 +344,7 @@ class ScatterTest(tf.test.TestCase):
     exepected_result[0, 1] = np.sum(update_values)
 
     scatter = tf.scatter_nd_add(ref, indices, updates)
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     with tf.Session() as sess:
       sess.run(init)

@@ -764,7 +764,7 @@ class AsyncReaderTest(tf.test.TestCase):
         thread_data.append(thread_data_t(t, queue, output))
 
       # Start all readers. They are all blocked waiting for queue entries.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       for d in thread_data:
         d.thread.start()
 

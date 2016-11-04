@@ -36,7 +36,7 @@ class InitializerTest(tf.test.TestCase):
     with tf.Session() as sess:
       var = tf.get_variable(name='test', shape=shape, dtype=tf.float32,
                             initializer=initializer(uniform=uniform, seed=1))
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       values = var.eval()
       self.assertAllClose(np.var(values), variance, 1e-3, 1e-3)
 
@@ -78,7 +78,7 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
                                                       mode=mode,
                                                       uniform=uniform,
                                                       seed=1))
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         values = var.eval()
         self.assertAllClose(np.var(values), variance, 1e-3, 1e-3)
 
