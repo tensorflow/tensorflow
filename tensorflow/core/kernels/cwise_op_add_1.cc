@@ -20,7 +20,6 @@ REGISTER5(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
           int64);
           
 #if TENSORFLOW_USE_SYCL
-#include "tensorflow/core/framework/register_types.h"
 #define REGISTER_SYCL_KERNEL(TYPE)                                    \
   REGISTER_KERNEL_BUILDER(                                            \
                           Name("Add")                                 \
@@ -29,7 +28,7 @@ REGISTER5(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
         BinaryOp<SYCLDevice, functor::add<TYPE>>);
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
-#endif          
+#endif // TENSORFLOW_USE_SYCL
           
 #if GOOGLE_CUDA
 REGISTER3(BinaryOp, GPU, "Add", functor::add, float, Eigen::half, double);

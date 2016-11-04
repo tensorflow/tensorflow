@@ -22,6 +22,8 @@ limitations under the License.
 
 #define EIGEN_USE_SYCL
 
+#include "tensorflow/core/framework/register_types.h"
+
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/platform/logging.h"
