@@ -98,7 +98,7 @@ function(AddPythonTests)
   endif(_AT_DEPENDS)
   
   foreach(sourcefile ${_AT_SOURCES})
-    add_test(NAME ${sourcefile} COMMAND python ${sourcefile})
+    add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile})
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()

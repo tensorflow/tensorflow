@@ -204,9 +204,10 @@ Step-by-step Windows build
      ```
  
    * `-Dtensorflow_BUILD_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python kernel tests.
+     After building the python wheel, you need to install the new wheel before running the tests.
      To execute the tests, use
      ```
-     ctest -C RelWithDebInfo```
+     ctest -C RelWithDebInfo
      ```
 
 4. Invoke MSBuild to build TensorFlow.
