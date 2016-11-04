@@ -102,7 +102,7 @@ typedef Eigen::SyclDevice SYCLDevice;
                           Name("Assign")                              \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<type>("T"),                 \
-        AssignOpT<SYCLDevice, type>);
+                          AssignOpT<SYCLDevice, type>);
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif

@@ -25,7 +25,7 @@ REGISTER5(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
                           Name("Add")                                 \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<TYPE>("T"),                 \
-        BinaryOp<SYCLDevice, functor::add<TYPE>>);
+                          BinaryOp<SYCLDevice, functor::add<TYPE>>);
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL

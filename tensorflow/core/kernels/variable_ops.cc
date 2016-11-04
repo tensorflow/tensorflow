@@ -37,7 +37,7 @@ REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
                           Name("Variable")                            \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<TYPE>("dtype"),             \
-        VariableOp);
+                          VariableOp);
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif

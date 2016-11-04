@@ -26,7 +26,7 @@ REGISTER5(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double,
                           Name("Mul")                                 \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<TYPE>("T"),                 \
-        BinaryOp<SYCLDevice, functor::mul<TYPE>>);
+                          BinaryOp<SYCLDevice, functor::mul<TYPE>>);
 REGISTER_SYCL_KERNEL(float)
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL

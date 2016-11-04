@@ -30,7 +30,7 @@ REGISTER5(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
                           Name("Div")                                 \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<TYPE>("T"),                 \
-        BinaryOp<SYCLDevice, functor::div<TYPE>>);
+                          BinaryOp<SYCLDevice, functor::div<TYPE>>);
 REGISTER_SYCL_KERNEL(float)
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
