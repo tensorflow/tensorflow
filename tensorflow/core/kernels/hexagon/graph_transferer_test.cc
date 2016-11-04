@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
+#include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
+#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
@@ -183,4 +185,20 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   EXPECT_EQ(1, params_max_pool->outputs_size);
   EXPECT_EQ("NN_PAD_SAME", params_max_pool->padding);
 }
+
+TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
+  const IGraphTransferOpsDefinitions& ops_definitions =
+      HexagonOpsDefinitions::getInstance();
+  const int total_ops_count = ops_definitions.GetTotalOpsCount();
+  EXPECT_GT(total_ops_count, 0);
+  const int input_op_id =
+      ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::INPUT_OP_NAME);
+  EXPECT_GE(input_op_id, 0);
+  EXPECT_EQ(input_op_id, ops_definitions.GetInputNodeOpId());
+  const int output_op_id =
+      ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::OUTPUT_OP_NAME);
+  EXPECT_GE(output_op_id, 0);
+  EXPECT_EQ(output_op_id, ops_definitions.GetOutputNodeOpId());
+}
+
 }  // namespace tensorflow
