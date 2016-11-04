@@ -15123,6 +15123,30 @@ op {
   }
 }
 op {
+  name: "Log1p"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "LogSoftmax"
   input_arg {
     name: "logits"
@@ -34016,6 +34040,17 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "WriteFile"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
 }
 op {
   name: "ZerosLike"
