@@ -46,7 +46,7 @@ def main(_):
 
   # The raw formulation of cross-entropy,
   #
-  #   tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(tf.softmax(y)),
+  #   tf.reduce_mean(-tf.reduce_sum(tf.softmax(y) * tf.log(y_),
   #                                 reduction_indices=[1]))
   #
   # can be numerically unstable.
