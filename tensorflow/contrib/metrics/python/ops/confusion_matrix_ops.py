@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -102,7 +103,7 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
     indices = array_ops.transpose(array_ops.pack([predictions, labels]))
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
-    cm_sparse = ops.SparseTensor(
+    cm_sparse = sparse_tensor.SparseTensor(
         indices=indices, values=values, shape=math_ops.to_int64(shape))
     zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtype)
 

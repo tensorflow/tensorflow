@@ -132,11 +132,9 @@ REGISTER_OP("FinishedNodes")
     .Attr("num_split_after_samples: int")
     .Attr("min_split_samples: int")
     .Attr("dominate_fraction: float = 0.99")
-    // TODO(thomaswc): Test out bootstrap on several datasets, confirm it
-    // works well, make it the default.
     .Attr(
         "dominate_method:"
-        " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'hoeffding'")
+        " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'bootstrap'")
     .Attr("random_seed: int = 0")
     .Input("leaves: int32")
     .Input("node_to_accumulator: int32")

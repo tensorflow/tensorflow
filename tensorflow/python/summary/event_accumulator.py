@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import os.path
+import re
 import threading
 
 import numpy as np
@@ -98,10 +99,18 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
     HISTOGRAMS: 0,
 }
 
+# When files on Colossus are deleted, they are actually renamed.
+_CNS_DELETED_FILE_PATTERN = re.compile(r'\.~\d+~(/|$)')
+
 
 def IsTensorFlowEventsFile(path):
   """Check the path name to see if it is probably a TF Events file."""
-  return 'tfevents' in compat.as_str_any(os.path.basename(path))
+  if 'tfevents' not in compat.as_str_any(os.path.basename(path)):
+    return False
+  if _CNS_DELETED_FILE_PATTERN.search(path):
+    logging.info('Ignoring deleted Colossus file: %s', path)
+    return False
+  return True
 
 
 class EventAccumulator(object):

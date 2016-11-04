@@ -22,6 +22,7 @@ from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
@@ -114,8 +115,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
             array_ops.slice(original_shape, [0], [original_rank - 1])),
         array_ops.gather(original_shape, original_rank - 1)])
     if sparse_weights is not None:
-      sparse_weights = ops.SparseTensor(sparse_ids.indices,
-                                        sparse_weights.values, sparse_ids.shape)
+      sparse_weights = sparse_tensor.SparseTensor(
+          sparse_ids.indices,
+          sparse_weights.values, sparse_ids.shape)
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
@@ -302,7 +304,7 @@ def hashed_embedding_lookup_sparse(params,
     params = list(params)
   if not isinstance(params, list):
     params = [params]
-  if not isinstance(sparse_values, ops.SparseTensor):
+  if not isinstance(sparse_values, sparse_tensor.SparseTensor):
     raise TypeError("sparse_values must be SparseTensor")
 
   with ops.name_scope(name, "hashed_sparse_embedding_lookup",

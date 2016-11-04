@@ -46,6 +46,7 @@ py_test(
     name = "learning_test",
     srcs = ["python/slim/learning_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/slim",

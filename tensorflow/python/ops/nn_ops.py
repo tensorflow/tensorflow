@@ -1809,24 +1809,6 @@ def _calc_conv_flops(graph, node):
                                filter_width * 2))
 
 
-@ops.RegisterStatistics("Conv2D", "weight_parameters")
-def _calc_conv_weight_params(graph, node):
-  """Calculates the on-disk size of the weights for Conv2D."""
-  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  input_shape.assert_is_fully_defined()
-  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                            node.input[1])
-  filter_shape.assert_is_fully_defined()
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  filter_height = int(filter_shape[0])
-  filter_width = int(filter_shape[1])
-  filter_in_depth = int(filter_shape[2])
-  filter_out_depth = int(filter_shape[3])
-  return ops.OpStats("weight_parameters", (filter_height * filter_width *
-                                           filter_in_depth * filter_out_depth))
-
-
 @ops.RegisterStatistics("DepthwiseConv2dNative", "flops")
 def _calc_depthwise_conv_flops(graph, node):
   """Calculates the compute resources needed for DepthwiseConv2dNative."""
@@ -1841,25 +1823,6 @@ def _calc_depthwise_conv_flops(graph, node):
   filter_width = int(filter_shape[1])
   output_count = np.prod(output_shape.as_list())
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
-
-
-@ops.RegisterStatistics("DepthwiseConv2dNative", "weight_parameters")
-def _calc_depthwise_conv_weight_params(graph, node):
-  """Calculates the on-disk size of the weights for DepthwiseConv2dNative."""
-  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  input_shape.assert_is_fully_defined()
-  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                            node.input[1])
-  filter_shape.assert_is_fully_defined()
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  filter_height = int(filter_shape[0])
-  filter_width = int(filter_shape[1])
-  filter_in_depth = int(filter_shape[2])
-  filter_channel_multiplier = int(filter_shape[3])
-  return ops.OpStats("weight_parameters", (filter_height * filter_width *
-                                           filter_in_depth *
-                                           filter_channel_multiplier))
 
 
 ops.RegisterShape("Conv3D")(common_shapes.call_cpp_shape_fn)
@@ -1880,15 +1843,6 @@ def _calc_bias_add_flops(graph, node):
   input_shape.assert_is_fully_defined()
   input_count = np.prod(input_shape.as_list())
   return ops.OpStats("flops", input_count)
-
-
-@ops.RegisterStatistics("BiasAdd", "weight_parameters")
-def _calc_bias_add_weight_params(graph, node):
-  """Calculates the on-disk weight parameters for BiasAdd."""
-  bias_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[1])
-  bias_shape.assert_is_fully_defined()
-  bias_count = np.prod(bias_shape.as_list())
-  return ops.OpStats("weight_parameters", bias_count)
 
 
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
@@ -2110,19 +2064,6 @@ def _calc_dilation2d_flops(graph, node):
   filter_width = int(filter_shape[1])
   output_count = np.prod(output_shape.as_list())
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
-
-
-@ops.RegisterStatistics("Dilation2D", "weight_parameters")
-def _calc_dilation2d_weight_params(graph, node):
-  """Calculates the on-disk size of the weights for Dilation2D."""
-  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                            node.input[1])
-  filter_shape.assert_is_fully_defined()
-  filter_height = int(filter_shape[0])
-  filter_width = int(filter_shape[1])
-  filter_depth = int(filter_shape[2])
-  return ops.OpStats("weight_parameters",
-                     (filter_height * filter_width * filter_depth))
 
 
 def erosion2d(value, kernel, strides, rates, padding, name=None):

@@ -57,7 +57,6 @@ initialized with parameters that define the distributions.
 @@MultivariateNormalCholesky
 @@MultivariateNormalDiagPlusVDVT
 @@MultivariateNormalDiagWithSoftplusStDev
-@@matrix_diag_transform
 
 ### Other multivariate distributions
 
@@ -66,6 +65,10 @@ initialized with parameters that define the distributions.
 @@Multinomial
 @@WishartCholesky
 @@WishartFull
+
+### Multivariate Utilities
+
+@@matrix_diag_transform
 
 ## Transformed distributions
 
@@ -86,7 +89,7 @@ representing the posterior or posterior predictive.
 @@normal_conjugates_known_sigma_posterior
 @@normal_conjugates_known_sigma_predictive
 
-## Kullback Leibler Divergence
+## Kullback-Leibler Divergence
 
 @@kl
 @@RegisterKL

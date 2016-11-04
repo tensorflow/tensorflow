@@ -389,16 +389,11 @@ cc_header_only_library(
 # OpKernel libraries ----------------------------------------------------------
 
 ARRAY_DEPS = [
-    ":batch_space_ops",
     ":bounds_check",
     ":concat_lib",
-    ":cuda_device_array",
-    ":depth_space_ops",
-    ":extract_image_patches_op",
     ":fill_functor",
     ":gather_functor",
     ":ops_util",
-    ":split_lib",
     ":strided_slice_op",
     ":transpose_functor",
     "//tensorflow/core:array_grad",
@@ -426,6 +421,13 @@ tf_kernel_libraries(
 
 tf_kernel_libraries(
     name = "array",
+    libs = [
+        ":batch_space_ops",
+        ":depth_space_ops",
+        ":extract_image_patches_op",
+        ":split_op",
+        ":unpack_op",
+    ],
     prefixes = [
         "bcast_ops",
         "bitcast_op",
@@ -450,14 +452,25 @@ tf_kernel_libraries(
         "reverse_sequence_op",
         "shape_ops",
         "slice_op",
-        "split_op",
         "tile_ops",
         "transpose_op",
         "unique_op",
-        "unpack_op",
         "where_op",
     ],
     deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "split_op",
+    gpu_srcs = ["cuda_device_array.h"],
+    prefix = "split_op",
+    deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "unpack_op",
+    prefix = "unpack_op",
+    deps = ARRAY_DEPS + [":split_lib"],
 )
 
 tf_cc_test(
@@ -886,16 +899,16 @@ tf_cc_test(
 
 tf_kernel_libraries(
     name = "data_flow",
+    libs = [
+        ":dynamic",
+        ":lookup",
+    ],
     prefixes = [
-        "dynamic_partition_op",
-        "dynamic_stitch_op",
         "conditional_accumulator_base_op",
         "conditional_accumulator_op",
         "barrier_ops",
         "fifo_queue_op",
         "priority_queue_op",
-        "lookup_table_init_op",
-        "lookup_table_op",
         "padding_fifo_queue_op",
         "queue_ops",
         "random_shuffle_queue_op",
@@ -927,6 +940,40 @@ tf_kernel_libraries(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_libraries(
+    name = "dynamic",
+    prefixes = [
+        "dynamic_partition_op",
+        "dynamic_stitch_op",
+    ],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:data_flow_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_libraries(
+    name = "lookup",
+    prefixes = [
+        "lookup_table_init_op",
+        "lookup_table_op",
+    ],
+    deps = [
+        ":bounds_check",
+        ":initializable_lookup_table",
+        ":lookup_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:data_flow_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -1607,12 +1654,14 @@ tf_kernel_library(
 
 tf_kernel_libraries(
     name = "nn",
+    libs = [
+        ":l2loss_op",
+    ],
     prefixes = [
         "batch_norm_op",
         "bias_op",
         "fused_batch_norm_op",
         "in_topk_op",
-        "l2loss_op",
         "lrn_op",
         "relu_op",
         "softmax_op",
@@ -1639,6 +1688,19 @@ tf_kernel_libraries(
     ] + if_not_windows([
         ":depthwise_conv_op",
     ]),
+)
+
+tf_kernel_library(
+    name = "l2loss_op",
+    prefix = "l2loss_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_grad",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cuda_cc_test(

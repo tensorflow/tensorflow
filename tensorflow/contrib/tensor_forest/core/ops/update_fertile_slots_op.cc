@@ -48,6 +48,7 @@ REGISTER_OP("UpdateFertileSlots")
     .Input("accumulator_sums: float")
     .Input("node_to_accumulator: int32")
     .Input("stale_leaves: int32")
+    .Input("node_sums: float")
     .Output("node_to_accumulator_map_updates: int32")
     .Output("accumulator_to_node_map_updates: int32")
     .Output("accumulators_cleared: int32")
@@ -84,6 +85,8 @@ node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
   fertile node i, or -1 if node i isn't fertile.
 stale_leaves:= A 1-d int32 tensor containing the indices of all leaves that
   have stopped accumulating statistics because they are too old.
+node_sums: `node_sums[n][c]` records how many
+   training examples have class c and have ended up in node n.
 node_to_accumulator_map_updates:= A 2-d int32 tensor describing the changes
   that need to be applied to the node_to_accumulator map.  Intended to be used
   with
@@ -121,6 +124,7 @@ class UpdateFertileSlots : public OpKernel {
     const Tensor& accumulator_sums = context->input(4);
     const Tensor& node_to_accumulator = context->input(5);
     const Tensor& stale_leaves = context->input(6);
+    const Tensor& node_sums = context->input(7);
 
     OP_REQUIRES(context, finished.shape().dims() == 1,
                 errors::InvalidArgument(
@@ -204,6 +208,8 @@ class UpdateFertileSlots : public OpKernel {
         non_fertile_leaves, non_fertile_leaf_scores, eot, num_new_leaves,
         static_cast<int32>(accumulator_sums.shape().dim_size(1)), &leaf_heap);
 
+    const auto sums = node_sums.unaligned_flat<float>();
+    const int32 num_columns = node_sums.shape().dim_size(1);
     // Allocate leaves.
     std::unique_ptr<HeapValuesType> values(
         leaf_heap.Extract());
@@ -217,6 +223,18 @@ class UpdateFertileSlots : public OpKernel {
       if (accumulator < 0) {
         VLOG(1) << "No allocators left.";
         break;
+      }
+      // For classification, don't make a node fertile until it is unpure.
+      if (!regression_) {
+        // Add 1 here because index 0 contains the sum of the weights across
+        // classes.
+        Eigen::array<int, 1> offsets = {node.first * num_columns + 1};
+        Eigen::array<int, 1> extents = {num_columns - 1};
+        const auto node_counts = sums.slice(offsets, extents);
+        // TODO(thomaswc): Implement a faster check for pure nodes.
+        if (tensorforest::RawWeightedGiniImpurity(node_counts) == 0) {
+          continue;
+        }
       }
       VLOG(1) << "setting node " << node.first << " to accumulator "
               << accumulator;

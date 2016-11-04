@@ -454,7 +454,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     relu_logits = math_ops.select(cond, logits, zeros)
     neg_abs_logits = math_ops.select(cond, -logits, logits)
     return math_ops.add(relu_logits - logits * targets,
-                        math_ops.log(1 + math_ops.exp(neg_abs_logits)),
+                        math_ops.log1p(math_ops.exp(neg_abs_logits)),
                         name=name)
 
 
@@ -522,7 +522,7 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
     log_weight = 1 + (pos_weight - 1) * targets
     return math_ops.add(
         (1 - targets) * logits,
-        log_weight * (math_ops.log(1 + math_ops.exp(-math_ops.abs(logits))) +
+        log_weight * (math_ops.log1p(math_ops.exp(-math_ops.abs(logits))) +
                       nn_ops.relu(-logits)),
         name=name)
 

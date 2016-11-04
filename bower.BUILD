@@ -209,6 +209,7 @@ filegroup(
     name = "iron_overlay_behavior",
     srcs = [
         "index.html",
+        "iron-focusables-helper.html",
         "iron-overlay-backdrop.html",
         "iron-overlay-behavior.html",
         "iron-overlay-manager.html",
@@ -229,6 +230,14 @@ filegroup(
         "demo/src/x-app.html",
         "index.html",
         "iron-resizable-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_scroll_target_behavior",
+    srcs = [
+        "index.html",
+        "iron-scroll-target-behavior.html",
     ],
 )
 
