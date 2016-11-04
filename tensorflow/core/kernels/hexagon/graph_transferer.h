@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/padding.h"
@@ -42,28 +43,44 @@ class GraphTransferer {
   // Node parameters for transfer
   struct NodeTransferParams {
     string name;
-    int id;
-    string type;
+    int node_id;
+    string type;  // for debug info
+    int soc_op_id;
     string padding;
-    string inputs_name;  // for debug info
+    string inputs_name;  // for debug info TODO(satok): remove
     int inputs_size;
-    string outputs_name;  // for debug info
+    string outputs_name;  // for debug info TODO(satok): remove
     int outputs_size;
   };
 
   // Const node parameters for transfer
   struct ConstNodeTransferParams {
     string name;
-    int id;
+    int node_id;
     std::array<int64, MAX_SUPPORTED_RANK> shape;
     string data_name;  // for debug info
     int data_size;
   };
 
+  // Input parameters of a node for transfer
+  struct NodeInputParams {
+    int node_id;
+    std::vector<std::tuple<int, int>> input_node_id_and_output_port_list;
+  };
+
+  // Output parameters of a node for transfer
+  struct NodeOutputParams {
+    int node_id;
+    std::vector<int> max_sizes;
+  };
+
   GraphTransferer() = default;
 
   // Load graph structure into GraphTransferer
-  void LoadGraphFromProto(const GraphDef& graph_def);
+  void LoadGraphFromProto(const IGraphTransferOpsDefinitions& ops_definitions,
+                          const GraphDef& graph_def,
+                          const std::vector<string>& input_node_names,
+                          const std::vector<string>& output_node_names);
 
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
@@ -71,30 +88,60 @@ class GraphTransferer {
   // Return op node parameters for transfer
   const std::vector<NodeTransferParams>& GetOpNodeParams() const;
 
+  // Return input params of nodes
+  const std::vector<NodeInputParams>& GetNodeInputParams() const;
+
+  // Return output params of nodes
+  const std::vector<NodeOutputParams>& GetNodeOutputParams() const;
+
  private:
   int CacheNode(const Node& node);
   bool AreAllInputsCached(const Node& node) const;
+  void RegisterNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                    const ShapeRefiner& shape_refiner, const Node& node,
+                    const std::vector<string>& input_node_names,
+                    const std::vector<string>& output_node_names);
   void RegisterConstantNode(const ShapeRefiner& shape_refiner,
                             const Node& node);
   int RegisterConstantShape(const std::vector<int>& shape);
   bool HasPaddingAndStrides(const Node& node);
-  void RegisterNodeWithPaddingAndStrides(const ShapeRefiner& shape_refiner,
-                                         const Node& node);
-  void RegisterNode(const ShapeRefiner& shape_refiner, const Node& node);
-  bool RegisterNodeIfAllInputsAreCached(const ShapeRefiner& shape_refiner,
-                                        const Node& node,
-                                        const bool only_register_const_node);
+  void RegisterNodeWithPaddingAndStrides(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
+  void RegisterInputNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                         const ShapeRefiner& shape_refiner, const Node& node);
+  void RegisterOutputNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                          const ShapeRefiner& shape_refiner, const Node& node);
+  bool RegisterNodeIfAllInputsAreCached(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node,
+      const bool only_register_const_node,
+      const std::vector<string>& input_node_names,
+      const std::vector<string>& output_node_names);
   void AppendNodeParams(const string& name, const int id, const string& type,
-                        const Padding& padding, const int inputs_size,
+                        const int type_id, const string& padding_str,
+                        const int inputs_size,
                         const std::vector<int>& extra_inputs,
                         const int outputs_size);
+  void AppendNodeInputParams(const int id, const Node& node,
+                             const std::vector<int>& extra_inputs);
+  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner, const int id,
+                              const Node& node);
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
       const shape_inference::ShapeHandle& shape_handle,
       shape_inference::InferenceContext* context);
+  void AppendNodeParamsWithIoParams(
+      const ShapeRefiner& shape_refiner, const Node& node, const string& name,
+      const int id, const string& type, const int type_id,
+      const string& padding_str, const int inputs_size,
+      const std::vector<int>& extra_inputs, const int outputs_size,
+      const bool append_input_params, const bool append_output_params);
   void DumpNodeTransferParams() const;
 
   std::vector<NodeTransferParams> node_transfer_params_list_;
   std::vector<ConstNodeTransferParams> const_node_transfer_params_list_;
+  std::vector<NodeInputParams> node_input_params_list_;
+  std::vector<NodeOutputParams> node_output_params_list_;
 
   std::vector<const Node*> node_name_cache_list_;
   std::unordered_map<string, int> node_name_to_id_cache_map_;
