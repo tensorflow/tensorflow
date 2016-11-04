@@ -29,7 +29,14 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
+#ifdef COMPILER_MSVC
+// msvc does not support unroll. One could try the loop pragma but we need to
+// take a closer look if this generates better code in this case. For now let
+// the compiler take care of of it.
+#define UNROLL
+#else
 #define UNROLL _Pragma("unroll")
+#endif
 
 namespace tensorflow {
 
