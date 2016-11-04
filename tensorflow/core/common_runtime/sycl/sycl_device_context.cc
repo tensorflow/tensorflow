@@ -15,6 +15,8 @@ limitations under the License.
 
 #if TENSORFLOW_USE_SYCL
 
+#define EIGEN_USE_SYCL
+
 #include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
