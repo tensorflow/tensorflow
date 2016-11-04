@@ -120,6 +120,8 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
+    js_api_version = 2,
+    js_codegen = "jspb",
     visibility = ["//visibility:public"],
 )
 
