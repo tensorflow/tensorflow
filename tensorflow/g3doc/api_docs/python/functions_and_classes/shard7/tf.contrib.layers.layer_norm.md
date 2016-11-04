@@ -25,7 +25,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 

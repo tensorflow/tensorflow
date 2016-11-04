@@ -506,7 +506,7 @@ class SupervisorTest(tf.test.TestCase):
       p = tf.placeholder(tf.float32, shape=(3,))
       v = tf.Variable(p, name="v")
       sv = tf.train.Supervisor(logdir=logdir,
-                               init_op=tf.initialize_all_variables(),
+                               init_op=tf.global_variables_initializer(),
                                init_feed_dict={p: [1.0, 2.0, 3.0]})
       sess = sv.prepare_or_wait_for_session("")
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))

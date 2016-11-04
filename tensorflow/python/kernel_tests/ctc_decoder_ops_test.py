@@ -45,7 +45,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
     inputs_t = [tf.convert_to_tensor(x) for x in inputs]
     # convert inputs_t into a [max_time x batch_size x depth] tensor
     # from a len time python list of [batch_size x depth] tensors
-    inputs_t = tf.pack(inputs_t)
+    inputs_t = tf.stack(inputs_t)
 
     with self.test_session(use_gpu=False) as sess:
       decoded_list, log_probability = decoder(

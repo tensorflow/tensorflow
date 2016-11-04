@@ -78,7 +78,7 @@ class TemplateTest(tf.test.TestCase):
     train_op = optimizer.minimize(train_loss)
 
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       initial_test_loss = sess.run(test_loss)
       sess.run(train_op)
       final_test_loss = sess.run(test_loss)

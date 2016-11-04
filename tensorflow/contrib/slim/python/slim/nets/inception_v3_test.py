@@ -221,7 +221,7 @@ class InceptionV3Test(tf.test.TestCase):
                            [batch_size, num_classes])
       pre_pool = end_points['Mixed_7c']
       feed_dict = {inputs: input_np}
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       pre_pool_out = sess.run(pre_pool, feed_dict=feed_dict)
       self.assertListEqual(list(pre_pool_out.shape), [batch_size, 8, 8, 2048])
 
@@ -238,7 +238,7 @@ class InceptionV3Test(tf.test.TestCase):
     images = tf.random_uniform((batch_size, height, width, 3))
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(logits, {inputs: images.eval()})
       self.assertEquals(output.shape, (batch_size, num_classes))
 
@@ -253,7 +253,7 @@ class InceptionV3Test(tf.test.TestCase):
     predictions = tf.argmax(logits, 1)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(predictions)
       self.assertEquals(output.shape, (batch_size,))
 
@@ -271,7 +271,7 @@ class InceptionV3Test(tf.test.TestCase):
     predictions = tf.argmax(logits, 1)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(predictions)
       self.assertEquals(output.shape, (eval_batch_size,))
 
@@ -283,7 +283,7 @@ class InceptionV3Test(tf.test.TestCase):
                                        spatial_squeeze=False)
 
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       logits_out = sess.run(logits)
       self.assertListEqual(list(logits_out.shape), [1, 1, 1, num_classes])
 

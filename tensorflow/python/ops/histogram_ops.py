@@ -62,7 +62,7 @@ def histogram_fixed_width(values,
 
   with tf.default_session() as sess:
     hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
-    variables.initialize_all_variables().run()
+    variables.global_variables_initializer().run()
     sess.run(hist) => [2, 1, 1, 0, 2]
   ```
   """

@@ -76,7 +76,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
     optimizer = MockOptimizerInterface(loss)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       optimizer.minimize(sess)
 
@@ -97,7 +97,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
     optimizer = MockOptimizerInterface(loss)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       initial_vector_val = sess.run(vector)
 
@@ -144,7 +144,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = tf.contrib.opt.ScipyOptimizerInterface(objective(x))
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       optimizer.minimize(sess)
 
       self.assertAllClose(np.ones(dimension), sess.run(x))
@@ -165,7 +165,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
         method='SLSQP')
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
 

@@ -201,10 +201,17 @@ class CursesTest(test_util.TensorFlowTestCase):
         type=int,
         default=60,
         help="How many times to babble")
+    ap.add_argument(
+        "-l",
+        "--line",
+        dest="line",
+        type=str,
+        default="bar",
+        help="The content of each line")
 
     parsed = ap.parse_args(args)
 
-    return debugger_cli_common.RichTextLines(["bar"] * parsed.num_times)
+    return debugger_cli_common.RichTextLines([parsed.line] * parsed.num_times)
 
   def _print_ones(self, args, screen_info=None):
     ap = argparse.ArgumentParser(
@@ -726,7 +733,7 @@ class CursesTest(test_util.TensorFlowTestCase):
         "babble", self._babble, "babble some", prefix_aliases=["b"])
     ui.run_ui()
 
-    # The unwrapped (original) output should never have any highglighting.
+    # The unwrapped (original) output should never have any highlighting.
     self.assertEqual(3, len(ui.unwrapped_outputs))
     for i in range(3):
       self.assertEqual(["bar"] * 3, ui.unwrapped_outputs[i].lines)
@@ -794,6 +801,32 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual([0, 0, 1, 2], ui.output_pad_rows)
 
+  def testRegexSearchUnderLineWrapping(self):
+    ui = MockCursesUI(
+        40,
+        5,  # Use a narrow window to trigger line wrapping
+        command_sequence=[
+            string_to_codes("babble -n 3 -l foo-bar-baz-qux\n"),
+            string_to_codes("/foo\n"),  # Regex search and highlight.
+            string_to_codes("/\n"),  # Continue scrolling down: 1st time.
+            string_to_codes("/\n"),  # Continue scrolling down: 2nd time.
+            string_to_codes("/\n"),  # Continue scrolling down: 3rd time.
+            string_to_codes("/\n"),  # Continue scrolling down: 4th time.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.wrapped_outputs))
+    for wrapped_output in ui.wrapped_outputs:
+      self.assertEqual(["foo-", "bar-", "baz-", "qux"] * 3,
+                       wrapped_output.lines[0 : 12])
+
+    # The scroll location should reflect the line wrapping.
+    self.assertEqual([0, 0, 4, 8], ui.output_pad_rows)
+
   def testRegexSearchNoMatchContinuation(self):
     """Test continuing scrolling when there is no regex match."""
 
@@ -811,8 +844,8 @@ class CursesTest(test_util.TensorFlowTestCase):
         "babble", self._babble, "babble some", prefix_aliases=["b"])
     ui.run_ui()
 
-    # The regex search and continuation search should not have produced any
-    # output.
+    # The regex search and continuation search in the 3rd command should not
+    # have produced any output.
     self.assertEqual(1, len(ui.unwrapped_outputs))
     self.assertEqual([0], ui.output_pad_rows)
 

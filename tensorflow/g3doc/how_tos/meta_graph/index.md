@@ -198,7 +198,7 @@ Here are some of the typical usage models:
     logits = tf.matmul(hidden2, weights) + biases
     tf.add_to_collection("logits", logits)
 
-  init_all_op = tf.initialize_all_variables()
+  init_all_op = tf.global_variables_initializer()
 
   with tf.Session() as sess:
     # Initializes all the variables.

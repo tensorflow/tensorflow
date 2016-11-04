@@ -143,7 +143,7 @@ def run_training():
     summary = tf.summary.merge_all()
 
     # Add the variable initializer Op.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)

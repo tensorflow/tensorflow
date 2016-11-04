@@ -108,7 +108,7 @@ class FeatureColumnTest(tf.test.TestCase):
       b2 = tf.contrib.layers.input_from_feature_columns(
           {b[1]: input_tensor_c2}, [b[1]])
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       b1_value = b1.eval()
       b2_value = b2.eval()
     for i in range(len(b1_value)):
@@ -132,7 +132,7 @@ class FeatureColumnTest(tf.test.TestCase):
       e1 = tf.contrib.layers.input_from_feature_columns(
           {e[0]: input_tensor_c1}, [e[0]])
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       d1_value = d1.eval()
       e1_value = e1.eval()
     for i in range(len(d1_value)):
@@ -616,7 +616,7 @@ class FeatureColumnTest(tf.test.TestCase):
     checkpoint_path = os.path.join(ckpt_dir, "model.ckpt")
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       saved_embedding = embeddings.eval()
       save.save(sess, checkpoint_path)
 
@@ -637,7 +637,7 @@ class FeatureColumnTest(tf.test.TestCase):
           [embedding_col_initialized])
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       loaded_embedding = pretrained_embeddings.eval()
 
     self.assertAllClose(saved_embedding, loaded_embedding)
@@ -680,7 +680,7 @@ class FeatureColumnTest(tf.test.TestCase):
     checkpoint_path = os.path.join(ckpt_dir, "model.ckpt")
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(assign_op)
       saved_col_weights = col_weights[crossed_col][0].eval()
       save.save(sess, checkpoint_path)
@@ -706,7 +706,7 @@ class FeatureColumnTest(tf.test.TestCase):
       col_weights_from_ckpt = col_weights[crossed_col_initialized][0]
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       loaded_col_weights = col_weights_from_ckpt.eval()
 
     self.assertAllClose(saved_col_weights, loaded_col_weights)

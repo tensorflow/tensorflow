@@ -125,7 +125,7 @@ def Export():
         print("copying asset file: %s" % filepath)
 
     # Run an export.
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     export = exporter.Exporter(save)
     export.init(
         sess.graph.as_graph_def(),

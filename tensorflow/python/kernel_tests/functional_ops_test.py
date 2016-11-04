@@ -54,7 +54,7 @@ class FunctionalOpsTest(tf.test.TestCase):
         # Check that we have the one variable we asked for here.
         self.assertEqual(len(tf.trainable_variables()), 1)
         self.assertEqual(tf.trainable_variables()[0].name, "root/body/two:0")
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         self.assertAllEqual(208, r.eval())
 
         # Now let's reuse our single variable.
@@ -83,7 +83,7 @@ class FunctionalOpsTest(tf.test.TestCase):
         # Check that we have the one variable we asked for here.
         self.assertEqual(len(tf.trainable_variables()), 1)
         self.assertEqual(tf.trainable_variables()[0].name, "root/body/two:0")
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         self.assertAllEqual(450, r.eval())
 
         # Now let's reuse our single variable.
@@ -140,7 +140,7 @@ class FunctionalOpsTest(tf.test.TestCase):
         # Check that we have the one variable we asked for here.
         self.assertEqual(len(tf.trainable_variables()), 1)
         self.assertEqual(tf.trainable_variables()[0].name, "root/body/two:0")
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         self.assertAllEqual(doubles, r.eval())
 
         # Now let's reuse our single variable.
@@ -267,7 +267,7 @@ class FunctionalOpsTest(tf.test.TestCase):
         # Check that we have the one variable we asked for here.
         self.assertEqual(len(tf.trainable_variables()), 1)
         self.assertEqual(tf.trainable_variables()[0].name, "root/body/two:0")
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         results = np.array([1, 6, 18, 44, 98, 208])
         self.assertAllEqual(results, r.eval())
 

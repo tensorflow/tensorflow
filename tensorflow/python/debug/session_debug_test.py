@@ -277,7 +277,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       run_metadata = config_pb2.RunMetadata()
 
       # Initialize u and s.
-      sess.run(variables.initialize_all_variables(),
+      sess.run(variables.global_variables_initializer(),
                options=run_options,
                run_metadata=run_metadata)
 

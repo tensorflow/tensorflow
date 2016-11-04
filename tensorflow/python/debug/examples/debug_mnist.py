@@ -119,7 +119,7 @@ def main(_):
     with tf.name_scope("accuracy"):
       accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
 
   if FLAGS.debug:
     sess = tf_debug.LocalCLIDebugWrapperSession(sess)

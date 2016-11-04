@@ -349,7 +349,7 @@ following keyword arguments to the `Supervisor()` constructor:
    If not specified, the supervisor uses the first op in the
    `tf.GraphKeys.INIT_OP` collection.  If the collection is empty, the
    supervisor adds an op to initialize all the variables in the graph by
-   calling `tf.initialize_all_variables()`.
+   calling `tf.global_variables_initializer()`.
 
    Pass `None` to not use an init op.
 

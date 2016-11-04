@@ -74,7 +74,7 @@ class ConcatOpTest(tf.test.TestCase):
       v1 = tf.Variable(p1)
       v2 = tf.Variable(p2)
       c = tf.concat(0, [v1, v2])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = c.eval()
 
     self.assertEqual(result.shape, c.get_shape())

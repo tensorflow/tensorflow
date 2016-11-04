@@ -421,7 +421,7 @@ class MonitorsTest(tf.test.TestCase):
       const_var = tf.Variable(42.0, name='my_const')
       counter_var = tf.Variable(0.0, name='my_counter')
       assign_add = tf.assign_add(counter_var, 1.0, name='my_assign_add')
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self._run_monitor(monitor0, num_epochs=3, num_steps_per_epoch=10)
       self.assertEqual({
@@ -673,7 +673,7 @@ class RunHookAdapterForMonitorsTest(tf.test.TestCase):
       for mon in [mock_mon, mock_mon2]:
         self.assertEqual(mon.call_counter['begin'], 1)
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(global_step_tensor.assign(10))
 
       mon_sess = monitored_session._HookedSession(sess=sess, hooks=[hook])
@@ -718,7 +718,7 @@ class RunHookAdapterForMonitorsTest(tf.test.TestCase):
       tf.constant([10], name='third_tensor')
       mock_mon.requested_tensors = ['another_tensor']
       mock_mon2.requested_tensors = ['third_tensor']
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       output = mon_sess.run(a_tensor)
       self.assertEqual(output, [0])

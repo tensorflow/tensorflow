@@ -128,7 +128,7 @@ class Scaffold(object):
     if self._init_op is None:
       def default_init_op():
         return control_flow_ops.group(
-            variables.initialize_all_variables(),
+            variables.global_variables_initializer(),
             resources.initialize_resources(resources.shared_resources()))
       self._init_op = Scaffold.get_or_default(
           'init_op',
@@ -211,7 +211,7 @@ class Scaffold(object):
 
   @staticmethod
   def _default_local_init_op():
-    return control_flow_ops.group(variables.initialize_local_variables(),
+    return control_flow_ops.group(variables.local_variables_initializer(),
                                   data_flow_ops.initialize_all_tables())
 
 

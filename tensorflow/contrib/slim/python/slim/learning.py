@@ -622,11 +622,11 @@ def train(train_op,
     number_of_steps: The max number of gradient steps to take during training.
       If the value is left as None, training proceeds indefinitely.
     init_op: The initialization operation. If left to its default value, then
-      the session is initialized by calling `tf.initialize_all_variables()`.
+      the session is initialized by calling `tf.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
     local_init_op: The local initialization operation. If left to its default
       value, then the session is initialized by calling
-      `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
+      `tf.local_variables_initializer()` and `tf.initialize_all_tables()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     ready_op: Operation to check if the model is ready to use. If left to its
@@ -688,14 +688,14 @@ def train(train_op,
 
     with ops.name_scope('init_ops'):
       if init_op == _USE_DEFAULT:
-        init_op = tf_variables.initialize_all_variables()
+        init_op = tf_variables.global_variables_initializer()
 
       if ready_op == _USE_DEFAULT:
         ready_op = tf_variables.report_uninitialized_variables()
 
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
-            tf_variables.initialize_local_variables(),
+            tf_variables.local_variables_initializer(),
             data_flow_ops.initialize_all_tables())
 
     if summary_op == _USE_DEFAULT:

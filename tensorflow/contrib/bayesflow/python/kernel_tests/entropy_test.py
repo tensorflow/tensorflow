@@ -231,7 +231,7 @@ class RenyiRatioTest(tf.test.TestCase):
             learning_rate=0.5,
             decay=0.1)
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         renyis = []
         for step in range(1000):
           sess.run(train_op)
