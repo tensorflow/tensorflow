@@ -373,11 +373,17 @@ class Optimizer(object):
         with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
-        return self._finish(update_ops, name)
+        apply_updates = self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            return state_ops.assign_add(global_step, 1, name=name).op
+            apply_updates = state_ops.assign_add(global_step, 1, name=name).op
+
+      train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+      if apply_updates not in train_op:
+        train_op.append(apply_updates)
+
+      return apply_updates
 
   def get_slot(self, var, name):
     """Return a slot named `name` created for `var` by the Optimizer.
