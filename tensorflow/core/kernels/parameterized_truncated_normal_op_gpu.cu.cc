@@ -106,6 +106,7 @@ __global__ void __launch_bounds__(1024)
         Eigen::numext::exp(T(0.5) + (normMin * (normMin - sqrtFactor)) / T(4)) /
         (normMin + sqrtFactor);
     const T diff = normMax - normMin;
+    const T two = T(2.0);
 
     // Validate the normalized min and max, because the originals may have been
     // flipped already.
@@ -131,7 +132,7 @@ __global__ void __launch_bounds__(1024)
           z[i] = rand[i] * diff + normMin;
         }
         UNROLL for (int i = 0; i < kDistSize; i++) {
-          g[i] = (plusFactor - z[i] * z[i]) / 2.0;
+          g[i] = (plusFactor - z[i] * z[i]) / two;
         }
 
         const auto u = dist(&gen);
@@ -168,7 +169,7 @@ __global__ void __launch_bounds__(1024)
         UNROLL for (int i = 0; i < kDistSize; i += 2) {
           const T z = -Eigen::numext::log(rand[i]) / alpha + normMin;
           const T x = normMin < alpha ? alpha - z : normMin - alpha;
-          const T g = Eigen::numext::exp(-x * x / 2.0);
+          const T g = Eigen::numext::exp(-x * x / two);
           const T u = rand[i + 1];
           if ((u <= g && z < normMax) || numIterations + 1 >= kMaxIterations) {
             data[offset] = z * stddev + mean;
