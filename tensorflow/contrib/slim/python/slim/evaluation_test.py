@@ -26,6 +26,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 
@@ -308,7 +309,7 @@ class SingleEvaluationTest(tf.test.TestCase):
     checkpoint_path = os.path.join(self.get_temp_dir(),
                                    'this_file_doesnt_exist')
     log_dir = os.path.join(self.get_temp_dir(), 'error_raised')
-    with self.assertRaises(ValueError):
+    with self.assertRaises(errors.NotFoundError):
       slim.evaluation.evaluate_once('', checkpoint_path, log_dir)
 
   def testRestoredModelPerformance(self):
