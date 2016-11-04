@@ -702,8 +702,12 @@ class RandomTreeGraphs(object):
 
     # Calculate finished nodes.
     with ops.control_dependencies(splits_update_ops):
+      # Passing input_leaves to finished nodes here means that nodes that
+      # have become stale won't be deallocated until an input reaches them,
+      # because we're trying to avoid considering every fertile node for
+      # performance reasons.
       finished, stale = self.training_ops.finished_nodes(
-          self.variables.accumulator_to_node_map,
+          input_leaves,
           self.variables.node_to_accumulator_map,
           self.variables.candidate_split_sums,
           self.variables.candidate_split_squares,
