@@ -61,7 +61,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   (where there is one process per worker) is the number of workers running the
   train steps. It defaults to 1 (single machine).
 
-  Example Usage:
+  Example:
+
   ```python
   real_feature_column = real_valued_column(...)
   sparse_feature_column = sparse_column_with_hash_bucket(...)
