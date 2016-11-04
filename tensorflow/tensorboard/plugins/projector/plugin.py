@@ -64,13 +64,18 @@ def _read_tensor_file(fpath):
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
 
-  def get_plugin_handlers(self, run_paths, logdir):
-    self.configs, self.config_fpaths = self._read_config_files(run_paths,
-                                                               logdir)
+  def __init__(self):
+    self._handlers = None
     self.readers = {}
-    self._augment_configs_with_checkpoint_info()
+    self.run_paths = None
+    self.logdir = None
+    self._configs = None
+    self.old_num_run_paths = None
 
-    return {
+  def get_plugin_handlers(self, run_paths, logdir):
+    self.run_paths = run_paths
+    self.logdir = logdir
+    self._handlers = {
         RUNS_ROUTE: self._serve_runs,
         CONFIG_ROUTE: self._serve_config,
         TENSOR_ROUTE: self._serve_tensor,
@@ -78,9 +83,26 @@ class ProjectorPlugin(TBPlugin):
         BOOKMARKS_ROUTE: self._serve_bookmarks,
         SPRITE_IMAGE_ROUTE: self._serve_sprite_image
     }
+    return self._handlers
+
+  @property
+  def configs(self):
+    """Returns a map of run paths to `ProjectorConfig` protos."""
+    if self._run_paths_changed():
+      self._configs, self.config_fpaths = self._read_config_files(
+          self.run_paths, self.logdir)
+      self._augment_configs_with_checkpoint_info()
+    return self._configs
+
+  def _run_paths_changed(self):
+    num_run_paths = len(list(self.run_paths.keys()))
+    if num_run_paths != self.old_num_run_paths:
+      self.old_num_run_paths = num_run_paths
+      return True
+    return False
 
   def _augment_configs_with_checkpoint_info(self):
-    for run, config in self.configs.items():
+    for run, config in self._configs.items():
       # Find the size of the embeddings that are associated with a tensor file.
       for embedding in config.embeddings:
         if embedding.tensor_path and not embedding.tensor_shape:
@@ -111,18 +133,18 @@ class ProjectorPlugin(TBPlugin):
 
     # Remove configs that do not have any valid (2D) tensors.
     runs_to_remove = []
-    for run, config in self.configs.items():
+    for run, config in self._configs.items():
       if not config.embeddings:
         runs_to_remove.append(run)
     for run in runs_to_remove:
-      del self.configs[run]
+      del self._configs[run]
       del self.config_fpaths[run]
 
-  def _read_config_files(self, run_paths, logdir):
+  def _read_config_files(self, run_paths, summary_logdir):
     # If there are no summary event files, the projector can still work,
     # thus treating the `logdir` as the model checkpoint directory.
     if not run_paths:
-      run_paths['.'] = logdir
+      run_paths['.'] = summary_logdir
 
     configs = {}
     config_fpaths = {}
@@ -164,7 +186,7 @@ class ProjectorPlugin(TBPlugin):
     if run in self.readers:
       return self.readers[run]
 
-    config = self.configs[run]
+    config = self._configs[run]
     reader = None
     if config.model_checkpoint_path:
       try:
@@ -201,48 +223,45 @@ class ProjectorPlugin(TBPlugin):
         return info
     return None
 
-  def _serve_runs(self, query_params):
+  def _serve_runs(self, request, query_params):
     """Returns a list of runs that have embeddings."""
-    self.handler.respond(list(self.configs.keys()), 'application/json')
+    request.respond(list(self.configs.keys()), 'application/json')
 
-  def _serve_config(self, query_params):
+  def _serve_config(self, request, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.respond('query parameter "run" is required',
-                           'text/plain', 400)
+      request.respond('query parameter "run" is required', 'text/plain', 400)
       return
     if run not in self.configs:
-      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     config = self.configs[run]
-    self.handler.respond(json_format.MessageToJson(config), 'application/json')
+    request.respond(json_format.MessageToJson(config), 'application/json')
 
-  def _serve_metadata(self, query_params):
+  def _serve_metadata(self, request, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.respond('query parameter "run" is required',
-                           'text/plain', 400)
+      request.respond('query parameter "run" is required', 'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.respond('query parameter "name" is required',
-                           'text/plain', 400)
+      request.respond('query parameter "name" is required', 'text/plain', 400)
       return
     if run not in self.configs:
-      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     config = self.configs[run]
     fpath = self._get_metadata_file_for_tensor(name, config)
     if not fpath:
-      self.handler.respond(
+      request.respond(
           'No metadata file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
       return
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
+      request.respond('%s is not a file' % fpath, 'text/plain', 400)
       return
 
     num_header_rows = 0
@@ -256,23 +275,21 @@ class ProjectorPlugin(TBPlugin):
           num_header_rows = 1
         if len(lines) >= LIMIT_NUM_POINTS + num_header_rows:
           break
-    self.handler.respond(''.join(lines), 'text/plain')
+    request.respond(''.join(lines), 'text/plain')
 
-  def _serve_tensor(self, query_params):
+  def _serve_tensor(self, request, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.respond('query parameter "run" is required',
-                           'text/plain', 400)
+      request.respond('query parameter "run" is required', 'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.respond('query parameter "name" is required',
-                           'text/plain', 400)
+      request.respond('query parameter "name" is required', 'text/plain', 400)
       return
 
     if run not in self.configs:
-      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     reader = self._get_reader_for_run(run)
@@ -282,19 +299,19 @@ class ProjectorPlugin(TBPlugin):
       # See if there is a tensor file in the config.
       embedding = self._get_embedding(name, config)
       if not embedding or not embedding.tensor_path:
-        self.handler.respond('Tensor %s has no tensor_path in the config' %
-                             name, 'text/plain', 400)
+        request.respond('Tensor %s has no tensor_path in the config' %
+                        name, 'text/plain', 400)
         return
       if not file_io.file_exists(embedding.tensor_path):
-        self.handler.respond('Tensor file %s does not exist' %
-                             embedding.tensor_path, 'text/plain', 400)
+        request.respond('Tensor file %s does not exist' %
+                        embedding.tensor_path, 'text/plain', 400)
         return
       tensor = _read_tensor_file(embedding.tensor_path)
     else:
       if not reader.has_tensor(name):
-        self.handler.respond('Tensor %s not found in checkpoint dir %s' %
-                             (name, config.model_checkpoint_path),
-                             'text/plain', 400)
+        request.respond('Tensor %s not found in checkpoint dir %s' %
+                        (name, config.model_checkpoint_path),
+                        'text/plain', 400)
         return
       tensor = reader.get_tensor(name)
 
@@ -302,75 +319,71 @@ class ProjectorPlugin(TBPlugin):
     tensor = tensor[:LIMIT_NUM_POINTS]
     # Stream it as TSV.
     tsv = '\n'.join(['\t'.join([str(val) for val in row]) for row in tensor])
-    self.handler.respond(tsv, 'text/tab-separated-values')
+    request.respond(tsv, 'text/tab-separated-values')
 
-  def _serve_bookmarks(self, query_params):
+  def _serve_bookmarks(self, request, query_params):
     run = query_params.get('run')
     if not run:
-      self.handler.respond('query parameter "run" is required', 'text/plain',
-                           400)
+      request.respond('query parameter "run" is required', 'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.respond('query parameter "name" is required', 'text/plain',
-                           400)
+      request.respond('query parameter "name" is required', 'text/plain', 400)
       return
 
     if run not in self.configs:
-      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     config = self.configs[run]
     fpath = self._get_bookmarks_file_for_tensor(name, config)
     if not fpath:
-      self.handler.respond(
+      request.respond(
           'No bookmarks file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
       return
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
+      request.respond('%s is not a file' % fpath, 'text/plain', 400)
       return
 
     bookmarks_json = None
     with file_io.FileIO(fpath, 'r') as f:
       bookmarks_json = f.read()
-    self.handler.respond(bookmarks_json, 'application/json')
+    request.respond(bookmarks_json, 'application/json')
 
-  def _serve_sprite_image(self, query_params):
+  def _serve_sprite_image(self, request, query_params):
     run = query_params.get('run')
     if not run:
-      self.handler.respond('query parameter "run" is required', 'text/plain',
-                           400)
+      request.respond('query parameter "run" is required', 'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.respond('query parameter "name" is required', 'text/plain',
-                           400)
+      request.respond('query parameter "name" is required', 'text/plain', 400)
       return
 
     if run not in self.configs:
-      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     config = self.configs[run]
     embedding_info = self._get_embedding(name, config)
 
     if not embedding_info or not embedding_info.sprite.image_path:
-      self.handler.respond(
+      request.respond(
           'No sprite image file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
       return
 
     fpath = embedding_info.sprite.image_path
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      self.handler.respond('%s does not exist or is directory' % fpath,
-                           'text/plain', 400)
+      request.respond(
+          '%s does not exist or is directory' % fpath, 'text/plain', 400)
       return
     f = file_io.FileIO(fpath, 'r')
     encoded_image_string = f.read()
     f.close()
     image_type = imghdr.what(None, encoded_image_string)
     mime_type = _IMGHDR_TO_MIMETYPE.get(image_type, _DEFAULT_IMAGE_MIMETYPE)
-    self.handler.respond(encoded_image_string, mime_type)
+    request.respond(encoded_image_string, mime_type)
