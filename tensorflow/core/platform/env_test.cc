@@ -161,10 +161,10 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(0, undeleted_dirs);
-  EXPECT_FALSE(env_->FileExists(root_file1));
-  EXPECT_FALSE(env_->FileExists(root_file2));
-  EXPECT_FALSE(env_->FileExists(root_file3));
-  EXPECT_FALSE(env_->FileExists(child1_file1));
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file1).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file2).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file3).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(child1_file1).code());
 }
 
 TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
@@ -174,7 +174,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
   int64 undeleted_files, undeleted_dirs;
   Status s =
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs);
-  EXPECT_EQ("Not found: Directory doesn't exist", s.ToString());
+  EXPECT_EQ(error::Code::NOT_FOUND, s.code());
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(1, undeleted_dirs);
 }
@@ -183,7 +183,7 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDir) {
   const string create_path = io::JoinPath(BaseDir(), "a//b/c/d");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env_->FileExists(create_path));
+  TF_EXPECT_OK(env_->FileExists(create_path));
 }
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirEmpty) {
@@ -195,14 +195,14 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
   const string subdir_path = io::JoinPath(BaseDir(), "a/b");
   TF_CHECK_OK(env_->CreateDir(io::JoinPath(BaseDir(), "a")));
   TF_CHECK_OK(env_->CreateDir(subdir_path));
-  EXPECT_TRUE(env_->FileExists(subdir_path));
+  TF_EXPECT_OK(env_->FileExists(subdir_path));
 
   // Now try to recursively create a/b/c/d/
   const string create_path = io::JoinPath(BaseDir(), "a/b/c/d/");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env_->FileExists(create_path));
-  EXPECT_TRUE(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
+  TF_EXPECT_OK(env_->FileExists(create_path));
+  TF_EXPECT_OK(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
 }
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
@@ -243,10 +243,10 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
 
 class TmpDirFileSystem : public NullFileSystem {
  public:
-  bool FileExists(const string& dir) override {
+  Status FileExists(const string& dir) override {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
-    if (path.empty()) return false;
+    if (path.empty()) return errors::NotFound(dir, " not found");
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
@@ -268,10 +268,10 @@ REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();
   const string create_path = "tmpdirfs://testhost/a/b/c/d";
-  EXPECT_FALSE(env->FileExists(create_path));
+  EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(create_path).code());
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env->FileExists(create_path));
+  TF_EXPECT_OK(env->FileExists(create_path));
 }
 
 }  // namespace tensorflow

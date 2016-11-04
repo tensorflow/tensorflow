@@ -117,11 +117,9 @@ Status Env::NewAppendableFile(const string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-bool Env::FileExists(const string& fname) {
+Status Env::FileExists(const string& fname) {
   FileSystem* fs;
-  if (!GetFileSystemForFile(fname, &fs).ok()) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
 }
 

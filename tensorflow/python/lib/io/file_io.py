@@ -191,8 +191,17 @@ def file_exists(filename):
 
   Returns:
     True if the path exists, whether its a file or a directory.
+    False if the path does not exist and there are no filesystem errors.
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.
   """
-  return pywrap_tensorflow.FileExists(compat.as_bytes(filename))
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.FileExists(compat.as_bytes(filename), status)
+  except errors.NotFoundError:
+    return False
+  return True
 
 
 def delete_file(filename):
