@@ -369,9 +369,15 @@ Status HadoopFileSystem::DeleteDir(const string& dir) {
   hdfsFileInfo* info =
       hdfs_->hdfsListDirectory(fs, TranslateName(dir).c_str(), &entries);
   if (info != nullptr) {
-    return IOError(dir, errno);
+    hdfs_->hdfsFreeFileInfo(info, entries);
   }
-  hdfs_->hdfsFreeFileInfo(info, entries);
+  // Due to HDFS bug HDFS-8407, we can't distinguish between an error and empty
+  // folder, expscially for Kerberos enable setup, EAGAIN is quite common when
+  // the call is actually successful. Check again by Stat.
+  if (info == nullptr && errno != 0) {
+    FileStatistics stat;
+    TF_RETURN_IF_ERROR(Stat(dir, &stat));
+  }
 
   if (entries > 0) {
     return errors::FailedPrecondition("Cannot delete a non-empty directory.");
