@@ -424,8 +424,8 @@ class BatchTest(tf.test.TestCase):
       examples = tf.Variable(zero64)
       counter = examples.count_up_to(num_batches * batch_size)
       sparse_counter = tf.SparseTensor(
-          indices=tf.reshape(tf.pack([zero64, zero64 + 1]), [2, 1]),
-          values=tf.cast(tf.pack([counter, -counter]), tf.float32),
+          indices=tf.reshape(tf.stack([zero64, zero64 + 1]), [2, 1]),
+          values=tf.cast(tf.stack([counter, -counter]), tf.float32),
           shape=[2])
       if use_dict:
         batched = tf.train.batch(
@@ -474,7 +474,7 @@ class BatchTest(tf.test.TestCase):
       zero64 = tf.constant(0, dtype=tf.int64)
       examples = tf.Variable(zero64)
       counter = examples.count_up_to(num_batches * batch_size)
-      string = tf.tile(["string"], tf.to_int32(tf.pack([counter])))
+      string = tf.tile(["string"], tf.to_int32(tf.stack([counter])))
       tf.global_variables_initializer().run()
       tf.local_variables_initializer().run()
       batched = tf.train.batch(
@@ -506,7 +506,7 @@ class BatchTest(tf.test.TestCase):
       counter = examples.count_up_to(num_batches * batch_size)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       pre_batched = tf.train.batch(
           [counter, sparse_counter, "string"], batch_size=2)
@@ -544,7 +544,7 @@ class BatchTest(tf.test.TestCase):
       counter = examples.count_up_to(num_batches * batch_size)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       batched = tf.train.batch(
           [counter, sparse_counter, "string"],
@@ -582,8 +582,8 @@ class BatchTest(tf.test.TestCase):
       examples = tf.Variable(zero64)
       counter = examples.count_up_to(num_batches * batch_size + extra_elements)
       sparse_counter = tf.SparseTensor(
-          indices=tf.reshape(tf.pack([zero64, zero64 + 1]), [2, 1]),
-          values=tf.cast(tf.pack([counter, -counter]), tf.float32),
+          indices=tf.reshape(tf.stack([zero64, zero64 + 1]), [2, 1]),
+          values=tf.cast(tf.stack([counter, -counter]), tf.float32),
           shape=[2])
       batched = tf.train.batch(
           [counter, sparse_counter, "string"], batch_size=batch_size,
@@ -636,7 +636,7 @@ class BatchTest(tf.test.TestCase):
       counter = examples.count_up_to(num_batches * batch_size + extra_elements)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       batched = tf.train.batch(
           [counter, sparse_counter, "string"],
@@ -745,7 +745,7 @@ class BatchJoinTest(tf.test.TestCase):
       counter = examples.count_up_to(num_a)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
 
       # The second generates (99, "b") 90 times and then stops.
@@ -754,7 +754,7 @@ class BatchJoinTest(tf.test.TestCase):
           tf.constant(99, dtype=tf.int64), num_b)
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(ninety_nine, tf.float32)]),
+          values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
           shape=[1])
 
       # These get joined together and grouped into batches of 5.
@@ -851,8 +851,8 @@ class BatchJoinTest(tf.test.TestCase):
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
-      a = tf.tile(["a"], tf.to_int32(tf.pack([counter + 1])))
-      b = tf.tile(["b"], tf.to_int32(tf.pack([ninety_nine])))
+      a = tf.tile(["a"], tf.to_int32(tf.stack([counter + 1])))
+      b = tf.tile(["b"], tf.to_int32(tf.stack([ninety_nine])))
       batched = tf.train.batch_join(
           [[counter, a],
            [ninety_nine, b]],
@@ -917,7 +917,7 @@ class BatchJoinTest(tf.test.TestCase):
       counter = examples.count_up_to(num_a)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
 
       # The second generates (99, "b") 90 times and then stops.
@@ -926,7 +926,7 @@ class BatchJoinTest(tf.test.TestCase):
           tf.constant(99, dtype=tf.int64), num_b)
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(ninety_nine, tf.float32)]),
+          values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
           shape=[1])
 
       # These get joined together and grouped into batches of 5.
@@ -1020,8 +1020,8 @@ class BatchJoinTest(tf.test.TestCase):
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
-      a = tf.tile(["a"], tf.to_int32(tf.pack([counter + 1])))
-      b = tf.tile(["b"], tf.to_int32(tf.pack([ninety_nine])))
+      a = tf.tile(["a"], tf.to_int32(tf.stack([counter + 1])))
+      b = tf.tile(["b"], tf.to_int32(tf.stack([ninety_nine])))
       batched = tf.train.batch_join(
           [[counter, a],
            [ninety_nine, b]],
@@ -1137,7 +1137,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       counter = examples.count_up_to(num_batches * batch_size)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       if use_dict:
         batched = tf.train.shuffle_batch(
@@ -1195,7 +1195,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       counter = examples.count_up_to(total_elements)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       batched = tf.train.shuffle_batch(
           [counter, sparse_counter, "string"],
@@ -1246,7 +1246,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       counter = examples.count_up_to(num_batches * batch_size)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       batched = tf.train.shuffle_batch(
           [counter, sparse_counter, "string"],
@@ -1291,7 +1291,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       counter = examples.count_up_to(total_elements)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
       batched = tf.train.shuffle_batch(
           [counter, sparse_counter, "string"],
@@ -1363,7 +1363,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       counter = examples.count_up_to(num_a)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
 
       # The second generates (99, "b") 35 times and then stops.
@@ -1372,7 +1372,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
           tf.constant(99, dtype=tf.int64), num_b)
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(ninety_nine, tf.float32)]),
+          values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
           shape=[1])
 
       # These get joined together and grouped into batches of 5.
@@ -1462,7 +1462,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       counter = examples.count_up_to(num_a)
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(counter, tf.float32)]),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
           shape=[1])
 
       # The second generates (99, "b") 37 times and then stops.
@@ -1471,7 +1471,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
           tf.constant(99, dtype=tf.int64), num_b)
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
-          values=tf.pack([tf.cast(ninety_nine, tf.float32)]),
+          values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
           shape=[1])
 
       # These get joined together and grouped into batches of 5.

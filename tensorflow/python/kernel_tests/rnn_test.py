@@ -139,7 +139,7 @@ class RNNTest(tf.test.TestCase):
       tf.nn.rnn(cell, inputs, dtype=tf.float32, sequence_length=4)
     with self.assertRaisesRegexp(ValueError, "must be a vector"):
       tf.nn.dynamic_rnn(
-          cell, tf.pack(inputs), dtype=tf.float32, sequence_length=[[4]])
+          cell, tf.stack(inputs), dtype=tf.float32, sequence_length=[[4]])
 
   def testRNN(self):
     cell = Plus1RNNCell()
@@ -867,7 +867,7 @@ class LSTMTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
-      inputs_c = tf.pack(inputs)
+      inputs_c = tf.stack(inputs)
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer, state_is_tuple=True)
@@ -912,7 +912,7 @@ class LSTMTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
-      inputs_c = tf.pack(inputs)
+      inputs_c = tf.stack(inputs)
       def _cell(i):
         return tf.nn.rnn_cell.LSTMCell(
             num_units + i, use_peepholes=True,
@@ -974,7 +974,7 @@ class LSTMTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       concat_inputs = tf.placeholder(tf.float32,
                                      shape=(time_steps, batch_size, input_size))
-      inputs = tf.unpack(concat_inputs)
+      inputs = tf.unstack(concat_inputs)
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
 
       cell = tf.nn.rnn_cell.LSTMCell(
@@ -1029,7 +1029,7 @@ class LSTMTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       concat_inputs = tf.placeholder(tf.float32,
                                      shape=(time_steps, batch_size, input_size))
-      inputs = tf.unpack(concat_inputs)
+      inputs = tf.unstack(concat_inputs)
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
 
       cell = tf.nn.rnn_cell.LSTMCell(
@@ -1040,7 +1040,7 @@ class LSTMTest(tf.test.TestCase):
         outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
             cell, inputs=concat_inputs, sequence_length=sequence_length,
             time_major=True, dtype=tf.float32)
-        split_outputs_dynamic = tf.unpack(outputs_dynamic, time_steps)
+        split_outputs_dynamic = tf.unstack(outputs_dynamic, time_steps)
 
       feeds = {concat_inputs: input_values}
 
@@ -1198,7 +1198,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
           [batch_size if use_shape else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
-    outputs = tf.pack(outputs)
+    outputs = tf.stack(outputs)
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
@@ -1310,7 +1310,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
     inputs = max_length * [
         tf.placeholder(tf.float32,
                        shape=(batch_size if use_shape else None, input_size))]
-    inputs_c = tf.pack(inputs)
+    inputs_c = tf.stack(inputs)
     if not use_time_major:
       inputs_c = tf.transpose(inputs_c, [1, 0, 2])
     outputs, states = tf.nn.bidirectional_dynamic_rnn(
@@ -1467,7 +1467,7 @@ class MultiDimensionalLSTMTest(tf.test.TestCase):
           tf.placeholder(tf.float32, shape=(None,) + input_size)]
       inputs_using_dim = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size,) + input_size)]
-      inputs_c = tf.pack(inputs)
+      inputs_c = tf.stack(inputs)
       # Create a cell for the whole test. This is fine because the cell has no
       # variables.
       cell = DummyMultiDimensionalLSTM(feature_dims)
@@ -1552,8 +1552,8 @@ class NestedLSTMTest(tf.test.TestCase):
       single_input = (tf.placeholder(tf.float32, shape=(None, input_size)),
                       tf.placeholder(tf.float32, shape=(None, input_size)))
       inputs = max_length * [single_input]
-      inputs_c = (tf.pack([input_[0] for input_ in inputs]),
-                  tf.pack([input_[1] for input_ in inputs]))
+      inputs_c = (tf.stack([input_[0] for input_ in inputs]),
+                  tf.stack([input_[1] for input_ in inputs]))
       single_input_using_dim = (
           tf.placeholder(tf.float32, shape=(batch_size, input_size)),
           tf.placeholder(tf.float32, shape=(batch_size, input_size)))
@@ -1747,7 +1747,7 @@ class RawRNNTest(tf.test.TestCase):
           loop_state = tf.constant([0])
           next_state = cell.zero_state(batch_size, tf.float32)
         else:
-          loop_state = tf.pack([tf.squeeze(loop_state) + 1])
+          loop_state = tf.stack([tf.squeeze(loop_state) + 1])
           next_state = cell_state
         emit_output = cell_output  # == None for time == 0
         elements_finished = tf.tile([time_ >= max_time], [batch_size])

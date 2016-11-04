@@ -36,9 +36,9 @@ class FusedRnnCellTest(tf.test.TestCase):
       timelen = 15
       inputs = tf.constant(np.random.randn(timelen, batch_size, input_size))
       with tf.variable_scope("basic", initializer=initializer):
-        unpacked_inputs = tf.unpack(inputs)
+        unpacked_inputs = tf.unstack(inputs)
         outputs, state = tf.nn.rnn(cell, unpacked_inputs, dtype=tf.float64)
-        packed_outputs = tf.pack(outputs)
+        packed_outputs = tf.stack(outputs)
         basic_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("basic/")]
         sess.run([tf.global_variables_initializer()])
@@ -91,10 +91,10 @@ class FusedRnnCellTest(tf.test.TestCase):
 
       # test bi-directional rnn
       with tf.variable_scope("basic", initializer=initializer):
-        unpacked_inputs = tf.unpack(inputs)
+        unpacked_inputs = tf.unstack(inputs)
         outputs, fw_state, bw_state = tf.nn.bidirectional_rnn(
             cell, cell, unpacked_inputs, dtype=tf.float64)
-        packed_outputs = tf.pack(outputs)
+        packed_outputs = tf.stack(outputs)
         basic_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("basic/")]
         sess.run([tf.global_variables_initializer()])

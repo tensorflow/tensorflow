@@ -673,7 +673,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = np.array([0])  # Note, [0] would not work here; that is a list
       c = lambda x: x[0] < 10000
-      b = lambda x: tf.pack([x[0] + 1])
+      b = lambda x: tf.stack([x[0] + 1])
       r = tf.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], r.eval())
 

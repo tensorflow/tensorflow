@@ -408,7 +408,7 @@ class LSTMBlockCellTest(tf.test.TestCase):
               sequence_length=lengths)
           vs.reuse_variables()
           outputs.append(output[0])
-        outputs = tf.pack(outputs)
+        outputs = tf.stack(outputs)
 
         sess.run([tf.global_variables_initializer()])
         unfused_outputs, unfused_state = sess.run([outputs, state[0]])

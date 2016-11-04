@@ -75,7 +75,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
           [batch_size if use_shape else None, 2 * self.layers[-1]])
 
     input_value = np.random.randn(batch_size, input_size)
-    outputs = tf.pack(outputs)
+    outputs = tf.stack(outputs)
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
@@ -220,7 +220,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
             tf.float32,
             shape=(batch_size, input_size) if use_shape else (None, input_size))
     ]
-    inputs_c = tf.pack(inputs)
+    inputs_c = tf.stack(inputs)
     inputs_c = tf.transpose(inputs_c, [1, 0, 2])
     outputs, st_fw, st_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
         self.cells_fw,
@@ -297,7 +297,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
       self.assertNotEqual(out[2][1][2], out[0][1][5])
 
   def _testStackBidirectionalDynamicRNNStates(self, use_gpu):
-                                              
+
     # Check that the states are correctly initialized.
     # - Create a net and iterate for 3 states. Keep the state (state_3).
     # - Reset states, and iterate for 5 steps. Last state is state_5.

@@ -785,7 +785,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
       time_0 = tf.identity(0)
 
       def body(time, ta_t, state):
-        sliced = tf.slice(v0, begin=tf.pack([time, 0]), size=[1, -1])
+        sliced = tf.slice(v0, begin=tf.stack([time, 0]), size=[1, -1])
         sliced = tf.squeeze(sliced)
         out = sliced + var + state
         state += sliced

@@ -371,8 +371,8 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
     else:
       batch_size = 0
       dtype = tf.float32
-    init_output = tf.zeros(tf.pack([batch_size, num_units]), dtype=dtype)
-    init_state = tf.zeros(tf.pack([batch_size, num_units]), dtype=dtype)
+    init_output = tf.zeros(tf.stack([batch_size, num_units]), dtype=dtype)
+    init_state = tf.zeros(tf.stack([batch_size, num_units]), dtype=dtype)
     init_output.set_shape([batch_size, num_units])
     init_state.set_shape([batch_size, num_units])
     return init_output, init_state
