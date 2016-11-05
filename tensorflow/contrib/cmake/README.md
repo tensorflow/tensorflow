@@ -60,7 +60,9 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
     on Windows, but have not yet committed to supporting that configuration.)
 
   - The following Python APIs are not currently implemented:
-    * Loading custom op libraries via `tf.load_op_library()`.
+    * Loading custom op libraries via `tf.load_op_library()`. In order to use your
+      custom op, please put the source code under the tensorflow/core/user_ops 
+      directory, and a shape function is required (not optional) for each op.
     * Path manipulation functions (such as `tf.gfile.ListDirectory()`) are not
       functional.
 
