@@ -29,3 +29,4 @@ from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
 from tensorflow.contrib.bayesflow.python.ops import stochastic_variables
 from tensorflow.contrib.bayesflow.python.ops import variational_inference
+# pylint: enable=unused-import,wildcard-import,line-too-long

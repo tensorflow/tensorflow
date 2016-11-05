@@ -744,3 +744,4 @@ class WALSModel(object):
                                 update_indices,
                                 new_left_values,
                                 sharding_func))
+# pylint: enable=wildcard-import,undefined-variable

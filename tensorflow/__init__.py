@@ -36,3 +36,4 @@ class _LazyContribLoader(object):
 
 
 contrib = _LazyContribLoader()
+# pylint: enable=wildcard-import

@@ -262,7 +262,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
-
+# pylint: enable=wildcard-import
 
 # Symbols whitelisted for export without documentation.
 _allowed_symbols = [

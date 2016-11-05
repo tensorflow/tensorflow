@@ -62,6 +62,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=wildcard-import
 
 __all__ = make_all(__name__)
 __all__.append('datasets')
