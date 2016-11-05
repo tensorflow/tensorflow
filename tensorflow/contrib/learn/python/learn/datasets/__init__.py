@@ -36,7 +36,7 @@ load_iris = base.load_iris
 load_boston = base.load_boston
 
 # Export utilities
-split_data = base.split_into_train_and_test
+# split_data = base.train_test_split
 
 # List of all available datasets.
 # Note, currently they may return different types.
@@ -76,19 +76,20 @@ def load_dataset(name, size='small', test_with_fake_data=False):
   else:
     return DATASETS[name]()
 
-def make_synthetic(name='circles', n_samples=100, noise=None, *args, **kwargs):
+def make_dataset(name, n_samples=100, noise=None, seed=42, *args, **kwargs):
   """Creates binary synthetic datasets
 
   Args:
-    name: Name of the dataset to generate (optional, str, default='circles')
-    n_samples: Number of datapoints to generate (optional, int, default=100)
-    noise: Standard deviation of the Gaussian noise added (optional, float or None, default=None)
+    name: str, name of the dataset to generate
+    n_samples: int, number of datapoints to generate
+    noise: float or None, standard deviation of the Gaussian noise added
+    seed: int or None, seed for noise
 
   Returns:
     Shuffled features and labels for given synthetic dataset of type `base.Dataset`
 
   Raises:
-    ValueError: 
+    ValueError: Raised if `name` not found
 
   Note: 
     - This is a generic synthetic data generator - individual generators might have more parameters!
@@ -96,12 +97,12 @@ def make_synthetic(name='circles', n_samples=100, noise=None, *args, **kwargs):
     - Note that the `noise` parameter uses `numpy.random.normal` and depends on `numpy`'s seed
 
   TODO:
-    - Support custom seed for replicability
     - Support multiclass datasets
     - Need shuffling routine. Currently synthetic datasets are reshuffled to avoid train/test correlation,
       but that hurts reprodusability
   """
+  # seed = kwargs.pop('seed', None)
   if name not in SYNTHETIC:
     raise ValueError('Synthetic dataset not found or not implemeted: %s' % name)
   else:
-    return SYNTHETIC[name](n_samples=n_samples, noise=noise, *args, **kwargs)
+    return SYNTHETIC[name](n_samples=n_samples, noise=noise, seed=seed, *args, **kwargs)
