@@ -59,7 +59,10 @@ py_test(
 py_test(
     name = "load_csv_test",
     size = "small",
-    srcs = ["load_csv_test.py"],
+    srcs = [
+        "load_csv_test.py",
+        "synthetic_test.py"
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
