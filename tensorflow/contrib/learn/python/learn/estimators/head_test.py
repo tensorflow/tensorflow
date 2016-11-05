@@ -74,7 +74,8 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
-      self.assertAlmostEqual(0.81326175, sess.run(model_fn_ops.loss))
+      self.assertAlmostEqual(0.81326175, sess.run(model_fn_ops.loss),
+                             delta=1e-6)
 
   def testErrorInSparseTensorLabels(self):
     head = head_lib._multi_class_head(n_classes=2)
@@ -101,7 +102,8 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       model_fn_ops = head.head_ops(features, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
-      self.assertAlmostEqual(.31326166 / 2, sess.run(model_fn_ops.loss))
+      self.assertAlmostEqual(.31326166 / 2, sess.run(model_fn_ops.loss),
+                             delta=1e-6)
 
   def testMultiClass(self):
     head = head_lib._multi_class_head(n_classes=3)

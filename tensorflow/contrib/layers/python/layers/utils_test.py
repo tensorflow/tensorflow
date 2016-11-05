@@ -45,7 +45,7 @@ class ConstantValueTest(tf.test.TestCase):
         x = tf.Variable(v)
         value = utils.constant_value(x)
         self.assertEqual(value, None)
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         self.assertEqual(x.eval(), v)
 
   def test_placeholder(self):
@@ -84,7 +84,7 @@ class StaticCondTest(tf.test.TestCase):
     for v in [True, False, 1, 0]:
       o = utils.static_cond(v, fn1, fn2)
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         self.assertEqual(o.eval(), expected(v))
 
   def test_tensors(self):
@@ -123,7 +123,7 @@ class SmartCondStaticTest(tf.test.TestCase):
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(tf.constant(v), fn1, fn2)
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         self.assertEqual(o.eval(), expected(v))
 
   def test_tensors(self):
@@ -166,7 +166,7 @@ class SmartCondDynamicTest(tf.test.TestCase):
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(p, fn1, fn2)
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         self.assertEqual(o.eval(feed_dict={p: v}), expected(v))
 
   def test_tensors(self):

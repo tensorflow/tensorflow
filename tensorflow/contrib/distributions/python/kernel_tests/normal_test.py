@@ -192,7 +192,7 @@ class NormalTest(tf.test.TestCase):
           value = func(x)
           grads = tf.gradients(value, [mu, sigma])
           with self.test_session(graph=g):
-            tf.initialize_all_variables().run()
+            tf.global_variables_initializer().run()
             self.assertAllFinite(value)
             self.assertAllFinite(grads[0])
             self.assertAllFinite(grads[1])

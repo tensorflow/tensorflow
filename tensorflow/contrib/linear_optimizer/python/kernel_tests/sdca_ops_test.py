@@ -181,7 +181,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -229,7 +229,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
               num_loss_partitions=num_loss_partitions)
 
           lr = SdcaModel(examples, variables, options)
-          tf.initialize_all_variables().run()
+          tf.global_variables_initializer().run()
           unregularized_loss = lr.unregularized_loss(examples)
           loss = lr.regularized_loss(examples)
           predictions = lr.predictions(examples)
@@ -288,7 +288,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -343,7 +343,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -382,7 +382,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         with self.assertRaisesOpError(
             'Only labels of 0.0 or 1.0 are supported right now.'):
           lr.minimize().run()
@@ -414,7 +414,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -455,7 +455,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -494,7 +494,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -529,7 +529,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           loss_type='logistic_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       train_op = lr.minimize()
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, 'indices.*'):
         train_op.run()
@@ -550,7 +550,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='logistic_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       train_op = lr.minimize()
       with self.assertRaisesRegexp(
           tf.errors.InvalidArgumentError,
@@ -583,7 +583,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
       train_op = lr.minimize()
       for _ in range(_MAX_ITERATIONS):
@@ -629,7 +629,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -664,7 +664,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=4.0,
                      loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       prediction = lr.predictions(examples)
       loss = lr.regularized_loss(examples)
 
@@ -701,7 +701,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -735,7 +735,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -766,7 +766,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -811,7 +811,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Before minimization, the weights default to zero. There is no loss due
       # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
@@ -849,7 +849,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
 
@@ -880,7 +880,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
 
@@ -910,7 +910,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
       train_op = model.minimize()
@@ -953,7 +953,7 @@ class SdcaWithSmoothHingeLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='smooth_hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Before minimization, the weights default to zero. There is no loss due
       # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.

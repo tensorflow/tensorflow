@@ -117,7 +117,7 @@ class PartitionedVariablesBenchmark(tf.test.Benchmark):
         # Concatenates along axis 0
         partitioned.append(tf.convert_to_tensor(partitioned_ix))
 
-    tf.initialize_all_variables().run(session=worker)
+    tf.global_variables_initializer().run(session=worker)
 
     for ix, partition_size in enumerate(partition_sizes):
       print("Running benchmark having partitions with %d floats"

@@ -53,8 +53,8 @@ TEST_PACKAGES = [
 ]
 
 class BinaryDistribution(Distribution):
-  def is_pure(self):
-    return False
+  def has_ext_modules(self):
+    return True
 
 
 class InstallCommand(InstallCommandBase):

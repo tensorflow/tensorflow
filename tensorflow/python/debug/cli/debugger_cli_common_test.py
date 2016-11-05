@@ -453,16 +453,18 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
 
   def testNoActualWrapping(self):
     # Large column limit should lead to no actual wrapping.
-    out = debugger_cli_common.wrap_rich_text_lines(self._orig_screen_output,
-                                                   100)
+    out, new_line_indices = debugger_cli_common.wrap_rich_text_lines(
+        self._orig_screen_output, 100)
 
     self.assertEqual(self._orig_screen_output.lines, out.lines)
     self.assertEqual(self._orig_screen_output.font_attr_segs,
                      out.font_attr_segs)
     self.assertEqual(self._orig_screen_output.annotations, out.annotations)
+    self.assertEqual(new_line_indices, [0, 1, 2])
 
   def testWrappingWithAttrCutoff(self):
-    out = debugger_cli_common.wrap_rich_text_lines(self._orig_screen_output, 11)
+    out, new_line_indices = debugger_cli_common.wrap_rich_text_lines(
+        self._orig_screen_output, 11)
 
     # Add non-row-index field to out.
     out.annotations["metadata"] = "foo"
@@ -493,6 +495,8 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     # Chec that the non-row-index field is present in output.
     self.assertEqual("foo", out.annotations["metadata"])
 
+    self.assertEqual(new_line_indices, [0, 1, 3])
+
   def testWrappingWithMultipleAttrCutoff(self):
     self._orig_screen_output = debugger_cli_common.RichTextLines(
         ["Folk song:", "Roses are red", "Violets are blue"],
@@ -501,7 +505,8 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
         annotations={1: "longer wavelength",
                      2: "shorter wavelength"})
 
-    out = debugger_cli_common.wrap_rich_text_lines(self._orig_screen_output, 5)
+    out, new_line_indices = debugger_cli_common.wrap_rich_text_lines(
+        self._orig_screen_output, 5)
 
     # Check wrapped text.
     self.assertEqual(9, len(out.lines))
@@ -537,6 +542,8 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     self.assertFalse(7 in out.annotations)
     self.assertFalse(8 in out.annotations)
 
+    self.assertEqual(new_line_indices, [0, 2, 5])
+
   def testWrappingInvalidArguments(self):
     with self.assertRaisesRegexp(ValueError,
                                  "Invalid type of input screen_output"):
@@ -545,6 +552,13 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "Invalid type of input cols"):
       debugger_cli_common.wrap_rich_text_lines(
           debugger_cli_common.RichTextLines(["foo", "bar"]), "12")
+
+  def testWrappingEmptyInput(self):
+    out, new_line_indices = debugger_cli_common.wrap_rich_text_lines(
+        debugger_cli_common.RichTextLines([]), 10)
+
+    self.assertEqual([], out.lines)
+    self.assertEqual([], new_line_indices)
 
 
 class SliceRichTextLinesText(test_util.TensorFlowTestCase):

@@ -35,8 +35,8 @@ the metrics and finally call the `evaluation` method:
   })
 
   inital_op = tf.group(
-      tf.initialize_all_variables(),
-      tf.initialize_local_variables())
+      tf.global_variables_initializer(),
+      tf.local_variables_initializer())
 
   with tf.Session() as sess:
     metric_values = slim.evaluation(

@@ -241,7 +241,7 @@ class GraphIOTest(tf.test.TestCase):
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           name=name)
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
@@ -294,7 +294,7 @@ class GraphIOTest(tf.test.TestCase):
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertEqual(1, len(result))
       self.assertAllEqual((None,), result["sequence"].get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
 
@@ -330,7 +330,7 @@ class GraphIOTest(tf.test.TestCase):
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           name=name)
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
@@ -375,7 +375,7 @@ class GraphIOTest(tf.test.TestCase):
           name=name)
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
@@ -441,7 +441,7 @@ class GraphIOTest(tf.test.TestCase):
           name=name)
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       # Run the three queues once manually.
       self._run_queue(shared_file_name_queue_name, session)
@@ -491,7 +491,7 @@ class GraphIOTest(tf.test.TestCase):
           randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
           read_batch_size=10, name=name)
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
@@ -519,7 +519,7 @@ class GraphIOTest(tf.test.TestCase):
           num_epochs=1, queue_capacity=queue_capacity, name=name)
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
@@ -560,7 +560,7 @@ class GraphIOTest(tf.test.TestCase):
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertEqual(1, len(inputs))
       self.assertAllEqual((None, 1), inputs["age"].get_shape().as_list())
-      session.run(tf.initialize_local_variables())
+      session.run(tf.local_variables_initializer())
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)

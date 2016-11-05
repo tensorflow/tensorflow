@@ -35,7 +35,7 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
     x = st.StochasticTensor(dists.Bernoulli(p=self._p), loss_fn=loss_fn)
     sf = x.loss(self._final_loss)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertAllClose(*sess.run([expected, sf]))
 
   def testScoreFunction(self):
@@ -80,7 +80,7 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
     expected = tf.log(self._p) * (self._final_loss - baseline)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       for _ in range(num_steps - 1):
         sess.run(sf)  # run to update EMA
       self.assertAllClose(*sess.run([expected, sf]))
@@ -111,7 +111,7 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
     sf_y = y.loss(self._final_loss)
     with self.test_session() as sess:
       # Smoke test
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run([sf_x, sf_y])
 
 

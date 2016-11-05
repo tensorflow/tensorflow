@@ -25,6 +25,7 @@ import functools
 import os
 import threading
 import time
+import re
 
 import six
 from six.moves import BaseHTTPServer
@@ -67,21 +68,20 @@ def ParseEventFilesSpec(logdir):
   files = {}
   if logdir is None:
     return files
+  # Make sure keeping consistent with ParseURI in core/lib/io/path.cc
+  uri_pattern = re.compile("[a-zA-Z][0-9a-zA-Z.]://.*")
   for specification in logdir.split(','):
-    # If it's a gcs or hdfs path, don't split on colon
-    if (io_wrapper.IsGCSPath(specification) or
-        specification.startswith('hdfs://')):
-      run_name = None
-      path = specification
-    # If the spec looks like /foo:bar/baz, then we assume it's a path with a
-    # colon.
-    elif ':' in specification and specification[0] != '/':
+    # Check if the spec contains group. A spec start with xyz:// is regarded as
+    # URI path spec instead of group spec. If the spec looks like /foo:bar/baz,
+    # then we assume it's a path with a colon.
+    if uri_pattern.match(specification) is None and \
+       ':' in specification and specification[0] != '/':
       # We split at most once so run_name:/path:with/a/colon will work.
       run_name, _, path = specification.partition(':')
     else:
       run_name = None
       path = specification
-    if not (io_wrapper.IsGCSPath(path) or path.startswith('hdfs://')):
+    if uri_pattern.match(path) is None:
       path = os.path.realpath(path)
     files[path] = run_name
   return files

@@ -1,11 +1,14 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+
 
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   cuda_configure(name = "local_config_cuda")
+  sycl_configure(name = "local_config_sycl")
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used and will be removed in the future.")
   if tf_repo_name:
@@ -14,8 +17,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "22b492048b2f"
-  eigen_sha256 = "8b9bd14a037c1a3fe37dc5e4a71504ebe48148cf2498fd8eb6848165a7a0538f"
+  eigen_version = "3f0fb403ec4c"
+  eigen_sha256 = "9ff8301c6af2640932c5ded77ecccee5786cec8c31315311220618b312e0472b"
 
   native.new_http_archive(
     name = "eigen_archive",

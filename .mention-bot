@@ -1,11 +1,11 @@
 {
   "maxReviewers": 2,
-  "numFilesToCheck": 10, // Number of files to check against, default is 5
-  "userBlacklist": ["tensorflower-gardener"], // users in this list will never be mentioned by mention-bot
-  "requiredOrgs": ["tensorflow"], // mention-bot will only mention user who are a member of one of these organizations
-  "skipAlreadyAssignedPR": true, // mention-bot will ignore already assigned PR's
-  "skipAlreadyMentionedPR": true, // mention-bot will ignore if there is already existing an exact mention
-  "skipTitle": "Branch", // mention-bot will ignore PR that includes text in the title,
-  "delayed": true, // mention-bot will wait to comment until specified time in `delayedUntil` value
-  "delayedUntil": "10m",
+  "numFilesToCheck": 10,
+  "userBlacklist": ["tensorflower-gardener"],
+  "requiredOrgs": ["tensorflow"],
+  "skipAlreadyAssignedPR": true,
+  "skipAlreadyMentionedPR": true,
+  "skipTitle": "Branch",
+  "delayed": true,
+  "delayedUntil": "10m"
 }

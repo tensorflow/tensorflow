@@ -281,7 +281,7 @@ class GatherNdOpBenchmark(tf.test.Benchmark):
       t_params = tf.Variable(params)
       t_indices = tf.Variable(indices)
       gather_op = tf.gather_nd(t_params, t_indices)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for _ in range(10):
         gather_op.eval()
       t1 = time.time()

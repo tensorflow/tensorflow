@@ -299,7 +299,7 @@ class ConditionalAccumulatorTest(tf.test.TestCase):
 
       set_global_step_op = q.set_global_step(new_global_step)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for _ in range(3):
         set_global_step_op.run()
         inc_global_step.eval()

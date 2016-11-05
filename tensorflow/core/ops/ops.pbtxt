@@ -419,6 +419,26 @@ op {
   description: "`images` is a tensor of at least 3 dimensions.  The last 3 dimensions are\ninterpreted as `[height, width, channels]`.  The other dimensions only\nrepresent a collection of images, such as `[batch, height, width, channels].`\n\nContrast is adjusted independently for each channel of each image.\n\nFor each channel, the Op first computes the mean of the image pixels in the\nchannel and then adjusts each component of each pixel to\n`(x - mean) * contrast_factor + mean`."
 }
 op {
+  name: "AdjustHue"
+  input_arg {
+    name: "images"
+    description: "Images to adjust.  At least 3-D."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "delta"
+    description: "A float delta to add to the hue."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "The hue-adjusted image or images."
+    type: DT_FLOAT
+  }
+  summary: "Adjust the hue of one or more images."
+  description: "`images` is a tensor of at least 3 dimensions.  The last dimension is\ninterpretted as channels, and must be three.\n\nThe input image is considered in the RGB colorspace. Conceptually, the RGB\ncolors are first mapped into HSV. A delta is then applied all the hue values,\nand then remapped back to RGB colorspace."
+}
+op {
   name: "All"
   input_arg {
     name: "input"
@@ -9060,6 +9080,32 @@ op {
   }
   summary: "Computes natural logarithm of x element-wise."
   description: "I.e., \\\\(y = \\log_e x\\\\)."
+}
+op {
+  name: "Log1p"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes natural logarithm of (1 + x) element-wise."
+  description: "I.e., \\\\(y = \\log_e (1 + x)\\\\)."
 }
 op {
   name: "LogSoftmax"
@@ -21676,6 +21722,20 @@ op {
   summary: "A Reader that outputs the entire contents of a file as a value."
   description: "To use, enqueue filenames in a Queue.  The output of ReaderRead will\nbe a filename (key) and the contents of that file (value)."
   is_stateful: true
+}
+op {
+  name: "WriteFile"
+  input_arg {
+    name: "filename"
+    description: "scalar. The name of the file to which we write the contents."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "contents"
+    description: "scalar. The content to be written to the output file."
+    type: DT_STRING
+  }
+  summary: "Writes contents to the file at input filename. Creates file if not existing."
 }
 op {
   name: "ZerosLike"

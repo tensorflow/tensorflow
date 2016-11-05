@@ -575,7 +575,9 @@ def parse_feature_columns_from_examples(serialized,
                                         example_names=None):
   """Parses tf.Examples to extract tensors for given feature_columns.
 
-  This is a wrapper of 'tf.parse_example'. A typical usage is as follows:
+  This is a wrapper of 'tf.parse_example'.
+
+  Example:
 
   ```python
   columns_to_tensor = parse_feature_columns_from_examples(
@@ -584,22 +586,26 @@ def parse_feature_columns_from_examples(serialized,
 
   # Where my_features are:
   # Define features and transformations
-  country = sparse_column_with_keys(column_name="native_country",
-                                    keys=["US", "BRA", ...])
-  country_emb = embedding_column(sparse_id_column=country, dimension=3,
-                                 combiner="sum")
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
-  occupation_x_country = crossed_column(columns=[occupation, country],
-                                        hash_bucket_size=10000)
-  age = real_valued_column("age")
-  age_buckets = bucketized_column(
-      source_column=age,
-      boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
+  sparse_feature_a = sparse_column_with_keys(
+      column_name="sparse_feature_a", keys=["AB", "CD", ...])
 
-  my_features = [occupation_emb, age_buckets, country_emb]
+  embedding_feature_a = embedding_column(
+      sparse_id_column=sparse_feature_a, dimension=3, combiner="sum")
+
+  sparse_feature_b = sparse_column_with_hash_bucket(
+      column_name="sparse_feature_b", hash_bucket_size=1000)
+
+  embedding_feature_b = embedding_column(
+      sparse_id_column=sparse_feature_b, dimension=16, combiner="sum")
+
+  crossed_feature_a_x_b = crossed_column(
+      columns=[sparse_feature_a, sparse_feature_b], hash_bucket_size=10000)
+
+  real_feature = real_valued_column("real_feature")
+  real_feature_buckets = bucketized_column(
+      source_column=real_feature, boundaries=[...])
+
+  my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
   ```
 
   Args:

@@ -646,7 +646,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu) as sess:
         var = tf.Variable(tf.reshape(tf.range(1, 97, 1), shape=(6, 4, 4)))
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
         sess.run(init)
 
         grad = GradSliceChecker(self, sess, var,
@@ -666,7 +666,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu) as sess:
         var = tf.Variable(8)
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
         sess.run(init)
         grad = GradSliceChecker(self, sess, var,
                                 np.array(8))
@@ -682,7 +682,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
           tf.reshape(
               tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1)))
       varshape = tf.Variable([6, 4, 4], dtype=tf.int32)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       begin = tf.constant([0, 0, 0])
       end = tf.constant([4, 1, 1])
       strides = tf.constant([1, 1, 1])
@@ -694,7 +694,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
       original_dy = tf.reshape(
           tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
       original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       begin = tf.constant([0, 0, 0], dtype=tf.int64)
       end = tf.constant([4, 1, 1], dtype=tf.int64)
       strides = tf.constant([1, 1, 1], dtype=tf.int64)
@@ -707,7 +707,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
       original_dy = tf.reshape(
           tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
       original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       begin = tf.constant([0, 0, 0], dtype=tf.int32)
       end = tf.constant([4, 1, 1], dtype=tf.int64)
       strides = tf.constant([1, 1, 1], dtype=tf.int64)
@@ -732,7 +732,7 @@ class StridedSliceBenchmark(tf.test.Benchmark):
   """Benchmark new strided slice operation on non-trivial case."""
 
   def run_and_time(self, slice_op):
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     for _ in range(10):
       _ = slice_op.eval()
     iters = 1000

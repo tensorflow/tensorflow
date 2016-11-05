@@ -206,7 +206,7 @@ def run_training():
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
     # Add the variable initializer Op.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()

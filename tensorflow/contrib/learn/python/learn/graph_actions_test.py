@@ -731,7 +731,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       tf.summary.scalar('loss', loss_op)
       # Add explicit "local" init op to initialize all variables
       # as there's no chief to init here.
-      init_op = variables.initialize_all_variables()
+      init_op = variables.global_variables_initializer()
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, init_op)
       # Create worker monitors where one should be active on the worker
       # and the other chief exclusive.

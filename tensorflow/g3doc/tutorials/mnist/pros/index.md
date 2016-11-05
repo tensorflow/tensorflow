@@ -154,7 +154,7 @@ zeros) that have already been specified, and assigns them to each
 `Variable`. This can be done for all `Variables` at once:
 
 ```python
-sess.run(tf.initialize_all_variables())
+sess.run(tf.global_variables_initializer())
 ```
 
 ### Predicted Class and Loss Function
@@ -398,7 +398,7 @@ cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_conv, y
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-sess.run(tf.initialize_all_variables())
+sess.run(tf.global_variables_initializer())
 for i in range(20000):
   batch = mnist.train.next_batch(50)
   if i%100 == 0:

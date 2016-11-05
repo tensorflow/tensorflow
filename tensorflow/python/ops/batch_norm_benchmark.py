@@ -132,7 +132,7 @@ class BatchNormBenchmark(tf.test.Benchmark):
       outputs = build_graph(device, input_shape, axes, num_layers, mode, scale,
                             train)
     with tf.Session(graph=graph) as session:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       _ = session.run([out.op for out in outputs])  # warm up.
       start_time = time.time()
       for _ in range(num_iters):

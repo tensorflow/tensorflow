@@ -502,7 +502,7 @@ def _reduced_kernel_size_for_small_input(input_tensor, kernel_size):
   known, it will be lost. (2) inception.slim.ops._two_element_tuple cannot
   handle tensors that define the kernel size.
       shape = tf.shape(input_tensor)
-      return = tf.pack([tf.minimum(shape[1], kernel_size[0]),
+      return = tf.stack([tf.minimum(shape[1], kernel_size[0]),
                         tf.minimum(shape[2], kernel_size[1])])
 
   """
