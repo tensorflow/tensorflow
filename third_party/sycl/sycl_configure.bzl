@@ -134,7 +134,7 @@ error_sycl_disabled()
 def _create_dummy_repository(repository_ctx):
   # Set up BUILD file for sycl/.
   _file(repository_ctx, "sycl:build_defs.bzl")
-  _file(repository_ctx, "sycl:BUILD")
+  _tpl(repository_ctx, "sycl:BUILD")
   _tpl(repository_ctx, "sycl:platform.bzl")
 
   # Create dummy files for the SYCL toolkit since they are still required by
@@ -157,7 +157,7 @@ def _sycl_autoconf_imp(repository_ctx):
   else:
     # copy template files
     _file(repository_ctx, "sycl:build_defs.bzl")
-    _file(repository_ctx, "sycl:BUILD")
+    _tpl(repository_ctx, "sycl:BUILD")
     _tpl(repository_ctx, "sycl:platform.bzl")
     _file(repository_ctx, "crosstool:BUILD")
     _tpl(repository_ctx, "crosstool:computecpp",
