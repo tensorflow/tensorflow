@@ -41,9 +41,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "farmhash_archive",
-    url = "http://github.com/google/farmhash/archive/71a777924015693c69bc3c8c6492fb8d5372c636.zip",
-    sha256 = "99190108fb96a5e38e183f6a23fb7742948214fc96a746a50c79eb09a255a298",
-    strip_prefix = "farmhash-71a777924015693c69bc3c8c6492fb8d5372c636/src",
+    url = "http://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
+    sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
+    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f/src",
     build_file = str(Label("//:farmhash.BUILD")),
   )
 
