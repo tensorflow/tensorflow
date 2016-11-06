@@ -78,7 +78,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
             zip([grads_0, grads_1, grads_sparse], [var_0, var_1, var_sparse]),
             global_step=global_step)]
 
-        init_op = tf.initialize_all_variables()
+        init_op = tf.global_variables_initializer()
         # Needed ops from the sync_rep optimizer. This is mainly for the
         # local_step initialization.
         local_init_op = sync_rep_opt.local_step_init_op

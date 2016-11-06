@@ -264,6 +264,36 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "nn_grad",
+    srcs = ["gradients/nn_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "gradients_nn_grad_test",
+    srcs = ["gradients/nn_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":nn_grad",
+        ":testutil",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [

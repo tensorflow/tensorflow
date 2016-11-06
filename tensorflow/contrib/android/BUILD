@@ -27,8 +27,8 @@ exports_files([
 filegroup(
     name = "android_tensorflow_inference_jni_srcs",
     srcs = glob([
-        "jni/**/*.cc",
-        "jni/**/*.h",
+        "**/*.cc",
+        "**/*.h",
     ]),
     visibility = ["//visibility:public"],
 )

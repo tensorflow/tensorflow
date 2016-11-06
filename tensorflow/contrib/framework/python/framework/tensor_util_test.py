@@ -401,7 +401,7 @@ class RemoveSqueezableDimensionsTest(tf.test.TestCase):
           tf.contrib.framework.remove_squeezable_dimensions(
               predictions, labels))
       with self.test_session(g):
-        tf.initialize_local_variables().run()
+        tf.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))
         self.assertAllClose(

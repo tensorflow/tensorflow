@@ -55,7 +55,7 @@ class ScatterAddSubTest(tf.test.TestCase):
       ind = tf.constant(indices, dtype=tf.int32)
       p2 = scatter_op(p, ind, vals, name="updated_p")
       # p = init
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # p += vals
       result = p2.eval()
     # Compute the expected 'p' using numpy operations.
@@ -239,7 +239,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
       ids = tf.constant(list(id_vals), dtype=tf.int32)
       print("Construct ids", ids.get_shape())
       embedding = tf.nn.embedding_lookup(p_variable, ids)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
       p_var_val = sess.run(list(p_variable))
@@ -333,7 +333,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
       # will test that aspect.
       id_vals = np.random.randint(vocab_size, size=num_vals)
       ids = tf.constant(list(id_vals), dtype=tf.int32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       embedding = tf.nn.embedding_lookup(
           p_variable, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)

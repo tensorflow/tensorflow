@@ -51,16 +51,16 @@ with tf.Session() as sess:
 ```
 
 The most common initialization pattern is to use the convenience function
-`initialize_all_variables()` to add an Op to the graph that initializes
+`global_variable_initializers()` to add an Op to the graph that initializes
 all the variables. You then run that Op after launching the graph.
 
 ```python
-# Add an Op to initialize all variables.
-init_op = tf.initialize_all_variables()
+# Add an Op to initialize global variables.
+init_op = tf.global_variable_initializers()
 
 # Launch the graph in a session.
 with tf.Session() as sess:
-    # Run the Op that initializes all variables.
+    # Run the Op that initializes global variables.
     sess.run(init_op)
     # ...you can now run any Op that uses variable values...
 ```
@@ -71,8 +71,8 @@ variables are initialized in the right order.
 
 All variables are automatically collected in the graph where they are
 created. By default, the constructor adds the new variable to the graph
-collection `GraphKeys.VARIABLES`. The convenience function
-`all_variables()` returns the contents of that collection.
+collection `GraphKeys.GLOBAL_VARIABLES`. The convenience function
+`global_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
 between variables holding the trainable model parameters and other variables
@@ -94,7 +94,7 @@ Creating a variable.
 Creates a new variable with value `initial_value`.
 
 The new variable is added to the graph collections listed in `collections`,
-which defaults to `[GraphKeys.VARIABLES]`.
+which defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 
 If `trainable` is `True` the variable is also added to the graph collection
 `GraphKeys.TRAINABLE_VARIABLES`.
@@ -115,7 +115,7 @@ variable to its initial value.
     collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
     the default list of variables to use by the `Optimizer` classes.
 *  <b>`collections`</b>: List of graph collections keys. The new variable is added to
-    these collections. Defaults to `[GraphKeys.VARIABLES]`.
+    these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 *  <b>`validate_shape`</b>: If `False`, allows the variable to be initialized with a
     value of unknown shape. If `True`, the default, the shape of
     `initial_value` must be known.
@@ -301,7 +301,7 @@ more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
-init = tf.initialize_all_variables()
+init = tf.global_variable_initializers()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -549,7 +549,7 @@ For example,
 import tensorflow as tf
 A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
 with tf.Session() as sess:
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
 
   op = A[:2,:2].assign(22. * tf.ones((2, 2)))

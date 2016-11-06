@@ -81,7 +81,7 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::Internal("bucket and object cannot be null.");
   }
   StringPiece scheme, bucketp, objectp;
-  ParseURI(fname, &scheme, &bucketp, &objectp);
+  io::ParseURI(fname, &scheme, &bucketp, &objectp);
   if (scheme != "gs") {
     return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
                                    fname);

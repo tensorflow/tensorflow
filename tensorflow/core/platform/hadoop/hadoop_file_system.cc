@@ -56,6 +56,8 @@ class LibHDFS {
   std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
+  std::function<void(hdfsBuilder*, const char *kerbTicketCachePath)>
+    hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
   std::function<tSize(hdfsFS, hdfsFile, tOffset, void*, tSize)> hdfsPread;
   std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;
@@ -81,6 +83,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsBuilderConnect);
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
+      BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
       BIND_HDFS_FUNC(hdfsWrite);
@@ -126,7 +129,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   TF_RETURN_IF_ERROR(hdfs_->status());
 
   StringPiece scheme, namenode, path;
-  ParseURI(fname, &scheme, &namenode, &path);
+  io::ParseURI(fname, &scheme, &namenode, &path);
   const string nn = namenode.ToString();
 
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
@@ -134,6 +137,10 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
+  }
+  char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
+  if (ticket_cache_path != nullptr) {
+    hdfs_->hdfsBuilderSetKerbTicketCachePath(builder, ticket_cache_path);
   }
   *fs = hdfs_->hdfsBuilderConnect(builder);
   if (*fs == nullptr) {
@@ -144,7 +151,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 
 string HadoopFileSystem::TranslateName(const string& name) const {
   StringPiece scheme, namenode, path;
-  ParseURI(name, &scheme, &namenode, &path);
+  io::ParseURI(name, &scheme, &namenode, &path);
   return path.ToString();
 }
 
@@ -362,9 +369,15 @@ Status HadoopFileSystem::DeleteDir(const string& dir) {
   hdfsFileInfo* info =
       hdfs_->hdfsListDirectory(fs, TranslateName(dir).c_str(), &entries);
   if (info != nullptr) {
-    return IOError(dir, errno);
+    hdfs_->hdfsFreeFileInfo(info, entries);
   }
-  hdfs_->hdfsFreeFileInfo(info, entries);
+  // Due to HDFS bug HDFS-8407, we can't distinguish between an error and empty
+  // folder, expscially for Kerberos enable setup, EAGAIN is quite common when
+  // the call is actually successful. Check again by Stat.
+  if (info == nullptr && errno != 0) {
+    FileStatistics stat;
+    TF_RETURN_IF_ERROR(Stat(dir, &stat));
+  }
 
   if (entries > 0) {
     return errors::FailedPrecondition("Cannot delete a non-empty directory.");

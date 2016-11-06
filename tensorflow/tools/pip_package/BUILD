@@ -21,6 +21,7 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 transitive_hdrs(
     name = "included_headers",
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import colorsys
 import math
 import os
+import time
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -186,18 +189,18 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     with self.test_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
-      
+
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=0)
-      
+
       y_tf = y.eval()
 
       dtype = x.dtype.as_numpy_dtype
       y_np = np.array([dtypes.dtype_range[dtype][1]] * x_np.size)
       y_np = y_np.reshape((8,8))
-      
+
       self.assertAllClose(y_tf, y_np, 1e-6)
-      
+
 
   def test_adjust_gamma_less_one(self):
     """Verifying the output with expected results for gamma
@@ -215,7 +218,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
           [201, 204, 206, 209, 211, 214, 216, 218],
           [221, 223, 225, 228, 230, 232, 234, 236],
           [238, 241, 243, 245, 247, 249, 251, 253]], dtype=np.float32)
-      
+
       self.assertAllClose(y_tf, y_np, 1e-6)
 
   def test_adjust_gamma_greater_one(self):
@@ -269,6 +272,128 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
       y = image_ops.adjust_hue(x, delta)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+
+  def _adjustHueNp(self, x_np, delta_h):
+    self.assertEqual(x_np.shape[-1], 3)
+    x_v = x_np.reshape([-1, 3])
+    y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
+    channel_count = x_v.shape[0]
+    for i in xrange(channel_count):
+      r = x_v[i][0]
+      g = x_v[i][1]
+      b = x_v[i][2]
+      h, s, v = colorsys.rgb_to_hsv(r, g, b)
+      h += delta_h
+      h = math.fmod(h + 10.0, 1.0)
+      r, g, b = colorsys.hsv_to_rgb(h, s, v)
+      y_v[i][0] = r
+      y_v[i][1] = g
+      y_v[i][2] = b
+    return y_v.reshape(x_np.shape)
+
+  def _adjustHueTf(self, x_np, delta_h):
+    with self.test_session(use_gpu=False):
+      x = constant_op.constant(x_np)
+      y = image_ops.adjust_hue(x, delta_h)
+      y_tf = y.eval()
+    return y_tf
+
+  def testAdjustRandomHue(self):
+    x_shapes = [
+        [2, 2, 3],
+        [4, 2, 3],
+        [2, 4, 3],
+        [2, 5, 3],
+        [1000, 1, 3],
+    ]
+    test_styles = [
+        'all_random',
+        'rg_same',
+        'rb_same',
+        'gb_same',
+        'rgb_same',
+    ]
+    for x_shape in x_shapes:
+      for test_style in test_styles:
+        x_np = np.random.rand(*x_shape) * 255.
+        delta_h = np.random.rand() * 2.0 - 1.0
+        if test_style == 'all_random':
+          pass
+        elif test_style == 'rg_same':
+          x_np[..., 1] = x_np[..., 0]
+        elif test_style == 'rb_same':
+          x_np[..., 2] = x_np[..., 0]
+        elif test_style == 'gb_same':
+          x_np[..., 2] = x_np[..., 1]
+        elif test_style == 'rgb_same':
+          x_np[..., 1] = x_np[..., 0]
+          x_np[..., 2] = x_np[..., 0]
+        else:
+          raise AssertionError('Invalid test style: %s' % (test_style))
+        y_np = self._adjustHueNp(x_np, delta_h)
+        y_tf = self._adjustHueTf(x_np, delta_h)
+        self.assertAllClose(y_tf, y_np, rtol=2e-5, atol=1e-5)
+
+  def testInvalidShapes(self):
+    fused = False
+    if not fused:
+      # The tests are known to pass with the fused adjust_hue. We will enable
+      # them when the fused implementation is the default.
+      return
+    x_np = np.random.rand(2, 3) * 255.
+    delta_h = np.random.rand() * 2.0 - 1.0
+    fused = False
+    with self.assertRaisesRegexp(ValueError, 'Shape must be at least rank 3'):
+      self._adjustHueTf(x_np, delta_h)
+    x_np = np.random.rand(4, 2, 4) * 255.
+    delta_h = np.random.rand() * 2.0 - 1.0
+    with self.assertRaisesOpError('input must have 3 channels'):
+      self._adjustHueTf(x_np, delta_h)
+
+
+class AdjustHueBenchmark(test.Benchmark):
+
+  def _benchmarkAdjustHue(self, device, cpu_count):
+    image_shape = [299, 299, 3]
+    warmup_rounds = 100
+    benchmark_rounds = 1000
+    config = tf.ConfigProto()
+    if cpu_count is not None:
+      config.inter_op_parallelism_threads = 1
+      config.intra_op_parallelism_threads = cpu_count
+    with tf.Session('', graph=tf.Graph(), config=config) as sess:
+      with tf.device(device):
+        inputs = tf.Variable(
+            tf.random_uniform(
+                image_shape, dtype=tf.float32) * 255,
+            trainable=False,
+            dtype=tf.float32)
+        delta = tf.constant(0.1, dtype=tf.float32)
+        outputs = image_ops.adjust_hue(inputs, delta)
+        run_op = tf.group(outputs)
+        sess.run(tf.initialize_all_variables())
+        for i in xrange(warmup_rounds + benchmark_rounds):
+          if i == warmup_rounds:
+            start = time.time()
+          sess.run(run_op)
+    end = time.time()
+    step_time = (end - start) / benchmark_rounds
+    tag = '%s' % (cpu_count) if cpu_count is not None else '_all'
+    print('benchmarkAdjustHue_299_299_3_cpu%s step_time: %.2f us' %
+          (tag, step_time * 1e6))
+    self.report_benchmark(
+        name='benchmarkAdjustHue_299_299_3_cpu%s' % (tag),
+        iters=benchmark_rounds,
+        wall_time=step_time)
+
+  def benchmarkAdjustHueCpu1(self):
+    self._benchmarkAdjustHue('/cpu:0', 1)
+
+  def benchmarkAdjustHueCpuAll(self):
+    self._benchmarkAdjustHue('/cpu:0', None)
+
+  def benchmarkAdjustHueGpu(self):
+    self._benchmarkAdjustHue('/gpu:0', None)
 
 
 class AdjustSaturationTest(test_util.TensorFlowTestCase):
@@ -1803,10 +1928,10 @@ class JpegTest(test_util.TensorFlowTestCase):
       jpeg0, image0, image1, image2 = sess.run([jpeg0, image0, image1, image2])
 
       # The decoded-encoded image should be similar to the input
-      self.assertLess(self.averageError(image0, image1), 0.7)
+      self.assertLess(self.averageError(image0, image1), 0.6)
 
       # We should be very close to a fixpoint
-      self.assertLess(self.averageError(image1, image2), 0.6)
+      self.assertLess(self.averageError(image1, image2), 0.02)
 
       # Smooth ramps compress well (input size is 153600)
       self.assertGreaterEqual(len(jpeg0), 5000)

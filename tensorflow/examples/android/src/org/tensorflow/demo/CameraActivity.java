@@ -20,32 +20,72 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.Fragment;
 import android.content.pm.PackageManager;
+import android.media.Image.Plane;
+import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.util.Size;
+import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
+import java.nio.ByteBuffer;
+import org.tensorflow.demo.env.Logger;
 
-public abstract class CameraActivity extends Activity {
+public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
+  private static final Logger LOGGER = new Logger();
+
   private static final int PERMISSIONS_REQUEST = 1;
 
   private static final String PERMISSION_CAMERA = Manifest.permission.CAMERA;
   private static final String PERMISSION_STORAGE = Manifest.permission.WRITE_EXTERNAL_STORAGE;
 
+  private boolean debug = false;
+
+  private Handler handler;
+  private HandlerThread handlerThread;
+
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
+    super.onCreate(null);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
     setContentView(R.layout.activity_camera);
 
     if (hasPermission()) {
-      if (null == savedInstanceState) {
-        setFragment();
-      }
+      setFragment();
     } else {
       requestPermission();
     }
+  }
 
+  @Override
+  public synchronized void onResume() {
+    super.onResume();
+
+    handlerThread = new HandlerThread("inference");
+    handlerThread.start();
+    handler = new Handler(handlerThread.getLooper());
+  }
+
+  @Override
+  public synchronized void onPause() {
+    super.onPause();
+    handlerThread.quitSafely();
+    try {
+      handlerThread.join();
+      handlerThread = null;
+      handler = null;
+    } catch (final InterruptedException e) {
+      LOGGER.e(e, "Exception!");
+    }
+  }
+
+  protected synchronized void runInBackground(final Runnable r) {
+    if (handler != null) {
+      handler.post(r);
+    }
   }
 
   @Override
@@ -82,11 +122,47 @@ public abstract class CameraActivity extends Activity {
   }
 
   protected void setFragment() {
+    final Fragment fragment = CameraConnectionFragment.newInstance(
+        new CameraConnectionFragment.ConnectionCallback(){
+          @Override
+          public void onPreviewSizeChosen(final Size size, final int rotation) {
+            CameraActivity.this.onPreviewSizeChosen(size, rotation);
+          }
+        },
+        this, getLayoutId(), getDesiredPreviewFrameSize());
+
     getFragmentManager()
         .beginTransaction()
-        .replace(R.id.container, createFragment())
+        .replace(R.id.container, fragment)
         .commit();
   }
 
-  protected abstract Fragment createFragment();
+  protected void fillBytes(final Plane[] planes, final byte[][] yuvBytes) {
+    // Because of the variable row stride it's not possible to know in
+    // advance the actual necessary dimensions of the yuv planes.
+    for (int i = 0; i < planes.length; ++i) {
+      final ByteBuffer buffer = planes[i].getBuffer();
+      if (yuvBytes[i] == null) {
+        LOGGER.i("Initializing buffer %d at size %d", i, buffer.capacity());
+        yuvBytes[i] = new byte[buffer.capacity()];
+      }
+      buffer.get(yuvBytes[i]);
+    }
+  }
+
+  @Override
+  public boolean onTouchEvent(final MotionEvent event) {
+    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+      debug = !debug;
+    }
+    return false;
+  }
+
+  public boolean isDebug() {
+    return debug;
+  }
+
+  protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
+  protected abstract int getLayoutId();
+  protected abstract int getDesiredPreviewFrameSize();
 }

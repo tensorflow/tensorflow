@@ -164,6 +164,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1043,10 +1045,11 @@ def adjust_gamma(image, gamma=1, gain=1):
     adjusted_img = (img / scale) ** gamma * scale * gain
 
     return adjusted_img
-    
+
 
 ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('AdjustContrastv2')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('AdjustHue')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('DrawBoundingBoxes')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
 
@@ -1265,18 +1268,26 @@ def adjust_hue(image, delta, name=None):
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
 
-    hsv = gen_image_ops.rgb_to_hsv(flt_image)
+    # TODO(zhengxq): we will switch to the fused version after we add a GPU
+    # kernel for that.
+    fused = os.environ.get('TF_ADJUST_HUE_FUSED', '')
+    fused = fused.lower() in ('true', 't', '1')
 
-    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+    if not fused:
+      hsv = gen_image_ops.rgb_to_hsv(flt_image)
 
-    # Note that we add 2*pi to guarantee that the resulting hue is a positive
-    # floating point number since delta is [-0.5, 0.5].
-    hue = math_ops.mod(hue + (delta + 1.), 1.)
+      hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
+      saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
+      value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
 
-    hsv_altered = array_ops.concat(2, [hue, saturation, value])
-    rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
+      # Note that we add 2*pi to guarantee that the resulting hue is a positive
+      # floating point number since delta is [-0.5, 0.5].
+      hue = math_ops.mod(hue + (delta + 1.), 1.)
+
+      hsv_altered = array_ops.concat(2, [hue, saturation, value])
+      rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
+    else:
+      rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
 

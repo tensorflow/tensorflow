@@ -112,7 +112,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
 
   void ParsePath(const string& name, string* parsed_path) {
     StringPiece scheme, host, path;
-    ParseURI(name, &scheme, &host, &path);
+    io::ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
     path.Consume("/");

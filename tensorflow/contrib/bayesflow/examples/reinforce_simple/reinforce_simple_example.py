@@ -76,7 +76,7 @@ def build_split_apply_merge_model():
 
   # REINFORCE forward step
   route_selection = st.StochasticTensor(
-      distributions.Categorical, logits=logits)
+      distributions.Categorical(logits=logits))
 
   # Accessing route_selection as a Tensor below forces a sample of
   # the Categorical distribution based on its logits.
@@ -120,7 +120,7 @@ class REINFORCESimpleExample(tf.test.TestCase):
 
       sgd = tf.train.GradientDescentOptimizer(1.0).minimize(final_loss)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       for i in range(10):
         # Run loss and inference step.  This toy problem converges VERY quickly.

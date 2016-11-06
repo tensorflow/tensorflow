@@ -137,7 +137,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         self._columns_to_tensors)
     self.assertIsNone(initial_state)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(tf.initialize_all_tables())
       sequence_input_val = sess.run(sequence_input)
     expected_shape = np.array([
@@ -156,7 +156,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
 
     # Obtain values of activations and final state.
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(tf.initialize_all_tables())
       activations, final_state = sess.run([activations_t, final_state_t])
 

@@ -49,10 +49,9 @@ class SavedModelBuilder(object):
 
   To build a SavedModel, the first meta graph must be saved with variables.
   Subsequent meta graphs will simply be saved with their graph definitions. If
-  assets need to be saved and written or copied to disk, they must be provided
-  as part of the first meta graph to be saved. Subsequent meta graphs can
-  provide a subset of the initial assets to be added to the SavedModel
-  definition.
+  assets need to be saved and written or copied to disk, they can be provided
+  when the meta graph def is added. If multiple meta graph defs are associated
+  an asset of the same name, only the first version is retained.
 
   Each meta graph added to the SavedModel must be annotated with tags. The tags
   provide a means to identify the specific meta graph to load and restore, along
@@ -249,12 +248,6 @@ class SavedModelBuilder(object):
     proto_meta_graph_def = self._saved_model.meta_graphs.add()
     proto_meta_graph_def.CopyFrom(meta_graph_def)
 
-  def _maybe_clear_devices(self, clear_devices):
-    if not clear_devices:
-      return
-    for node in ops.get_default_graph().as_graph_def().node:
-      node.device = ""
-
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
@@ -288,8 +281,6 @@ class SavedModelBuilder(object):
           "Variables and assets have not been saved yet. "
           "Please invoke `add_meta_graph_and_variables()` first.")
 
-    self._maybe_clear_devices(clear_devices)
-
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
@@ -301,7 +292,7 @@ class SavedModelBuilder(object):
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
 
-    meta_graph_def = saver.export_meta_graph()
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -337,8 +328,6 @@ class SavedModelBuilder(object):
       raise AssertionError("Variables and assets have already been saved. "
                            "Please invoke `add_meta_graph()` instead.")
 
-    self._maybe_clear_devices(clear_devices)
-
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
@@ -362,7 +351,7 @@ class SavedModelBuilder(object):
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
     saver.save(sess, variables_path, write_meta_graph=False)
-    meta_graph_def = saver.export_meta_graph()
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)

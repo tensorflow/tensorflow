@@ -356,7 +356,7 @@ class QuantizedDistributionTest(tf.test.TestCase):
         proba = qdist.log_prob(x)
         grads = tf.gradients(proba, [mu, sigma])
         with self.test_session(graph=g):
-          tf.initialize_all_variables().run()
+          tf.global_variables_initializer().run()
           self._assert_all_finite(proba.eval())
           self._assert_all_finite(grads[0].eval())
           self._assert_all_finite(grads[1].eval())
@@ -369,7 +369,7 @@ class QuantizedDistributionTest(tf.test.TestCase):
           distribution=distributions.Normal(mu=mu, sigma=sigma))
       x = tf.ceil(4 * rng.rand(100).astype(np.float32) - 2)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       proba = qdist.prob(x)
       self._assert_all_finite(proba.eval())

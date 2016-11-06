@@ -45,7 +45,7 @@ def main(_):
   for i in xrange(2, FLAGS.length):
     n0, n1 = n1, tf.add(n0, n1, name="node_%.2d" % i)
 
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
 
   # Wrap the TensorFlow Session object for debugging.
   sess = tf_debug.LocalCLIDebugWrapperSession(sess)

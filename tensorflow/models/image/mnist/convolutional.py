@@ -159,7 +159,7 @@ def main(_):
 
   # The variables below hold all the trainable weights. They are passed an
   # initial value which will be assigned when we call:
-  # {tf.initialize_all_variables().run()}
+  # {tf.global_variables_initializer().run()}
   conv1_weights = tf.Variable(
       tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
                           stddev=0.1,
@@ -283,7 +283,7 @@ def main(_):
   start_time = time.time()
   with tf.Session() as sess:
     # Run all the initializers to prepare the trainable parameters.
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     print('Initialized!')
     # Loop through training steps.
     for step in xrange(int(num_epochs * train_size) // BATCH_SIZE):

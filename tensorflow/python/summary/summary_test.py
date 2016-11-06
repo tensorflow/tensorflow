@@ -45,7 +45,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       c = tf.constant(42.0)
       v = tf.Variable(c)
       ss = tf.summary.scalar('summary', v)
-      init = tf.initialize_all_variables()
+      init = tf.global_variables_initializer()
       s.run(init)
       summ_str = s.run(ss)
     summary = tf.Summary()
@@ -87,6 +87,9 @@ class ScalarSummaryTest(tf.test.TestCase):
 
     s2 = tf.summary.scalar('name with many $#illegal^: characters!', c)
     self.assertEqual(s2.op.name, 'name_with_many___illegal___characters_')
+
+    s3 = tf.summary.scalar('/name/with/leading/slash', c)
+    self.assertEqual(s3.op.name, 'name/with/leading/slash')
 
 
 if __name__ == '__main__':

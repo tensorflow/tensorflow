@@ -418,7 +418,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -1096,5 +1096,453 @@ of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 ### `tf.contrib.layers.summarize_activations(name_filter=None, summarizer=summarize_activation)` {#summarize_activations}
 
 Summarize activations, using `summarize_activation` to summarize.
+
+
+
+## Feature columns
+
+Feature columns provide a mechanism to map data to a model.
+
+- - -
+
+### `tf.contrib.layers.bucketized_column(source_column, boundaries)` {#bucketized_column}
+
+Creates a _BucketizedColumn.
+
+##### Args:
+
+
+*  <b>`source_column`</b>: A _RealValuedColumn defining dense column.
+*  <b>`boundaries`</b>: A list of floats specifying the boundaries. It has to be sorted.
+
+##### Returns:
+
+  A _BucketizedColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if 'boundaries' is empty or not sorted.
+
+
+- - -
+
+### `tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)` {#create_feature_spec_for_parsing}
+
+Helper that prepares features config from input feature_columns.
+
+The returned feature config can be used as arg 'features' in tf.parse_example.
+
+Typical usage example:
+
+```python
+# Define features and transformations
+country = sparse_column_with_vocabulary_file("country", VOCAB_FILE)
+age = real_valued_column("age")
+click_bucket = bucketized_column(real_valued_column("historical_click_ratio"),
+                                 boundaries=[i/10. for i in range(10)])
+country_x_click = crossed_column([country, click_bucket], 10)
+
+feature_columns = set([age, click_bucket, country_x_click])
+batch_examples = tf.parse_example(
+    serialized_examples,
+    create_feature_spec_for_parsing(feature_columns))
+```
+
+For the above example, create_feature_spec_for_parsing would return the dict:
+{"age": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+ "historical_click_ratio": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+ "country": parsing_ops.VarLenFeature(tf.string)}
+
+##### Args:
+
+
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns. All items
+    should be instances of classes derived from _FeatureColumn, unless
+    feature_columns is a dict -- in which case, this should be true of all
+    values in the dict.
+
+##### Returns:
+
+  A dict mapping feature keys to FixedLenFeature or VarLenFeature values.
+
+
+- - -
+
+### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
+
+Creates a _CrossedColumn.
+
+##### Args:
+
+
+*  <b>`columns`</b>: An iterable of _FeatureColumn. Items can be an instance of
+    _SparseColumn, _CrossedColumn, or _BucketizedColumn.
+*  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
+*  <b>`combiner`</b>: A combiner string, supports sum, mean, sqrtn.
+*  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
+    to restore the column weights. Required if `tensor_name_in_ckpt` is not
+    None.
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
+    checkpoint from which to restore the column weights. Required if
+    `ckpt_to_load_from` is not None.
+*  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
+    function to combine the crosses fingerprints on SparseFeatureCrossOp
+    (optional).
+
+##### Returns:
+
+  A _CrossedColumn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if any item in columns is not an instance of _SparseColumn,
+    _CrossedColumn, or _BucketizedColumn, or
+    hash_bucket_size is not an int.
+*  <b>`ValueError`</b>: if hash_bucket_size is not > 1 or
+    len(columns) is not > 1.
+
+
+- - -
+
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
+
+Creates an `_EmbeddingColumn`.
+
+##### Args:
+
+
+*  <b>`sparse_id_column`</b>: A `_SparseColumn` which is created by for example
+    `sparse_column_with_*` or crossed_column functions. Note that `combiner`
+    defined in `sparse_id_column` is ignored.
+*  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
+    of this can be considered an example level normalization on the column:
+      * "sum": do not normalize
+      * "mean": do l1 normalization
+      * "sqrtn": do l2 normalization
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`initializer`</b>: A variable initializer function to be used in embedding
+    variable initialization. If not specified, defaults to
+    `tf.truncated_normal_initializer` with mean 0.0 and standard deviation
+    1/sqrt(sparse_id_column.length).
+*  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
+    to restore the column weights. Required if `tensor_name_in_ckpt` is not
+    None.
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
+    checkpoint from which to restore the column weights. Required if
+    `ckpt_to_load_from` is not None.
+
+##### Returns:
+
+  An `_EmbeddingColumn`.
+
+
+- - -
+
+### `tf.contrib.layers.hashed_embedding_column(column_name, size, dimension, combiner=None, initializer=None)` {#hashed_embedding_column}
+
+Creates an embedding column of a sparse feature using parameter hashing.
+
+The i-th embedding component of a value v is found by retrieving an
+embedding weight whose index is a fingerprint of the pair (v,i).
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`size`</b>: An integer specifying the number of parameters in the embedding layer.
+*  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
+    of this can be thought as example level normalizations on the column:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`initializer`</b>: A variable initializer function to be used in embedding
+    variable initialization. If not specified, defaults to
+    `tf.truncated_normal_initializer` with mean 0 and standard deviation 0.1.
+
+##### Returns:
+
+  A _HashedEmbeddingColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if dimension or size is not a positive integer; or if combiner
+    is not supported.
+
+
+- - -
+
+### `tf.contrib.layers.make_place_holder_tensors_for_base_features(feature_columns)` {#make_place_holder_tensors_for_base_features}
+
+Returns placeholder tensors for inference.
+
+##### Args:
+
+
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns. All items
+    should be instances of classes derived from _FeatureColumn.
+
+##### Returns:
+
+  A dict mapping feature keys to SparseTensors (sparse columns) or
+  placeholder Tensors (dense columns).
+
+
+- - -
+
+### `tf.contrib.layers.one_hot_column(sparse_id_column)` {#one_hot_column}
+
+Creates a _OneHotColumn.
+
+##### Args:
+
+
+*  <b>`sparse_id_column`</b>: A _SparseColumn which is created by
+      `sparse_column_with_*`
+      or crossed_column functions. Note that `combiner` defined in
+      `sparse_id_column` is ignored.
+
+##### Returns:
+
+  An _OneHotColumn.
+
+
+- - -
+
+### `tf.contrib.layers.real_valued_column(column_name, dimension=1, default_value=None, dtype=tf.float32, normalizer=None)` {#real_valued_column}
+
+Creates a _RealValuedColumn.
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining real valued column name.
+*  <b>`dimension`</b>: An integer specifying dimension of the real valued column.
+    The default is 1. The Tensor representing the _RealValuedColumn
+    will have the shape of [batch_size, dimension].
+*  <b>`default_value`</b>: A single value compatible with dtype or a list of values
+    compatible with dtype which the column takes on during tf.Example parsing
+    if data is missing. If None, then tf.parse_example will fail if an example
+    does not contain this column. If a single value is provided, the same
+    value will be applied as the default value for every dimension. If a
+    list of values is provided, the length of the list should be equal to the
+    value of `dimension`.
+*  <b>`dtype`</b>: defines the type of values. Default value is tf.float32. Must be a
+    non-quantized, real integer or floating point type.
+*  <b>`normalizer`</b>: If not None, a function that can be used to normalize the value
+    of the real valued column after default_value is applied for parsing.
+    Normalizer function takes the input tensor as its argument, and returns
+    the output tensor. (e.g. lambda x: (x - 3.0) / 4.2).
+
+##### Returns:
+
+  A _RealValuedColumn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if dimension is not an int
+*  <b>`ValueError`</b>: if dimension is not a positive integer
+*  <b>`TypeError`</b>: if default_value is a list but its length is not equal to the
+    value of `dimension`.
+*  <b>`TypeError`</b>: if default_value is not compatible with dtype.
+*  <b>`ValueError`</b>: if dtype is not convertable to tf.float32.
+
+
+- - -
+
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#shared_embedding_columns}
+
+Creates a list of `_EmbeddingColumn` sharing the same embedding.
+
+##### Args:
+
+
+*  <b>`sparse_id_columns`</b>: An iterable of `_SparseColumn`, such as those created by
+    `sparse_column_with_*` or crossed_column functions. Note that `combiner`
+    defined in each sparse_id_column is ignored.
+*  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
+    of this can be considered an example level normalization on the column:
+      * "sum": do not normalize
+      * "mean": do l1 normalization
+      * "sqrtn": do l2 normalization
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`shared_embedding_name`</b>: (Optional). A string specifying the name of shared
+    embedding weights. This will be needed if you want to reference the shared
+    embedding separately from the generated `_EmbeddingColumn`.
+*  <b>`initializer`</b>: A variable initializer function to be used in embedding
+    variable initialization. If not specified, defaults to
+    `tf.truncated_normal_initializer` with mean 0.0 and standard deviation
+    1/sqrt(sparse_id_columns[0].length).
+*  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
+    to restore the column weights. Required if `tensor_name_in_ckpt` is not
+    None.
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
+    checkpoint from which to restore the column weights. Required if
+    `ckpt_to_load_from` is not None.
+
+##### Returns:
+
+  A tuple of `_EmbeddingColumn` with shared embedding space.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if sparse_id_columns is empty, or its elements are not
+    compatible with each other.
+*  <b>`TypeError`</b>: if `sparse_id_columns` is not a sequence or is a string. If at
+    least one element of `sparse_id_columns` is not a `SparseTensor`.
+
+
+- - -
+
+### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner=None, dtype=tf.string)` {#sparse_column_with_hash_bucket}
+
+Creates a _SparseColumn with hashed bucket configuration.
+
+Use this when your sparse features are in string or integer format, but you
+don't have a vocab file that maps each value to an integer ID.
+output_id = Hash(input_feature_string) % bucket_size
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
+*  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`dtype`</b>: The type of features. Only string and integer types are supported.
+
+##### Returns:
+
+  A _SparseColumn with hashed bucket configuration
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: hash_bucket_size is not greater than 2.
+*  <b>`ValueError`</b>: dtype is neither string nor integer.
+
+
+- - -
+
+### `tf.contrib.layers.sparse_column_with_integerized_feature(column_name, bucket_size, combiner=None, dtype=tf.int64)` {#sparse_column_with_integerized_feature}
+
+Creates an integerized _SparseColumn.
+
+Use this when your features are already pre-integerized into int64 IDs.
+output_id = input_feature
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`bucket_size`</b>: An int that is > 1. The number of buckets. It should be bigger
+    than maximum feature. In other words features in this column should be an
+    int64 in range [0, bucket_size)
+*  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`dtype`</b>: Type of features. It should be an integer type. Default value is
+    dtypes.int64.
+
+##### Returns:
+
+  An integerized _SparseColumn definition.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: bucket_size is not greater than 1.
+*  <b>`ValueError`</b>: dtype is not integer.
+
+
+- - -
+
+### `tf.contrib.layers.sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None)` {#sparse_column_with_keys}
+
+Creates a _SparseColumn with keys.
+
+Look up logic is as follows:
+lookup_id = index_of_feature_in_keys if feature in keys else default_value
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`keys`</b>: a string list defining vocabulary.
+*  <b>`default_value`</b>: The value to use for out-of-vocabulary feature values.
+    Default is -1.
+*  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+
+##### Returns:
+
+  A _SparseColumnKeys with keys configuration.
+
+
+- - -
+
+### `tf.contrib.layers.weighted_sparse_column(sparse_id_column, weight_column_name, dtype=tf.float32)` {#weighted_sparse_column}
+
+Creates a _SparseColumn by combining sparse_id_column with a weight column.
+
+##### Args:
+
+
+*  <b>`sparse_id_column`</b>: A `_SparseColumn` which is created by
+    `sparse_column_with_*` functions.
+*  <b>`weight_column_name`</b>: A string defining a sparse column name which represents
+    weight or value of the corresponding sparse id feature.
+*  <b>`dtype`</b>: Type of weights, such as `tf.float32`
+
+##### Returns:
+
+  A _WeightedSparseColumn composed of two sparse features: one represents id,
+  the other represents weight (value) of the id feature in that example.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if dtype is not convertible to float.
+
+##### An example usage:
+
+  ```python
+  words = sparse_column_with_hash_bucket("words", 1000)
+  tfidf_weighted_words = weighted_sparse_column(words, "tfidf_score")
+  ```
+
+  This configuration assumes that input dictionary of model contains the
+  following two items:
+    * (key="words", value=word_tensor) where word_tensor is a SparseTensor.
+    * (key="tfidf_score", value=tfidf_score_tensor) where tfidf_score_tensor
+      is a SparseTensor.
+   Following are assumed to be true:
+     * word_tensor.indices = tfidf_score_tensor.indices
+     * word_tensor.shape = tfidf_score_tensor.shape
 
 

@@ -66,7 +66,6 @@ from __future__ import print_function
 
 import argparse
 from datetime import datetime
-import glob
 import hashlib
 import os.path
 import random
@@ -131,7 +130,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     print("Image directory '" + image_dir + "' not found.")
     return None
   result = {}
-  sub_dirs = [x[0] for x in os.walk(image_dir)]
+  sub_dirs = [x[0] for x in gfile.Walk(image_dir)]
   # The root directory comes first, so skip it.
   is_root_dir = True
   for sub_dir in sub_dirs:
@@ -146,7 +145,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     print("Looking for images in '" + dir_name + "'")
     for extension in extensions:
       file_glob = os.path.join(image_dir, dir_name, '*.' + extension)
-      file_list.extend(glob.glob(file_glob))
+      file_list.extend(gfile.Glob(file_glob))
     if not file_list:
       print('No files found')
       continue
@@ -625,7 +624,7 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   scale_value = tf.mul(margin_scale_value, resize_scale_value)
   precrop_width = tf.mul(scale_value, MODEL_INPUT_WIDTH)
   precrop_height = tf.mul(scale_value, MODEL_INPUT_HEIGHT)
-  precrop_shape = tf.pack([precrop_height, precrop_width])
+  precrop_shape = tf.stack([precrop_height, precrop_width])
   precrop_shape_as_int = tf.cast(precrop_shape, dtype=tf.int32)
   precropped_image = tf.image.resize_bilinear(decoded_image_4d,
                                               precrop_shape_as_int)
@@ -798,7 +797,7 @@ def main(_):
   validation_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/validation')
 
   # Set up all our weights to their initial default values.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
   sess.run(init)
 
   # Run the training for as many cycles as requested on the command line.

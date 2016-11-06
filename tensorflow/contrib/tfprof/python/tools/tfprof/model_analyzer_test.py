@@ -63,7 +63,7 @@ class PrintModelAnalysisTest(tf.test.TestCase):
     with tf.Session() as sess, tf.device('/cpu:0'):
       x = self._BuildSmallModel()
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       run_meta = tf.RunMetadata()
       _ = sess.run(x,
                    options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),

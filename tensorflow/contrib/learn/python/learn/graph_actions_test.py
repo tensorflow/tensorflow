@@ -28,6 +28,8 @@ from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 
 
@@ -193,6 +195,19 @@ class GraphActionsTest(tf.test.TestCase):
       except ValueError:
         pass
       self.assertTrue(request_stop.called)
+
+  def test_run_feeds_iter_calls_resources_init(self):
+    with tf.Graph().as_default() as g:
+      in0, _, _ = self._build_inference_graph()
+      handle = test_ops.stub_resource_handle_op(container='a', shared_name='b')
+      resources.register_resource(
+          handle=handle,
+          create_op=test_ops.resource_create_op(handle),
+          is_initialized_op=test_ops.resource_initialized_op(handle))
+
+      for _ in learn.graph_actions.run_feeds_iter({'in0': in0},
+                                                  feed_dicts=[{}]):
+        self.assertTrue(test_ops.resource_initialized_op(handle).eval())
 
   def test_infer_different_default_graph(self):
     with self.test_session():
@@ -716,7 +731,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       tf.summary.scalar('loss', loss_op)
       # Add explicit "local" init op to initialize all variables
       # as there's no chief to init here.
-      init_op = variables.initialize_all_variables()
+      init_op = variables.global_variables_initializer()
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, init_op)
       # Create worker monitors where one should be active on the worker
       # and the other chief exclusive.

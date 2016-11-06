@@ -65,13 +65,13 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   """Exports graph via session_bundle, by creating a Session."""
   with graph.as_default():
     with tf_session.Session('') as session:
-      variables.initialize_local_variables()
+      variables.local_variables_initializer()
       data_flow_ops.initialize_all_tables()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
       export.init(init_op=control_flow_ops.group(
-          variables.initialize_local_variables(),
+          variables.local_variables_initializer(),
           data_flow_ops.initialize_all_tables()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures,

@@ -35,8 +35,6 @@ from __future__ import print_function
 
 import re as _re
 
-import six
-
 from google.protobuf import json_format as _json_format
 from tensorflow.core.framework import summary_pb2 as _summary_pb2
 from tensorflow.python.framework import dtypes as _dtypes
@@ -47,8 +45,8 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 from tensorflow.python.platform import tf_logging as _logging
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util import compat as _compat
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _collect(val, collections, default_collections):
@@ -60,6 +58,7 @@ def _collect(val, collections, default_collections):
 
 _INVALID_TAG_CHARACTERS = _re.compile(r'[^-/\w\.]')
 
+
 def _clean_tag(name):
   # In the past, the first argument to summary ops was a tag, which allowed
   # arbitrary characters. Now we are changing the first argument to be the node
@@ -67,12 +66,14 @@ def _clean_tag(name):
   # take advantage of the tf name scope system) but risks breaking existing
   # usage, because a much smaller set of characters are allowed in node names.
   # This function replaces all illegal characters with _s, and logs a warning.
+  # It also strips leading slashes from the name.
   if name is not None:
     new_name = _INVALID_TAG_CHARACTERS.sub('_', name)
+    new_name = new_name.lstrip('/')  # Remove leading slashes
     if new_name != name:
-      _logging.warning(
-          'Summary tag name %s has illegal chars; replacing with underscores.' %
-          name)
+      _logging.info(
+          'Summary name %s is illegal; using %s instead.' %
+          (name, new_name))
       name = new_name
   return name
 

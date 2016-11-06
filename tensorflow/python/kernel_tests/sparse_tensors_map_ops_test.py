@@ -80,7 +80,7 @@ class SparseTensorsMapTest(tf.test.TestCase):
       handle0 = add_sparse_to_tensors_map(sp_input0, shared_name="a")
       handle1 = add_sparse_to_tensors_map(sp_input1, shared_name="a")
       self.assertEqual(handle0.get_shape(), ())
-      handles_concat = tf.pack([handle0, handle1])
+      handles_concat = tf.stack([handle0, handle1])
 
       sp_out = take_many_sparse_from_tensors_map(
           sparse_map_op=handle0.op, sparse_handles=handles_concat)
@@ -211,7 +211,7 @@ class BenchmarkSparseTensorsMapVsSerialization(tf.test.Benchmark):
             st_serialized, dtype=values.dtype)
         st_deserialized_op = st_deserialized.values.op
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         st_roundtrip_values = sess.run(st_roundtrip)
         st_deserialized_values = sess.run(st_deserialized)

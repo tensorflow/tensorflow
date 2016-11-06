@@ -33,7 +33,7 @@ class LstmMiscTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(2, 7, 11, 5))
       outputs = misc.pixels_as_vector(inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 7 * 11 * 5))
 
@@ -41,7 +41,7 @@ class LstmMiscTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(2, 7, 11, 5))
       outputs = misc.pool_as_vector(inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 5))
 
@@ -49,7 +49,7 @@ class LstmMiscTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant([0, 1, 3])
       outputs = misc.one_hot_planes(inputs, 4)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (3, 1, 1, 4))
       target = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
@@ -60,7 +60,7 @@ class LstmMiscTest(test_util.TensorFlowTestCase):
       data = np.array([[0, 1, 2], [2, 0, 1]]).reshape(2, 3, 1)
       inputs = tf.constant(data)
       outputs = misc.one_hot_mask(inputs, 3)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 3, 3))
       target = np.array([[[1, 0, 0], [0, 1, 0]], [[0, 1, 0], [0, 0, 1]],

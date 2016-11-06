@@ -291,7 +291,9 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:test_ops",
     ],
 )
 

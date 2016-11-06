@@ -26,7 +26,7 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.11.0rc1'
+_VERSION = '0.11.0rc2'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -53,8 +53,8 @@ TEST_PACKAGES = [
 ]
 
 class BinaryDistribution(Distribution):
-  def is_pure(self):
-    return False
+  def has_ext_modules(self):
+    return True
 
 
 class InstallCommand(InstallCommandBase):

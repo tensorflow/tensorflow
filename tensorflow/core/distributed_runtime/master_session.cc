@@ -50,18 +50,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A little bit of per-step state.
-struct PerStepState {
-  bool collect_costs = false;
-  bool collect_timeline = false;
-  bool collect_rpcs = false;
-  Microseconds start_micros = Microseconds(0);
-  Microseconds end_micros = Microseconds(0);
-  std::vector<StepStats> step_stats;  // per partition
-  StepStats rpc_stats;                // for RPC layer
-  CostGraphDef cost_graph;
-};
-
 // MasterSession wraps SimpleClientGraph in a reference counted object.
 // This way, MasterSession can clear up the cache mapping Run requests to
 // compiled graphs while the compiled graph is still being used.
@@ -72,15 +60,38 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   ReffedClientGraph(const string& handle, const BuildGraphOptions& bopts,
                     std::unique_ptr<SimpleClientGraph> cg,
                     const SessionOptions& session_opts,
-                    StatsPublisherFactory stats_publisher_factory)
+                    StatsPublisherFactory stats_publisher_factory,
+                    SimpleGraphExecutionState* execution_state, bool is_partial)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         bopts_(bopts),
-        session_opts_(session_opts) {
+        session_opts_(session_opts),
+        is_partial_(is_partial) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph_->graph.num_node_ids();
 
     stats_publisher_ = stats_publisher_factory(handle, bopts, session_opts);
+
+    // If this is a partial run we need to initialize a name to node map for
+    // testing that fetches are reachable.
+    if (is_partial) {
+      std::unordered_set<StringPiece, StringPiece::Hasher> names;
+      for (const string& input : bopts.feed_endpoints) {
+        TensorId id(ParseTensorName(input));
+        names.emplace(id.first);
+      }
+      for (const string& output : bopts.fetch_endpoints) {
+        TensorId id(ParseTensorName(output));
+        names.emplace(id.first);
+      }
+      // We use the graph from the execution_state because we want the graph
+      // nodes before they are rewritten replaced by the rewriter.
+      for (Node* n : execution_state->full_graph()->nodes()) {
+        if (names.count(n->name()) > 0) {
+          name_to_node_.insert({n->name(), n});
+        }
+      }
+    }
   }
 
   ~ReffedClientGraph() override { DeregisterPartitions(); }
@@ -171,7 +182,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                        SimpleGraphExecutionState* execution_state,
                        PerStepState* pss, CallOptions* opts,
                        const RunStepRequest& req, RunStepResponse* resp,
-                       CancellationManager* cm);
+                       CancellationManager* cm, const bool is_last_partial_run);
 
   // Calls workers to cleanup states for the step "step_id".  Calls
   // `done` when all cleanup RPCs have completed.
@@ -185,6 +196,9 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   void ProcessDeviceStats(ProfileHandler* ph,
                           const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
+  // Checks that the requested fetches can be computed from the provided feeds.
+  Status CheckFetches(const RunStepRequest& req, const RunState* run_state,
+                      SimpleGraphExecutionState* execution_state);
 
   string DetailText(const NodeDef& def, const NodeExecStats& ns) {
     int64 tot = 0;
@@ -209,6 +223,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   std::unordered_set<const Node*> nodes_needing_input_mapping_;
   BuildGraphOptions bopts_;
   const SessionOptions session_opts_;
+  const bool is_partial_;
+  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -483,15 +499,14 @@ class RunManyGraphs {
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
 };
 
-
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
     SimpleGraphExecutionState* execution_state, PerStepState* pss,
     CallOptions* call_opts, const RunStepRequest& req, RunStepResponse* resp,
-    CancellationManager* cm) {
+    CancellationManager* cm, const bool is_last_partial_run) {
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
-  // Builds an index for feeds provided by the client.
+  // Build an index for feeds provided by the client.
   std::unordered_map<StringPiece, const TensorProto*, StringPiece::Hasher>
       feeds(3);
 
@@ -524,26 +539,64 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
     RunManyGraphs::Call* c = calls.get(i);
+    if (is_partial_) {
+      c->req.set_is_partial(is_partial_);
+      c->req.set_is_last_partial_run(is_last_partial_run);
+    }
     c->req.set_graph_handle(part.graph_handle);
     c->req.set_step_id(step_id);
     *c->req.mutable_exec_opts() = exec_opts;
     // If any feeds are provided, send the feed values together
     // in the RunGraph request.
-    for (const auto& feed_key : part.feed_key) {
-      const string& feed = feed_key.first;
-      const string& key = feed_key.second;
-      const TensorProto* val = feeds[feed];
-      if (val == nullptr) {
-        return errors::InvalidArgument("No feed is provided for feed=", feed,
-                                       ", key=", key);
+    // In the partial case, we only want to include feeds provided in the req.
+    // In the non-partial case, all feeds in the request are in the part.
+    // We keep these as separate paths for now, to ensure we aren't
+    // inadvertently slowing down the normal run path.
+    if (is_partial_) {
+      for (const auto& feed : req.feed()) {
+        const string& name = feed.name();
+        auto iter = part.feed_key.find(name);
+        if (iter == part.feed_key.end()) {
+          // The provided feed must be for a different partition.
+          continue;
+        }
+        const string& key = iter->second;
+        const TensorProto* val = feeds[name];
+        if (val == nullptr) {
+          return errors::InvalidArgument("No feed is provided for feed=", name,
+                                         ", key=", key);
+        }
+        auto* send = c->req.add_send();
+        send->set_key(key);
+        *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
       }
-      auto* send = c->req.add_send();
-      send->set_key(key);
-      *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
-    }
-    for (const auto& key_fetch : part.key_fetch) {
-      const string& key = key_fetch.first;
-      c->req.add_recv_key(key);
+      // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
+      // For now, we just iterate through partitions to find the matching key.
+      for (const auto& req_fetch : req.fetch()) {
+        for (const auto& key_fetch : part.key_fetch) {
+          if (key_fetch.second == req_fetch) {
+            c->req.add_recv_key(key_fetch.first);
+            break;
+          }
+        }
+      }
+    } else {
+      for (const auto& feed_key : part.feed_key) {
+        const string& feed = feed_key.first;
+        const string& key = feed_key.second;
+        const TensorProto* val = feeds[feed];
+        if (val == nullptr) {
+          return errors::InvalidArgument("No feed is provided for feed=", feed,
+                                         ", key=", key);
+        }
+        auto* send = c->req.add_send();
+        send->set_key(key);
+        *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
+      }
+      for (const auto& key_fetch : part.key_fetch) {
+        const string& key = key_fetch.first;
+        c->req.add_recv_key(key);
+      }
     }
   }
 
@@ -762,6 +815,64 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
   }
 }
 
+// TODO(suharshs): Merge with CheckFetches in DirectSession.
+// TODO(suharsh,mrry): Build a map from fetch target to set of feeds it depends
+// on once at setup time to prevent us from computing the dependencies
+// everytime.
+Status MasterSession::ReffedClientGraph::CheckFetches(
+    const RunStepRequest& req, const RunState* run_state,
+    SimpleGraphExecutionState* execution_state) {
+  // Build the set of pending feeds that we haven't seen.
+  std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
+  for (const string& feed : run_state->pending_inputs) {
+    TensorId id(ParseTensorName(feed));
+    auto it = name_to_node_.find(id.first);
+    if (it == name_to_node_.end()) {
+      return errors::NotFound("Feed ", feed, ": not found");
+    }
+    pending_feeds.insert(id);
+  }
+  for (const auto& feed : req.feed()) {
+    TensorId id(ParseTensorName(feed.name()));
+    pending_feeds.erase(id);
+  }
+
+  // Initialize the stack with the fetch nodes.
+  std::vector<const Node*> stack;
+  for (const string& fetch : req.fetch()) {
+    TensorId id(ParseTensorName(fetch));
+    auto it = name_to_node_.find(id.first);
+    if (it == name_to_node_.end()) {
+      return errors::NotFound("Fetch ", fetch, ": not found");
+    }
+    stack.push_back(it->second);
+  }
+
+  // Any tensor needed for fetches can't be in pending_feeds.
+  // We need to use the original full graph from execution state.
+  const Graph* graph = execution_state->full_graph();
+  std::vector<bool> visited(graph->num_node_ids(), false);
+  while (!stack.empty()) {
+    const Node* n = stack.back();
+    stack.pop_back();
+
+    for (const Edge* in_edge : n->in_edges()) {
+      const Node* in_node = in_edge->src();
+      if (pending_feeds.count({in_node->name(), in_edge->src_output()}) > 0) {
+        return errors::InvalidArgument("Fetch ", in_node->name(), ":",
+                                       in_edge->src_output(),
+                                       " can't be computed from the feeds"
+                                       " that have been fed so far.");
+      }
+      if (!visited[in_node->id()]) {
+        visited[in_node->id()] = true;
+        stack.push_back(in_node);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 // Asynchronously deregisters subgraphs on the workers, without waiting for the
 // result.
 void MasterSession::ReffedClientGraph::DeregisterPartitions() {
@@ -790,6 +901,23 @@ void BuildBuildGraphOptions(const RunStepRequest& req,
                             BuildGraphOptions* opts) {
   for (const auto& feed : req.feed()) {
     opts->feed_endpoints.push_back(feed.name());
+  }
+  for (const auto& fetch : req.fetch()) {
+    opts->fetch_endpoints.push_back(fetch);
+  }
+  for (const auto& target : req.target()) {
+    opts->target_nodes.push_back(target);
+  }
+
+  std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
+  std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
+  std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
+}
+
+void BuildBuildGraphOptions(const PartialRunSetupRequest& req,
+                            BuildGraphOptions* opts) {
+  for (const auto& feed : req.feed()) {
+    opts->feed_endpoints.push_back(feed);
   }
   for (const auto& fetch : req.fetch()) {
     opts->fetch_endpoints.push_back(fetch);
@@ -927,11 +1055,9 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
   return Status::OK();
 }
 
-Status MasterSession::StartStep(const RunStepRequest& req,
-                                BuildGraphOptions* opts, int64* count,
-                                ReffedClientGraph** rcg) {
-  BuildBuildGraphOptions(req, opts);
-  const uint64 hash = HashBuildGraphOptions(*opts);
+Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
+                                ReffedClientGraph** rcg, bool is_partial) {
+  const uint64 hash = HashBuildGraphOptions(opts);
   ReffedClientGraph* to_unref = nullptr;
   {
     mutex_lock l(mu_);
@@ -944,12 +1070,12 @@ Status MasterSession::StartStep(const RunStepRequest& req,
       // We have not seen this subgraph before. Build the subgraph and
       // cache it.
       VLOG(1) << "Unseen hash " << hash << " for "
-              << BuildGraphOptionsString(*opts);
+              << BuildGraphOptionsString(opts);
       std::unique_ptr<SimpleClientGraph> client_graph;
-      TF_RETURN_IF_ERROR(execution_state_->BuildGraph(*opts, &client_graph));
-      auto entry =
-          new ReffedClientGraph(handle_, *opts, std::move(client_graph),
-                                session_opts_, stats_publisher_factory_);
+      TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
+      auto entry = new ReffedClientGraph(
+          handle_, opts, std::move(client_graph), session_opts_,
+          stats_publisher_factory_, execution_state_.get(), is_partial);
       iter = runs_.insert({hash, entry}).first;
       auto obs_iter = obsolete_.find(hash);
       if (obs_iter != obsolete_.end()) {
@@ -979,6 +1105,47 @@ void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
   rcg_map->clear();
 }
 
+Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
+                                      PartialRunSetupResponse* resp) {
+  std::vector<string> inputs, outputs, targets;
+  for (const auto& feed : req->feed()) {
+    inputs.push_back(feed);
+  }
+  for (const auto& fetch : req->fetch()) {
+    outputs.push_back(fetch);
+  }
+  for (const auto& target : req->target()) {
+    targets.push_back(target);
+  }
+
+  string handle = std::to_string(partial_run_handle_counter_.fetch_add(1));
+
+  ReffedClientGraph* rcg = nullptr;
+  int64 count = 0;
+
+  // Prepare.
+  BuildGraphOptions opts;
+  BuildBuildGraphOptions(*req, &opts);
+  TF_RETURN_IF_ERROR(StartStep(opts, &count, &rcg, true));
+  // Keeps the highest 8 bits 0x01: we reserve some bits of the
+  // step_id for future use.
+  uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
+  TRACEPRINTF("stepid %llu", step_id);
+
+  rcg->Ref();
+  RunState* run_state = new RunState(inputs, outputs, rcg, step_id, count);
+  {
+    mutex_lock l(mu_);
+    partial_runs_.emplace(
+        std::make_pair(handle, std::unique_ptr<RunState>(run_state)));
+  }
+
+  TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
+
+  resp->set_partial_run_handle(handle);
+  return Status::OK();
+}
+
 Status MasterSession::Run(CallOptions* opts, const RunStepRequest* req,
                           RunStepResponse* resp) {
   UpdateLastAccessTime();
@@ -986,7 +1153,12 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequest* req,
     mutex_lock l(mu_);
     ++num_running_;
   }
-  Status status = DoRunWithLocalExecution(opts, req, resp);
+  Status status;
+  if (!req->partial_run_handle().empty()) {
+    status = DoPartialRun(opts, req, resp);
+  } else {
+    status = DoRunWithLocalExecution(opts, req, resp);
+  }
   {
     mutex_lock l(mu_);
     --num_running_;
@@ -997,23 +1169,7 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequest* req,
   return status;
 }
 
-Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
-                                              const RunStepRequest* req,
-                                              RunStepResponse* resp) {
-  VLOG(2) << "DoRunWithLocalExecution "
-          << "req: " << req->DebugString();
-  PerStepState pss;
-  pss.start_micros = Env::Default()->NowMicros();
-
-  // Prepare.
-  BuildGraphOptions bgopts;
-  ReffedClientGraph* rcg = nullptr;
-  int64 count = 0;
-  TF_RETURN_IF_ERROR(StartStep(*req, &bgopts, &count, &rcg));
-
-  // Unref "rcg" when out of scope.
-  core::ScopedUnref unref(rcg);
-
+Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
   // Registers subgraphs if haven't done so.
   PartitionOptions popts;
   popts.node_to_loc = SplitByWorker;
@@ -1051,12 +1207,136 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   TF_RETURN_IF_ERROR(rcg->RegisterPartitions(
       env_, popts, rcg->client_graph()->flib_def->ToProto()));
 
+  return Status::OK();
+}
+
+Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
+                                   RunStepResponse* resp) {
+  const string& prun_handle = req->partial_run_handle();
+  RunState* run_state = nullptr;
+  {
+    mutex_lock l(mu_);
+    auto it = partial_runs_.find(prun_handle);
+    if (it == partial_runs_.end()) {
+      return errors::InvalidArgument(
+          "Must run PartialRunSetup before performing partial runs");
+    }
+    run_state = it->second.get();
+  }
+
+  // If this is the first partial run, initialize the PerStepState.
+  if (!run_state->step_started) {
+    run_state->step_started = true;
+    PerStepState pss;
+
+    auto count = run_state->count;
+    pss.collect_timeline =
+        req->options().trace_level() == RunOptions::FULL_TRACE;
+
+    // Build the cost model every 'build_cost_model_every' steps after skipping
+    // an
+    // initial 'build_cost_model_after' steps.
+    const int64 build_cost_model_after =
+        session_opts_.config.graph_options().build_cost_model_after();
+    const int64 build_cost_model_every =
+        session_opts_.config.graph_options().build_cost_model();
+    pss.collect_costs =
+        build_cost_model_every > 0 &&
+        ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
+
+    std::unique_ptr<ProfileHandler> ph = run_state->rcg->GetProfileHandler(
+        run_state->step_id, count, req->options());
+    if (ph) {
+      pss.collect_timeline = true;
+      pss.collect_rpcs = ph->should_collect_rpcs();
+    }
+
+    run_state->pss = std::move(pss);
+    run_state->ph = std::move(ph);
+  }
+
+  // Make sure that this is a new set of feeds that are still pending.
+  for (const auto& feed : req->feed()) {
+    auto it = run_state->pending_inputs.find(feed.name());
+    if (it == run_state->pending_inputs.end()) {
+      return errors::InvalidArgument("The feed ", feed.name(),
+                                     " had already been fed.");
+    }
+  }
+  // Check that this is a new set of fetches that are still pending.
+  for (const auto& fetch : req->fetch()) {
+    auto it = run_state->pending_outputs.find(fetch);
+    if (it == run_state->pending_outputs.end()) {
+      return errors::InvalidArgument("The fetch ", fetch,
+                                     " had already been fetched.");
+    }
+  }
+
+  // Ensure that the requested fetches can be computed from the provided feeds.
+  TF_RETURN_IF_ERROR(
+      run_state->rcg->CheckFetches(*req, run_state, execution_state_.get()));
+
+  // Determine if this partial run satisfies all the pending inputs and ouputs.
+  for (const auto& feed : req->feed()) {
+    run_state->pending_inputs.erase(feed.name());
+  }
+  for (const auto& fetch : req->fetch()) {
+    run_state->pending_outputs.erase(fetch);
+  }
+  bool is_last_partial_run =
+      (run_state->pending_inputs.empty() && run_state->pending_outputs.empty());
+
+  Status s = run_state->rcg->RunPartitions(
+      env_, run_state->step_id, run_state->count, execution_state_.get(),
+      &run_state->pss, opts, *req, resp, cancellation_manager_,
+      is_last_partial_run);
+
+  // Delete the run state if there is an error or all fetches are done.
+  if (!s.ok() || is_last_partial_run) {
+    ReffedClientGraph* rcg = run_state->rcg;
+    run_state->pss.end_micros = Env::Default()->NowMicros();
+    // Schedule post-processing and cleanup to be done asynchronously.
+    rcg->Ref();
+    rcg->ProcessStats(env_, run_state->step_id, &run_state->pss,
+                      execution_state_.get(), run_state->ph.get(), *req, resp);
+    rcg->CleanupPartitionsAsync(
+        run_state->step_id, [this, rcg, prun_handle](const Status& s) {
+          if (!s.ok()) {
+            LOG(ERROR) << "Cleanup partition error: " << s;
+          }
+          rcg->Unref();
+          mutex_lock l(mu_);
+          partial_runs_.erase(prun_handle);
+        });
+  }
+  return s;
+}
+
+Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
+                                              const RunStepRequest* req,
+                                              RunStepResponse* resp) {
+  VLOG(2) << "DoRunWithLocalExecution "
+          << "req: " << req->DebugString();
+  PerStepState pss;
+  pss.start_micros = Env::Default()->NowMicros();
+
+  // Prepare.
+  BuildGraphOptions bgopts;
+  BuildBuildGraphOptions(*req, &bgopts);
+  ReffedClientGraph* rcg = nullptr;
+  int64 count = 0;
+  TF_RETURN_IF_ERROR(StartStep(bgopts, &count, &rcg, false));
+
+  // Unref "rcg" when out of scope.
+  core::ScopedUnref unref(rcg);
+
+  TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
+
   // Keeps the highest 8 bits 0x01: we reserve some bits of the
   // step_id for future use.
   const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
   TRACEPRINTF("stepid %llu", step_id);
 
-  std::unique_ptr<ProfileHandler> ph;
   pss.collect_timeline = req->options().trace_level() == RunOptions::FULL_TRACE;
 
   // Build the cost model every 'build_cost_model_every' steps after skipping an
@@ -1069,15 +1349,16 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
       build_cost_model_every > 0 &&
       ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
 
-  ph = rcg->GetProfileHandler(step_id, count, req->options());
+  std::unique_ptr<ProfileHandler> ph =
+      rcg->GetProfileHandler(step_id, count, req->options());
   if (ph) {
     pss.collect_timeline = true;
     pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
-  TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
-                                        execution_state_.get(), &pss, opts,
-                                        *req, resp, cancellation_manager_));
+  TF_RETURN_IF_ERROR(
+      rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
+                         opts, *req, resp, cancellation_manager_, false));
 
   pss.end_micros = Env::Default()->NowMicros();
 
@@ -1108,6 +1389,24 @@ Status MasterSession::Close() {
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
   delete this;
   return Status::OK();
+}
+
+MasterSession::RunState::RunState(const std::vector<string>& input_names,
+                                  const std::vector<string>& output_names,
+                                  ReffedClientGraph* rcg, const uint64 step_id,
+                                  const int64 count)
+    : rcg(rcg), step_id(step_id), count(count) {
+  // Initially all the feeds and fetches are pending.
+  for (auto& name : input_names) {
+    pending_inputs.emplace(name);
+  }
+  for (auto& name : output_names) {
+    pending_outputs.emplace(name);
+  }
+}
+
+MasterSession::RunState::~RunState() {
+  if (rcg) rcg->Unref();
 }
 
 }  // end namespace tensorflow

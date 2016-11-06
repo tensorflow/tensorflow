@@ -156,7 +156,7 @@ merged = tf.summary.merge_all()
 train_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train',
                                       sess.graph)
 test_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/test')
-tf.initialize_all_variables().run()
+tf.global_variables_initializer().run()
 ```
 
 After we've initialized the `SummaryWriters`, we have to add summaries to the

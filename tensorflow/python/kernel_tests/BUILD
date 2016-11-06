@@ -220,7 +220,7 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "parameterized_truncated_normal_op_test",
     size = "small",
     srcs = ["parameterized_truncated_normal_op_test.py"],
@@ -270,6 +270,14 @@ tf_py_test(
     size = "small",
     srcs = ["save_restore_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "scatter_nd_ops_test",
+    size = "medium",
+    srcs = ["scatter_nd_ops_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    tags = ["noasan"],  # http://b/32635055
 )
 
 tf_py_test(
@@ -346,6 +354,13 @@ tf_py_test(
     name = "string_split_op_test",
     size = "small",
     srcs = ["string_split_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "substr_op_test",
+    size = "small",
+    srcs = ["substr_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 

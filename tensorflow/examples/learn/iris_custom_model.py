@@ -38,17 +38,18 @@ def my_model(features, target):
                           normalizer_fn=normalizer_fn,
                           normalizer_params=normalizer_params)
 
-  # Create two tensors respectively for prediction and loss.
-  prediction, loss = (
-      tf.contrib.learn.models.logistic_regression(features, target)
-  )
+  # Compute logits (1 per class) and compute loss.
+  logits = layers.fully_connected(features, 3, activation_fn=None)
+  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
 
   # Create a tensor for training op.
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=0.1)
 
-  return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
+  return ({
+      'class': tf.argmax(logits, 1),
+      'prob': tf.nn.softmax(logits)}, loss, train_op)
 
 
 def main(unused_argv):

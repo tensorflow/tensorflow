@@ -469,7 +469,7 @@ class MixtureBenchmark(tf.test.Benchmark):
             batch_size=batch_size,
             num_features=num_features)
         sample_op = mixture.sample(sample_size).op
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         reported = self.run_op_benchmark(
             sess, sample_op,
             min_iters=10,

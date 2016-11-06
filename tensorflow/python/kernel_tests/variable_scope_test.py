@@ -793,7 +793,7 @@ class VariableScopeWithCustomGetterTest(tf.test.TestCase):
     self.assertEqual("scope/v/1:0", true_vars[1].name)
     self.assertEqual("custom_getter/add:0", v.name)
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       np_vars, np_v = sess.run([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 

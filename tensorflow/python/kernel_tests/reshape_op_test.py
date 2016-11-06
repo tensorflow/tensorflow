@@ -123,7 +123,7 @@ class ReshapeTest(tf.test.TestCase):
     y = tf.reshape(x, tf.placeholder(tf.int32, shape=(3,)))
     self.assertEqual([None, None, None], y.get_shape().as_list())
 
-    # Unknown input shape, partial new shape using `tf.pack()`.
+    # Unknown input shape, partial new shape using `tf.stack()`.
     y = tf.reshape(x, [tf.placeholder(tf.int32), 37])
     self.assertEqual([None, 37], y.get_shape().as_list())
 

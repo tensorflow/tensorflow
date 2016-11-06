@@ -67,6 +67,16 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = y_tf.eval()
         self.assertAllClose(y_tf_np, y_np)
+ 
+  def testReductionIndices2(self):
+    for dtype in [np.float16, np.float32, np.double]:
+      x_np = np.random.rand(5, 5).astype(dtype)
+      with self.test_session(use_gpu=True):
+        y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=0)
+        y_np = log(np.sum(exp(x_np), axis=0))
+        self.assertShapeEqual(y_np, y_tf)
+        y_tf_np = y_tf.eval()
+        self.assertAllClose(y_tf_np, y_np)
 
   def testKeepDims(self):
     for dtype in [np.float16, np.float32, np.double]:
@@ -174,7 +184,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
   def testAcceptsRefs(self):
     var = variables.Variable(10)
     result = math_ops.scalar_mul(3, var)
-    init = variables.initialize_all_variables()
+    init = variables.global_variables_initializer()
     with self.test_session(use_gpu=True) as sess:
       sess.run(init)
       self.assertEqual(30, result.eval())

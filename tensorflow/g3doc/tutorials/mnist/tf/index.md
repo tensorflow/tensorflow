@@ -269,7 +269,7 @@ instances are initialized by calling [`sess.run()`](../../../api_docs/python/cli
 on their initialization op.
 
 ```python
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 sess.run(init)
 ```
 

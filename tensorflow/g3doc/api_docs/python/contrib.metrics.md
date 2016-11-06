@@ -22,7 +22,7 @@ to use the `streaming_mean`:
 ```python
 value = ...
 mean_value, update_op = tf.contrib.metrics.streaming_mean(values)
-sess.run(tf.initialize_local_variables())
+sess.run(tf.local_variables_initializer())
 
 for i in range(number_of_batches):
   print('Mean after batch %d: %f' % (i, update_op.eval())
@@ -41,7 +41,7 @@ In the above example, calling streaming_mean creates a pair of state variables
 that will contain (1) the running sum and (2) the count of the number of samples
 in the sum.  Because the streaming metrics use local variables,
 the Initialization stage is performed by running the op returned
-by `tf.initialize_local_variables()`. It sets the sum and count variables to
+by `tf.local_variables_initializer()`. It sets the sum and count variables to
 zero.
 
 Next, Aggregation is performed by examining the current state of `values`
@@ -62,7 +62,7 @@ accuracy, update_op_acc = tf.contrib.metrics.streaming_accuracy(
 error, update_op_error = tf.contrib.metrics.streaming_mean_absolute_error(
     labels, predictions)
 
-sess.run(tf.initialize_local_variables())
+sess.run(tf.local_variables_initializer())
 for batch in range(num_batches):
   sess.run([update_op_acc, update_op_error])
 
@@ -300,7 +300,12 @@ This value is ultimately returned as `auc`, an idempotent operation that
 computes the area under a discretized curve of precision versus recall values
 (computed using the aforementioned variables). The `num_thresholds` variable
 controls the degree of discretization with larger numbers of thresholds more
-closely approximating the true AUC.
+closely approximating the true AUC. The quality of the approximation may vary
+dramatically depending on `num_thresholds`.
+
+For best results, `predictions` should be distributed approximately uniformly
+in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
+approximation may be poor if this is not the case.
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the `auc`.

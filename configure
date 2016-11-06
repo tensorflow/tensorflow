@@ -116,6 +116,17 @@ GEN_GIT_SOURCE=tensorflow/tools/git/gen_git_source.py
 chmod a+x ${GEN_GIT_SOURCE}
 "${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure "${SOURCE_BASE_DIR}"
 
+## Set up SYCL-related environment settings
+while [ "$TF_NEED_OPENCL" == "" ]; do
+  read -p "Do you wish to build TensorFlow with OpenCL support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=1;;
+    [Nn]* ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
+    "" ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
@@ -129,12 +140,14 @@ while [ "$TF_NEED_CUDA" == "" ]; do
 done
 
 export TF_NEED_CUDA
-if [ "$TF_NEED_CUDA" == "0" ]; then
+export TF_NEED_SYCL
+if [[ "$TF_NEED_CUDA" == "0" ]] && [[ "$TF_NEED_OPENCL" == "0" ]]; then
   echo "Configuration finished"
   bazel_clean_and_fetch
   exit
 fi
 
+if [ "$TF_NEED_CUDA" == "1" ]; then
 # Set up which gcc nvcc should use as the host compiler
 while true; do
   fromuser=""
@@ -335,6 +348,95 @@ EOF
   fi
   TF_CUDA_COMPUTE_CAPABILITIES=""
 done
+
+# end of if "$TF_NEED_CUDA" == "1"
+fi
+
+# OpenCL configuration
+
+if [ "$TF_NEED_OPENCL" == "1" ]; then
+
+# Determine which C++ compiler should be used as the host compiler
+while true; do
+  fromuser=""
+  if [ -z "$HOST_CXX_COMPILER" ]; then
+    default_cxx_host_compiler=$(which g++|| true)
+    read -p "Please specify which C++ compiler should be used as the host C++ compiler. [Default is $default_cxx_host_compiler]: " HOST_CXX_COMPILER
+    fromuser="1"
+    if [ -z "$HOST_CXX_COMPILER" ]; then
+      HOST_CXX_COMPILER=$default_cxx_host_compiler
+    fi
+  fi
+  if [ -e "$HOST_CXX_COMPILER" ]; then
+    export HOST_CXX_COMPILER
+    break
+  fi
+  echo "Invalid C++ compiler path. ${HOST_CXX_COMPILER} cannot be found" 1>&2
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  HOST_CXX_COMPILER=""
+  # Retry
+done
+
+# Determine which C compiler should be used as the host compiler
+while true; do
+  fromuser=""
+  if [ -z "$HOST_C_COMPILER" ]; then
+    default_c_host_compiler=$(which gcc|| true)
+    read -p "Please specify which C compiler should be used as the host C compiler. [Default is $default_c_host_compiler]: " HOST_C_COMPILER
+    fromuser="1"
+    if [ -z "$HOST_C_COMPILER" ]; then
+      HOST_C_COMPILER=$default_c_host_compiler
+    fi
+  fi
+  if [ -e "$HOST_C_COMPILER" ]; then
+    export HOST_C_COMPILER
+    break
+  fi
+  echo "Invalid C compiler path. ${HOST_C_COMPILER} cannot be found" 1>&2
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  HOST_C_COMPILER=""
+  # Retry
+done
+
+while true; do
+  # Configure the OPENCL version to use.
+  TF_OPENCL_VERSION="1.2"
+
+  # Point to ComputeCpp root
+  if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
+    default_computecpp_toolkit_path=/usr/local/computecpp
+    read -p "Please specify the location where ComputeCpp $TF_OPENCL_VERSION is installed. Refer to README.md for more details. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
+    fromuser="1"
+    if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
+      COMPUTECPP_TOOLKIT_PATH=$default_computecpp_toolkit_path
+    fi
+  fi
+
+  if [ "$OSNAME" == "Linux" ]; then
+    SYCL_RT_LIB_PATH="lib/libComputeCpp.so"
+  fi
+
+  if [ -e "${COMPUTECPP_TOOLKIT_PATH}/${SYCL_RT_LIB_PATH}" ]; then
+    export COMPUTECPP_TOOLKIT_PATH
+    break
+  fi
+  echo "Invalid SYCL $TF_OPENCL_VERSION library path. ${COMPUTECPP_TOOLKIT_PATH}/${SYCL_RT_LIB_PATH} cannot be found"
+
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  # Retry
+  TF_OPENCL_VERSION=""
+  COMPUTECPP_TOOLKIT_PATH=""
+done
+
+export TF_NEED_OPENCL
+# end of if "$TF_NEED_OPENCL" == "1"
+fi
 
 bazel_clean_and_fetch
 

@@ -33,7 +33,7 @@ class Lstm1DTest(tf.test.TestCase):
     with self.test_session():
       inputs = tf.constant(_rand(17, 1, 5))
       outputs = lstm1d.ndlstm_base(inputs, 8)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       names = [v.name for v in tf.trainable_variables()]
       self.assertEqual(len(names), 2)
       result = outputs.eval()
@@ -45,7 +45,7 @@ class Lstm1DTest(tf.test.TestCase):
       output_size = (17, 1, 8)
       inputs = tf.constant(_rand(*size))
       outputs = lstm1d.ndlstm_base(inputs, 8, dynamic=False)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       gradients = tf.gradients(outputs, inputs)
       if 1:  # pylint: disable=using-constant-test
         gradients = tf.gradients(outputs, inputs)[0].eval()
@@ -67,7 +67,7 @@ class Lstm1DTest(tf.test.TestCase):
       output_size = (17, 1, 8)
       inputs = tf.constant(_rand(*size))
       outputs = lstm1d.ndlstm_base(inputs, 8, reverse=1, dynamic=False)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       if 1:  # pylint: disable=using-constant-test
         gradients = tf.gradients(outputs, inputs)[0].eval()
         self.assertEqual(gradients.shape, size)
@@ -86,7 +86,7 @@ class Lstm1DTest(tf.test.TestCase):
     with self.test_session():
       inputs = tf.constant(_rand(17, 6, 5))
       outputs = lstm1d.sequence_to_final(inputs, 8)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       names = [v.name for v in tf.trainable_variables()]
       self.assertEqual(len(names), 2)
       result = outputs.eval()
@@ -96,7 +96,7 @@ class Lstm1DTest(tf.test.TestCase):
     with self.test_session():
       inputs = tf.constant(_rand(17, 1, 5))
       outputs = lstm1d.sequence_softmax(inputs, 8)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (17, 1, 8))
 

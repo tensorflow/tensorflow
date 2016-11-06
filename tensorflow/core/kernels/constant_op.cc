@@ -51,6 +51,17 @@ ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Const")                               \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("dtype"),             \
+			  ConstantOp);
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 #if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                                      \
   REGISTER_KERNEL_BUILDER(                                            \
