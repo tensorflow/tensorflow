@@ -78,6 +78,8 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# pylint: enable=wildcard-import
+
 # Bring in subpackages.
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resources
@@ -124,7 +126,6 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
-# pylint: enable=wildcard-import
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
