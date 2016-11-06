@@ -1289,6 +1289,7 @@ class Saver(object):
       logging.warning("Consider switching to the more efficient V2 format now:")
       logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
       logging.warning("to prevent breakage.")
+      logging.warning("Notice: the V2 format output different set of files")
       logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
