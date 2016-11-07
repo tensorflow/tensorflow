@@ -344,10 +344,17 @@ class _RandomWalkInitializer(object):
 
 
 def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
-  """Returns an initializer that generates an orthogonal matrix or a reshaped orthogonal matrix.
+  """Returns an initializer that generates an orthogonal matrix or a reshaped 
+  orthogonal matrix.
 
-  If the shape of the tensor to initialize is two-dimensional, the tensor is initialized with an orthogonal matrix 
-  obtained from the singular value decomposition of a matrix of uniform random numbers.
+  If the shape of the tensor to initialize is two-dimensional, i is initialized 
+  with an orthogonal matrix obtained from the singular value decomposition of a 
+  matrix of uniform random numbers.
+
+  If the shape of the tensor to initialize is more than two-dimensional, a matrix
+  of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])` is initialized, where
+  `n` is the length of the shape vector. The matrix is subsequently reshaped to
+  give a tensor of the desired shape.
 
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
