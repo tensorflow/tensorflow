@@ -86,5 +86,49 @@ class SyntheticTest(tf.test.TestCase):
     circ1 = synthetic.circles(n_samples = 100, noise = noise/2., n_classes = 2, seed = seed)
     self.assertRaises(AssertionError, np.testing.assert_array_equal, circ0.data, circ1.data)
 
+  def test_spirals(self):
+    """Test if the circles are generated correctly
+    
+    Tests:
+      - if mode is unkown, ValueError is raised
+      - return type is `Dataset`
+      - returned `data` shape is (n_samples, n_features)
+      - returned `target` shape is (n_samples,)
+      - set of unique classes range is [0, n_classes)
+    """
+    self.assertRaises(ValueError, synthetic.spirals, mode='_unknown_mode_spiral_')
+    n_samples = 100
+    modes = ('archimedes', 'bernoulli', 'fermat')
+    for mode in modes:
+      spir = synthetic.spirals(n_samples = n_samples, noise = None, mode = mode)
+      self.assertIsInstance(spir, datasets.base.Dataset)
+      self.assertTupleEqual(spir.data.shape, (n_samples,2))
+      self.assertTupleEqual(spir.target.shape, (n_samples,))
+      self.assertSetEqual(set(spir.target), set(range(2)))
+
+  def test_spirals_replicable(self):
+    """Test if the data generation is replicable with a specified `seed`
+
+    Tests:
+      - return the same value if raised with the same seed
+      - return different values if noise or seed is different
+    """
+    seed = 42
+    noise = 0.1
+    modes = ('archimedes', 'bernoulli', 'fermat')
+    for mode in modes:
+      spir0 = synthetic.spirals(n_samples = 1000, noise = noise, seed = seed)
+      spir1 = synthetic.spirals(n_samples = 1000, noise = noise, seed = seed)
+      np.testing.assert_array_equal(spir0.data, spir1.data)
+      np.testing.assert_array_equal(spir0.target, spir1.target)
+
+      spir1 = synthetic.spirals(n_samples = 1000, noise = noise, seed = seed+1)
+      self.assertRaises(AssertionError, np.testing.assert_array_equal, spir0.data, spir1.data)
+      self.assertRaises(AssertionError, np.testing.assert_array_equal, spir0.target, spir1.target)
+
+      spir1 = synthetic.spirals(n_samples = 1000, noise = noise/2., seed = seed)
+      self.assertRaises(AssertionError, np.testing.assert_array_equal, spir0.data, spir1.data)
+
+
 if __name__ == "__main__":
   tf.test.main()

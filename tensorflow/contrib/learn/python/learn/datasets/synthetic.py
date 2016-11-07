@@ -14,7 +14,7 @@
 # ==============================================================================
 
 """Module includes reference datasets and utilities to load datasets. It also 
-includes methods to generate synthetic data
+includes methods to generate synthetic data.
 """
 
 from __future__ import absolute_import
@@ -86,4 +86,116 @@ def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args
     X += np.random.normal(scale=noise, size=X.shape)
   return Dataset(data=X[indices], target=y[indices])
 
+def spirals(n_samples=100, noise=None, seed=None, 
+            mode = 'archimedes', 
+            n_loops = 2,
+            *args, **kwargs):
+  """Create spirals
 
+  Currently only binary classification is supported for spiral generation
+
+  Args:
+    n_samples: int, number of datapoints to generate
+    noise: float or None, standard deviation of the Gaussian noise added
+    seed: int or None, seed for the noise
+    n_loops: int, number of spiral loops, doesn't play well with 'bernoulli'
+    mode: str, how the spiral should be generated. Current implementations:
+      'archimedes': a spiral with equal distances between branches
+      'bernoulli': logarithmic spiral with branch distances increasing
+      'fermat': a spiral with branch distances decreasing (sqrt)
+
+  Returns:
+    Shuffled features and labels for 'spirals' synthetic dataset of type `base.Dataset`
+
+  Raises:
+    ValueError: If the generation `mode` is not valid
+
+  TODO:
+    - Generation of unbalanced data
+  """
+  n_classes = 2 # I am not sure how to make it multiclass
+
+  _modes = {
+    'archimedes': _archimedes_spiral,
+    'bernoulli': _bernoulli_spiral,
+    'fermat': _fermat_spiral
+  }
+
+  if mode is None or mode not in _modes:
+    raise ValueError("Cannot generate spiral with mode %s"%mode)
+
+  if seed is not None:
+    np.random.seed(seed)
+  linspace = np.linspace(0, 2*n_loops*np.pi, n_samples // n_classes)
+  spir_x = np.empty(0, dtype=np.int32)
+  spir_y = np.empty(0, dtype=np.int32)
+
+  y = np.empty(0, dtype=np.int32)
+  for label in range(n_classes):
+    base_cos, base_sin = _modes[mode](linspace, label*np.pi, *args, **kwargs)  
+    spir_x = np.append(spir_x, base_cos)
+    spir_y = np.append(spir_y, base_sin)
+    y = np.append(y, label*np.ones(n_samples // n_classes, dtype=np.int32))
+  
+  # Add more points if n_samples is not divisible by n_classes (unbalanced!)
+  extras = n_samples % n_classes
+  if extras > 0:
+    x_exrta, y_extra = _modes[mode](np.random.rand(extras)*2*np.pi, *args, **kwargs)
+    spir_x = np.append(spir_x, x_extra)
+    spir_y = np.append(spir_y, y_extra)
+    y = np.append(y, np.zeros(extras, dtype=np.int32))
+  
+  # Reshape the features/labels
+  X = np.vstack((spir_x, spir_y)).T
+  y = np.hstack(y)
+  
+  # Shuffle the data
+  indices = np.random.permutation(range(n_samples))
+  if noise is not None:
+    X += np.random.normal(scale=noise, size=X.shape)
+  return Dataset(data=X[indices], target=y[indices])
+
+def _archimedes_spiral(theta, theta_offset=0., *args, **kwargs):
+  """Return Archimedes spiral
+  
+  Args:
+    theta: array-like, angles from polar coordinates to be converted
+    theta_offset: float, angle offset in radians (2*pi = 0)
+  """
+  x, y = theta*np.cos(theta + theta_offset), theta*np.sin(theta + theta_offset)
+  x_norm = np.max(np.abs(x))
+  y_norm = np.max(np.abs(y))
+  x, y = x / x_norm, y / y_norm
+  return x, y
+
+
+def _bernoulli_spiral(theta, theta_offset=0., *args, **kwargs):
+  """Return Equiangular (Bernoulli's) spiral
+  
+  Args:
+    theta: array-like, angles from polar coordinates to be converted
+    theta_offset: float, angle offset in radians (2*pi = 0)
+
+  Kwargs:
+    exp_scale: growth rate of the exponential
+  """
+  exp_scale = kwargs.pop('exp_scale', 0.1)
+
+  x, y = np.exp(exp_scale*theta)*np.cos(theta + theta_offset), np.exp(exp_scale*theta)*np.sin(theta + theta_offset)
+  x_norm = np.max(np.abs(x))
+  y_norm = np.max(np.abs(y))
+  x, y = x / x_norm, y / y_norm
+  return x, y
+
+def _fermat_spiral(theta, theta_offset=0., *args, **kwargs):
+  """Return Parabolic (Fermat's) spiral
+  
+  Args:
+    theta: array-like, angles from polar coordinates to be converted
+    theta_offset: float, angle offset in radians (2*pi = 0)
+  """
+  x, y = np.sqrt(theta)*np.cos(theta + theta_offset), np.sqrt(theta)*np.sin(theta + theta_offset)
+  x_norm = np.max(np.abs(x))
+  y_norm = np.max(np.abs(y))
+  x, y = x / x_norm, y / y_norm
+  return x, y

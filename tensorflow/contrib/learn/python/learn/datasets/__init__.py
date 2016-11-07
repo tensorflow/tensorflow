@@ -52,7 +52,8 @@ DATASETS = {
 # List of all synthetic datasets
 SYNTHETIC = {
   # All of these will return ['data', 'target'] -> base.Dataset
-  'circles': synthetic.circles
+  'circles': synthetic.circles,
+  'spirals': synthetic.spirals
 }
 
 def load_dataset(name, size='small', test_with_fake_data=False):
