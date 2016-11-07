@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-enum class SupportedOpType {
+enum SupportedOpType {
   INPUT,
   OUTPUT,
   NOP,
