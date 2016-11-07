@@ -37,6 +37,10 @@ message EmbeddingInfo {
 }
 
 message ProjectorConfig {
+  // Path to the checkpoint file. Use either this or model_checkpoint_dir.
   string model_checkpoint_path = 1;
   repeated EmbeddingInfo embeddings = 2;
+  // Path to the checkpoint directory. The directory will be scanned for the
+  // latest checkpoint file.
+  string model_checkpoint_dir = 3;
 }
