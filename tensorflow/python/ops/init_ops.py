@@ -344,9 +344,10 @@ class _RandomWalkInitializer(object):
 
 
 def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
-  """Returns an initializer that generates an orthogonal rotation matrix.
+  """Returns an initializer that generates an orthogonal matrix or a reshaped orthogonal matrix.
 
-  Initialize a tensor using an orthogonal matrix.
+  If the shape of the tensor to initialize is two-dimensional, the tensor is initialized with an orthogonal matrix 
+  obtained from the singular value decomposition of a matrix of uniform random numbers.
 
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
@@ -359,9 +360,12 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     An initializer that generates orthogonal tensors
 
   Raises:
-    ValueError: if `dtype` is not a floating point type.
+    ValueError: if `dtype` is not a floating point type or if `shape` has fewer than two entries.
   """
   def _initializer(shape, dtype=_assert_float_dtype(dtype), partition_info=None):
+    # Check the shape
+    if len(shape) < 2:
+      raise ValueError('the tensor to initialize must be at least two-dimensional')
     # Flatten the input shape with the last dimension remaining its original shape so it works for conv2d
     num_rows = 1
     for dim in shape[:-1]:
