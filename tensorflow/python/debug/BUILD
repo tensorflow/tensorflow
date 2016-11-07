@@ -124,6 +124,13 @@ py_binary(
 )
 
 py_binary(
+    name = "debug_errors",
+    srcs = ["examples/debug_errors.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
     name = "debug_mnist",
     srcs = ["examples/debug_mnist.py"],
     srcs_version = "PY2AND3",

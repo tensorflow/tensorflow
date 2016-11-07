@@ -332,7 +332,4 @@ kl_classes = [
     Beta,
     BetaWithSoftplusAB,
 ]
-
-for beta_aa in kl_classes:
-  for beta_bb in kl_classes:
-    kullback_leibler.RegisterKL(beta_aa, beta_bb)(_kl_beta_beta)
+kullback_leibler.register_pairwise_kls(kl_classes, _kl_beta_beta)

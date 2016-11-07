@@ -780,12 +780,4 @@ kl_classes = [
     MultivariateNormalDiag,
     MultivariateNormalDiagPlusVDVT,
 ]
-
-
-for mvn_aa in kl_classes:
-  # Register when they are the same here, and do not register when they are the
-  # same below because that would result in a repeated registration.
-  kullback_leibler.RegisterKL(mvn_aa, mvn_aa)(_kl_mvn_mvn_brute_force)
-  for mvn_bb in kl_classes:
-    if mvn_bb != mvn_aa:
-      kullback_leibler.RegisterKL(mvn_aa, mvn_bb)(_kl_mvn_mvn_brute_force)
+kullback_leibler.register_pairwise_kls(kl_classes, _kl_mvn_mvn_brute_force)

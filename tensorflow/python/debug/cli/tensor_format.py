@@ -56,7 +56,12 @@ def format_tensor(
   if tensor_name is not None:
     lines.append("Tensor \"%s\":" % tensor_name)
 
-  if not isinstance(tensor, np.ndarray):
+  if tensor is None:
+    if lines:
+      lines.append("")
+    lines.append("Uninitialized tensor")
+    return debugger_cli_common.RichTextLines(lines)
+  elif not isinstance(tensor, np.ndarray):
     # If tensor is not a np.ndarray, return simple text-line representation of
     # the object without annotations.
     if lines:

@@ -109,3 +109,20 @@ class RegisterKL(object):
                           _DIVERGENCES[self._key]))
     _DIVERGENCES[self._key] = kl_fn
     return kl_fn
+
+
+def register_pairwise_kls(kl_classes, kl_fn):
+  """Registers `kl_fn` for each pair of classes in `kl_classes`.
+
+  Args:
+    kl_classes: classes for which to register KL implementation
+    kl_fn: The function to use for the KL divergence.
+
+  Returns:
+    None
+  """
+  for cls_a in kl_classes:
+    RegisterKL(cls_a, cls_a)(kl_fn)
+    for cls_b in kl_classes:
+      if cls_a != cls_b:
+        RegisterKL(cls_a, cls_b)(kl_fn)

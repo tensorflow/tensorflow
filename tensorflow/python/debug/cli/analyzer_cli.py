@@ -489,7 +489,8 @@ class DebugAnalyzer(object):
       return self._error("\"%s\" is not a valid tensor name" %
                          parsed.tensor_name)
 
-    if not self._debug_dump.node_exists(node_name):
+    if (self._debug_dump.loaded_partition_graphs and
+        not self._debug_dump.node_exists(node_name)):
       return self._error(
           "Node \"%s\" does not exist in partition graphs" % node_name)
 

@@ -260,8 +260,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
   def testFormatNone(self):
     out = tensor_format.format_tensor(None, "a")
 
-    self.assertEqual(
-        ["Tensor \"a\":", "", "None"], out.lines)
+    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor"], out.lines)
 
   def testLocateTensorElement1DNoEllipsis(self):
     a = np.zeros(20)
@@ -450,8 +449,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
   def testLocateTensorElementAnnotationsUnavailable(self):
     out = tensor_format.format_tensor(None, "a")
 
-    self.assertEqual(
-        ["Tensor \"a\":", "", "None"], out.lines)
+    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor"], out.lines)
 
     with self.assertRaisesRegexp(
         AttributeError, "tensor_metadata is not available in annotations"):
