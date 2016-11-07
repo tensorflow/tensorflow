@@ -380,11 +380,6 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     num_cols = shape[-1]
     flat_shape = (num_rows, num_cols)
 
-    if gain == 'relu':
-      _gain = math.sqrt(2)
-    else:
-      _gain = gain
-
     # Generate a random matrix
     a = random_ops.random_uniform(flat_shape, dtype=dtype, seed=seed)
     # Compute the svd
@@ -395,6 +390,6 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     else:
       # Tensorflow departs from numpy conventions such that we need to transpose axes here
       q = array_ops.transpose(v)
-    return _gain * array_ops.reshape(q, shape)
+    return gain * array_ops.reshape(q, shape)
 
   return _initializer
