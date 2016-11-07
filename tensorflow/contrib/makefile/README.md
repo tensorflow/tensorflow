@@ -190,7 +190,7 @@ tensorflow/contrib/makefile/download_dependencies.sh
 Next, you will need to compile protobufs for iOS:
 
 ```bash
-compile_ios_protobuf.sh 
+tensorflow/contrib/makefile/compile_ios_protobuf.sh 
 ```
 
 Then, you can run the makefile specifying iOS as the target, along with the
