@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
+import {DataSet, PointAccessors3D} from './data';
 import {NearestEntry} from './knn';
 import {LabelRenderParams} from './renderContext';
 
@@ -44,11 +44,66 @@ const TRACE_END_HUE = 360;
 const TRACE_SATURATION = 1;
 const TRACE_LIGHTNESS = .3;
 
+const TRACE_DEFAULT_OPACITY = .2;
+const TRACE_DEFAULT_LINEWIDTH = 2;
+const TRACE_SELECTED_OPACITY = .9;
+const TRACE_SELECTED_LINEWIDTH = 3;
+const TRACE_DESELECTED_OPACITY = .05;
+
+const SCATTER_PLOT_CUBE_LENGTH = 2;
+
 /**
  * Interprets projector events and assembes the arrays and commands necessary
  * to use the ScatterPlot to render the current projected data set.
  */
 export class ProjectorScatterPlotAdapter {
+  generatePointPositionArray(ds: DataSet, pointAccessors: PointAccessors3D):
+      Float32Array {
+    if (ds == null) {
+      return new Float32Array(0);
+    }
+
+    const xScaler: d3.scale.Linear<number, number> = d3.scale.linear();
+    const yScaler: d3.scale.Linear<number, number> = d3.scale.linear();
+    let zScaler: d3.scale.Linear<number, number> = null;
+    {
+      // Determine max and min of each axis of our data.
+      const xExtent = d3.extent(ds.points, (p, i) => pointAccessors[0](i));
+      const yExtent = d3.extent(ds.points, (p, i) => pointAccessors[1](i));
+
+      const range =
+          [-SCATTER_PLOT_CUBE_LENGTH / 2, SCATTER_PLOT_CUBE_LENGTH / 2];
+
+      xScaler.domain(xExtent).range(range);
+      yScaler.domain(yExtent).range(range);
+
+      if (pointAccessors[2] != null) {
+        const zExtent = d3.extent(ds.points, (p, i) => pointAccessors[2](i));
+        zScaler = d3.scale.linear();
+        zScaler.domain(zExtent).range(range);
+      }
+    }
+
+    const positions = new Float32Array(ds.points.length * 3);
+    let dst = 0;
+
+    ds.points.forEach((d, i) => {
+      positions[dst++] = xScaler(pointAccessors[0](i));
+      positions[dst++] = yScaler(pointAccessors[1](i));
+      positions[dst++] = 0.0;
+    });
+
+    if (zScaler) {
+      dst = 2;
+      ds.points.forEach((d, i) => {
+        positions[dst] = zScaler(pointAccessors[2](i));
+        dst += 3;
+      });
+    }
+
+    return positions;
+  }
+
   generateVisibleLabelRenderParams(
       ds: DataSet, selectedPointIndices: number[],
       neighborsOfFirstPoint: NearestEntry[],
@@ -186,6 +241,36 @@ export class ProjectorScatterPlotAdapter {
     }
 
     return traceColorArrayMap;
+  }
+
+  generateLineSegmentOpacityArray(ds: DataSet, selectedPoints: number[]):
+      Float32Array {
+    if (ds == null) {
+      return new Float32Array(0);
+    }
+    const opacities = new Float32Array(ds.traces.length);
+    if (selectedPoints.length > 0) {
+      opacities.fill(TRACE_DESELECTED_OPACITY);
+      const i = ds.points[selectedPoints[0]].traceIndex;
+      opacities[i] = TRACE_SELECTED_OPACITY;
+    } else {
+      opacities.fill(TRACE_DEFAULT_OPACITY);
+    }
+    return opacities;
+  }
+
+  generateLineSegmentWidthArray(ds: DataSet, selectedPoints: number[]):
+      Float32Array {
+    if (ds == null) {
+      return new Float32Array(0);
+    }
+    const widths = new Float32Array(ds.traces.length);
+    widths.fill(TRACE_DEFAULT_LINEWIDTH);
+    if (selectedPoints.length > 0) {
+      const i = ds.points[selectedPoints[0]].traceIndex;
+      widths[i] = TRACE_SELECTED_LINEWIDTH;
+    }
+    return widths;
   }
 
   private getDefaultPointInTraceColor(index: number, totalPoints: number):
