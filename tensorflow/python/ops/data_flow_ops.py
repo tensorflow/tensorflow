@@ -1154,6 +1154,7 @@ ops.RegisterShape("Queue")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FIFOQueue")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("PaddingFIFOQueue")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RandomShuffleQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PaddingRandomShuffleQueue")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("PriorityQueue")(common_shapes.call_cpp_shape_fn)
 
 

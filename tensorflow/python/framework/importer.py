@@ -400,8 +400,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             # would cause graphs to fail if imported after correcting.
             #
             # This can be removed after 2017/03/08.
-            if op.type in ['RandomShuffleQueue', 'PaddingFIFOQueue',
-                           'FIFOQueue', 'PriorityQueue', 'QueueSize',
+            if op.type in ['PaddingRandomShuffleQueue','RandomShuffleQueue',
+                           'PaddingFIFOQueue','FIFOQueue', 
+                           'PriorityQueue', 'QueueSize',
                            'Stack', 'Barrier', 'BarrierReadySize',
                            'BarrierIncompleteSize', 'HashTable',
                            'MutableHashTable',
