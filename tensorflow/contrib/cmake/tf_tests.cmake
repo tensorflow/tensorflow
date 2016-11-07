@@ -98,7 +98,7 @@ function(AddPythonTests)
   endif(_AT_DEPENDS)
   
   foreach(sourcefile ${_AT_SOURCES})
-    add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile})
+    add_test(NAME ${sourcefile} COMMAND ${PYTHON_TEST_EXECUTABLE} ${sourcefile})
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
@@ -162,6 +162,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
+
+  if(NOT ${PYTHON_TEST_EXECUTABLE})
+    set(PYTHON_TEST_EXECUTABLE, ${PYTHON_EXECUTABLE})
+  endif()
   
   AddPythonTests(
     SOURCES ${tf_test_src_py}
