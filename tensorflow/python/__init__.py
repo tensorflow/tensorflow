@@ -78,6 +78,8 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# pylint: enable=wildcard-import
+
 # Bring in subpackages.
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resources

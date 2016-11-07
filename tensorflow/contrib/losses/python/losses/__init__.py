@@ -133,5 +133,6 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.losses.python.losses.loss_ops import *
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

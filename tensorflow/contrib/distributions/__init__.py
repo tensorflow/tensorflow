@@ -126,3 +126,5 @@ from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
+
+# pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member

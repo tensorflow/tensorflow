@@ -27,6 +27,7 @@ import tensorflow as tf
 
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
+# pylint: enable=wildcard-import
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import embedding_ops

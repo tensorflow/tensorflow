@@ -45,3 +45,4 @@ from tensorflow.contrib.rnn.python.ops.gru_ops import *
 from tensorflow.contrib.rnn.python.ops.lstm_ops import *
 from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
+# pylint: enable=unused-import,wildcard-import,line-too-long
