@@ -321,6 +321,8 @@ module VZ {
         points =
             _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset))
                 .reverse();
+      } else if (this.tooltipSortingMethod === 'nearest') {
+        points = _.sortBy(points, dist);
       } else {
         // The 'default' sorting method maintains the order of names passed to
         // setVisibleSeries(). However we reverse that order when defining the
