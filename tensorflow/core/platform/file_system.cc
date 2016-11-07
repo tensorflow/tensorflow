@@ -61,9 +61,7 @@ string FileSystem::TranslateName(const string& name) const {
 
 Status FileSystem::IsDirectory(const string& name) {
   // Check if path exists.
-  if (!FileExists(name)) {
-    return Status(tensorflow::error::NOT_FOUND, "Path not found");
-  }
+  TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
@@ -143,9 +141,10 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   *undeleted_files = 0;
   *undeleted_dirs = 0;
   // Make sure that dirname exists;
-  if (!FileExists(dirname)) {
+  Status exists_status = FileExists(dirname);
+  if (!exists_status.ok()) {
     (*undeleted_dirs)++;
-    return Status(error::NOT_FOUND, "Directory doesn't exist");
+    return exists_status;
   }
   std::deque<string> dir_q;      // Queue for the BFS
   std::vector<string> dir_list;  // List of all dirs discovered
@@ -201,8 +200,14 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   StringPiece scheme, host, remaining_dir;
   io::ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
-  while (!FileExists(io::CreateURI(scheme, host, remaining_dir)) &&
-         !remaining_dir.empty()) {
+  while (!remaining_dir.empty()) {
+    Status status = FileExists(io::CreateURI(scheme, host, remaining_dir));
+    if (status.ok()) {
+      break;
+    }
+    if (status.code() != error::Code::NOT_FOUND) {
+      return status;
+    }
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));

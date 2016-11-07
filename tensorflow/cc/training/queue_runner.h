@@ -54,13 +54,13 @@ class QueueRunner : public RunnerInterface {
 
   // Starts the queue runner with the given session, and wait for up to the
   // specified time (in milliseconds) for the queues to start to fill up.
-  Status Start(Session* sess, int wait_for);
+  Status Start(Session* sess, int wait_for_ms);
 
   // Joins all the threads. Returns okay if all threads run successfully;
   // otherwise returns the first captured failure status.
   Status Join() final;
 
-  // Returns the lastest status.
+  // Returns the latest status.
   Status GetStatus();
 
  private:
@@ -80,6 +80,11 @@ class QueueRunner : public RunnerInterface {
   // status.
   void UpdateStatus(const Status& status);
 
+  bool IsQueueClosed(Status status) const {
+    return queue_closed_exception_types_.count(
+               static_cast<int>(status.code())) > 0;
+  }
+
   string queue_name_;
   std::vector<string> enqueue_op_names_;
   string close_op_name_;
@@ -88,9 +93,7 @@ class QueueRunner : public RunnerInterface {
   std::unordered_set<int> queue_closed_exception_types_;
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  condition_variable wait_to_close_;
   mutex mu_;
-  // TODO(yuefengz): implement c++ coordinator.
   int runs_ = 0;
   Status status_ GUARDED_BY(mu_);
   Status enqueue_status_ GUARDED_BY(mu_);

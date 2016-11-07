@@ -224,6 +224,9 @@ class Variable(object):
           dtype=dtype,
           expected_shape=expected_shape)
 
+  def __str__(self):
+    return str(self._snapshot)
+
   def _init_from_args(self,
                       initial_value=None,
                       trainable=True,
@@ -409,7 +412,7 @@ class Variable(object):
     """Conversion function for Graph.as_graph_element()."""
     return self._variable
 
-  def _AsTensor(self):
+  def _AsTensor(self):  # pylint: disable=invalid-name
     """Converts this variable to a Tensor.
 
     See [`value()`](#Variable.value).
@@ -639,7 +642,7 @@ class Variable(object):
 
   # Conversion to tensor.
   @staticmethod
-  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
+  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):  # pylint: disable=invalid-name
     """Utility function for converting a Variable to a Tensor."""
     _ = name
     if dtype and not dtype.is_compatible_with(v.dtype):
@@ -652,7 +655,7 @@ class Variable(object):
       return v.value()
 
   @staticmethod
-  def _OverloadAllOperators():
+  def _OverloadAllOperators():  # pylint: disable=invalid-name
     """Register overloads for all operators."""
     for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
       Variable._OverloadOperator(operator)
@@ -662,7 +665,7 @@ class Variable(object):
     setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
 
   @staticmethod
-  def _OverloadOperator(operator):
+  def _OverloadOperator(operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
 
     We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
@@ -1004,6 +1007,7 @@ class PartitionedVariable(object):
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
+    # pylint: disable=invalid-name
     _ = name
     if dtype is not None and not dtype.is_compatible_with(v.dtype):
       raise ValueError(

@@ -190,13 +190,9 @@ class SaverTest(tf.test.TestCase):
 
   def testInvalidPath(self):
     v0 = tf.Variable(0, name="v0")
-    with self.test_session() as sess:
-      save = tf.train.Saver({"v0": v0})
-      if save._write_version is saver_pb2.SaverDef.V1:
-        with self.assertRaisesRegexp(
-            ValueError, "^Restore called with invalid save path.*"):
-          save.restore(sess, "invalid path")
-      else:
+    for ver in (saver_pb2.SaverDef.V1, saver_pb2.SaverDef.V2):
+      with self.test_session() as sess:
+        save = tf.train.Saver({"v0": v0}, write_version=ver)
         with self.assertRaisesRegexp(errors.NotFoundError,
                                      "Failed to find any matching files for"):
           save.restore(sess, "invalid path")

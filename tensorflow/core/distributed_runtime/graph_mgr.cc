@@ -53,6 +53,9 @@ GraphMgr::~GraphMgr() {
 GraphMgr::Item::~Item() {
   for (const auto& unit : this->units) {
     CHECK_NOTNULL(unit.device);
+    if (!graph_mgr->skip_cost_models_) {
+      graph_mgr->cost_model_manager_.RemoveCostModelForGraph(unit.graph);
+    }
     delete unit.root;
     delete unit.lib;
     unit.device->op_segment()->RemoveHold(this->session);
@@ -139,6 +142,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   Status s;
   item->units.reserve(partitions.size());
+  item->graph_mgr = this;
   const auto& optimizer_opts = graph_options.optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
   for (auto&& p : partitions) {

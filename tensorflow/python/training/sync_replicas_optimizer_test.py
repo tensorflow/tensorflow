@@ -20,15 +20,14 @@ from __future__ import print_function
 
 import time
 
+import portpicker
 import tensorflow as tf
-
-from tensorflow.python.util import net_lib
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   """Create local GRPC servers and return them."""
-  worker_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_workers)]
-  ps_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_ps)]
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
       "worker": ["localhost:%s" % port for port in worker_ports],
       "ps": ["localhost:%s" % port for port in ps_ports]}

@@ -84,7 +84,8 @@ def weighted_moving_average(value,
     truediv:  Boolean, if `True`, dividing by `moving_average(weight)` is
       floating point division.  If `False`, use division implied by dtypes.
     collections:  List of graph collections keys to add the internal variables
-      `value * weight` and `weight` to.  Defaults to `[GraphKeys.VARIABLES]`.
+      `value * weight` and `weight` to.
+      Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
     name: Optional name of the returned operation.
       Defaults to "WeightedMovingAvg".
 
@@ -96,7 +97,7 @@ def weighted_moving_average(value,
   # moving averages of the updates.  Thus, the signature of this function is
   # quite different than assign_moving_average.
   if collections is None:
-    collections = [ops.GraphKeys.VARIABLES]
+    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
   with variable_scope.variable_scope(name, "WeightedMovingAvg",
                                      [value, weight, decay]) as scope:
     value_x_weight_var = variable_scope.get_variable(
@@ -387,7 +388,7 @@ class ExponentialMovingAverage(object):
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
     # Make sure we restore variables without moving average as well.
-    for v in list(set(variables.all_variables()) - moving_avg_variables):
+    for v in list(set(variables.global_variables()) - moving_avg_variables):
       if v.op.name not in name_map:
         name_map[v.op.name] = v
     return name_map

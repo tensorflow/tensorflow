@@ -371,9 +371,12 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-bool WindowsFileSystem::FileExists(const string& fname) {
+Status WindowsFileSystem::FileExists(const string& fname) {
   constexpr int kOk = 0;
-  return _access(TranslateName(fname).c_str(), kOk) == 0;
+  if (_access(TranslateName(fname).c_str(), kOk) == 0) {
+    return Status::OK();
+  }
+  return errors::NotFound(fname, " not found");
 }
 
 Status WindowsFileSystem::GetChildren(const string& dir,

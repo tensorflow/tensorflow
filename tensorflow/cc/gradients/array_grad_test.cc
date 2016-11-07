@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -107,30 +108,26 @@ TEST_F(UnpackGradTest, Axis1) {
   CheckGrad({g0, g1}, 2, 1);
 }
 
-TEST(IdentityGradTest, Basic) {
-  Scope scope = Scope::NewRootScope();
+class ArrayGradTest : public ::testing::Test {
+ protected:
+  ArrayGradTest() : scope_(Scope::NewRootScope()) {}
 
-  auto x = Const(scope, 1, {4, 2, 3});
+  void RunTest(const Output& x, const TensorShape& x_shape, const Output& y,
+               const TensorShape& y_shape) {
+    float max_error;
+    TF_ASSERT_OK(
+        ComputeGradientError(scope_, x, x_shape, y, y_shape, &max_error));
+    EXPECT_LT(max_error, 1e-4);
+  }
 
-  auto y = Identity(scope, x);
-  TF_ASSERT_OK(scope.status());
+  Scope scope_;
+};
 
-  Tensor dy_tensor(DT_INT32, {4, 2, 3});
-  test::FillIota<int32>(&dy_tensor, 1);
-
-  auto dy = Const(scope, dy_tensor);
-
-  std::vector<Output> grad_outputs;
-  TF_ASSERT_OK(
-      test::CallGradFunction(scope, Operation(y.node()), {dy}, &grad_outputs));
-
-  Tensor expected_output(DT_INT32, {4, 2, 3});
-  test::FillIota<int32>(&expected_output, 1);
-
-  Tensor output;
-  test::GetTensor(scope, grad_outputs[0], &output);
-
-  test::ExpectTensorEqual<int>(output, expected_output);
+TEST_F(ArrayGradTest, IdentityGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Identity(scope_, x);
+  RunTest(x, shape, y, shape);
 }
 
 }  // namespace

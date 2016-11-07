@@ -131,7 +131,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       raise RuntimeError('Must call apply_gradients or minimize before '
                          'creating the swapping_saver')
     if var_list is None:
-      var_list = variables.all_variables()
+      var_list = variables.global_variables()
     if not isinstance(var_list, dict):
       var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
     # Now swap variables and moving averages

@@ -70,6 +70,31 @@ Status ComputeTheoreticalJacobianTranspose(
 }
 
 template <typename T>
+Tensor DeepCopyTensor(const Tensor& t) {
+  Tensor ret = Tensor(t.dtype(), t.shape());
+  auto ret_flat = ret.flat<T>();
+  auto t_flat = t.flat<T>();
+  for (int i = 0; i < t.NumElements(); i++) {
+    ret_flat(i) = t_flat(i);
+  }
+  return ret;
+}
+
+template <typename T>
+Status EvaluateGraph(ClientSession& session, const ops::Output& x,
+                     const ops::Output& y, const Tensor* x_data,
+                     Tensor* y_data) {
+  std::vector<Tensor> outputs;
+  TF_RETURN_IF_ERROR(session.Run({{x, *x_data}}, {y}, &outputs));
+  if (outputs[0].SharesBufferWith(*x_data)) {
+    *y_data = DeepCopyTensor<T>(outputs[0]);
+  } else {
+    *y_data = outputs[0];
+  }
+  return Status::OK();
+}
+
+template <typename T>
 Status ComputeNumericJacobianTranspose(const Scope& scope, const ops::Output& x,
                                        const TensorShape& x_shape,
                                        const ops::Output& y,
@@ -78,25 +103,27 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const ops::Output& x,
                                        Tensor* jacobian_t) {
   const int64 x_size = x_shape.num_elements();
   const int64 y_size = y_shape.num_elements();
+  // Create copies of x_data since the underlying buffer of the input Tensor is
+  // not copied for some operations (i.e. Identity), which can lead to incorrect
+  // results for the centered difference calculation.
   auto x_data_flat = x_data->flat<T>();
 
   // Compute the numeric Jacobian one column at a time by perturbing each
   // element of 'x_data' (positively and negatively) by 'delta', and
   // updating the jacobian with the centered difference.
   ClientSession session(scope);
-  std::vector<Tensor> yout;
   auto jacobian = jacobian_t->matrix<T>();
   for (int r = 0; r < x_size; ++r) {
     // Store current value of 'x' at 'r'.
     T v = x_data_flat(r);
     // Evaluate at positive delta.
     x_data_flat(r) = v + delta;
-    TF_RETURN_IF_ERROR(session.Run({{x, *x_data}}, {y}, &yout));
-    Tensor y_pos = yout[0];
+    Tensor y_pos;
+    TF_RETURN_IF_ERROR(EvaluateGraph<T>(session, x, y, x_data, &y_pos));
     // Evaluate at negative delta.
     x_data_flat(r) = v - delta;
-    TF_RETURN_IF_ERROR(session.Run({{x, *x_data}}, {y}, &yout));
-    Tensor y_neg = yout[0];
+    Tensor y_neg;
+    TF_RETURN_IF_ERROR(EvaluateGraph<T>(session, x, y, x_data, &y_neg));
     // Compute element-wise centered difference and store in Jacobian.
     auto y_pos_flat = y_pos.flat<T>();
     auto y_neg_flat = y_neg.flat<T>();

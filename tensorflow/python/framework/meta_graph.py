@@ -534,7 +534,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
                 key, ops.prepend_name_scope(value, import_scope))
 
     var_list = {}
-    variables = graph.get_collection(ops.GraphKeys.VARIABLES,
+    variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                      scope=import_scope)
     for v in variables:
       var_list[ops.strip_name_scope(v.name, import_scope)] = v
@@ -625,7 +625,7 @@ def export_scoped_meta_graph(filename=None,
         graph.add_to_collection(unbound_inputs_col_name, k)
 
   var_list = {}
-  variables = graph.get_collection(ops.GraphKeys.VARIABLES,
+  variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                    scope=export_scope)
   for v in variables:
     if _should_include_node(v, export_scope):

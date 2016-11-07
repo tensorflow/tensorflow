@@ -100,7 +100,7 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
-  bool FileExists(const string& fname) override { return true; }
+  Status FileExists(const string& fname) override { return Status::OK(); }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return calls_.ConsumeNextCall("GetChildren");

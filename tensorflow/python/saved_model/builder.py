@@ -287,8 +287,10 @@ class SavedModelBuilder(object):
     # Add legacy init op to the SavedModel.
     self._maybe_add_legacy_init_op(legacy_init_op)
 
+    # Initialize a saver to generate a sharded output for all variables in the
+    # current scope.
     saver = tf_saver.Saver(
-        variables.all_variables(),
+        variables.global_variables(),
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
 
@@ -345,12 +347,20 @@ class SavedModelBuilder(object):
     # Add legacy init op to the SavedModel.
     self._maybe_add_legacy_init_op(legacy_init_op)
 
-    # Save the variables and export meta graph def.
+    # Initialize a saver to generate a sharded output for all variables in the
+    # current scope.
     saver = tf_saver.Saver(
-        variables.all_variables(),
+        variables.global_variables(),
         sharded=True,
         write_version=saver_pb2.SaverDef.V2)
-    saver.save(sess, variables_path, write_meta_graph=False)
+
+    # Save the variables. Also, disable writing the checkpoint state proto. The
+    # file is not used during SavedModel loading. In addition, since a
+    # SavedModel can be copied or moved, this avoids the checkpoint state to
+    # become outdated.
+    saver.save(sess, variables_path, write_meta_graph=False, write_state=False)
+
+    # Export the meta graph def.
     meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.

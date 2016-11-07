@@ -51,7 +51,7 @@ class GcsFileSystem : public FileSystem {
       const string& filename,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
 
   Status Stat(const string& fname, FileStatistics* stat) override;
 

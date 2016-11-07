@@ -72,7 +72,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=""):
   collections = []
   for name, collection in org_instance.graph._collections.items():
     if org_instance in collection:
-      if (name == ops.GraphKeys.VARIABLES or
+      if (name == ops.GraphKeys.GLOBAL_VARIABLES or
           name == ops.GraphKeys.TRAINABLE_VARIABLES or
           scope == ''):
         collections.append(name)

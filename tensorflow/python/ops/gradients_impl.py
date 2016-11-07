@@ -36,13 +36,13 @@ from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -492,7 +492,7 @@ def gradients(ys,
           _LogOpGradients(op, out_grads, in_grads)
         else:
           # If no grad_fn is defined or none of out_grads is available,
-          # just propagates a list of None backwards.
+          # just propagate a list of None backwards.
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad is not None:
