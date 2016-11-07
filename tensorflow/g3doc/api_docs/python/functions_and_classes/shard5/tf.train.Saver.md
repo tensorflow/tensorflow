@@ -225,12 +225,6 @@ The `save_path` argument is typically a value previously returned from a
 *  <b>`sess`</b>: A `Session` to use to restore the parameters.
 *  <b>`save_path`</b>: Path where parameters were previously saved.
 
-##### Raises:
-
-
-*  <b>`ValueError`</b>: DEPRECATED, do not rely on this Error.  If the given
-    `save_path` does not point to a file.
-
 
 
 Other utility methods.

@@ -443,7 +443,7 @@ with tf.Session() as sess:
 Setting `trainable=False` keeps the variable out of the
 `GraphKeys.TRAINABLE_VARIABLES` collection in the graph, so we won't try and
 update it when training.  Setting `collections=[]` keeps the variable out of the
-`GraphKeys.VARIABLES` collection used for saving and restoring checkpoints.
+`GraphKeys.GLOBAL_VARIABLES` collection used for saving and restoring checkpoints.
 
 Either way,
 [`tf.train.slice_input_producer function`](../../api_docs/python/io_ops.md#slice_input_producer)

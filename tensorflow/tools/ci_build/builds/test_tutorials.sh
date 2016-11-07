@@ -237,7 +237,9 @@ test_ptb_word_lm() {
 
     mkdir -p ${DATA_DIR}
     pushd ${DATA_DIR} > /dev/null
-    curl -O "${PTB_DATA_URL}"
+    curl --retry 5 --retry-delay 10 -O "${PTB_DATA_URL}" || \
+        die "Failed to download data file for ptb_world_lm tutorial from "\
+"${PTB_DATA_URL}"
     tar -xzf $(basename "${PTB_DATA_URL}")
     rm -f $(basename "${PTB_DATA_URL}")
     popd > /dev/null

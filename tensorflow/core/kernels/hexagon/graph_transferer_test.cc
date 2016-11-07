@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
+#include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
+#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
@@ -41,6 +43,26 @@ class GraphTransfererTest : public ::testing::Test {
 
   std::unique_ptr<Session> _session;
 };
+
+static const std::vector<string> OP_TYPES{"INPUT", "OUTPUT", "Conv2D",
+                                          "MaxPool"};
+
+class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
+ public:
+  int GetTotalOpsCount() const final { return OP_TYPES.size(); }
+  int GetInputNodeOpId() const final { return GetOpIdFor("INPUT"); }
+  int GetOutputNodeOpId() const final { return GetOpIdFor("OUTPUT"); }
+  int GetOpIdFor(const string& op_type) const final {
+    for (int i = 0; i < OP_TYPES.size(); ++i) {
+      if (OP_TYPES[i] == op_type) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+ private:
+} TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
 
 static GraphDef CreateAddGraphDef() {
   Scope root = Scope::NewRootScope();
@@ -65,6 +87,7 @@ static GraphDef CreateConvGraphDef() {
   const std::vector<int> strides{1, 1, 1, 1};
   ops::Output conv =
       ops::Conv2D(root.WithOpName("conv"), input, filter, strides, "SAME");
+  ops::Output softmax = ops::Softmax(root.WithOpName("softmax"), conv);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -85,6 +108,7 @@ static GraphDef CreatePoolGraphDef() {
   const std::vector<int> strides{1, 1, 1, 1};
   ops::Output max_pool =
       ops::MaxPool(root.WithOpName("maxpool"), input, ksize, strides, "SAME");
+  ops::Output softmax = ops::Softmax(root.WithOpName("softmax"), max_pool);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -112,18 +136,69 @@ static const GraphTransferer::NodeTransferParams* FindOpNodeParams(
   return nullptr;
 }
 
+static const GraphTransferer::NodeInputParams* FindNodeInputParams(
+    const GraphTransferer& gt, const int node_id) {
+  for (const GraphTransferer::NodeInputParams& params :
+       gt.GetNodeInputParams()) {
+    if (params.node_id == node_id) {
+      return &params;
+    }
+  }
+  return nullptr;
+}
+
+static const GraphTransferer::NodeOutputParams* FindNodeOutputParams(
+    const GraphTransferer& gt, const int node_id) {
+  for (const GraphTransferer::NodeOutputParams& params :
+       gt.GetNodeOutputParams()) {
+    if (params.node_id == node_id) {
+      return &params;
+    }
+  }
+  return nullptr;
+}
+
+static void SanityCheckNodes(const GraphTransferer& gt) {
+  for (const GraphTransferer::NodeTransferParams& params :
+       gt.GetOpNodeParams()) {
+    if (params.inputs_size > 0) {
+      const GraphTransferer::NodeInputParams* input_params =
+          FindNodeInputParams(gt, params.node_id);
+      ASSERT_NE(nullptr, input_params);
+      EXPECT_EQ(params.inputs_size,
+                input_params->input_node_id_and_output_port_list.size());
+      EXPECT_EQ(params.node_id, input_params->node_id);
+      for (const std::tuple<int, int>& pair :
+           input_params->input_node_id_and_output_port_list) {
+        EXPECT_GE(std::get<1>(pair), 0);
+      }
+    }
+    if (params.outputs_size > 0) {
+      const GraphTransferer::NodeOutputParams* output_params =
+          FindNodeOutputParams(gt, params.node_id);
+      ASSERT_NE(nullptr, output_params);
+      EXPECT_EQ(params.outputs_size, output_params->max_sizes.size());
+      EXPECT_EQ(params.node_id, output_params->node_id);
+      for (const int max_size : output_params->max_sizes) {
+        EXPECT_GE(max_size, 0);
+      }
+    }
+  }
+}
+
 TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
   _session->Create(def);
 
   GraphTransferer gt;
-  gt.LoadGraphFromProto(def);
+  gt.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, {}, {});
+  SanityCheckNodes(gt);
+
   const int const_node_count = gt.GetConstNodeParams().size();
   ASSERT_EQ(2, const_node_count);
   const GraphTransferer::ConstNodeTransferParams* params_a =
       FindConstNodeParams(gt, NAME_A);
   ASSERT_TRUE(params_a != nullptr);
-  EXPECT_TRUE(params_a->id > 0 && params_a->id <= const_node_count);
   EXPECT_EQ(NAME_A, params_a->name);
   EXPECT_EQ(1, params_a->shape[0]);
   EXPECT_EQ(1, params_a->shape[1]);
@@ -134,7 +209,6 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   const GraphTransferer::ConstNodeTransferParams* params_b =
       FindConstNodeParams(gt, NAME_B);
   ASSERT_TRUE(params_b != nullptr);
-  EXPECT_TRUE(params_b->id > 0 && params_b->id <= const_node_count);
   EXPECT_EQ(1, params_b->shape[0]);
   EXPECT_EQ(1, params_b->shape[1]);
   EXPECT_EQ(1, params_b->shape[2]);
@@ -147,16 +221,20 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   _session->Create(def);
 
   GraphTransferer gt;
-  gt.LoadGraphFromProto(def);
+  const std::vector<string> input_node_names = {"input"};
+  const std::vector<string> output_node_names = {"softmax"};
+  gt.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
+                        input_node_names, output_node_names);
+  SanityCheckNodes(gt);
   const int const_node_count = gt.GetConstNodeParams().size();
-  ASSERT_EQ(3, const_node_count);
+  ASSERT_EQ(2, const_node_count);
   const int op_node_count = gt.GetOpNodeParams().size();
-  ASSERT_EQ(1, op_node_count);
+  ASSERT_EQ(3, op_node_count);
   const GraphTransferer::NodeTransferParams* params_conv =
       FindOpNodeParams(gt, "conv");
   ASSERT_TRUE(params_conv != nullptr);
-  const int id = params_conv->id;
-  EXPECT_TRUE(id > 0 && id <= (const_node_count + op_node_count));
+  const int id = params_conv->node_id;
+  EXPECT_GE(id, 0);
   EXPECT_EQ("Conv2D", params_conv->type);
   EXPECT_EQ(3, params_conv->inputs_size);
   EXPECT_EQ(1, params_conv->outputs_size);
@@ -168,19 +246,39 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   _session->Create(def);
 
   GraphTransferer gt;
-  gt.LoadGraphFromProto(def);
+  const std::vector<string> input_node_names = {"input"};
+  const std::vector<string> output_node_names = {"softmax"};
+  gt.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
+                        input_node_names, output_node_names);
+  SanityCheckNodes(gt);
   const int const_node_count = gt.GetConstNodeParams().size();
-  ASSERT_EQ(3, const_node_count);
+  ASSERT_EQ(2, const_node_count);
   const int op_node_count = gt.GetOpNodeParams().size();
-  ASSERT_EQ(1, op_node_count);
+  ASSERT_EQ(3, op_node_count);
   const GraphTransferer::NodeTransferParams* params_max_pool =
       FindOpNodeParams(gt, "maxpool");
   ASSERT_TRUE(params_max_pool != nullptr);
-  const int id = params_max_pool->id;
-  EXPECT_TRUE(id > 0 && id <= (const_node_count + op_node_count));
+  const int id = params_max_pool->node_id;
+  EXPECT_GE(id, 0);
   EXPECT_EQ("MaxPool", params_max_pool->type);
   EXPECT_EQ(3, params_max_pool->inputs_size);
   EXPECT_EQ(1, params_max_pool->outputs_size);
   EXPECT_EQ("NN_PAD_SAME", params_max_pool->padding);
 }
+
+TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
+  const IGraphTransferOpsDefinitions& ops_definitions =
+      HexagonOpsDefinitions::getInstance();
+  const int total_ops_count = ops_definitions.GetTotalOpsCount();
+  EXPECT_GT(total_ops_count, 0);
+  const int input_op_id =
+      ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::INPUT_OP_NAME);
+  EXPECT_GE(input_op_id, 0);
+  EXPECT_EQ(input_op_id, ops_definitions.GetInputNodeOpId());
+  const int output_op_id =
+      ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::OUTPUT_OP_NAME);
+  EXPECT_GE(output_op_id, 0);
+  EXPECT_EQ(output_op_id, ops_definitions.GetOutputNodeOpId());
+}
+
 }  // namespace tensorflow

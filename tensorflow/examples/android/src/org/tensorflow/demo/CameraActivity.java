@@ -48,6 +48,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
+    LOGGER.d("onCreate " + this);
     super.onCreate(null);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -61,7 +62,14 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   @Override
+  public synchronized void onStart() {
+    LOGGER.d("onStart " + this);
+    super.onStart();
+  }
+
+  @Override
   public synchronized void onResume() {
+    LOGGER.d("onResume " + this);
     super.onResume();
 
     handlerThread = new HandlerThread("inference");
@@ -71,7 +79,13 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   @Override
   public synchronized void onPause() {
-    super.onPause();
+    LOGGER.d("onPause " + this);
+
+    if (!isFinishing()) {
+      LOGGER.d("Requesting finish");
+      finish();
+    }
+
     handlerThread.quitSafely();
     try {
       handlerThread.join();
@@ -80,6 +94,20 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     } catch (final InterruptedException e) {
       LOGGER.e(e, "Exception!");
     }
+
+    super.onPause();
+  }
+
+  @Override
+  public synchronized void onStop() {
+    LOGGER.d("onStop " + this);
+    super.onStop();
+  }
+
+  @Override
+  public synchronized void onDestroy() {
+    LOGGER.d("onDestroy " + this);
+    super.onDestroy();
   }
 
   protected synchronized void runInBackground(final Runnable r) {
@@ -143,7 +171,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     for (int i = 0; i < planes.length; ++i) {
       final ByteBuffer buffer = planes[i].getBuffer();
       if (yuvBytes[i] == null) {
-        LOGGER.i("Initializing buffer %d at size %d", i, buffer.capacity());
+        LOGGER.d("Initializing buffer %d at size %d", i, buffer.capacity());
         yuvBytes[i] = new byte[buffer.capacity()];
       }
       buffer.get(yuvBytes[i]);
@@ -154,12 +182,28 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   public boolean onTouchEvent(final MotionEvent event) {
     if (event.getAction() == MotionEvent.ACTION_DOWN) {
       debug = !debug;
+      requestRender();
     }
+
     return false;
   }
 
   public boolean isDebug() {
     return debug;
+  }
+
+  public void requestRender() {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
+    if (overlay != null) {
+      overlay.postInvalidate();
+    }
+  }
+
+  public void addCallback(OverlayView.DrawCallback callback) {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
+    if (overlay != null) {
+      overlay.addCallback(callback);
+    }
   }
 
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);

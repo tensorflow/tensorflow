@@ -422,7 +422,7 @@ thread's function.
 
 
 
-## Error classes
+## Error classes and convenience functions
 
 - - -
 
@@ -794,6 +794,28 @@ operation, if the file is truncated while it is being read.
 #### `tf.errors.DataLossError.__init__(node_def, op, message)` {#DataLossError.__init__}
 
 Creates a `DataLossError`.
+
+
+
+
+- - -
+
+### `tf.errors.exception_type_from_error_code(error_code)` {#exception_type_from_error_code}
+
+
+
+
+- - -
+
+### `tf.errors.error_code_from_exception_type(cls)` {#error_code_from_exception_type}
+
+
+
+
+- - -
+
+### `tf.errors.raise_exception_on_not_ok_status()` {#raise_exception_on_not_ok_status}
+
 
 
 

@@ -30,8 +30,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
                         cc_api_version = 2, go_api_version = 2,
-                        java_api_version = 2,
-                        py_api_version = 2):
+                        java_api_version = 2, py_api_version = 2,
+                        js_api_version = 2, js_codegen = "jspb"):
   native.filegroup(
       name = name + "_proto_srcs",
       srcs = srcs + tf_deps(deps, "_proto_srcs"),
@@ -71,8 +71,8 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      deps = [], visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, go_api_version = 2,
-                     java_api_version = 2,
-                     py_api_version = 2):
+                     java_api_version = 2, py_api_version = 2,
+                     js_api_version = 2, js_codegen = "jspb"):
   tf_proto_library_cc(
       name = name,
       srcs = srcs + tf_deps(deps, "_proto_srcs"),

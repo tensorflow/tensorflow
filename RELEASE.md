@@ -5,6 +5,9 @@
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
 indexing now starts from 1 instead of 0, and bus_id==0 is used where previously
 BUS_ANY was used.
+* `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
+  intead of a bool. Any callers to this function can be converted to a bool
+  by adding .ok() to the call.
 
 # Release 0.11.0
 

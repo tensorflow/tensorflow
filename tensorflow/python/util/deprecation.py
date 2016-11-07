@@ -56,6 +56,16 @@ def _validate_deprecation_args(date, instructions):
     raise ValueError('Don\'t deprecate things without conversion instructions!')
 
 
+def _call_location(level=2):
+  """Returns call location given level up from current call."""
+  stack = inspect.stack()
+  # Check that stack has enough elements.
+  if len(stack) > level:
+    location = stack[level]
+    return '%s:%d in %s.' % (location[1], location[2], location[3])
+  return '<unknown>'
+
+
 def deprecated(date, instructions):
   """Decorator for marking functions or methods deprecated.
 
@@ -92,10 +102,11 @@ def deprecated(date, instructions):
     @functools.wraps(func)
     def new_func(*args, **kwargs):
       logging.warning(
-          '%s (from %s) is deprecated and will be removed after %s.\n'
+          'From %s: %s (from %s) is deprecated and will be removed '
+          'after %s.\n'
           'Instructions for updating:\n%s',
-          decorator_utils.get_qualified_name(func), func.__module__, date,
-          instructions)
+          _call_location(), decorator_utils.get_qualified_name(func),
+          func.__module__, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_function_notice_to_docstring(
         func.__doc__, date, instructions)
@@ -154,7 +165,8 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
       raise ValueError('The following deprecated arguments are not present '
-                       'in the function signature: %s' % missing_args)
+                       'in the function signature: %s. '
+                       'Found next arguments: %s.' % (missing_args, known_args))
 
     @functools.wraps(func)
     def new_func(*args, **kwargs):
@@ -172,10 +184,10 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
           invalid_args.append(arg_name)
       for arg_name in invalid_args:
         logging.warning(
-            'Calling %s (from %s) with %s is deprecated and will be removed '
-            'after %s.\nInstructions for updating:\n%s',
-            decorator_utils.get_qualified_name(func), func.__module__,
-            arg_name, date, instructions)
+            'From %s: calling %s (from %s) with %s is deprecated and will '
+            'be removed after %s.\nInstructions for updating:\n%s',
+            _call_location(), decorator_utils.get_qualified_name(func),
+            func.__module__, arg_name, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
         func.__doc__, date, instructions)
@@ -226,10 +238,10 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
       for arg_name, arg_value in deprecated_kwargs.items():
         if arg_name in named_args and named_args[arg_name] == arg_value:
           logging.warning(
-              'Calling %s (from %s) with %s=%s is deprecated and will be '
-              'removed after %s.\nInstructions for updating:\n%s',
-              decorator_utils.get_qualified_name(func), func.__module__,
-              arg_name, arg_value, date, instructions)
+              'From %s: calling %s (from %s) with %s=%s is deprecated and will '
+              'be removed after %s.\nInstructions for updating:\n%s',
+              _call_location(), decorator_utils.get_qualified_name(func),
+              func.__module__, arg_name, arg_value, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
         func.__doc__, date, instructions)

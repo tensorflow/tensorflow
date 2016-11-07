@@ -81,7 +81,7 @@ def _add_hidden_layer_summary(value, tag):
 def _centered_bias(num_label_columns):
   centered_bias = variables.Variable(
       array_ops.zeros([num_label_columns]),
-      collections=[_CENTERED_BIAS, ops.GraphKeys.VARIABLES],
+      collections=[_CENTERED_BIAS, ops.GraphKeys.GLOBAL_VARIABLES],
       name=_CENTERED_BIAS_WEIGHT)
   summary.scalar(["centered_bias %d" % cb for cb in range(num_label_columns)],
                  array_ops.reshape(centered_bias, [-1]))

@@ -118,6 +118,10 @@ class GraphMgr {
     // A graph is partitioned over multiple devices.  Each partition
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;
+
+    // Used to deresgister a cost model when cost model is requried in graph
+    // manager.
+    GraphMgr* graph_mgr;
   };
 
   // Not owned.

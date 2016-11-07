@@ -373,7 +373,7 @@ A `Graph` instance supports an arbitrary number of "collections"
 that are identified by name. For convenience when building a large
 graph, collections can store groups of related objects: for
 example, the `tf.Variable` uses a collection (named
-[`tf.GraphKeys.VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+[`tf.GraphKeys.GLOBAL_VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
 all variables that are created during the construction of a graph. The caller
 may define additional collections by specifying a new name.
 

@@ -53,7 +53,7 @@ def _get_saver():
       saver = saver[0]
     else:
       saver = None
-  if saver is None and variables.all_variables():
+  if saver is None and variables.global_variables():
     saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver

@@ -669,19 +669,26 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-bool GcsFileSystem::FileExists(const string& fname) {
+Status GcsFileSystem::FileExists(const string& fname) {
   string bucket, object;
-  if (!ParseGcsPath(fname, true, &bucket, &object).ok()) {
-    LOG(ERROR) << "Could not parse GCS file name " << fname;
-    return false;
-  }
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
     bool result;
-    return BucketExists(bucket, &result).ok() && result;
+    TF_RETURN_IF_ERROR(BucketExists(bucket, &result));
+    if (result) {
+      return Status::OK();
+    }
   }
   bool result;
-  return (ObjectExists(bucket, object, &result).ok() && result) ||
-         (FolderExists(fname, &result).ok() && result);
+  TF_RETURN_IF_ERROR(ObjectExists(bucket, object, &result));
+  if (result) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(FolderExists(fname, &result));
+  if (result) {
+    return Status::OK();
+  }
+  return errors::NotFound("The specified path ", fname, " was not found.");
 }
 
 Status GcsFileSystem::ObjectExists(const string& bucket, const string& object,

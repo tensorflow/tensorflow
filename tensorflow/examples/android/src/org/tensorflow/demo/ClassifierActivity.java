@@ -77,14 +77,11 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   private boolean computing = false;
 
-  private long timestamp = 0;
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
 
   private ResultsView resultsView;
-
-  private OverlayView overlayView;
 
   private BorderedText borderedText;
 
@@ -118,7 +115,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       LOGGER.e(e, "Exception!");
     }
 
-    overlayView = (OverlayView) findViewById(R.id.overlay);
     resultsView = (ResultsView) findViewById(R.id.results);
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
@@ -130,12 +126,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         rotation, screenOrientation);
 
     sensorOrientation = rotation + screenOrientation;
-
-    if (sensorOrientation % 180 == 90) {
-      overlayView.setAspectRatio(size.getHeight(), size.getWidth());
-    } else {
-      overlayView.setAspectRatio(size.getWidth(), size.getHeight());
-    }
 
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
     rgbBytes = new int[previewWidth * previewHeight];
@@ -152,7 +142,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
     yuvBytes = new byte[3][];
 
-    overlayView.addCallback(new DrawCallback() {
+    addCallback(new DrawCallback() {
       @Override
       public void drawCallback(final Canvas canvas) {
         renderDebug(canvas);
@@ -163,8 +153,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
-
-    ++timestamp;
 
     try {
       image = reader.acquireLatestImage();
@@ -228,7 +216,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
             cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
             resultsView.setResults(results);
-            overlayView.postInvalidate();
+            requestRender();
             computing = false;
           }
         });
