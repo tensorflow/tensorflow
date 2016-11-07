@@ -1026,6 +1026,13 @@ x ^ y = (x | y) & ~(x & y).
 
 - - -
 
+#### `tf.Variable.__str__()` {#Variable.__str__}
+
+
+
+
+- - -
+
 #### `tf.Variable.__sub__(a, *args)` {#Variable.__sub__}
 
 Returns x - y element-wise.
