@@ -25,7 +25,7 @@ enum class SupportedOpType {
   INPUT,
   OUTPUT,
   NOP,
-  CONST,
+  OP_CONST, /* OP_ is required to avoid compilation error on windows */
   CHECK,
   CLOSE_FLOAT32,
   CLOSE_QINT8,
