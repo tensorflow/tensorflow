@@ -375,7 +375,7 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
       _gain = gain
 
     # Generate a random matrix
-    a = random_ops.random_normal(flat_shape, dtype=dtype, seed=seed)
+    a = random_ops.random_uniform(flat_shape, dtype=dtype, seed=seed)
     # Compute the svd
     _, u, v = linalg_ops.svd(a, full_matrices=False)
     # Pick the appropriate singular value decomposition
