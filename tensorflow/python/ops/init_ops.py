@@ -378,8 +378,12 @@ def orthogonal_initializer(gain=1.0, dtype=dtypes.float32, seed=None):
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=seed)
     # Compute the svd
     _, u, v = linalg_ops.svd(a, full_matrices=False)
-    # Pick the right singular value decomposition
-    q = u if num_cols < num_rows else v
+    # Pick the appropriate singular value decomposition
+    if num_rows > num_cols:
+      q = u
+    else:
+      # Tensorflow departs from numpy conventions such that we need to transpose axes here
+      q = array_ops.transpose(v)
     return _gain * array_ops.reshape(q, shape)
 
   return _initializer

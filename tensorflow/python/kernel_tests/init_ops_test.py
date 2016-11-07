@@ -478,13 +478,20 @@ class OrthogonalInitializerTest(tf.test.TestCase):
         t2 = init2([num]).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
 
-  def testShapes(self):
+  def testShapesValues(self):
     for dtype in [tf.float32, tf.float64]:
-      for shape in [(10, 10), (10, 9, 8), (100, 5, 5)]:
+      for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
         init = tf.orthogonal_initializer(dtype=dtype)
         with self.test_session(graph=tf.Graph(), use_gpu=True):
+          # Check the shape
           t = init(shape).eval()
           self.assertAllEqual(shape, t.shape)
+          # Check orthogonality by computing the inner product
+          t = t.reshape((np.prod(t.shape[:-1]), t.shape[-1]))
+          if t.shape[0] > t.shape[1]:
+            self.assertAllClose(np.dot(t.T, t), np.eye(t.shape[1]))
+          else:
+            self.assertAllClose(np.dot(t, t.T), np.eye(t.shape[0]))
 
 if __name__ == "__main__":
   tf.test.main()
