@@ -614,7 +614,7 @@ def train(train_op,
       and global step and logged.
     graph: The graph to pass to the supervisor. If no graph is supplied the
       default graph is used.
-    master: The BNS name of the tensorflow master.
+    master: The address of the tensorflow master.
     is_chief: Specifies whether or not the training is being run by the primary
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,

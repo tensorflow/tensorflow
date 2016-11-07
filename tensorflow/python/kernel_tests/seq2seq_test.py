@@ -683,7 +683,7 @@ class Seq2SeqTest(tf.test.TestCase):
           scope_name = "fp_{}".format(feed_previous)
           with tf.variable_scope(scope_name):
             dec_op, _ = seq2seq(enc_inp, dec_inp, feed_previous=feed_previous)
-            net_variables = tf.get_collection(tf.GraphKeys.VARIABLES,
+            net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                               scope_name)
           optimizer = tf.train.AdamOptimizer(0.03, epsilon=1e-5)
           update_op = optimizer.minimize(

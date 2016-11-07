@@ -553,27 +553,25 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
   Example:
 
   ```python
-  education = sparse_column_with_hash_bucket(column_name="education",
-                                             hash_bucket_size=1000)
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
+  sparse_feature_a = sparse_column_with_hash_bucket(...)
+  sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-  education_x_occupation = crossed_column(columns=[education, occupation],
-                                          hash_bucket_size=10000)
-  education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                   combiner="sum")
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
+  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+
+  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                          ...)
+  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                          ...)
 
   estimator = DNNLinearCombinedClassifier(
       # common settings
       n_classes=n_classes,
       weight_column_name=weight_column_name,
       # wide settings
-      linear_feature_columns=[education_x_occupation],
+      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
       linear_optimizer=tf.train.FtrlOptimizer(...),
       # deep settings
-      dnn_feature_columns=[education_emb, occupation_emb],
+      dnn_feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.AdagradOptimizer(...))
 
@@ -914,26 +912,24 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
   Example:
 
   ```python
-  education = sparse_column_with_hash_bucket(column_name="education",
-                                             hash_bucket_size=1000)
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
+  sparse_feature_a = sparse_column_with_hash_bucket(...)
+  sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-  education_x_occupation = crossed_column(columns=[education, occupation],
-                                          hash_bucket_size=10000)
-  education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                   combiner="sum")
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
+  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+
+  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                          ...)
+  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                          ...)
 
   estimator = DNNLinearCombinedRegressor(
       # common settings
       weight_column_name=weight_column_name,
       # wide settings
-      linear_feature_columns=[education_x_occupation],
+      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
       linear_optimizer=tf.train.FtrlOptimizer(...),
       # deep settings
-      dnn_feature_columns=[education_emb, occupation_emb],
+      dnn_feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 

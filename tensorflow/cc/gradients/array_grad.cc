@@ -61,6 +61,14 @@ Status IdentityGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Identity", IdentityGrad);
 
+Status RefIdentityGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  return Status::OK();
+}
+REGISTER_GRADIENT_OP("RefIdentity", RefIdentityGrad);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

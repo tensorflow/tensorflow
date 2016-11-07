@@ -275,9 +275,9 @@ py_library(
     name = "framework",
     srcs = [
         "framework/common_shapes.py",
-        "framework/errors.py",
         "framework/framework_lib.py",
         "framework/graph_util.py",
+        "framework/graph_util_impl.py",
         "framework/importer.py",
         "framework/load_library.py",
         "framework/meta_graph.py",
@@ -289,6 +289,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":cpp_shape_inference_proto_py",
+        ":errors",
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow",
     ],
@@ -296,7 +297,10 @@ py_library(
 
 py_library(
     name = "errors",
-    srcs = ["framework/errors.py"],
+    srcs = [
+        "framework/errors.py",
+        "framework/errors_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":util",

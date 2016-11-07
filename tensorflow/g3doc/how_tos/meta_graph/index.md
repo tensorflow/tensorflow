@@ -64,7 +64,7 @@ to and from `MetaGraphDef`, the Python class must implement `to_proto()` and
     """Returns a `Variable` object created from `variable_def`."""
     return Variable(variable_def=variable_def, import_scope=import_scope)
 
-  ops.register_proto_function(ops.GraphKeys.VARIABLES,
+  ops.register_proto_function(ops.GraphKeys.GLOBAL_VARIABLES,
                               proto_type=variable_pb2.VariableDef,
                               to_proto=Variable.to_proto,
                               from_proto=Variable.from_proto)

@@ -815,7 +815,7 @@ Gets the list of variables, filtered by scope and/or suffix.
 *  <b>`scope`</b>: an optional scope for filtering the variables to return.
 *  <b>`suffix`</b>: an optional suffix for filtering the variables to return.
 *  <b>`collection`</b>: in which collection search for. Defaults to
-    `GraphKeys.VARIABLES`.
+    `GraphKeys.GLOBAL_VARIABLES`.
 
 ##### Returns:
 
@@ -859,8 +859,8 @@ Gets an existing model variable with these parameters or creates a new one.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    Note that the variable is always also added to the `GraphKeys.VARIABLES`
-    and `GraphKeys.MODEL_VARIABLES` collections.
+    Note that the variable is always also added to the
+    `GraphKeys.GLOBAL_VARIABLES` and `GraphKeys.MODEL_VARIABLES` collections.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
@@ -891,7 +891,7 @@ Gets an existing variable with these parameters or creates a new one.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    If None it would default to `tf.GraphKeys.VARIABLES`.
+    If None it would default to `tf.GraphKeys.GLOBAL_VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.

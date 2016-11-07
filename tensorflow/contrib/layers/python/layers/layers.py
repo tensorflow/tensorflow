@@ -1971,7 +1971,7 @@ def legacy_fully_connected(x,
     dtype = x.dtype.base_dtype
 
     weight_collections = set(list(weight_collections or []) +
-                             [ops.GraphKeys.VARIABLES])
+                             [ops.GraphKeys.GLOBAL_VARIABLES])
     w = variable_scope.get_variable('weights',
                                     shape=[num_input_units, num_output_units],
                                     dtype=dtype,
@@ -1985,7 +1985,7 @@ def legacy_fully_connected(x,
 
     if bias_init is not None:
       bias_collections = set(list(bias_collections or []) +
-                             [ops.GraphKeys.VARIABLES])
+                             [ops.GraphKeys.GLOBAL_VARIABLES])
       b = variable_scope.get_variable('bias',
                                       shape=[num_output_units],
                                       dtype=dtype,

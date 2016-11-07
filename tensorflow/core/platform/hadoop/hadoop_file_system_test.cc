@@ -106,9 +106,9 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
 
 TEST_F(HadoopFileSystemTest, FileExists) {
   const string fname = TmpDir("FileExists");
-  EXPECT_FALSE(hdfs.FileExists(fname));
+  EXPECT_EQ(error::Code::NOT_FOUND, hdfs.FileExists(fname).code());
   TF_ASSERT_OK(WriteString(fname, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname));
+  TF_EXPECT_OK(hdfs.FileExists(fname));
 }
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
@@ -173,7 +173,7 @@ TEST_F(HadoopFileSystemTest, RenameFile_Overwrite) {
   const string fname2 = TmpDir("RenameFile2");
 
   TF_ASSERT_OK(WriteString(fname2, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname2));
+  TF_EXPECT_OK(hdfs.FileExists(fname2));
 
   TF_ASSERT_OK(WriteString(fname1, "test"));
   TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));

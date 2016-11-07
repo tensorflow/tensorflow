@@ -42,7 +42,7 @@ class AssetManagerFileSystem : public FileSystem {
   AssetManagerFileSystem(AAssetManager* asset_manager, const string& prefix);
   ~AssetManagerFileSystem() override = default;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
   Status NewRandomAccessFile(
       const string& filename,
       std::unique_ptr<RandomAccessFile>* result) override;

@@ -745,7 +745,7 @@ def _centered_bias(logits_dimension, weight_collection):
   """Creates and returns centered bias."""
   centered_bias = variables.Variable(
       array_ops.zeros([logits_dimension]),
-      collections=[weight_collection, ops.GraphKeys.VARIABLES],
+      collections=[weight_collection, ops.GraphKeys.GLOBAL_VARIABLES],
       name="centered_bias_weight")
 
   biases = array_ops.reshape(centered_bias, [-1])

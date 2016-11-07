@@ -145,7 +145,7 @@ def summarize_collection(collection, name_filter=None,
 
 # Utility functions for commonly used collections
 summarize_variables = functools.partial(summarize_collection,
-                                        ops.GraphKeys.VARIABLES)
+                                        ops.GraphKeys.GLOBAL_VARIABLES)
 
 
 summarize_weights = functools.partial(summarize_collection,

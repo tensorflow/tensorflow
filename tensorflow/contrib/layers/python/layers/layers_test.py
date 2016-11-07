@@ -2889,7 +2889,7 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
     self.assertEqual(1, len(tf.get_collection('unbiased')))
     self.assertEqual(1, len(tf.get_collection('biased')))
     self.assertEqual(1, len(tf.get_collection('output')))
-    self.assertEqual(2, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
+    self.assertEqual(2, len(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)))
 
   def test_all_custom_collections(self):
     tf.contrib.layers.legacy_relu(self.input,
@@ -2904,16 +2904,16 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
 
   def test_no_bias(self):
     tf.contrib.layers.legacy_relu(self.input, 2, bias_init=None)
-    self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
+    self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)))
 
   def test_no_activation(self):
     y = tf.contrib.layers.legacy_fully_connected(self.input, 2)
-    self.assertEqual(2, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
+    self.assertEqual(2, len(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)))
     self.assertEqual('BiasAdd', y.op.type)
 
   def test_no_activation_no_bias(self):
     y = tf.contrib.layers.legacy_fully_connected(self.input, 2, bias_init=None)
-    self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
+    self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)))
     self.assertEqual('MatMul', y.op.type)
 
   def test_regularizer(self):

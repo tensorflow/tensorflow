@@ -322,7 +322,7 @@ export class ScatterPlot {
     }
     // Only call event handlers if the click originated from the scatter plot.
     if (!this.isDragSequence && notify) {
-      const selection = this.nearestPoint ? [this.nearestPoint] : [];
+      const selection = (this.nearestPoint != null) ? [this.nearestPoint] : [];
       this.selectionContext.notifySelectionChanged(selection);
     }
     this.isDragSequence = false;

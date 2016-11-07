@@ -456,7 +456,7 @@ class Supervisor(object):
     """
     if saver is Supervisor.USE_DEFAULT:
       saver = self._get_first_op_from_collection(ops.GraphKeys.SAVERS)
-      if saver is None and variables.all_variables():
+      if saver is None and variables.global_variables():
         saver = saver_mod.Saver()
         ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
     self._saver = saver

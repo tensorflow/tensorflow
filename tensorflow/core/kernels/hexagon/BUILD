@@ -65,9 +65,13 @@ tf_kernel_library(
     name = "graph_transferer",
     srcs = [
         "graph_transferer.cc",
+        "hexagon_ops_definitions.cc",
+        "i_graph_transfer_ops_definitions.cc",
     ],
     hdrs = [
         "graph_transferer.h",
+        "hexagon_ops_definitions.h",
+        "i_graph_transfer_ops_definitions.h",
     ],
     deps = [
         "//tensorflow/core",

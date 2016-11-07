@@ -61,7 +61,7 @@ class FileSystem {
   virtual Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
-  virtual bool FileExists(const string& fname) = 0;
+  virtual Status FileExists(const string& fname) = 0;
 
   /// \brief Returns the immediate children in the given directory.
   ///
@@ -178,7 +178,9 @@ class NullFileSystem : public FileSystem {
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
 
-  bool FileExists(const string& fname) override { return false; }
+  Status FileExists(const string& fname) override {
+    return errors::Unimplemented("FileExists unimplemented");
+  }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return errors::Unimplemented("GetChildren unimplemented");

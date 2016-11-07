@@ -115,11 +115,14 @@ AssetManagerFileSystem::AssetManagerFileSystem(AAssetManager* asset_manager,
                                                const string& prefix)
     : asset_manager_(asset_manager), prefix_(prefix) {}
 
-bool AssetManagerFileSystem::FileExists(const string& fname) {
+Status AssetManagerFileSystem::FileExists(const string& fname) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_RANDOM));
-  return asset.get() != nullptr;
+  if (asset.get() == nullptr) {
+    return errors::NotFound("File ", fname, " not found.");
+  }
+  return Status::OK();
 }
 
 Status AssetManagerFileSystem::NewRandomAccessFile(

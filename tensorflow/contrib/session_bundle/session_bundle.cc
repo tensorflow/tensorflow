@@ -107,10 +107,12 @@ string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
   const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
-  if (Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesFilename)) ||
-      Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesIndexFilename))) {
+  if (Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesFilename))
+          .ok() ||
+      Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesIndexFilename))
+          .ok()) {
     return io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return io::JoinPath(export_dir, kVariablesFilenamePattern);
@@ -248,7 +250,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
 bool IsPossibleExportDirectory(const StringPiece directory) {
   const string meta_graph_def_path =
       io::JoinPath(directory, kMetaGraphDefFilename);
-  return Env::Default()->FileExists(meta_graph_def_path);
+  return Env::Default()->FileExists(meta_graph_def_path).ok();
 }
 
 }  // namespace serving
