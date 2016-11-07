@@ -236,7 +236,7 @@ class _VariableStore(object):
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       collections: List of graph collections keys to add the `Variable` to.
-        Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
+        Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -395,7 +395,7 @@ class _VariableStore(object):
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       collections: List of graph collections keys to add the Variable to.
-        Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
+        Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -982,7 +982,7 @@ def get_variable(name,
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
+      Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to
@@ -1087,7 +1087,7 @@ def _get_partitioned_variable(name,
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
+      Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to

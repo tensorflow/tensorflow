@@ -157,7 +157,23 @@ class ModelFnOps(
 
 
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
-  """Make inputs into input and feed functions."""
+  """Make inputs into input and feed functions.
+
+  Args:
+    x: Numpy, Pandas or Dask matrix or iterable.
+    y: Numpy, Pandas or Dask matrix or iterable.
+    input_fn: Pre-defined input function for training data.
+    feed_fn: Pre-defined data feeder function.
+    batch_size: Size to split data into parts. Must be >= 1.
+    shuffle: Whether to shuffle the inputs.
+    epochs: Number of epochs to run.
+
+  Returns:
+    Data input and feeder function based on training data.
+
+  Raises:
+    ValueError: Only one of `(x & y)` or `input_fn` must be provided.
+  """
   if input_fn is None:
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')

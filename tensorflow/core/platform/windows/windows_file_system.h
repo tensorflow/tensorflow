@@ -44,7 +44,7 @@ class WindowsFileSystem : public FileSystem {
       const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
 

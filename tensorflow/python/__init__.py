@@ -71,6 +71,7 @@ from tensorflow.core.util.event_pb2 import *
 from tensorflow.python.framework.framework_lib import *
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import graph_util
 
 # Session
 from tensorflow.python.client.client_lib import *
@@ -228,6 +229,7 @@ _allowed_symbols.extend([
     'errors',
     'flags',
     'gfile',
+    'graph_util',
     'image',
     'logging',
     'newaxis',

@@ -78,7 +78,7 @@ def get_summary_writer(logdir):
 
 
 def _make_saver(graph, keep_checkpoint_max=5):
-  vars_to_save = (graph.get_collection(ops.GraphKeys.VARIABLES) +
+  vars_to_save = (graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
                   graph.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
   if vars_to_save:
     return tf_saver.Saver(vars_to_save,
@@ -597,7 +597,7 @@ def _get_first_op_from_collection(collection_name):
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is None and variables.all_variables():
+  if saver is None and variables.global_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver

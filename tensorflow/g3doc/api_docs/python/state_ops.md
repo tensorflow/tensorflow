@@ -1701,12 +1701,6 @@ The `save_path` argument is typically a value previously returned from a
 *  <b>`sess`</b>: A `Session` to use to restore the parameters.
 *  <b>`save_path`</b>: Path where parameters were previously saved.
 
-##### Raises:
-
-
-*  <b>`ValueError`</b>: DEPRECATED, do not rely on this Error.  If the given
-    `save_path` does not point to a file.
-
 
 
 Other utility methods.
@@ -1982,7 +1976,7 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
-    Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
+    Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
 *  <b>`caching_device`</b>: Optional device string or function describing where the
     Variable should be cached for reading.  Defaults to the Variable's
     device.  If not `None`, caches on another device.  Typical use is to

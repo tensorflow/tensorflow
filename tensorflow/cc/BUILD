@@ -228,6 +228,7 @@ tf_cc_test(
         ":cc_ops",
         ":grad_op_registry",
         ":grad_testutil",
+        ":gradient_checker",
         ":testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

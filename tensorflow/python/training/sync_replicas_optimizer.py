@@ -267,7 +267,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
-        variables.all_variables())
+        variables.global_variables())
 
     with ops.name_scope(None, self._name):
       for grad, var in grads_and_vars:

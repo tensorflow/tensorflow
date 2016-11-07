@@ -677,7 +677,7 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
       self.assertEqual(v.name, "scope0/name0")
       v_concat = v.as_tensor()
       self.assertEqual(v_concat.name, "scope0/name0:0")
-      variables = tf.get_collection(tf.GraphKeys.VARIABLES)
+      variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
       self.assertTrue("scope0/name0/part_0:0" in [x.name for x in variables])
       self.assertTrue("scope0/name0/part_1:0" in [x.name for x in variables])
       self.assertFalse("scope0/name0/part_2:0" in [x.name for x in variables])

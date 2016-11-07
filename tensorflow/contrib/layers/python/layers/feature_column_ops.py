@@ -149,7 +149,7 @@ def _input_from_feature_columns(columns_to_tensors,
     transformer = _Transformer(columns_to_tensors)
     if weight_collections:
       weight_collections = list(set(list(weight_collections) +
-                                    [ops.GraphKeys.VARIABLES]))
+                                    [ops.GraphKeys.GLOBAL_VARIABLES]))
 
     for column in sorted(set(feature_columns), key=lambda x: x.key):
       with variable_scope.variable_scope(None,
@@ -470,28 +470,21 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
   to logits in classification problems. It refers to prediction itself for
   linear regression problems.
 
-  An example usage of weighted_sum_from_feature_columns is as follows:
+  Example:
 
+    ```
     # Building model for training
+    feature_columns = (
+        real_valued_column("my_feature1"),
+        ...
+    )
     columns_to_tensor = tf.parse_example(...)
     logits = weighted_sum_from_feature_columns(
         columns_to_tensors=columns_to_tensor,
         feature_columns=feature_columns,
         num_outputs=1)
     loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
-
-    where feature_columns can be defined as follows:
-
-    occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
-    age = real_valued_column("age")
-    age_buckets = bucketized_column(
-        source_column=age,
-        boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
-    occupation_x_age = crossed_column(columns=[occupation, age_buckets],
-                                      hash_bucket_size=10000)
-
-    feature_columns=[age_buckets, occupation, occupation_x_age]
+    ```
 
   Args:
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
@@ -825,7 +818,7 @@ class _Transformer(object):
 def _add_variable_collection(weight_collections):
   if weight_collections:
     weight_collections = list(
-        set(list(weight_collections) + [ops.GraphKeys.VARIABLES]))
+        set(list(weight_collections) + [ops.GraphKeys.GLOBAL_VARIABLES]))
   return weight_collections
 
 
