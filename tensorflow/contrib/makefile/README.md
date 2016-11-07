@@ -117,7 +117,7 @@ attached Android device:
 adb push ~/graphs/inception/tensorflow_inception_graph.pb /data/local/tmp/
 adb push tensorflow/contrib/makefile/gen/bin/benchmark /data/local/tmp/
 adb shell '/data/local/tmp/benchmark \
- --graph=/data/local/tmp/classify_image_graph_def.pb \
+ --graph=/data/local/tmp/tensorflow_inception_graph.pb \
  --input_layer="input:0" \
  --input_layer_shape="1,224,224,3" \
  --input_layer_type="float" \
