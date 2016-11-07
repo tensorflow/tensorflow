@@ -24,23 +24,6 @@ import tensorflow as tf
 
 class GridRNNCellTest(tf.test.TestCase):
 
-  def _assertTupleOfTensorShapes(self, tp, expected_size):
-
-    def get_shape(element):
-      return element.shape if isinstance(element, np.ndarray) \
-        else element.get_shape()
-
-    self.assertEqual(len(tp), len(expected_size))
-    for tp_real, tp_expected in zip(tp, expected_size):
-      if isinstance(tp_real, tuple):
-        self.assertEqual(len(tp_real), len(tp_expected))
-        for el_real, el_expected in zip(tp_real, tp_expected):
-          self.assertEqual(get_shape(el_real), el_expected)
-      else:
-        self.assertEqual(get_shape(tp_real), tp_expected)
-
-
-
   def testGrid2BasicLSTMCell(self):
     with self.test_session(use_gpu=False) as sess:
       with tf.variable_scope(
@@ -52,17 +35,22 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), (2, 2)))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
+        self.assertEqual(s[1].c.get_shape(), (1, 2))
+        self.assertEqual(s[1].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),
                          (np.array([[0.5, 0.6]]), np.array([[0.7, 0.8]])))})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s,
-                                        (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
+        self.assertEqual(res_s[1].c.shape, (1, 2))
+        self.assertEqual(res_s[1].h.shape, (1, 2))
 
         self.assertAllClose(res_g, ([[0.36617181, 0.36617181]], ))
         self.assertAllClose(res_s, (([[0.71053141, 0.71053141]],
@@ -74,19 +62,24 @@ class GridRNNCellTest(tf.test.TestCase):
         # where we call cell() multiple times
         root_scope.reuse_variables()
         g2, s2 = cell(x, m)
-        self._assertTupleOfTensorShapes(g2, ((1, 2),))
-        self._assertTupleOfTensorShapes(s2, (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(g2[0].get_shape(), (1, 2))
+        self.assertEqual(s2[0].c.get_shape(), (1, 2))
+        self.assertEqual(s2[0].h.get_shape(), (1, 2))
+        self.assertEqual(s2[1].c.get_shape(), (1, 2))
+        self.assertEqual(s2[1].h.get_shape(), (1, 2))
 
         res_g2, res_s2 = sess.run([g2, s2],
                                   {x: np.array([[2., 2., 2.]]), m: res_s})
-        self._assertTupleOfTensorShapes(res_g2, ((1, 2),))
+        self.assertEqual(res_g2[0].shape, (1, 2))
+        self.assertEqual(res_s2[0].c.shape, (1, 2))
+        self.assertEqual(res_s2[0].h.shape, (1, 2))
+        self.assertEqual(res_s2[1].c.shape, (1, 2))
+        self.assertEqual(res_s2[1].h.shape, (1, 2))
         self.assertAllClose(res_g2[0], [[0.58847463, 0.58847463]])
         self.assertAllClose(res_s2, (([[1.40469193, 1.40469193]],
-                                     [[0.58847463, 0.58847463]]),
-                                    ([[0.97726452, 1.04626071]],
-                                     [[0.4927212, 0.51137757]])))
-        self._assertTupleOfTensorShapes(res_s2,
-                                        (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+                                      [[0.58847463, 0.58847463]]),
+                                     ([[0.97726452, 1.04626071]],
+                                      [[0.4927212, 0.51137757]])))
 
   def testGrid2BasicLSTMCellTied(self):
     with self.test_session(use_gpu=False) as sess:
@@ -98,26 +91,32 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), (2, 2)))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
+        self.assertEqual(s[1].c.get_shape(), (1, 2))
+        self.assertEqual(s[1].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),
                          (np.array([[0.5, 0.6]]), np.array([[0.7, 0.8]])))})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self.assertAllClose(res_g[0], [[0.36617181, 0.36617181]])
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
+        self.assertEqual(res_s[1].c.shape, (1, 2))
+        self.assertEqual(res_s[1].h.shape, (1, 2))
 
+        self.assertAllClose(res_g[0], [[0.36617181, 0.36617181]])
         self.assertAllClose(res_s, (([[0.71053141, 0.71053141]],
                                      [[0.36617181, 0.36617181]]),
                                     ([[0.72320831, 0.80555487]],
                                      [[0.39102408, 0.42150158]])))
-        self._assertTupleOfTensorShapes(res_s,
-                                        (((1, 2), (1, 2)), ((1, 2), (1, 2))))
 
         res_g, res_s = sess.run([g, s], {x: np.array([[1., 1., 1.]]), m: res_s})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
+        self.assertEqual(res_g[0].shape, (1, 2))
+
         self.assertAllClose(res_g[0], [[0.36703536, 0.36703536]])
         self.assertAllClose(res_s, (([[0.71200621, 0.71200621]],
                                      [[0.36703536, 0.36703536]]),
@@ -134,14 +133,15 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), ))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)),))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
           [g, s], {x: np.array([[1., 1., 1.]]),
                    m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])), )})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
+        self.assertEqual(res_g[0].shape, (1, 2))
         self.assertAllClose(res_g[0], [[0.31667367, 0.31667367]])
         self.assertAllClose(res_s, (([[0.29530135, 0.37520045]],
                                      [[0.17044567, 0.21292259]]), ))
@@ -159,23 +159,28 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), (2, 2)))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
+        self.assertEqual(s[1].c.get_shape(), (1, 2))
+        self.assertEqual(s[1].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),
                          (np.array([[0.5, 0.6]]), np.array([[0.7, 0.8]])))})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self.assertAllClose(res_g[0], [[0.95686918, 0.95686918]])
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
+        self.assertEqual(res_s[1].c.shape, (1, 2))
+        self.assertEqual(res_s[1].h.shape, (1, 2))
 
+        self.assertAllClose(res_g[0], [[0.95686918, 0.95686918]])
         self.assertAllClose(res_s, (([[2.41515064, 2.41515064]],
                                      [[0.95686918, 0.95686918]]),
                                     ([[1.38917875, 1.49043763]],
                                      [[0.83884692, 0.86036491]])))
-        self._assertTupleOfTensorShapes(res_s,
-                                        (((1, 2), (1, 2)), ((1, 2), (1, 2))))
 
   def testGrid2LSTMCellTied(self):
     with self.test_session(use_gpu=False) as sess:
@@ -188,17 +193,22 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), (2, 2)))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
+        self.assertEqual(s[1].c.get_shape(), (1, 2))
+        self.assertEqual(s[1].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),
                          (np.array([[0.5, 0.6]]), np.array([[0.7, 0.8]])))})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s,
-                                        (((1, 2), (1, 2)), ((1, 2), (1, 2))))
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
+        self.assertEqual(res_s[1].c.shape, (1, 2))
+        self.assertEqual(res_s[1].h.shape, (1, 2))
 
         self.assertAllClose(res_g[0], [[0.95686918, 0.95686918]])
         self.assertAllClose(res_s, (([[2.41515064, 2.41515064]],
@@ -216,14 +226,15 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2),))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)),))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
           [g, s], {x: np.array([[1., 1., 1.]]),
                    m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])), )})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
+        self.assertEqual(res_g[0].shape, (1, 2))
         self.assertAllClose(res_g[0], [[2.1831727, 2.1831727]])
         self.assertAllClose(res_s, (([[0.92270052, 1.02325559]],
                                      [[0.66159075, 0.70475441]]), ))
@@ -240,16 +251,19 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, (2, 2))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((2, 2),))
-        self._assertTupleOfTensorShapes(s, ((2, 2), (2, 2)))
+        self.assertEqual(g[0].get_shape(), (2, 2))
+        self.assertEqual(s[0].get_shape(), (2, 2))
+        self.assertEqual(s[1].get_shape(), (2, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
             [g, s], {x: np.array([[1., 1.], [2., 2.]]),
                      m: (np.array([[0.1, 0.1], [0.2, 0.2]]),
                          np.array([[0.1, 0.1], [0.2, 0.2]]))})
-        self._assertTupleOfTensorShapes(res_g, ((2, 2),))
-        self._assertTupleOfTensorShapes(res_s, ((2, 2), (2, 2)))
+        self.assertEqual(res_g[0].shape, (2, 2))
+        self.assertEqual(res_s[0].shape, (2, 2))
+        self.assertEqual(res_s[1].shape, (2, 2))
+
         self.assertAllClose(res_g, ([[0.94685763, 0.94685763],
                                     [0.99480951, 0.99480951]], ))
         self.assertAllClose(res_s,
@@ -267,16 +281,19 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, (2, 2))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((2, 2),))
-        self._assertTupleOfTensorShapes(s, ((2, 2), (2, 2)))
+        self.assertEqual(g[0].get_shape(), (2, 2))
+        self.assertEqual(s[0].get_shape(), (2, 2))
+        self.assertEqual(s[1].get_shape(), (2, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
             [g, s], {x: np.array([[1., 1.], [2., 2.]]),
                      m: (np.array([[0.1, 0.1], [0.2, 0.2]]),
                          np.array([[0.1, 0.1], [0.2, 0.2]]))})
-        self._assertTupleOfTensorShapes(res_g, ((2, 2),))
-        self._assertTupleOfTensorShapes(res_s, ((2, 2), (2, 2)))
+        self.assertEqual(res_g[0].shape, (2, 2))
+        self.assertEqual(res_s[0].shape, (2, 2))
+        self.assertEqual(res_s[1].shape, (2, 2))
+
         self.assertAllClose(res_g, ([[0.94685763, 0.94685763],
                                      [0.99480951, 0.99480951]], ))
         self.assertAllClose(res_s,
@@ -295,14 +312,14 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, (2, ))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2), ))
-        self._assertTupleOfTensorShapes(s, ((1, 2), ))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run([g, s], {x: np.array([[1., 1.]]),
                                          m: np.array([[0.1, 0.1]])})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s, ((1, 2),))
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].shape, (1, 2))
         self.assertAllClose(res_g, ([[1.80049896, 1.80049896]], ))
         self.assertAllClose(res_s, ([[0.80049896, 0.80049896]], ))
 
@@ -319,15 +336,18 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), ))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)), ))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
-          [g, s],{x: np.array([[1., 1., 1.]]),
-                  m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])), )})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s, (((1, 2), (1, 2)), ))
+          [g, s], {x: np.array([[1., 1., 1.]]),
+                   m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])), )})
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
+
         self.assertAllClose(res_g, ([[0.91287315, 0.91287315]], ))
         self.assertAllClose(res_s,
                             (([[2.26285243, 2.26285243]],
@@ -337,26 +357,31 @@ class GridRNNCellTest(tf.test.TestCase):
 
         x2 = tf.zeros([0, 0])
         g2, s2 = cell(x2, m)
-        self._assertTupleOfTensorShapes(g2, ((1, 2),))
-        self._assertTupleOfTensorShapes(s2, (((1, 2), (1, 2)),))
+        self.assertEqual(g2[0].get_shape(), (1, 2))
+        self.assertEqual(s2[0].c.get_shape(), (1, 2))
+        self.assertEqual(s2[0].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g2, res_s2 = sess.run([g2, s2], {m: res_s})
-        self._assertTupleOfTensorShapes(res_g2, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s2, (((1, 2), (1, 2)),))
+        self.assertEqual(res_g2[0].shape, (1, 2))
+        self.assertEqual(res_s2[0].c.shape, (1, 2))
+        self.assertEqual(res_s2[0].h.shape, (1, 2))
+
         self.assertAllClose(res_g2, ([[0.9032144, 0.9032144]], ))
         self.assertAllClose(res_s2,
                             (([[2.79966092, 2.79966092]],
                               [[0.9032144, 0.9032144]]), ))
 
         g3, s3 = cell(x2, m)
-        self._assertTupleOfTensorShapes(g3, ((1, 2),))
-        self._assertTupleOfTensorShapes(s3, (((1, 2), (1, 2)),))
+        self.assertEqual(g3[0].get_shape(), (1, 2))
+        self.assertEqual(s3[0].c.get_shape(), (1, 2))
+        self.assertEqual(s3[0].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g3, res_s3 = sess.run([g3, s3], {m: res_s2})
-        self._assertTupleOfTensorShapes(res_g3, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s3, (((1, 2), (1, 2)),))
+        self.assertEqual(res_g3[0].shape, (1, 2))
+        self.assertEqual(res_s3[0].c.shape, (1, 2))
+        self.assertEqual(res_s3[0].h.shape, (1, 2))
         self.assertAllClose(res_g3, ([[0.92727238, 0.92727238]], ))
         self.assertAllClose(res_s3,
                             (([[3.3529923, 3.3529923]],
@@ -376,21 +401,27 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(cell.state_size, ((2, 2), (2, 2), (2, 2)))
 
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((1, 2),))
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)),
-                                            ((1, 2), (1, 2)),
-                                            ((1, 2), (1, 2))))
+        self.assertEqual(g[0].get_shape(), (1, 2))
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
+        self.assertEqual(s[1].c.get_shape(), (1, 2))
+        self.assertEqual(s[1].h.get_shape(), (1, 2))
+        self.assertEqual(s[2].c.get_shape(), (1, 2))
+        self.assertEqual(s[2].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
           [g, s], {x: np.array([[1., 1., 1.]]),
                    m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),
                        (np.array([[0.5, 0.6]]), np.array([[0.7, 0.8]])),
                        (np.array([[-0.1, -0.2]]), np.array([[-0.3, -0.4]])))})
-        self._assertTupleOfTensorShapes(res_g, ((1, 2),))
-        self._assertTupleOfTensorShapes(res_s, (((1, 2), (1, 2)),
-                                                ((1, 2), (1, 2)),
-                                                ((1, 2), (1, 2))))
+        self.assertEqual(res_g[0].shape, (1, 2))
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
+        self.assertEqual(res_s[1].c.shape, (1, 2))
+        self.assertEqual(res_s[1].h.shape, (1, 2))
+        self.assertEqual(res_s[2].c.shape, (1, 2))
+        self.assertEqual(res_s[2].h.shape, (1, 2))
 
         self.assertAllClose(res_g, ([[0.96892911, 0.96892911]], ))
         self.assertAllClose(res_s, (([[2.45227885, 2.45227885]],
@@ -418,14 +449,14 @@ class GridRNNCellTest(tf.test.TestCase):
             non_recurrent_dims=0,
             non_recurrent_fn=tf.nn.relu)
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ((3, 2),))
-        self._assertTupleOfTensorShapes(s, ())
+        self.assertEqual(g[0].get_shape(), (3, 2))
+        self.assertEqual(s, ())
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
           [g, s], {x: np.array([[1., -1.], [-2, 1], [2, -1]])})
-        self._assertTupleOfTensorShapes(res_g, ((3, 2), ))
-        self._assertTupleOfTensorShapes(res_s, ())
+        self.assertEqual(res_g[0].shape, (3, 2))
+        self.assertEqual(res_s, ())
         self.assertAllClose(res_g, ([[0, 0], [0, 0], [0.5, 0.5]], ))
 
   def testGridRNNEdgeCasesNoOutput(self):
@@ -443,15 +474,17 @@ class GridRNNCellTest(tf.test.TestCase):
             non_recurrent_dims=0,
             non_recurrent_fn=tf.nn.relu)
         g, s = cell(x, m)
-        self._assertTupleOfTensorShapes(g, ())
-        self._assertTupleOfTensorShapes(s, (((1, 2), (1, 2)), ))
+        self.assertEqual(g, ())
+        self.assertEqual(s[0].c.get_shape(), (1, 2))
+        self.assertEqual(s[0].h.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res_g, res_s = sess.run(
           [g, s], {x: np.array([[1., 1.]]),
                    m: ((np.array([[0.1, 0.1]]), np.array([[0.1, 0.1]])), )})
-        self._assertTupleOfTensorShapes(res_g, ())
-        self._assertTupleOfTensorShapes(res_s, (((1, 2), (1, 2)), ))
+        self.assertEqual(res_g, ())
+        self.assertEqual(res_s[0].c.shape, (1, 2))
+        self.assertEqual(res_s[0].h.shape, (1, 2))
 
   """Test with tf.nn.rnn
   """
@@ -473,8 +506,10 @@ class GridRNNCellTest(tf.test.TestCase):
       outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
-    self._assertTupleOfTensorShapes(state, (((batch_size, 2), (batch_size, 2)),
-                                            ((batch_size, 2), (batch_size, 2))))
+    self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
+    self.assertEqual(state[0].h.get_shape(), (batch_size, 2))
+    self.assertEqual(state[1].c.get_shape(), (batch_size, 2))
+    self.assertEqual(state[1].h.get_shape(), (batch_size, 2))
 
     for out, inp in zip(outputs, inputs):
       self.assertEqual(len(out), 1)
@@ -483,7 +518,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out[0].dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -511,8 +546,8 @@ class GridRNNCellTest(tf.test.TestCase):
       outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
-    self._assertTupleOfTensorShapes(state, (((batch_size, 2),
-                                             (batch_size, 2)), ))
+    self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
+    self.assertEqual(state[0].h.get_shape(), (batch_size, 2))
 
     for out, inp in zip(outputs, inputs):
       self.assertEqual(len(out), 1)
@@ -521,7 +556,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out[0].dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -549,8 +584,10 @@ class GridRNNCellTest(tf.test.TestCase):
       outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
-    self._assertTupleOfTensorShapes(state, (((batch_size, 2), (batch_size, 2)),
-                                            ((batch_size, 2), (batch_size, 2))))
+    self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
+    self.assertEqual(state[0].h.get_shape(), (batch_size, 2))
+    self.assertEqual(state[1].c.get_shape(), (batch_size, 2))
+    self.assertEqual(state[1].h.get_shape(), (batch_size, 2))
 
     for out, inp in zip(outputs, inputs):
       self.assertEqual(len(out), 1)
@@ -559,7 +596,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out[0].dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -587,8 +624,8 @@ class GridRNNCellTest(tf.test.TestCase):
       outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
-    self._assertTupleOfTensorShapes(state, (((batch_size, 2),
-                                             (batch_size, 2)), ))
+    self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
+    self.assertEqual(state[0].h.get_shape(), (batch_size, 2))
 
     for out, inp in zip(outputs, inputs):
       self.assertEqual(len(out), 1)
@@ -596,7 +633,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out[0].dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -635,7 +672,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out[0].dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((3, input_size))
       values = sess.run(outputs + [state],
@@ -665,7 +702,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 8))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
