@@ -8,6 +8,8 @@ BUS_ANY was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
   intead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
+* The C API type `TF_Session` has been renamed to `TF_DeprecatedSession`.
+  Please use `TF_SessionWithGraph` instead.
 
 # Release 0.11.0
 

@@ -500,7 +500,7 @@ class BaseSession(SessionInterface):
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
       with errors.raise_exception_on_not_ok_status() as status:
-        self._session = tf_session.TF_NewSession(opts, status)
+        self._session = tf_session.TF_NewDeprecatedSession(opts, status)
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
 
@@ -517,7 +517,7 @@ class BaseSession(SessionInterface):
       if self._opened and not self._closed:
         self._closed = True
         with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_CloseSession(self._session, status)
+          tf_session.TF_CloseDeprecatedSession(self._session, status)
 
   def __del__(self):
     # cleanly ignore all exceptions
@@ -528,7 +528,7 @@ class BaseSession(SessionInterface):
     if self._session is not None:
       try:
         status = tf_session.TF_NewStatus()
-        tf_session.TF_DeleteSession(self._session, status)
+        tf_session.TF_DeleteDeprecatedSession(self._session, status)
       finally:
         tf_session.TF_DeleteStatus(status)
       self._session = None

@@ -253,33 +253,34 @@ void TF_DeleteBuffer(TF_Buffer* buffer) {
 TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
 // --------------------------------------------------------------------------
-struct TF_Session {
+struct TF_DeprecatedSession {
   Session* session;
 };
 
-TF_Session* TF_NewSession(const TF_SessionOptions* opt, TF_Status* status) {
+TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
+                                              TF_Status* status) {
   Session* session;
   status->status = NewSession(opt->options, &session);
   if (status->status.ok()) {
-    return new TF_Session({session});
+    return new TF_DeprecatedSession({session});
   } else {
     DCHECK_EQ(nullptr, session);
     return NULL;
   }
 }
 
-void TF_CloseSession(TF_Session* s, TF_Status* status) {
+void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
   status->status = s->session->Close();
 }
 
-void TF_DeleteSession(TF_Session* s, TF_Status* status) {
+void TF_DeleteDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
   status->status = Status::OK();
   delete s->session;
   delete s;
 }
 
-void TF_ExtendGraph(TF_Session* s, const void* proto, size_t proto_len,
-                    TF_Status* status) {
+void TF_ExtendGraph(TF_DeprecatedSession* s, const void* proto,
+                    size_t proto_len, TF_Status* status) {
   GraphDef g;
   if (!tensorflow::ParseProtoUnlimited(&g, proto, proto_len)) {
     status->status = InvalidArgument("Invalid GraphDef");
@@ -531,7 +532,7 @@ static void TF_Run_Helper(
 
 extern "C" {
 
-void TF_Run(TF_Session* s, const TF_Buffer* run_options,
+void TF_Run(TF_DeprecatedSession* s, const TF_Buffer* run_options,
             // Input tensors
             const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
             // Output tensors
@@ -557,7 +558,7 @@ void TF_Run(TF_Session* s, const TF_Buffer* run_options,
                 c_outputs, target_oper_names, run_metadata, status);
 }
 
-void TF_PRunSetup(TF_Session* s,
+void TF_PRunSetup(TF_DeprecatedSession* s,
                   // Input names
                   const char** c_input_names, int ninputs,
                   // Output names
@@ -592,7 +593,7 @@ void TF_PRunSetup(TF_Session* s,
   }
 }
 
-void TF_PRun(TF_Session* s, const char* handle,
+void TF_PRun(TF_DeprecatedSession* s, const char* handle,
              // Input tensors
              const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
              // Output tensors
