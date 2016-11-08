@@ -3095,7 +3095,7 @@ Returns the index with the largest value across dimensions of a tensor.
 
 - - -
 
-### `tf.listdiff(x, y, out_idx=None, name=None)` {#listdiff}
+### `tf.setdiff1d(x, y, index_dtype=tf.int32, name=None)` {#setdiff1d}
 
 Computes the difference between two lists of numbers or strings.
 
