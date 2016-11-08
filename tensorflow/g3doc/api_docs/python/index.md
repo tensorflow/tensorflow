@@ -111,8 +111,6 @@
   * [`scatter_div`](../../api_docs/python/state_ops.md#scatter_div)
   * [`scatter_mul`](../../api_docs/python/state_ops.md#scatter_mul)
   * [`scatter_nd_add`](../../api_docs/python/state_ops.md#scatter_nd_add)
-  * [`scatter_nd_div`](../../api_docs/python/state_ops.md#scatter_nd_div)
-  * [`scatter_nd_mul`](../../api_docs/python/state_ops.md#scatter_nd_mul)
   * [`scatter_nd_sub`](../../api_docs/python/state_ops.md#scatter_nd_sub)
   * [`scatter_nd_update`](../../api_docs/python/state_ops.md#scatter_nd_update)
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
