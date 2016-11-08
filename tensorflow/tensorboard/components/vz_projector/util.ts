@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint, DataSet} from './data';
+import {DataPoint} from './data';
 import * as logging from './logging';
 import {Point2D} from './vector';
 
@@ -42,14 +42,6 @@ export function shuffle<T>(array: T[]): T[] {
   return array;
 }
 
-/** Retrieves a projected point from the data set as a THREE.js vector */
-export function getProjectedPointFromIndex(
-    dataSet: DataSet, i: number): THREE.Vector3 {
-  let pp = dataSet.points[i].projectedPoint;
-  let v = new THREE.Vector3(pp[0], pp[1], pp[2]);
-  return v;
-}
-
 /** Projects a 3d point into screen space */
 export function vector3DToScreenCoords(
     cam: THREE.Camera, w: number, h: number, v: THREE.Vector3): Point2D {
@@ -62,28 +54,42 @@ export function vector3DToScreenCoords(
   return coords;
 }
 
+/** Loads 3 contiguous elements from a packed xyz array into a Vector3. */
+export function vector3FromPackedArray(
+    a: Float32Array, pointIndex: number): THREE.Vector3 {
+  const offset = pointIndex * 3;
+  return new THREE.Vector3(a[offset], a[offset + 1], a[offset + 2]);
+}
+
 /**
  * Gets the camera-space z coordinates of the nearest and farthest points.
  * Ignores points that are behind the camera.
  */
 export function getNearFarPoints(
-    dataSet: DataSet, cameraPos: THREE.Vector3,
+    worldSpacePoints: Float32Array, cameraPos: THREE.Vector3,
     cameraTarget: THREE.Vector3): [number, number] {
   let shortestDist: number = Infinity;
   let furthestDist: number = 0;
-  let camToTarget = new THREE.Vector3().copy(cameraTarget).sub(cameraPos);
-  for (let i = 0; i < dataSet.points.length; i++) {
-    let point = getProjectedPointFromIndex(dataSet, i);
-    let camToPoint = new THREE.Vector3().copy(point).sub(cameraPos);
-    if (camToTarget.dot(camToPoint) < 0) {
+  const camToTarget = new THREE.Vector3().copy(cameraTarget).sub(cameraPos);
+  const camPlaneNormal = new THREE.Vector3().copy(camToTarget).normalize();
+  const n = worldSpacePoints.length / 3;
+  let src = 0;
+  let p = new THREE.Vector3();
+  let camToPoint = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    p.x = worldSpacePoints[src];
+    p.y = worldSpacePoints[src + 1];
+    p.z = worldSpacePoints[src + 2];
+    src += 3;
+
+    camToPoint.copy(p).sub(cameraPos);
+    const dist = camPlaneNormal.dot(camToPoint);
+    if (dist < 0) {
       continue;
     }
-    let distToCam = cameraPos.distanceToSquared(point);
-    furthestDist = Math.max(furthestDist, distToCam);
-    shortestDist = Math.min(shortestDist, distToCam);
+    furthestDist = (dist > furthestDist) ? dist : furthestDist;
+    shortestDist = (dist < shortestDist) ? dist : shortestDist;
   }
-  furthestDist = Math.sqrt(furthestDist);
-  shortestDist = Math.sqrt(shortestDist);
   return [shortestDist, furthestDist];
 }
 
@@ -114,8 +120,8 @@ export function assert(condition: boolean, message?: string) {
 
 export type SearchPredicate = (p: DataPoint) => boolean;
 
-export function getSearchPredicate(query: string, inRegexMode: boolean,
-    fieldName: string): SearchPredicate {
+export function getSearchPredicate(
+    query: string, inRegexMode: boolean, fieldName: string): SearchPredicate {
   let predicate: SearchPredicate;
   if (inRegexMode) {
     let regExp = new RegExp(query, 'i');
@@ -142,8 +148,8 @@ export function getSearchPredicate(query: string, inRegexMode: boolean,
  *     task is done.
  * @return The value returned by the task.
  */
-export function runAsyncTask<T>(message: string, task: () => T,
-    msgId: string = null): Promise<T> {
+export function runAsyncTask<T>(
+    message: string, task: () => T, msgId: string = null): Promise<T> {
   let autoClear = (msgId == null);
   msgId = logging.setModalMessage(message, msgId);
   return new Promise<T>((resolve, reject) => {

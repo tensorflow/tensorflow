@@ -31,7 +31,6 @@ function makePointsWithTraces(traces: number[]) {
       vector: [],
       metadata: metadata,
       projections: {},
-      projectedPoint: null,
       index: i
     });
   });

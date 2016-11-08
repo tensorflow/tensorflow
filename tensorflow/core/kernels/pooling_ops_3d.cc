@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/padding.h"
 

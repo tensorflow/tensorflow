@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {RenderContext} from './renderContext';
 import {DataSet} from './data';
+import {RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {createTexture} from './util';
+import * as util from './util';
 
 const FONT_SIZE = 80;
 const ONE_OVER_FONT_SIZE = 1 / FONT_SIZE;
@@ -100,6 +100,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private scene: THREE.Scene;
   private labelAccessor: (index: number) => string;
   private geometry: THREE.BufferGeometry;
+  private worldSpacePointPositions: Float32Array;
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
   private material: THREE.ShaderMaterial;
@@ -110,27 +111,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
 
-  constructor() {
-    this.glyphTexture = this.createGlyphTexture();
-
-    this.uniforms = {
-      texture: {type: 't', value: this.glyphTexture.texture},
-      picking: {type: 'bool', value: false},
-    };
-
-    this.material = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
-      transparent: true,
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
-    });
-  }
-
   private createGlyphTexture(): GlyphTexture {
-    if (this.glyphTexture) {
-      this.glyphTexture.texture.dispose();
-    }
-
     let canvas = document.createElement('canvas');
     canvas.width = MAX_CANVAS_DIMENSION;
     canvas.height = FONT_SIZE;
@@ -154,7 +135,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       ctx.fillText(text, leftCoord - spaceOffset, 0);
       leftCoord += textLength;
     }
-    let tex = createTexture(canvas);
+    const tex = util.createTexture(canvas);
     return {texture: tex, lengths: glyphLengths, offsets: glyphOffset};
   }
 
@@ -194,7 +175,21 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private createLabelGeometry(dataSet: DataSet) {
+  private createLabels(dataSet: DataSet) {
+    this.glyphTexture = this.createGlyphTexture();
+
+    this.uniforms = {
+      texture: {type: 't'},
+      picking: {type: 'bool'},
+    };
+
+    this.material = new THREE.ShaderMaterial({
+      uniforms: this.uniforms,
+      transparent: true,
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: FRAGMENT_SHADER,
+    });
+
     this.processLabelVerts();
     this.createColorBuffers();
 
@@ -267,34 +262,19 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       }
     }
 
-    for (let i = 0; i < dataSet.points.length; i++) {
-      let pp = dataSet.points[i].projectedPoint;
+    const n = dataSet.points.length;
+    for (let i = 0; i < n; i++) {
+      const p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
       this.labelVertexMap[i].forEach((j) => {
-        this.positions.setXYZ(j, pp[0], pp[1], pp[2]);
+        this.positions.setXYZ(j, p.x, p.y, p.z);
       });
     };
 
     this.labelsMesh = new THREE.Mesh(this.geometry, this.material);
+    this.scene.add(this.labelsMesh);
   }
 
-  private destroyLabels() {
-    if (this.labelsMesh) {
-      if (this.scene) {
-        this.scene.remove(this.labelsMesh);
-      }
-      this.geometry.dispose();
-      this.labelsMesh = null;
-    }
-  }
-
-  private createLabels(dataSet: DataSet) {
-    this.destroyLabels();
-    if (this.labelAccessor) {
-      this.createLabelGeometry(dataSet);
-    }
-  }
-
-  private colorSprites(pointColors?: Float32Array) {
+  private colorLabels(pointColors: Float32Array) {
     if (this.labelAccessor == null || this.geometry == null ||
         this.dataSet == null || pointColors == null) {
       return;
@@ -307,38 +287,41 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     let src = 0;
     for (let i = 0; i < n; ++i) {
       const c = new THREE.Color(
-          pointColors[src++], pointColors[src++], pointColors[src++]);
-      this.labelVertexMap[i].forEach((j) => {
-        colors.setXYZ(j, c.r, c.g, c.b);
-      });
+          pointColors[src], pointColors[src + 1], pointColors[src + 2]);
+      const m = this.labelVertexMap[i].length;
+      for (let j = 0; j < m; ++j) {
+        colors.setXYZ(this.labelVertexMap[i][j], c.r, c.g, c.b);
+      }
+      src += RGB_ELEMENTS_PER_ENTRY;
     }
-
     colors.needsUpdate = true;
   }
 
-  onRecreateScene(
-      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
+  setScene(scene: THREE.Scene) {
     this.scene = scene;
-    if (this.labelsMesh == null) {
-      this.createLabels(this.dataSet);
-    }
-    if (this.labelsMesh) {
-      scene.add(this.labelsMesh);
-    }
   }
 
-  removeAllFromScene(scene: THREE.Scene) {
-    this.destroyLabels();
+  dispose() {
+    if (this.labelsMesh) {
+      if (this.scene) {
+        this.scene.remove(this.labelsMesh);
+      }
+      this.labelsMesh = null;
+    }
+    if (this.geometry) {
+      this.geometry.dispose();
+      this.geometry = null;
+    }
+    if ((this.glyphTexture != null) && (this.glyphTexture.texture != null)) {
+      this.glyphTexture.texture.dispose();
+      this.glyphTexture.texture = null;
+    }
   }
 
   onSetLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
-    this.onUpdate(this.dataSet);
-  }
-
-  onDataSet(dataSet: DataSet) {
-    this.dataSet = dataSet;
-    this.labelAccessor = null;
+    this.dispose();
+    this.onPointPositionsChanged(this.worldSpacePointPositions, this.dataSet);
   }
 
   onPickingRender(rc: RenderContext) {
@@ -351,20 +334,23 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   }
 
   onRender(rc: RenderContext) {
-    this.colorSprites(rc.pointColors);
+    this.colorLabels(rc.pointColors);
 
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = false;
 
-    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
     colors.needsUpdate = true;
   }
 
-  onUpdate(dataSet: DataSet) {
-    this.createLabels(dataSet);
-    if (this.labelsMesh && this.scene) {
-      this.scene.add(this.labelsMesh);
+  onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
+    this.worldSpacePointPositions = newPositions;
+    this.dataSet = dataSet;
+    this.dispose();
+    if ((this.dataSet != null) && (this.labelAccessor != null) &&
+        (this.worldSpacePointPositions != null)) {
+      this.createLabels(this.dataSet);
     }
   }
 

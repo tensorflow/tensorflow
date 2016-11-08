@@ -61,6 +61,27 @@ def _read_tensor_file(fpath):
   return tensor
 
 
+def _latest_checkpoints_changed(configs, run_path_pairs):
+  """Returns true if the latest checkpoint has changed in any of the runs."""
+  for run_name, logdir in run_path_pairs:
+    if run_name not in configs:
+      continue
+    config = configs[run_name]
+    if not config.model_checkpoint_path:
+      continue
+
+    # See if you can find a checkpoint file in the logdir.
+    ckpt_path = latest_checkpoint(logdir)
+    if not ckpt_path:
+      # See if you can find a checkpoint in the parent of logdir.
+      ckpt_path = latest_checkpoint(os.path.join('../', logdir))
+      if not ckpt_path:
+        continue
+    if config.model_checkpoint_path != ckpt_path:
+      return True
+  return False
+
+
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
 
@@ -88,9 +109,16 @@ class ProjectorPlugin(TBPlugin):
   @property
   def configs(self):
     """Returns a map of run paths to `ProjectorConfig` protos."""
-    if self._run_paths_changed():
-      self._configs, self.config_fpaths = self._read_config_files(
-          self.run_paths, self.logdir)
+    run_path_pairs = self.run_paths.items()
+    # If there are no summary event files, the projector should still work,
+    # treating the `logdir` as the model checkpoint directory.
+    if not run_path_pairs:
+      run_path_pairs.append(('.', self.logdir))
+    if (self._run_paths_changed() or
+        _latest_checkpoints_changed(self._configs, run_path_pairs)):
+      self.readers = {}
+      self._configs, self.config_fpaths = self._read_latest_config_files(
+          run_path_pairs)
       self._augment_configs_with_checkpoint_info()
     return self._configs
 
@@ -140,15 +168,11 @@ class ProjectorPlugin(TBPlugin):
       del self._configs[run]
       del self.config_fpaths[run]
 
-  def _read_config_files(self, run_paths, summary_logdir):
-    # If there are no summary event files, the projector can still work,
-    # thus treating the `logdir` as the model checkpoint directory.
-    if not run_paths:
-      run_paths['.'] = summary_logdir
-
+  def _read_latest_config_files(self, run_path_pairs):
+    """Reads and returns the projector config files in every run directory."""
     configs = {}
     config_fpaths = {}
-    for run_name, logdir in run_paths.items():
+    for run_name, logdir in run_path_pairs:
       config = ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
