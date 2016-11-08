@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {RenderContext} from './renderContext';
 import {DataSet} from './data';
+import {CameraType, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {createTexture} from './util';
+import * as util from './util';
 
 const NUM_POINTS_FOG_THRESHOLD = 5000;
 const MIN_POINT_SIZE = 5.0;
@@ -82,6 +82,10 @@ const FRAGMENT_SHADER_POINT_TEST_CHUNK = `
     float p_in_v1_v2 = cross(v2 - v1, p - v1).z;
     return (p_in_v0_v1 > 0.0) && (p_in_v1_v2 > 0.0);
   }
+
+  bool point_in_unit_square(vec2 spriteCoord) {
+    return true;
+  }
 `;
 
 const FRAGMENT_SHADER = `
@@ -104,8 +108,10 @@ const FRAGMENT_SHADER = `
       gl_FragColor = vec4(vColor, 1.0) * texture2D(texture, coords);
     } else {
       bool inside = point_in_unit_circle(gl_PointCoord);
-      vec3 c = mix(vec3(1, 1, 1), vColor, float(inside));
-      gl_FragColor = vec4(c, 1);
+      if (!inside) {
+        discard;
+      }
+      gl_FragColor = vec4(vColor, 1);
     }
     ${THREE.ShaderChunk['fog_fragment']}
   }`;
@@ -134,20 +140,16 @@ const FRAGMENT_SHADER_PICKING = `
  * Uses GL point sprites to render the dataset.
  */
 export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
-  private dataSet: DataSet;
-
   private image: HTMLImageElement;
-  private geometry: THREE.BufferGeometry;
+
+  private scene: THREE.Scene;
+  private fog: THREE.Fog;
+  private texture: THREE.Texture = null;
   private renderMaterial: THREE.ShaderMaterial;
   private pickingMaterial: THREE.ShaderMaterial;
-  private uniforms: Object;
-
-  private sceneIs3D: boolean = true;
-  private pointSize2D: number;
-  private pointSize3D: number;
-  private fog: THREE.Fog;
 
   private points: THREE.Points;
+  private worldSpacePointPositions: Float32Array;
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
 
@@ -155,48 +157,53 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
    * Create points, set their locations and actually instantiate the
    * geometry.
    */
-  private addSprites(scene: THREE.Scene) {
-    this.geometry = new THREE.BufferGeometry();
-    this.createBufferAttributes();
-
-    let canvas = document.createElement('canvas');
-    let image = this.image || canvas;
-    let tex = createTexture(image);
-    let pointSize = (this.sceneIs3D ? this.pointSize3D : this.pointSize2D);
-    let imageDim = [0, 0];
-    if (this.image) {
-      pointSize = IMAGE_SIZE;
-      imageDim =
-          this.dataSet.spriteAndMetadataInfo.spriteMetadata.singleImageDim;
-    }
-
-    this.uniforms = {
-      texture: {type: 't', value: tex},
-      imageWidth: {type: 'f', value: image.width / imageDim[0]},
-      imageHeight: {type: 'f', value: image.height / imageDim[1]},
-      fogColor: {type: 'c', value: this.fog.color},
-      fogNear: {type: 'f', value: this.fog.near},
-      fogFar: {type: 'f', value: this.fog.far},
-      sizeAttenuation: {type: 'bool', value: this.sceneIs3D},
-      isImage: {type: 'bool', value: (this.image != null)},
-      pointSize: {type: 'f', value: pointSize}
-    };
+  private createPointSprites(
+      scene: THREE.Scene, positions: Float32Array, dataSet: DataSet) {
+    const geometry =
+        this.createGeometry(positions.length / XYZ_NUM_ELEMENTS, dataSet);
 
     const haveImage = (this.image != null);
+    this.fog = new THREE.Fog(0xFFFFFF);  // unused value, gets overwritten.
+
+    {
+      const image = this.image || document.createElement('canvas');
+      this.texture = util.createTexture(image);
+    }
+
+    let imageDim = [1, 1];
+    {
+      const spriteMetadata = dataSet.spriteAndMetadataInfo.spriteMetadata;
+      if (haveImage && spriteMetadata) {
+        imageDim[0] = this.image.width / spriteMetadata.singleImageDim[0];
+        imageDim[1] = this.image.height / spriteMetadata.singleImageDim[1];
+      }
+    }
+
+    const uniforms = {
+      texture: {type: 't'},
+      imageWidth: {type: 'f', value: imageDim[0]},
+      imageHeight: {type: 'f', value: imageDim[1]},
+      fogColor: {type: 'c'},
+      fogNear: {type: 'f'},
+      fogFar: {type: 'f'},
+      isImage: {type: 'bool', value: haveImage},
+      sizeAttenuation: {type: 'bool'},
+      pointSize: {type: 'f'}
+    };
 
     this.renderMaterial = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
+      uniforms: THREE.UniformsUtils.clone(uniforms),
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
       transparent: !haveImage,
       depthTest: haveImage,
       depthWrite: haveImage,
       fog: true,
-      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
+      blending: THREE.MultiplyBlending,
     });
 
     this.pickingMaterial = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
+      uniforms: THREE.UniformsUtils.clone(uniforms),
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER_PICKING,
       transparent: true,
@@ -206,46 +213,35 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
       blending: THREE.NormalBlending,
     });
 
-    this.points = new THREE.Points(this.geometry, this.renderMaterial);
+    this.points = new THREE.Points(geometry, this.renderMaterial);
     scene.add(this.points);
   }
 
-  private calibratePointSize() {
-    let numPts = this.dataSet.points.length;
-    let scaleConstant = 200;
-    let logBase = 8;
-    // Scale point size inverse-logarithmically to the number of points.
-    this.pointSize3D = scaleConstant / Math.log(numPts) / Math.log(logBase);
-    this.pointSize2D = this.pointSize3D / 1.5;
-  }
-
-  private setFogDistances(nearestPointZ: number, farthestPointZ: number) {
-    if (this.sceneIs3D) {
-      this.fog.near = nearestPointZ;
-      // If there are fewer points we want less fog. We do this
-      // by making the "far" value (that is, the distance from the camera to the
-      // far edge of the fog) proportional to the number of points.
-      let multiplier = 2 -
-          Math.min(this.dataSet.points.length, NUM_POINTS_FOG_THRESHOLD) /
-              NUM_POINTS_FOG_THRESHOLD;
-      this.fog.far = farthestPointZ * multiplier;
-    } else {
-      this.fog.near = Infinity;
-      this.fog.far = Infinity;
+  private calculatePointSize(sceneIs3D: boolean): number {
+    if (this.image != null) {
+      return IMAGE_SIZE;
     }
+    const n = this.worldSpacePointPositions.length / XYZ_NUM_ELEMENTS;
+    const SCALE = 200;
+    const LOG_BASE = 8;
+    const DIVISOR = 1.5;
+    // Scale point size inverse-logarithmically to the number of points.
+    const pointSize = SCALE / Math.log(n) / Math.log(LOG_BASE);
+    return sceneIs3D ? pointSize : (pointSize / DIVISOR);
   }
 
   /**
    * Set up buffer attributes to be used for the points/images.
    */
-  private createBufferAttributes() {
-    let numPoints = this.dataSet.points.length;
+  private createGeometry(pointCount: number, dataSet: DataSet):
+      THREE.BufferGeometry {
+    const n = pointCount;
 
     // Fill pickingColors with each point's unique id as its color.
-    this.pickingColors = new Float32Array(numPoints * RGB_NUM_ELEMENTS);
+    this.pickingColors = new Float32Array(n * RGB_NUM_ELEMENTS);
     {
       let dst = 0;
-      for (let i = 0; i < numPoints; i++) {
+      for (let i = 0; i < n; i++) {
         const c = new THREE.Color(i);
         this.pickingColors[dst++] = c.r;
         this.pickingColors[dst++] = c.g;
@@ -253,114 +249,141 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
       }
     }
 
-    let colors =
-        new THREE.BufferAttribute(this.pickingColors, RGB_NUM_ELEMENTS);
-    let scaleFactors = new THREE.BufferAttribute(
-        new Float32Array(numPoints), INDEX_NUM_ELEMENTS);
-    let positions = new THREE.BufferAttribute(
-        new Float32Array(numPoints * XYZ_NUM_ELEMENTS), XYZ_NUM_ELEMENTS);
+    const spriteIndexes =
+        new THREE.BufferAttribute(new Float32Array(n), INDEX_NUM_ELEMENTS);
 
-    /**
-     * The actual indices of the points which we use for sizeAttenuation in
-     * the shader.
-     */
-    let indicesShader =
-        new THREE.BufferAttribute(new Float32Array(numPoints), 1);
-
-    // Create the array of indices.
-    for (let i = 0; i < numPoints; i++) {
-      indicesShader.setX(i, this.dataSet.points[i].index);
-    }
-
-    this.geometry.addAttribute('position', positions);
-    this.geometry.addAttribute('color', colors);
-    this.geometry.addAttribute('vertexIndex', indicesShader);
-    this.geometry.addAttribute('scaleFactor', scaleFactors);
-  }
-
-  private updatePositionsArray(dataSet: DataSet) {
-    if (this.geometry == null) {
-      return;
-    }
-    const n = dataSet.points.length;
-    const positions =
-        this.geometry.getAttribute('position') as THREE.BufferAttribute;
-    positions.array = new Float32Array(n * XYZ_NUM_ELEMENTS);
     for (let i = 0; i < n; i++) {
-      let pp = dataSet.points[i].projectedPoint;
-      positions.setXYZ(i, pp[0], pp[1], pp[2]);
+      spriteIndexes.setX(i, dataSet.points[i].index);
     }
-    positions.needsUpdate = true;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.addAttribute(
+        'position', new THREE.BufferAttribute(null, XYZ_NUM_ELEMENTS));
+    geometry.addAttribute(
+        'color', new THREE.BufferAttribute(null, RGB_NUM_ELEMENTS));
+    geometry.addAttribute(
+        'scaleFactor', new THREE.BufferAttribute(null, INDEX_NUM_ELEMENTS));
+    geometry.addAttribute('vertexIndex', spriteIndexes);
+    return geometry;
   }
 
-  removeAllFromScene(scene: THREE.Scene) {
-    scene.remove(this.points);
+  private setFogDistances(
+      sceneIs3D: boolean, nearestPointZ: number, farthestPointZ: number) {
+    if (sceneIs3D) {
+      const n = this.worldSpacePointPositions.length / XYZ_NUM_ELEMENTS;
+      this.fog.near = nearestPointZ;
+      // If there are fewer points we want less fog. We do this
+      // by making the "far" value (that is, the distance from the camera to the
+      // far edge of the fog) proportional to the number of points.
+      let multiplier =
+          2 - Math.min(n, NUM_POINTS_FOG_THRESHOLD) / NUM_POINTS_FOG_THRESHOLD;
+      this.fog.far = farthestPointZ * multiplier;
+    } else {
+      this.fog.near = Infinity;
+      this.fog.far = Infinity;
+    }
   }
 
-  onDataSet(dataSet: DataSet) {
-    this.dataSet = dataSet;
-    this.image = this.dataSet.spriteAndMetadataInfo.spriteImage;
+  dispose() {
+    this.scene.remove(this.points);
+    this.points.geometry.dispose();
+    if (this.renderMaterial.uniforms.texture.value) {
+      this.renderMaterial.uniforms.texture.value.dispose();
+    }
     this.points = null;
-    if (this.geometry) {
-      this.geometry.dispose();
+    this.renderMaterial = null;
+    this.pickingMaterial = null;
+    this.worldSpacePointPositions = null;
+    this.image = null;
+  }
+
+  setScene(scene: THREE.Scene) {
+    this.scene = scene;
+  }
+
+  onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
+    if (this.points != null) {
+      const notEnoughSpace = (this.pickingColors.length < newPositions.length);
+      const newImage =
+          (this.image !== dataSet.spriteAndMetadataInfo.spriteImage);
+      if (notEnoughSpace || newImage) {
+        this.dispose();
+      }
     }
-    this.geometry = null;
-    this.calibratePointSize();
-  }
 
-  onRecreateScene(
-      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
-    this.sceneIs3D = sceneIs3D;
-    this.fog = new THREE.Fog(backgroundColor);
-    scene.fog = this.fog;
-    if (this.dataSet) {
-      this.addSprites(scene);
-      this.updatePositionsArray(this.dataSet);
+    this.image = dataSet.spriteAndMetadataInfo.spriteImage;
+    this.worldSpacePointPositions = newPositions;
+
+    if (this.points == null) {
+      this.createPointSprites(this.scene, newPositions, dataSet);
+    }
+
+    if (newPositions) {
+      const positions = (this.points.geometry as THREE.BufferGeometry)
+                            .getAttribute('position') as THREE.BufferAttribute;
+      positions.array = newPositions;
+      positions.needsUpdate = true;
     }
   }
-
-  onUpdate(dataSet: DataSet) {
-    this.updatePositionsArray(dataSet);
-  }
-
-  onResize(newWidth: number, newHeight: number) {}
-  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 
   onPickingRender(rc: RenderContext) {
-    if (!this.geometry) {
+    if (!this.points) {
       return;
     }
 
+    const sceneIs3D: boolean = (rc.cameraType === CameraType.Perspective);
+
+    this.pickingMaterial.uniforms.sizeAttenuation.value = sceneIs3D;
+    this.pickingMaterial.uniforms.pointSize.value =
+        this.calculatePointSize(sceneIs3D);
     this.points.material = this.pickingMaterial;
 
-    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    let colors = (this.points.geometry as THREE.BufferGeometry)
+                     .getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.pickingColors;
     colors.needsUpdate = true;
 
     let scaleFactors =
-        this.geometry.getAttribute('scaleFactor') as THREE.BufferAttribute;
+        (this.points.geometry as THREE.BufferGeometry)
+            .getAttribute('scaleFactor') as THREE.BufferAttribute;
     scaleFactors.array = rc.pointScaleFactors;
     scaleFactors.needsUpdate = true;
   }
 
   onRender(rc: RenderContext) {
-    if (!this.geometry) {
+    if (!this.points) {
       return;
     }
+    const sceneIs3D: boolean = (rc.camera instanceof THREE.PerspectiveCamera);
+
     this.setFogDistances(
-        rc.nearestCameraSpacePointZ, rc.farthestCameraSpacePointZ);
+        sceneIs3D, rc.nearestCameraSpacePointZ, rc.farthestCameraSpacePointZ);
 
+    this.scene.fog = this.fog;
+    this.scene.fog.color = new THREE.Color(rc.backgroundColor);
+
+    this.renderMaterial.uniforms.fogColor.value = this.scene.fog.color;
+    this.renderMaterial.uniforms.fogNear.value = this.fog.near;
+    this.renderMaterial.uniforms.fogFar.value = this.fog.far;
+    this.renderMaterial.uniforms.texture.value = this.texture;
+    this.renderMaterial.uniforms.sizeAttenuation.value = sceneIs3D;
+    this.renderMaterial.uniforms.pointSize.value =
+        this.calculatePointSize(sceneIs3D);
     this.points.material = this.renderMaterial;
-    this.renderMaterial.uniforms.isImage.value = !!this.image;
 
-    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    let colors = (this.points.geometry as THREE.BufferGeometry)
+                     .getAttribute('color') as THREE.BufferAttribute;
     this.renderColors = rc.pointColors;
     colors.array = this.renderColors;
     colors.needsUpdate = true;
 
     let scaleFactors =
-        this.geometry.getAttribute('scaleFactor') as THREE.BufferAttribute;
+        (this.points.geometry as THREE.BufferGeometry)
+            .getAttribute('scaleFactor') as THREE.BufferAttribute;
     scaleFactors.array = rc.pointScaleFactors;
     scaleFactors.needsUpdate = true;
   }
+
+  onResize(newWidth: number, newHeight: number) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

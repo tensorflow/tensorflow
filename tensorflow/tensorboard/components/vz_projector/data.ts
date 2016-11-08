@@ -199,7 +199,7 @@ export class DataSet {
     return accessors;
   }
 
-  hasMeaningfulVisualization(projection: Projection): boolean {
+  projectionCanBeRendered(projection: Projection): boolean {
     if (projection !== 'tsne') {
       return true;
     }
@@ -222,7 +222,6 @@ export class DataSet {
         metadata: dp.metadata,
         index: dp.index,
         vector: dp.vector.slice(),
-        projectedPoint: [0, 0, 0] as [number, number, number],
         projections: {} as {[key: string]: number}
       };
     });

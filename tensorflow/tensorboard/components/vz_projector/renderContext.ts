@@ -38,43 +38,59 @@ export class LabelRenderParams {
   }
 }
 
+/** Details about the camera projection being used to render the scene. */
+export enum CameraType {
+  Perspective,
+  Orthographic
+}
+
 /**
  * RenderContext contains all of the state required to color and render the data
  * set. ScatterPlot passes this to every attached visualizer as part of the
  * render callback.
  * TODO(nicholsonc): This should only contain the data that's changed between
- * each frame. Data like colors / scale factors / labels should be recomputed
+ * each frame. Data like colors / scale factors / labels should be reapplied
  * only when they change.
  */
 export class RenderContext {
   camera: THREE.Camera;
+  cameraType: CameraType;
   cameraTarget: THREE.Vector3;
   screenWidth: number;
   screenHeight: number;
   nearestCameraSpacePointZ: number;
   farthestCameraSpacePointZ: number;
+  backgroundColor: number;
   pointColors: Float32Array;
   pointScaleFactors: Float32Array;
   labelAccessor: (index: number) => string;
   labels: LabelRenderParams;
   traceColors: {[trace: number]: Float32Array};
+  traceOpacities: Float32Array;
+  traceWidths: Float32Array;
 
   constructor(
-      camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
-      screenHeight: number, nearestCameraSpacePointZ: number,
-      farthestCameraSpacePointZ: number, pointColors: Float32Array,
+      camera: THREE.Camera, cameraType: CameraType, cameraTarget: THREE.Vector3,
+      screenWidth: number, screenHeight: number,
+      nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
+      backgroundColor: number, pointColors: Float32Array,
       pointScaleFactors: Float32Array, labelAccessor: (index: number) => string,
-      labels: LabelRenderParams, traceColors: {[trace: number]: Float32Array}) {
+      labels: LabelRenderParams, traceColors: {[trace: number]: Float32Array},
+      traceOpacities: Float32Array, traceWidths: Float32Array) {
     this.camera = camera;
+    this.cameraType = cameraType;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
     this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
     this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
+    this.backgroundColor = backgroundColor;
     this.pointColors = pointColors;
     this.pointScaleFactors = pointScaleFactors;
     this.labelAccessor = labelAccessor;
     this.labels = labels;
     this.traceColors = traceColors;
+    this.traceOpacities = traceOpacities;
+    this.traceWidths = traceWidths;
   }
 }

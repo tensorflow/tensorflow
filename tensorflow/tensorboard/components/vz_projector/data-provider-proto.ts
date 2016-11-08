@@ -88,7 +88,6 @@ export class ProtoDataProvider implements DataProvider {
         vector: vector,
         metadata: {},
         projections: null,
-        projectedPoint: null,
         index: i
       });
     }

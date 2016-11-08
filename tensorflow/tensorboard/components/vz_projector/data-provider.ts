@@ -118,7 +118,6 @@ export function parseTensors(
         vector: null,
         index: data.length,
         projections: null,
-        projectedPoint: null
       };
       // If the first label is not a number, take it as the label.
       if (isNaN(row[0] as any) || numDim === row.length - 1) {
