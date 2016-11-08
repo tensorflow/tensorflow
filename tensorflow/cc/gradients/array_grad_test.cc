@@ -115,8 +115,16 @@ class ArrayGradTest : public ::testing::Test {
   void RunTest(const Output& x, const TensorShape& x_shape, const Output& y,
                const TensorShape& y_shape) {
     float max_error;
+    TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
+                                      &max_error));
+    EXPECT_LT(max_error, 1e-4);
+  }
+
+  void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
+               const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
+    float max_error;
     TF_ASSERT_OK(
-        ComputeGradientError(scope_, x, x_shape, y, y_shape, &max_error));
+        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
     EXPECT_LT(max_error, 1e-4);
   }
 
@@ -128,6 +136,40 @@ TEST_F(ArrayGradTest, IdentityGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = Identity(scope_, x);
   RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, SplitGrad) {
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Split along the second dimension.
+  auto split_dim = Const(scope_, 1, {});
+  auto y = Split(scope_, split_dim, x, /* num_split */ 2);
+  TensorShape y_shape = TensorShape({5, 1});
+  RunTest({x}, {x_shape}, y.output, {y_shape, y_shape});
+}
+
+TEST_F(ArrayGradTest, DiagGrad) {
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Diag(scope_, x);
+  TensorShape y_shape({5, 2, 5, 2});
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, DiagPartGrad) {
+  TensorShape x_shape({5, 2, 5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = DiagPart(scope_, x);
+  TensorShape y_shape({5, 2});
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, MatrixDiagGrad) {
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = MatrixDiag(scope_, x);
+  TensorShape y_shape({5, 2, 2});
+  RunTest(x, x_shape, y, y_shape);
 }
 
 }  // namespace
