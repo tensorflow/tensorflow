@@ -162,7 +162,7 @@ def register_session_run_conversion_functions(tensor_type, fetch_function,
       object as input, and returns a list of Tensors.
   """
   for conversion_function in _REGISTERED_EXPANSIONS:
-    if conversion_function[0] == tensor_type:
+    if issubclass(conversion_function[0], tensor_type):
       raise ValueError(
           '%s has already been registered so ignore it.', tensor_type)
       return
