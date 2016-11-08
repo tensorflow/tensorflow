@@ -163,6 +163,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     // height can grow indefinitely.
     let container = this.dom.select('#container');
     container.style('height', container.property('clientHeight') + 'px');
+    this.scatterPlot.resize();
+    this.scatterPlot.render();
   }
 
   setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
@@ -381,9 +383,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
          neighborsOfFirstPoint: knn.NearestEntry[]) =>
             this.onSelectionChanged(
                 selectedPointIndices, neighborsOfFirstPoint));
-
-    this.scatterPlot.resize();
-    this.scatterPlot.render();
   }
 
   private onHover(hoverIndex: number) {
