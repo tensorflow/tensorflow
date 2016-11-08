@@ -758,7 +758,6 @@
   * [`NormalWithSoftplusSigma`](../../api_docs/python/contrib.distributions.md#NormalWithSoftplusSigma)
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
-  * [`register_pairwise_kls`](../../api_docs/python/contrib.distributions.md#register_pairwise_kls)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`StudentTWithAbsDfSoftplusSigma`](../../api_docs/python/contrib.distributions.md#StudentTWithAbsDfSoftplusSigma)
