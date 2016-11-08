@@ -235,7 +235,7 @@ def optimize_loss(loss,
 
     if "gradient_norm" in summaries:
       summary.scalar("global_norm/gradient_norm",
-                     clip_ops.global_norm(zip(*gradients)[0]))
+                     clip_ops.global_norm(list(zip(*gradients))[0]))
 
     # Optionally clip gradients by global norm.
     if isinstance(clip_gradients, float):
@@ -267,7 +267,7 @@ def optimize_loss(loss,
 
     if clip_gradients is not None and "gradient_norm" in summaries:
       summary.scalar("global_norm/clipped_gradient_norm",
-                     clip_ops.global_norm(zip(*gradients)[0]))
+                     clip_ops.global_norm(list(zip(*gradients))[0]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(gradients,
