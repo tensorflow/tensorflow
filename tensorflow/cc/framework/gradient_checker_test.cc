@@ -67,9 +67,7 @@ TEST(GradientCheckerTest, MatMulGrad) {
 }
 
 TEST(GradientCheckerTest, SplitGrad) {
-  // Split is an op with single inputs and multiple outs.
-  // TODO(suharshs): Find an op that has multiple inputs, write the gradient
-  // function and add a test here.
+  // Split is an op with single inputs and multiple outputs.
   Scope scope = Scope::NewRootScope();
   TensorShape x_shape({5, 2});
   auto x = Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape));
@@ -80,6 +78,37 @@ TEST(GradientCheckerTest, SplitGrad) {
   double max_error;
   TF_ASSERT_OK(ComputeGradientError<double>(scope, {x}, {x_shape}, y.output,
                                             {y_shape, y_shape}, &max_error));
+  EXPECT_LT(max_error, 1e-10);
+}
+
+TEST(GradientCheckerTest, PackGrad) {
+  // Pack is an op with multiple inputs and a single output.
+  Scope scope = Scope::NewRootScope();
+  TensorShape x_shape({1, 2, 3});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape)));
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape)));
+  auto y = Pack(scope, xs, Pack::Axis(0));
+  TensorShape y_shape({2, 1, 2, 3});
+  double max_error;
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, xs, {x_shape, x_shape}, {y},
+                                            {y_shape}, &max_error));
+  EXPECT_LT(max_error, 1e-10);
+}
+
+TEST(GradientCheckerTest, PackUnpackGrad) {
+  // Chaining a Pack op to an Unpack op allows us to test the gradient checker
+  // in a multiple input/output scenario.
+  Scope scope = Scope::NewRootScope();
+  TensorShape shape({1, 2, 3});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape)));
+  auto tmp = Pack(scope, xs, Pack::Axis(0));
+  auto y = Unpack(scope, tmp, 2, Unpack::Axis(0));
+  double max_error;
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, xs, {shape, shape}, y.output,
+                                            {shape, shape}, &max_error));
   EXPECT_LT(max_error, 1e-10);
 }
 

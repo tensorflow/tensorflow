@@ -84,7 +84,7 @@ Status ComputeTheoreticalJacobianTranspose(
 
       for (int x_idx = 0; x_idx < x_num; x_idx++) {
         const int64 x_size = x_shapes[x_idx].num_elements();
-        auto jacobian = jacobian_ts[x_idx * x_num + y_idx].matrix<T>();
+        auto jacobian = jacobian_ts[x_idx * y_num + y_idx].matrix<T>();
         auto dx_flat = dxout[x_idx].flat<T>();
         for (int r = 0; r < x_size; ++r) {
           jacobian(r, c) = dx_flat(r);
@@ -157,7 +157,7 @@ Status ComputeNumericJacobianTranspose(
         auto y_neg_flat = y_neg[y_idx].flat<T>();
         const int64 y_size = y_shapes[y_idx].num_elements();
         const T scale = 2 * delta;
-        auto jacobian = jacobian_ts[x_idx * x_num + y_idx].matrix<T>();
+        auto jacobian = jacobian_ts[x_idx * y_num + y_idx].matrix<T>();
         for (int c = 0; c < y_size; ++c) {
           jacobian(r, c) = (y_pos_flat(c) - y_neg_flat(c)) / scale;
         }
@@ -185,7 +185,7 @@ void InitJacobians(const ops::OutputList& xs,
       Tensor jacobian_t(xs[x_idx].type(), {x_size, y_size});
       auto jacobian_t_flat = jacobian_t.flat<T>();
       jacobian_t_flat.setZero();
-      jacobians[x_idx * x_num + y_idx] = std::move(jacobian_t);
+      jacobians[x_idx * y_num + y_idx] = std::move(jacobian_t);
     }
   }
 }
@@ -239,12 +239,12 @@ Status ComputeGradientError(const Scope& scope, const ops::OutputList& xs,
   if (xs.size() != x_shapes.size()) {
     return errors::InvalidArgument("xs(size ", xs.size(),
                                    ") and x_shapes(size ", x_shapes.size(),
-                                   ") must be same size.");
+                                   ") must be the same size.");
   }
   if (ys.size() != y_shapes.size()) {
     return errors::InvalidArgument("ys(size ", ys.size(),
                                    ") and y_shapes(size ", y_shapes.size(),
-                                   ") must be same size.");
+                                   ") must be the same size.");
   }
   // Initialize 'x_datas' to random values.
   std::vector<Tensor> x_datas(x_shapes.size());

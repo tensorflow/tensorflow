@@ -26,88 +26,6 @@ using namespace ops;  // NOLINT(build/namespaces)
 
 namespace {
 
-class PackGradTest : public ::testing::Test {
- protected:
-  PackGradTest() : scope_(Scope::NewRootScope()) {}
-
-  void CheckGrad(const Output& grad_input, const int axis) {
-    auto a = ops::Const(scope_, 1, {2, 3});
-    auto b = ops::Const(scope_, 2, {2, 3});
-
-    auto pack = Pack(scope_, {a, b}, Pack::Axis(axis));
-    TF_ASSERT_OK(scope_.status());
-
-    std::vector<Output> grad_outputs;
-    TF_ASSERT_OK(test::CallGradFunction(scope_, Operation(pack.node()),
-                                        {grad_input}, &grad_outputs));
-
-    std::vector<Tensor> outputs;
-    test::GetTensors(scope_, {grad_outputs[0], grad_outputs[1]}, &outputs);
-
-    test::ExpectTensorEqual<int>(
-        outputs[0], test::AsTensor<int>({1, 2, 3, 4, 5, 6}, {2, 3}));
-    test::ExpectTensorEqual<int>(
-        outputs[1], test::AsTensor<int>({7, 8, 9, 10, 11, 12}, {2, 3}));
-  }
-
-  Scope scope_;
-};
-
-TEST_F(PackGradTest, Axis0) {
-  CheckGrad(
-      ops::Const(scope_, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {2, 2, 3}),
-      0);
-}
-
-TEST_F(PackGradTest, Axis1) {
-  CheckGrad(
-      ops::Const(scope_, {1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}, {2, 2, 3}),
-      1);
-}
-
-class UnpackGradTest : public ::testing::Test {
- protected:
-  UnpackGradTest() : scope_(Scope::NewRootScope()) {}
-
-  void CheckGrad(const std::vector<Output>& grad_inputs, const int num,
-                 const int axis) {
-    auto a = ops::Const(scope_, 1, {4, 2, 3});
-
-    auto unpack = Unpack(scope_, a, num, Unpack::Axis(axis));
-    TF_ASSERT_OK(scope_.status());
-
-    std::vector<Output> grad_outputs;
-    TF_ASSERT_OK(test::CallGradFunction(scope_, Operation(unpack[0].node()),
-                                        grad_inputs, &grad_outputs));
-
-    Tensor expected_output(DT_INT32, {4, 2, 3});
-    test::FillIota<int32>(&expected_output, 1);
-
-    Tensor output;
-    test::GetTensor(scope_, grad_outputs[0], &output);
-
-    test::ExpectTensorEqual<int>(output, expected_output);
-  }
-
-  Scope scope_;
-};
-
-TEST_F(UnpackGradTest, Axis0) {
-  auto g0 = ops::Const(scope_, {1, 2, 3, 4, 5, 6}, {2, 3});
-  auto g1 = ops::Const(scope_, {7, 8, 9, 10, 11, 12}, {2, 3});
-  auto g2 = ops::Const(scope_, {13, 14, 15, 16, 17, 18}, {2, 3});
-  auto g3 = ops::Const(scope_, {19, 20, 21, 22, 23, 24}, {2, 3});
-  CheckGrad({g0, g1, g2, g3}, 4, 0);
-}
-
-TEST_F(UnpackGradTest, Axis1) {
-  auto g0 =
-      ops::Const(scope_, {{1, 2, 3}, {7, 8, 9}, {13, 14, 15}, {19, 20, 21}});
-  auto g1 =
-      ops::Const(scope_, {{4, 5, 6}, {10, 11, 12}, {16, 17, 18}, {22, 23, 24}});
-  CheckGrad({g0, g1}, 2, 1);
-}
-
 class ArrayGradTest : public ::testing::Test {
  protected:
   ArrayGradTest() : scope_(Scope::NewRootScope()) {}
@@ -130,6 +48,44 @@ class ArrayGradTest : public ::testing::Test {
 
   Scope scope_;
 };
+
+TEST_F(ArrayGradTest, PackGrad_Axis0) {
+  TensorShape x_shape({1, 2, 3});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
+  auto y = Pack(scope_, xs, Pack::Axis(0));
+  TensorShape y_shape({2, 1, 2, 3});
+  RunTest(xs, {x_shape, x_shape}, {y}, {y_shape});
+}
+
+TEST_F(ArrayGradTest, PackGrad_Axis1) {
+  TensorShape x_shape({1, 2, 3});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
+  auto y = Pack(scope_, xs, Pack::Axis(1));
+  TensorShape y_shape({1, 2, 2, 3});
+  RunTest(xs, {x_shape, x_shape}, {y}, {y_shape});
+}
+
+TEST_F(ArrayGradTest, UnpackGrad_Axis0) {
+  TensorShape x_shape({4, 2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Unpacking the first dimension results in 4 outputs.
+  std::vector<TensorShape> y_shapes(4, TensorShape({2, 3}));
+  auto y = Unpack(scope_, x, 4, Unpack::Axis(0));
+  RunTest({x}, {x_shape}, y.output, y_shapes);
+}
+
+TEST_F(ArrayGradTest, UnpackGrad_Axis1) {
+  TensorShape x_shape({4, 2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Unpacking the second dimension results in 2 outputs.
+  std::vector<TensorShape> y_shapes(2, TensorShape({4, 3}));
+  auto y = Unpack(scope_, x, 2, Unpack::Axis(1));
+  RunTest({x}, {x_shape}, y.output, y_shapes);
+}
 
 TEST_F(ArrayGradTest, IdentityGrad) {
   TensorShape shape({5, 2});
