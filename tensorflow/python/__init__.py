@@ -160,6 +160,7 @@ _allowed_symbols.extend([
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
+    'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
