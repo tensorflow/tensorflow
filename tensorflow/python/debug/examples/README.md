@@ -15,7 +15,7 @@ bazel build -c opt tensorflow/python/debug:debug_mnist && \
 
 This code trains a simple NN for MNIST digit image recognition. Notice that the
 accuracy increases slightly after the first training step, but then gets stuck
-at a near-chance level:
+at a low (near-chance) level:
 
 ```none
 Accuracy at step 0: 0.1113
@@ -122,7 +122,9 @@ As the screen output indicates, the first `run()` call calculates the accuracy
 using a test data set—i.e., a forward pass on the graph. You can enter the
 command `run` to launch the `run()` call. This will bring up another screen
 right after the `run()` call has ended, which will display all dumped
-intermedate tensors from the run. This is called the *run-end UI*:
+intermedate tensors from the run. (These tensors can also be obtained by
+running the command `lt` after you executed `run`.) This is called the
+**run-end UI**:
 
 ```none
 --- run-end: run #1: fetch: accuracy/accuracy/Mean:0; 2 feeds --
@@ -146,7 +148,8 @@ intermedate tensors from the run. This is called the *run-end UI*:
 tfdbg>
 ```
 
-Try the following commands at the `tfdbg>` prompt:
+Try the following commands at the `tfdbg>` prompt (referencing the code at
+`third_party/tensorflow/python/debug/examples/debug_mnist.py`):
 
 | Command Example    | Explanation           |
 |:----------------------------- |:----------------------------------- |
@@ -194,7 +197,7 @@ tfdbg> run -f has_inf_or_nan
 ```
 
 > NOTE: This works because we have previously registered a filter for `nan`s and `inf`s called
-> `has_inf_or_nan` (see above). If you have registered any other filters, you can
+> `has_inf_or_nan` (as explained previously). If you have registered any other filters, you can
 > let **tfdbg** run till any tensors pass that filter as well, e.g.,
 >
 > ```
