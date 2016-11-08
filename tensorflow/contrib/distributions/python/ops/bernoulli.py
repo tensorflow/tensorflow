@@ -182,6 +182,7 @@ class BernoulliWithSigmoidP(Bernoulli):
     self._parameters = parameters
 
 
+@kullback_leibler.RegisterKL(Bernoulli, Bernoulli)
 def _kl_bernoulli_bernoulli(a, b, name=None):
   """Calculate the batched KL divergence KL(a || b) with a and b Bernoulli.
 
@@ -199,10 +200,3 @@ def _kl_bernoulli_bernoulli(a, b, name=None):
                                           nn.softplus(-b.logits)) +
             math_ops.sigmoid(-a.logits) * (-nn.softplus(a.logits) +
                                            nn.softplus(b.logits)))
-
-
-kl_classes = [
-    Bernoulli,
-    BernoulliWithSigmoidP,
-]
-kullback_leibler.register_pairwise_kls(kl_classes, _kl_bernoulli_bernoulli)

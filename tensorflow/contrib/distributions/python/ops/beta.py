@@ -302,6 +302,7 @@ class BetaWithSoftplusAB(Beta):
     self._parameters = parameters
 
 
+@kullback_leibler.RegisterKL(Beta, Beta)
 def _kl_beta_beta(d1, d2, name=None):
   """Calculate the batched KL divergence KL(d1 || d2) with d1 and d2 Beta.
 
@@ -325,11 +326,3 @@ def _kl_beta_beta(d1, d2, name=None):
               + (d1.b - d2.b)*math_ops.digamma(d1.b)
               + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
     return log_betas + digammas
-
-
-# Register KL divergences.
-kl_classes = [
-    Beta,
-    BetaWithSoftplusAB,
-]
-kullback_leibler.register_pairwise_kls(kl_classes, _kl_beta_beta)

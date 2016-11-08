@@ -225,6 +225,7 @@ class NormalWithSoftplusSigma(Normal):
     self._parameters = parameters
 
 
+@kullback_leibler.RegisterKL(Normal, Normal)
 def _kl_normal_normal(n_a, n_b, name=None):
   """Calculate the batched KL divergence KL(n_a || n_b) with n_a and n_b Normal.
 
@@ -246,10 +247,3 @@ def _kl_normal_normal(n_a, n_b, name=None):
     ratio = s_a_squared / s_b_squared
     return (math_ops.square(n_a.mu - n_b.mu) / (two * s_b_squared) +
             half * (ratio - one - math_ops.log(ratio)))
-
-
-kl_classes = [
-    Normal,
-    NormalWithSoftplusSigma,
-]
-kullback_leibler.register_pairwise_kls(kl_classes, _kl_normal_normal)
