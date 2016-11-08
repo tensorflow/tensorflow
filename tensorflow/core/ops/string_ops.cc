@@ -222,8 +222,9 @@ Let N be the size of source (typically N will be the batch size). Split each
 element of `input` based on `delimiter` and return a `SparseTensor`
 containing the splitted tokens. Empty tokens are ignored.
 
-`delimiter` can be empty or a single character. If `delimiter` is an empty
- string, each element of `input` is split into individual 1 character strings.
+`delimiter` can be empty or a single-byte character. If `delimiter` is an empty
+ string, each element of `input` is split into individual single-byte character
+ strings, including splitting of UTF-8 multibyte sequences.
 
 For example:
   N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
