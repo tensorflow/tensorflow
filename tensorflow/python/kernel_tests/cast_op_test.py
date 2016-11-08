@@ -130,7 +130,7 @@ class CastOpTest(tf.test.TestCase):
     if sys.byteorder == "big":  
       self._compare(np.inf, np.int32, i4.max, False)  
       self._compare(np.inf, np.int64, i8.max, False)  
-     else:  
+    else:  
       self._compare(np.inf, np.int32, i4.min, False)  
       self._compare(np.inf, np.int64, i8.min, False)  
     self._compare(-np.inf, np.float32, -np.inf, False)
