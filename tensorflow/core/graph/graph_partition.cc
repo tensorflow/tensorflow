@@ -857,6 +857,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     ref_control_inputs.clear();
     const Edge* control_flow_edge = nullptr;
     int32 num_control_flow_edges = 0;
+    int32 num_input_edges = 0;
     for (const Edge* edge : dst->in_edges()) {
       if (edge->IsControlEdge()) {
         if (IsMerge(edge->src()) && IsControlLoop(edge->src())) {
@@ -871,7 +872,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       } else {
         DCHECK(inputs[edge->dst_input()] == nullptr);
         inputs[edge->dst_input()] = edge;
+        ++num_input_edges;
       }
+    }
+
+    if (num_input_edges != dst->num_inputs()) {
+      return errors::InvalidArgument("Incomplete graph, missing ",
+                                     (dst->num_inputs() - num_input_edges),
+                                     " inputs for ", dst->name());
     }
 
     // Process in order so that all data edges are added as inputs to
