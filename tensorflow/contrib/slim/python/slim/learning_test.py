@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+import tempfile
 
 import numpy as np
 from numpy import testing as np_testing
@@ -193,13 +193,14 @@ class TrainBNClassifierTest(tf.test.TestCase):
 
     self._inputs = np.zeros((16, 4))
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
-    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_bnlogs/')
 
     for i in range(16):
       j = int(2 * self._labels[i] + np.random.randint(0, 2))
       self._inputs[i, j] = 1
 
   def testTrainWithNoInitAssignCanAchieveZeroLoss(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     g = tf.Graph()
     with g.as_default():
       tf.set_random_seed(0)
@@ -216,7 +217,7 @@ class TrainBNClassifierTest(tf.test.TestCase):
           total_loss, optimizer)
 
       loss = slim.learning.train(
-          train_op, self._logdir, number_of_steps=300, log_every_n_steps=10)
+          train_op, logdir, number_of_steps=300, log_every_n_steps=10)
       self.assertLess(loss, .1)
 
 
@@ -326,18 +327,14 @@ class TrainTest(tf.test.TestCase):
 
     self._inputs = np.zeros((16, 4))
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
-    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
-
-    # To make sure one test doesnt interfere with another:
-    if tf.gfile.Exists(self._logdir):
-      tf.gfile.DeleteRecursively(self._logdir)
 
     for i in range(16):
       j = int(2 * self._labels[i] + np.random.randint(0, 2))
       self._inputs[i, j] = 1
 
   def testTrainWithNonDefaultGraph(self):
-    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_logs8/')
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     g = tf.Graph()
     with g.as_default():
       tf.set_random_seed(0)
@@ -353,8 +350,7 @@ class TrainTest(tf.test.TestCase):
       train_op = slim.learning.create_train_op(total_loss, optimizer)
 
     loss = slim.learning.train(
-        train_op, self._logdir, number_of_steps=300, log_every_n_steps=10,
-        graph=g)
+        train_op, logdir, number_of_steps=300, log_every_n_steps=10, graph=g)
     self.assertIsNotNone(loss)
     self.assertLess(loss, .015)
 
@@ -402,6 +398,8 @@ class TrainTest(tf.test.TestCase):
     self.assertLess(loss, .015)
 
   def testTrainWithTrace(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
@@ -418,7 +416,7 @@ class TrainTest(tf.test.TestCase):
 
       loss = slim.learning.train(
           train_op,
-          self._logdir,
+          logdir,
           number_of_steps=300,
           log_every_n_steps=10,
           trace_every_n_steps=100)
@@ -426,7 +424,7 @@ class TrainTest(tf.test.TestCase):
     for trace_step in [1, 101, 201]:
       trace_filename = 'tf_trace-%d.json' % trace_step
       self.assertTrue(
-          os.path.isfile(os.path.join(self._logdir, trace_filename)))
+          os.path.isfile(os.path.join(logdir, trace_filename)))
 
   def testTrainWithNoneAsLogdirWhenUsingSummariesRaisesError(self):
     with tf.Graph().as_default():
@@ -467,7 +465,6 @@ class TrainTest(tf.test.TestCase):
             train_op, None, number_of_steps=300, trace_every_n_steps=10)
 
   def testTrainWithNoneAsLogdirWhenUsingSaverRaisesError(self):
-    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_logs_/')
     with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
@@ -487,7 +484,8 @@ class TrainTest(tf.test.TestCase):
             train_op, None, init_op=None, number_of_steps=300, saver=saver)
 
   def testTrainWithNoneAsInitWhenUsingVarsRaisesError(self):
-    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_logs_/')
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
@@ -504,9 +502,11 @@ class TrainTest(tf.test.TestCase):
 
       with self.assertRaises(RuntimeError):
         slim.learning.train(
-            train_op, self._logdir, init_op=None, number_of_steps=300)
+            train_op, logdir, init_op=None, number_of_steps=300)
 
   def testTrainWithNoInitAssignCanAchieveZeroLoss(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
@@ -521,11 +521,13 @@ class TrainTest(tf.test.TestCase):
       train_op = slim.learning.create_train_op(total_loss, optimizer)
 
       loss = slim.learning.train(
-          train_op, self._logdir, number_of_steps=300, log_every_n_steps=10)
+          train_op, logdir, number_of_steps=300, log_every_n_steps=10)
       self.assertIsNotNone(loss)
       self.assertLess(loss, .015)
 
   def testTrainWithLocalVariable(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
@@ -543,11 +545,13 @@ class TrainTest(tf.test.TestCase):
           total_loss, optimizer)
 
       loss = slim.learning.train(
-          train_op, self._logdir, number_of_steps=300, log_every_n_steps=10)
+          train_op, logdir, number_of_steps=300, log_every_n_steps=10)
       self.assertIsNotNone(loss)
       self.assertLess(loss, .015)
 
   def testResumeTrainAchievesRoughlyTheSameLoss(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
     number_of_steps = [300, 301, 305]
 
     for i in range(len(number_of_steps)):
@@ -566,7 +570,7 @@ class TrainTest(tf.test.TestCase):
             total_loss, optimizer)
 
         loss = slim.learning.train(
-            train_op, self._logdir, number_of_steps=number_of_steps[i],
+            train_op, logdir, number_of_steps=number_of_steps[i],
             log_every_n_steps=10)
         self.assertIsNotNone(loss)
         self.assertLess(loss, .015)
@@ -593,12 +597,10 @@ class TrainTest(tf.test.TestCase):
         gradient_multipliers=gradient_multipliers)
 
   def testTrainWithInitFromCheckpoint(self):
-    logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs1/')
-    logdir2 = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
-    if tf.gfile.Exists(logdir1):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir1)
-    if tf.gfile.Exists(logdir2):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir2)
+    logdir1 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs1')
+    logdir2 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs2')
 
     # First, train the model one step (make sure the error is high).
     with tf.Graph().as_default():
@@ -644,12 +646,10 @@ class TrainTest(tf.test.TestCase):
       self.assertLess(loss, .02)
 
   def testTrainWithInitFromFn(self):
-    logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs4/')
-    logdir2 = os.path.join(self.get_temp_dir(), 'tmp_logs5/')
-    if tf.gfile.Exists(logdir1):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir1)
-    if tf.gfile.Exists(logdir2):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir2)
+    logdir1 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs1')
+    logdir2 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs2')
 
     # First, train the model one step (make sure the error is high).
     with tf.Graph().as_default():
@@ -697,9 +697,8 @@ class TrainTest(tf.test.TestCase):
     return slim.losses.get_total_loss()
 
   def testTrainAllVarsHasLowerLossThanTrainSubsetOfVars(self):
-    logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs3/')
-    if tf.gfile.Exists(logdir1):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir1)
+    logdir1 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs1')
 
     # First, train only the weights of the model.
     with tf.Graph().as_default():
@@ -806,12 +805,10 @@ class TrainTest(tf.test.TestCase):
     # to train two models. Model with equivalently larger learning
     # rate (i.e., learning_rate * gradient_multiplier) has smaller
     # training loss.
-    logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs6/')
-    logdir2 = os.path.join(self.get_temp_dir(), 'tmp_logs7/')
-    if tf.gfile.Exists(logdir1):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir1)
-    if tf.gfile.Exists(logdir2):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(logdir2)
+    logdir1 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs1')
+    logdir2 = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                           'tmp_logs2')
 
     multipliers = [1., 1000.]
     number_of_steps = 10
