@@ -537,6 +537,14 @@ filegroup(
 )
 
 filegroup(
+    name = "paper_toast",
+    srcs = [
+        "index.html",
+        "paper-toast.html",
+    ],
+)
+
+filegroup(
     name = "paper_toggle_button",
     srcs = [
         "index.html",
