@@ -15,6 +15,9 @@
 
 """## Generation of summaries.
 
+### Class for writing Summaries
+@@FileWriter
+
 ### Summary Ops
 @@tensor_summary
 @@scalar
@@ -45,6 +48,10 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 from tensorflow.python.platform import tf_logging as _logging
+# exports FileWriter
+# pylint: disable=unused-import
+from tensorflow.python.summary.writer.writer import FileWriter
+# pylint: enable=unused-import
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
 
