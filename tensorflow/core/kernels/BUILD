@@ -1083,6 +1083,9 @@ tf_kernel_library(
     name = "resource_variable_ops",
     srcs = ["resource_variable_ops.cc"],
     deps = [
+        ":bounds_check",
+        ":gather_functor",
+        ":scatter_functor",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

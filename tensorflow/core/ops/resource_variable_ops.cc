@@ -18,6 +18,9 @@
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
+using ::tensorflow::shape_inference::InferenceContext;
+using ::tensorflow::shape_inference::ShapeHandle;
+
 namespace tensorflow {
 
 REGISTER_OP("VarHandleOp")
@@ -49,7 +52,7 @@ dtype: the type of this variable. Must agree with the dtypes
 shape: The (possibly partially specified) shape of this variable.
 )");
 
-Status CreateAssignShapeFn(shape_inference::InferenceContext* c) {
+Status CreateAssignShapeFn(InferenceContext* c) {
   DataType handle_dtype = c->input_handle_dtype(0);
   DataType value_dtype;
   c->GetAttr("dtype", &value_dtype);
@@ -59,9 +62,9 @@ Status CreateAssignShapeFn(shape_inference::InferenceContext* c) {
         "Expected ",
         handle_dtype, " got ", value_dtype);
   }
-  shape_inference::ShapeHandle s = c->input_handle_shape(0);
-  shape_inference::ShapeHandle value_shape = c->input(1);
-  shape_inference::ShapeHandle unused;
+  ShapeHandle s = c->input_handle_shape(0);
+  ShapeHandle value_shape = c->input(1);
+  ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->Merge(s, value_shape, &unused));
   return Status::OK();
 }
@@ -83,7 +86,7 @@ REGISTER_OP("ReadVariableOp")
     .Input("resource: resource")
     .Output("value: dtype")
     .Attr("dtype: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       DataType handle_dtype = c->input_handle_dtype(0);
       DataType value_dtype;
       c->GetAttr("dtype", &value_dtype);
@@ -129,9 +132,8 @@ dtype: the dtype of the value.
 REGISTER_OP("AssignAddVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
-    .Output("new_value: dtype")
     .Attr("dtype: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       DataType handle_dtype = c->input_handle_dtype(0);
       DataType value_dtype;
       c->GetAttr("dtype", &value_dtype);
@@ -141,11 +143,10 @@ REGISTER_OP("AssignAddVariableOp")
             "Expected ",
             handle_dtype, " got ", value_dtype);
       }
-      shape_inference::ShapeHandle s = c->input_handle_shape(0);
-      shape_inference::ShapeHandle value_shape = c->input(1);
-      shape_inference::ShapeHandle unused;
+      ShapeHandle s = c->input_handle_shape(0);
+      ShapeHandle value_shape = c->input(1);
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->Merge(s, value_shape, &unused));
-      c->set_output(0, value_shape);
       return Status::OK();
     })
     .Doc(R"(
@@ -159,7 +160,6 @@ increments to this variable.
 
 resource: handle to the resource in which to store the variable.
 value: the value by which the variable will be incremented.
-new_value: the new value of the variable.
 dtype: the dtype of the value.
 )");
 
@@ -168,11 +168,102 @@ REGISTER_OP("VarIsInitializedOp")
     .Output("is_initialized: bool")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
     .Doc(R"doc(
-Checks whether a resource handle-basd variable has been initialized.
+Checks whether a resource handle-based variable has been initialized.
 
 resource: the input resource handle.
 is_initialized: a scalar boolean which is true if the variable has been
 initialized.
+)doc");
+
+REGISTER_OP("ResourceGather")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Attr("validate_indices: bool = true")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      DataType tparams;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tparams", &tparams));
+      if (c->input_handle_dtype(0) != tparams) {
+        return errors::InvalidArgument(
+            "Trying to gather from a variable with the wrong dtype.");
+      }
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(
+          c->WithRankAtLeast(c->input_handle_shape(0), 1, &unused));
+      ShapeHandle params_subshape;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(c->input_handle_shape(0), 1, &params_subshape));
+      ShapeHandle indices_shape = c->input(1);
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, params_subshape, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Gather slices from the variable pointed to by `resource` according to `indices`.
+
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
+
+)doc");
+
+REGISTER_OP("ResourceScatterAdd")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle var_shape = c->input_handle_shape(0);
+      ShapeHandle indices_shape = c->input(1);
+
+      ShapeHandle unused_updates_shape;
+      ShapeHandle concat;
+      ShapeHandle var_subshape;
+      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
+      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Adds sparse updates to the variable referenced by `resource`.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] += updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] += updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions add.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/ScatterAdd.png" alt>
+</div>
+
+resource: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of updated values to add to `ref`.
 )doc");
 
 }  // namespace tensorflow
