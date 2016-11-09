@@ -246,7 +246,7 @@ Filling queue with 20000 CIFAR images before starting to train. This will take a
 ...
 ```
 
-The script reports the total loss every 10 steps as well the speed at which
+The script reports the total loss every 10 steps as well as the speed at which
 the last batch of data was processed. A few comments:
 
 * The first batch of data can be inordinately slow (e.g. several minutes) as the

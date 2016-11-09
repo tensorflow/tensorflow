@@ -358,6 +358,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "substr_op_test",
+    size = "small",
+    srcs = ["substr_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],

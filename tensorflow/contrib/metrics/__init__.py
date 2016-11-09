@@ -142,6 +142,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
 from tensorflow.contrib.metrics.python.metrics import *
+# pylint: enable=wildcard-import
 from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion_matrix
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
@@ -176,6 +177,6 @@ from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size
 from tensorflow.contrib.metrics.python.ops.set_ops import set_union
 from tensorflow.python.util.all_util import make_all
-
+# pylint: enable=unused-import,line-too-long
 
 __all__ = make_all(__name__)

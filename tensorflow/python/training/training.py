@@ -205,6 +205,7 @@ from tensorflow.python.training.queue_runner import *
 # For the module level doc.
 from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
+# pylint: enable=wildcard-import
 
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
@@ -246,7 +247,7 @@ from tensorflow.python.training.training_util import assert_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 
-
+# pylint: disable=wildcard-import
 # Training data protos.
 from tensorflow.core.example.example_pb2 import *
 from tensorflow.core.example.feature_pb2 import *
@@ -254,7 +255,7 @@ from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import *
-
+# pylint: enable=wildcard-import
 
 # Distributed computing support.
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
@@ -262,7 +263,6 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
-
 
 # Symbols whitelisted for export without documentation.
 _allowed_symbols = [

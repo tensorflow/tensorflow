@@ -77,5 +77,6 @@ from tensorflow.contrib.training.python.training.training import create_train_op
 from tensorflow.contrib.training.python.training.training import multiply_gradients
 from tensorflow.contrib.training.python.training.training import train
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

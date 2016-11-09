@@ -20,7 +20,7 @@ limitations under the License.
 #ifdef _MSC_VER
 // the following avx intrinsics are not defined on windows
 // in immintrin.h so we define them here.
-// 
+//
 #include "tensorflow/core/platform/types.h"
 
 #define _mm_load_pd1 _mm_load1_pd

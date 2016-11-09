@@ -472,6 +472,11 @@ class ParseEventFilesSpecTest(tf.test.TestCase):
     expected = {'gs://foo/./path//..': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
 
+  def testRunNameWithGCSPath(self):
+    logdir_string = 'lol:gs://foo/path'
+    expected = {'gs://foo/path': 'lol'}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
 
 class TensorBoardAssetsTest(tf.test.TestCase):
 

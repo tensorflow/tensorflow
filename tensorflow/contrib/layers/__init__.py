@@ -116,5 +116,6 @@ import sys
 from tensorflow.contrib.layers.python.layers import *
 from tensorflow.contrib.layers.python.ops import sparse_ops
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

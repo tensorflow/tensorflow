@@ -207,7 +207,7 @@ Here are some of the typical usage models:
     sess.run(logits)
     # Creates a saver.
     saver0 = tf.train.Saver()
-    saver0.save(sess, saver0_ckpt)
+    saver0.save(sess, 'my-save-dir/my-model-10000')
     # Generates MetaGraphDef.
     saver0.export_meta_graph('my-save-dir/my-model-10000.meta')
   ```
