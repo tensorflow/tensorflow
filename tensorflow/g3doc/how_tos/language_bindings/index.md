@@ -56,7 +56,7 @@ more functionality in the [C API] is an ongoing project.
 
 Feature                                        | Python                                                      | C
 :--------------------------------------------- | :---------------------------------------------------------- | :--
-Run a predefined Graph                         | `tf.import_graph_def`, `tf.Session`                         | `TF_GraphImportGraphDef`, `TF_NewSessionWithGraph`
+Run a predefined Graph                         | `tf.import_graph_def`, `tf.Session`                         | `TF_GraphImportGraphDef`, `TF_NewSession`
 Graph construction with generated op functions | Yes                                                         | Yes (The C API supports client languages that do this)
 Gradients                                      | `tf.gradients`                                              |
 Functions                                      | `tf.python.framework.function.Defun`                        |
@@ -88,9 +88,7 @@ A language binding is expected to define the following classes:
 -   `Session`: Represents a client to a particular instance of the TensorFlow
     runtime. Its main job is to be constructed with a `Graph` and some options
     and then field calls to `Run()` the graph. Corresponds to a
-    `TF_SessionWithGraph` in the C API. (Note: `TF_SessionWithGraph` will
-    eventually be renamed `TF_Session` once the deprecated `TF_Session` is
-    removed.)
+    `TF_Session` in the C API.
 -   `Tensor`: Represents an N-dimensional (rectangular) array with elements all
     the same `DataType`. Gets data into and out of a `Session`'s `Run()` call.
     Corresponds to a `TF_Tensor` in the C API.

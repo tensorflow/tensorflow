@@ -264,7 +264,7 @@ typedef struct TF_Graph TF_Graph;
 extern TF_Graph* TF_NewGraph();
 
 // Destroy an options object.  Graph will be deleted once no more
-// TFSessionWithGraph's are referencing it.
+// TFSession's are referencing it.
 extern void TF_DeleteGraph(TF_Graph*);
 
 // Operation being built. The underlying graph must outlive this.
@@ -781,32 +781,31 @@ extern void TF_OperationToNodeDef(TF_Operation* oper,
 // TODO(yuanbyu): Add while loop to graph.
 
 // --------------------------------------------------------------------------
-// The new session API that uses TF_Graph*.  The intent is this will
-// replace the TF_ExtendGraph() API.
+// API for driving Graph execution.
 
-// TODO(ashankar,josh11b): Rename this to TF_Session before v1.0.
-typedef struct TF_SessionWithGraph TF_SessionWithGraph;
+typedef struct TF_Session TF_Session;
 
-// Return a new execution session with the associated graph, or NULL
-// on error.  *graph must be a valid graph (not deleted or nullptr).
-// This function will prevent the graph from being deleted until
-// TF_DeleteSessionWithGraph() is called.  Does not take ownership of opts.
-// TODO(josh11b): Rename this TF_NewSession() once we delete the old API.
-extern TF_SessionWithGraph* TF_NewSessionWithGraph(
-    TF_Graph* graph, const TF_SessionOptions* opts, TF_Status* status);
+// Return a new execution session with the associated graph, or NULL on error.
+//
+// *graph must be a valid graph (not deleted or nullptr).  This function will
+// prevent the graph from being deleted until TF_DeleteSession() is called.
+// Does not take ownership of opts.
+extern TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opts,
+                                 TF_Status* status);
 
-// Close a session. This contacts any other processes associated with this
-// session, if applicable. This may not be called after
-// TF_DeleteSessionWithGraph().
-// TODO(josh11b): Rename this TF_CloseSession() once we delete the old API.
-extern void TF_CloseSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
+// Close a session.
+//
+// Contacts any other processes associated with the session, if applicable.
+// May not be called after TF_DeleteSession().
+extern void TF_CloseSession(TF_Session*, TF_Status* status);
 
-// Destroy a session object.  Even if error information is recorded in
-// *status, this call discards all local resources associated with the
-// session.  The session may not be used during or after this call
-// (and the session drops its reference to the corresponding graph).
-// TODO(josh11b): Rename this TF_DeleteSession() once we delete the old API.
-extern void TF_DeleteSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
+// Destroy a session object.
+//
+// Even if error information is recorded in *status, this call discards all
+// local resources associated with the session.  The session may not be used
+// during or after this call (and the session drops its reference to the
+// corresponding graph).
+extern void TF_DeleteSession(TF_Session*, TF_Status* status);
 
 // Run the graph associated with the session starting with the supplied inputs
 // (inputs[0,ninputs-1] with corresponding values in input_values[0,ninputs-1])/
@@ -832,7 +831,7 @@ extern void TF_DeleteSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
 // to the caller, which must eventually call TF_DeleteTensor on them.
 //
 // On failure, output_values[] contains NULLs.
-extern void TF_SessionRun(TF_SessionWithGraph* session,
+extern void TF_SessionRun(TF_Session* session,
                           // RunOptions
                           const TF_Buffer* run_options,
                           // Input tensors
@@ -856,7 +855,7 @@ extern void TF_SessionRun(TF_SessionWithGraph* session,
 // On failure, out_status contains a tensorflow::Status with an error
 // message.
 // NOTE: This is EXPERIMENTAL and subject to change.
-extern void TF_SessionPRunSetup(TF_SessionWithGraph*,
+extern void TF_SessionPRunSetup(TF_Session*,
                                 // Input names
                                 const TF_Port* inputs, int ninputs,
                                 // Output names
@@ -872,7 +871,7 @@ extern void TF_SessionPRunSetup(TF_SessionWithGraph*,
 // Continue to run the graph with additional feeds and fetches. The
 // execution state is uniquely identified by the handle.
 // NOTE: This is EXPERIMENTAL and subject to change.
-extern void TF_SessionPRun(TF_SessionWithGraph*, const char* handle,
+extern void TF_SessionPRun(TF_Session*, const char* handle,
                            // Input tensors
                            const TF_Port* inputs,
                            TF_Tensor* const* input_values, int ninputs,
@@ -887,30 +886,22 @@ extern void TF_SessionPRun(TF_SessionWithGraph*, const char* handle,
 
 // --------------------------------------------------------------------------
 // The deprecated session API.  Please switch to the above instead of
-// TF_ExtendGraph().  TF_DeprecatedSession manages a single graph and execution.
+// TF_ExtendGraph(). This deprecated API can be removed at any time without
+// notice.
 
 typedef struct TF_DeprecatedSession TF_DeprecatedSession;
 
-// Return a new execution session, or NULL on error.
 extern TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions*,
                                                      TF_Status* status);
-
-// Close a session.
 extern void TF_CloseDeprecatedSession(TF_DeprecatedSession*, TF_Status* status);
-
-// Destroy a session.  Even if error information is recorded in *status,
-// this call discards all resources associated with the session.
 extern void TF_DeleteDeprecatedSession(TF_DeprecatedSession*,
                                        TF_Status* status);
-
-// Closes all existing sessions connected to the `target` specified in the
-// `SessionOptions`, and frees shared resources in `containers` on `target'.
-// If no containers are provided, all containers are cleared.
 extern void TF_Reset(const TF_SessionOptions* opt, const char** containers,
                      int ncontainers, TF_Status* status);
-
 // Treat the bytes proto[0,proto_len-1] as a serialized GraphDef and
 // add the nodes in that GraphDef to the graph for the session.
+//
+// Prefer use of TF_Session and TF_GraphImportGraphDef over this.
 extern void TF_ExtendGraph(TF_DeprecatedSession*, const void* proto,
                            size_t proto_len, TF_Status*);
 
