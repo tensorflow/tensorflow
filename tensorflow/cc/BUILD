@@ -213,10 +213,7 @@ cc_library(
     deps = [
         ":cc_ops",
         ":grad_op_registry",
-        ":ops",
-        ":scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
+        ":gradients",
     ],
 )
 

@@ -1041,7 +1041,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
 
     num_rows = math_ops.cast(sp_input.shape[0], dtypes.int32)
     all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
-    empty_row_indices, _ = array_ops.list_diff(all_row_indices,
+    empty_row_indices, _ = array_ops.setdiff1d(all_row_indices,
                                                sp_input.indices[:, 0])
     empty_row_indicator = sparse_to_dense(
         empty_row_indices, array_ops.expand_dims(sp_input.shape[0], -1), True,

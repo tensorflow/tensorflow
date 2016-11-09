@@ -94,13 +94,19 @@ class Coordinator {
   void WaitForStop();
 
  private:
-  std::vector<std::unique_ptr<RunnerInterface>> runners_;
   std::unordered_set<int> clean_stop_errors_;
+  condition_variable wait_for_stop_;
+
   mutex mu_;
   bool should_stop_ GUARDED_BY(mu_);
+
   mutex status_lock_;
-  Status status_;
-  condition_variable wait_for_stop_;
+  Status status_ GUARDED_BY(status_lock_);
+
+  mutex runners_lock_;
+  std::vector<std::unique_ptr<RunnerInterface>> runners_
+      GUARDED_BY(runners_lock_);
+
   TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
 };
 

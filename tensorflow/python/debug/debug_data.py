@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 
 import numpy as np
@@ -329,6 +330,14 @@ class DebugDumpDir(object):
     self._dump_root = dump_root
     self._dump_tensor_data = []
 
+    # A map from node name to debug watches.
+    # The key is the watched node name.
+    # The value is a dictionary.
+    #   Of this dictionary, the key is the watched_output_slot.
+    #   The value is a set of debug ops watching this output slot.
+    self._debug_watches = collections.defaultdict(
+        lambda: collections.defaultdict(set))
+
     for root, _, files in os.walk(self._dump_root):
       for f in files:
         if f.count("_") < 3:
@@ -337,8 +346,16 @@ class DebugDumpDir(object):
 
         debug_dump_rel_path = os.path.join(
             os.path.relpath(root, self._dump_root), f)
-        self._dump_tensor_data.append(
-            DebugTensorDatum(self._dump_root, debug_dump_rel_path))
+        datum = DebugTensorDatum(self._dump_root, debug_dump_rel_path)
+        self._dump_tensor_data.append(datum)
+
+        # Attempt to load the debug watches from the tensor dump files first,
+        # before loading the full set of debug watches from the partition
+        # graphs as done further below.
+        # This is necessary because sometimes the partition graphs may not be
+        # available, e.g., when the run errors out.
+        self._debug_watches[datum.node_name][datum.output_slot].add(
+            datum.debug_op)
 
     # Sort the data by ascending timestamp.
     # This sorting order reflects the order in which the TensorFlow
@@ -384,7 +401,6 @@ class DebugDumpDir(object):
     self._devices = None
     self._node_devices = None
     self._node_op_types = None
-    self._debug_watches = None
 
     # Check the dump data against partition executor graphs.
     if partition_graphs:
@@ -449,13 +465,6 @@ class DebugDumpDir(object):
     # A map from node name to control recipients of the node.
     self._node_ctrl_recipients = {}
 
-    # A map from node name to debug watches.
-    # The key is the watched node name.
-    # The value is a dictionary.
-    #   Of this dictionary, the key is the watched_output_slot.
-    #   The value is a list of debug ops watching this output slot.
-    self._debug_watches = {}
-
     # A map from node name to devices (as indices to self._devices)
     self._devices = []
     self._node_devices = {}
@@ -475,17 +484,8 @@ class DebugDumpDir(object):
           (watched_node_name, watched_output_slot, _,
            debug_op) = _parse_debug_node_name(node.name)
 
-          if watched_node_name not in self._debug_watches:
-            self._debug_watches[
-                watched_node_name] = {watched_output_slot: [debug_op]}
-          else:
-            if watched_output_slot not in self._debug_watches[
-                watched_node_name]:
-              self._debug_watches[watched_node_name][
-                  watched_output_slot] = [debug_op]
-            else:
-              self._debug_watches[watched_node_name][watched_node_name].append(
-                  debug_op)
+          self._debug_watches[watched_node_name][watched_output_slot].add(
+              debug_op)
 
           continue
 
@@ -636,6 +636,10 @@ class DebugDumpDir(object):
             del recipient_pending_inputs[:]
           else:
             del recipient_pending_inputs[recipient_pending_inputs.index(node)]
+
+  def loaded_partition_graphs(self):
+    """Test whether partition graphs have been loaded."""
+    return self._partition_graphs is not None
 
   def partition_graphs(self):
     """Get the partition graphs.

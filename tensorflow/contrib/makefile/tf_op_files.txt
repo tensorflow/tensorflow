@@ -87,6 +87,7 @@ tensorflow/core/kernels/gather_op.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/fill_functor.cc
+tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc

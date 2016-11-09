@@ -57,7 +57,7 @@ more functionality in the [C API] is an ongoing project.
 Feature                                        | Python                                                      | C
 :--------------------------------------------- | :---------------------------------------------------------- | :--
 Run a predefined Graph                         | `tf.import_graph_def`, `tf.Session`                         | `TF_GraphImportGraphDef`, `TF_NewSessionWithGraph`
-Graph construction with generated op functions | Yes                                                         | Yes[^1]
+Graph construction with generated op functions | Yes                                                         | Yes (The C API supports client languages that do this)
 Gradients                                      | `tf.gradients`                                              |
 Functions                                      | `tf.python.framework.function.Defun`                        |
 Control Flow                                   | `tf.cond`, `tf.while_loop`                                  |
@@ -232,7 +232,6 @@ and "while") is not available in languages other than Python. This will be
 updated when the [C API] provides necessary support.
 
 [C API]: https://www.tensorflow.org/code/tensorflow/c/c_api.h
-[^1]: The C API supports client languages that would like to do this
 [`tensorflow/core/ops/ops.pbtxt`]: https://www.tensorflow.org/code/tensorflow/core/ops/ops.pbtxt
 [`tensorflow/python/BUILD`]: https://www.tensorflow.org/code/tensorflow/python/BUILD
 [`tensorflow/core/framework/op.h`]: https://www.tensorflow.org/code/tensorflow/core/framework/op.h

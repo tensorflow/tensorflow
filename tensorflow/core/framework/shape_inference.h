@@ -235,8 +235,13 @@ class InferenceContext {
     }
     return s->dims_[idx];
   }
-  int32 Rank(ShapeHandle s) const { return s->rank_; }
-  bool RankKnown(ShapeHandle s) const { return Rank(s) != kUnknownRank; }
+  int32 Rank(ShapeHandle s) const {
+    DCHECK(s.IsSet());
+    return s->rank_;
+  }
+  bool RankKnown(ShapeHandle s) const {
+    return (s.IsSet() && (Rank(s) != kUnknownRank));
+  }
   inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }

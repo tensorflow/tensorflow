@@ -113,6 +113,7 @@ from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
+from tensorflow.python.util.deprecation import deprecated
 # pylint: enable=wildcard-import
 
 
@@ -125,25 +126,22 @@ _baseslice = slice
 
 
 # Aliases for some automatically-generated names.
-listdiff = gen_array_ops.list_diff
+# pylint: disable=protected-access
+@deprecated(
+    "2016-11-30",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.setdiff1d().")
+def listdiff(x, y, out_idx=None, name=None):
+  return gen_array_ops._list_diff(x, y, out_idx, name)
+listdiff.__doc__ = gen_array_ops._list_diff.__doc__ + "\n" + listdiff.__doc__
+# pylint: enable=protected-access
 
 
+# pylint: disable=undefined-variable,protected-access
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
-  """Returns the difference between the `x` and `y` treated as sets.
-
-  Args:
-    x: Set of values not assumed to be unique.
-    y: Set of values not assumed to be unique.
-    index_dtype: Output index type (`tf.int32`, `tf.int64`) default: `tf.int32`
-    name: A name for the operation (optional).
-
-
-  Returns:
-    A `Tensor` the same type as `x` and `y`
-    A `Tensor` that is of type `index_dtype` representing indices from .
-  """
-
-  return gen_array_ops.list_diff(x, y, index_dtype, name)
+  return gen_array_ops._list_diff(x, y, index_dtype, name)
+setdiff1d.__doc__ = gen_array_ops._list_diff.__doc__
+# pylint: enable=protected-access
 
 
 def shape(input, name=None, out_type=dtypes.int32):
@@ -699,9 +697,7 @@ def stack(values, axis=0, name="stack"):
 
 
 def pack(values, axis=0, name="pack"):
-  """DEPRECATED: Use stack.
-
-  Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+  """Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
   Packs the list of tensors in `values` into a tensor with rank one higher than
   each tensor in `values`, by packing them along the `axis` dimension.
@@ -1112,7 +1108,7 @@ def sparse_mask(a, mask_indices, name=None):
   """
   with ops.name_scope(name, "sparse_mask", [a, mask_indices]) as name:
     indices = a.indices
-    out_indices, to_gather = listdiff(indices, mask_indices)
+    out_indices, to_gather = setdiff1d(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 

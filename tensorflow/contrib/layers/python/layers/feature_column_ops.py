@@ -414,7 +414,8 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
     scope: Optional scope for variable_scope.
 
   Returns:
-    A tuple of followings:
+    A tuple containing:
+
       * A Tensor which represents predictions of a linear model.
       * A list of Variables storing the weights.
       * A Variable which is used for bias.
@@ -500,7 +501,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     scope: Optional scope for variable_scope.
 
   Returns:
-    A tuple of followings:
+    A tuple containing:
+
       * A Tensor which represents predictions of a linear model.
       * A dictionary which maps feature_column to corresponding Variable.
       * A Variable which is used for bias.

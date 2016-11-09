@@ -141,6 +141,25 @@ class TransformUtilsTest : public ::testing::Test {
     EXPECT_EQ(1, node_map.count("output"));
     EXPECT_EQ(0, node_map.count("remove_me"));
   }
+
+  void TestRemoveAttributes() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Output placeholder = Placeholder(root.WithOpName("placeholder"), DT_FLOAT);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    GraphDef result_graph_def;
+    RemoveAttributes(graph_def, {"dtype"}, &result_graph_def);
+
+    std::map<string, const NodeDef*> node_map;
+    MapNamesToNodes(result_graph_def, &node_map);
+    const NodeDef* removed_placeholder = node_map["placeholder"];
+    EXPECT_EQ(nullptr,
+              tensorflow::AttrSlice(*removed_placeholder).Find("dtype"));
+  }
 };
 
 TEST_F(TransformUtilsTest, TestMapNamesToNodes) { TestMapNamesToNodes(); }
@@ -152,6 +171,8 @@ TEST_F(TransformUtilsTest, TestNodeNamePartsFromInput) {
 TEST_F(TransformUtilsTest, TestNodeNameFromInput) { TestNodeNameFromInput(); }
 
 TEST_F(TransformUtilsTest, TestFilterGraphDef) { TestFilterGraphDef(); }
+
+TEST_F(TransformUtilsTest, TestRemoveAttributes) { TestRemoveAttributes(); }
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

@@ -214,6 +214,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     });
 
     this.points = new THREE.Points(geometry, this.renderMaterial);
+    this.points.frustumCulled = false;
     scene.add(this.points);
   }
 

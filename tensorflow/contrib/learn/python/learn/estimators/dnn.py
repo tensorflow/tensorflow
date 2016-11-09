@@ -678,7 +678,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                gradient_clip_norm=None,
                enable_centered_bias=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               label_dimension=1):
     """Initializes a `DNNRegressor` instance.
 
     Args:
@@ -711,6 +712,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
+      label_dimension: Dimension of the label for multilabels. Defaults to 1.
 
     Returns:
       A `DNNRegressor` estimator.
@@ -726,7 +728,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         config=config,
-        feature_engineering_fn=feature_engineering_fn)
+        feature_engineering_fn=feature_engineering_fn,
+        label_dimension=label_dimension)
     self.feature_columns = feature_columns
     self.optimizer = optimizer
     self.activation_fn = activation_fn

@@ -31,6 +31,7 @@ from tensorflow.python.debug import debug_data
 from tensorflow.python.debug import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -117,6 +118,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
 
       dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
 
       # Verify the dumped tensor values for u and v.
       self.assertEqual(2, dump.size)
@@ -178,6 +180,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
 
         dump = debug_data.DebugDumpDir(
             run_dump_root, partition_graphs=run_metadata.partition_graphs)
+        self.assertTrue(dump.loaded_partition_graphs())
 
         # Each run should have generated only one dumped tensor, not two.
         self.assertEqual(1, dump.size)
@@ -610,6 +613,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError,
                                    "No partition graphs have been loaded"):
         dump.partition_graphs()
+      self.assertFalse(dump.loaded_partition_graphs())
 
       with self.assertRaisesRegexp(
           RuntimeError, "Node inputs are not loaded from partition graphs yet"):
@@ -863,6 +867,40 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       self.assertEqual(1, unique_x_slot_1_dumps[0].output_slot)
       self.assertAllClose([0, 0, 1, 2, 2],
                           unique_x_slot_1_dumps[0].get_tensor())
+
+  def testRunWithError(self):
+    """Test the debug tensor dumping when error occurs in graph runtime."""
+
+    with session.Session() as sess:
+      ph = tf.placeholder(tf.float32, name="mismatch/ph")
+      x = tf.transpose(ph, name="mismatch/x")
+      m = constant_op.constant(
+          np.array(
+              [[1.0, 2.0]], dtype=np.float32), name="mismatch/m")
+      y = math_ops.matmul(m, x, name="mismatch/y")
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity"],
+          debug_urls="file://%s" % self._dump_root)
+
+      with self.assertRaises(errors.OpError):
+        sess.run(y,
+                 options=run_options,
+                 feed_dict={ph: np.array([[-3.0], [0.0]])})
+
+      dump = debug_data.DebugDumpDir(self._dump_root)
+      self.assertFalse(dump.loaded_partition_graphs())
+
+      m_dumps = dump.watch_key_to_data("mismatch/m:0:DebugIdentity")
+      self.assertEqual(1, len(m_dumps))
+      self.assertAllClose(np.array([[1.0, 2.0]]), m_dumps[0].get_tensor())
+
+      x_dumps = dump.watch_key_to_data("mismatch/x:0:DebugIdentity")
+      self.assertEqual(1, len(x_dumps))
+      self.assertAllClose(np.array([[-3.0, 0.0]]), x_dumps[0].get_tensor())
 
 
 if __name__ == "__main__":

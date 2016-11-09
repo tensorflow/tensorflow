@@ -199,7 +199,7 @@ a tensor.
 @@argmin
 @@argmax
 
-@@listdiff
+@@setdiff1d
 @@where
 @@unique
 

@@ -246,24 +246,60 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """
 
     if request.performed_action == framework.OnRunStartAction.DEBUG_RUN:
-      debug_dump = debug_data.DebugDumpDir(
-          self._dump_root,
-          partition_graphs=request.run_metadata.partition_graphs)
+      partition_graphs = None
+      if request.run_metadata and request.run_metadata.partition_graphs:
+        partition_graphs = request.run_metadata.partition_graphs
+      elif request.client_graph_def:
+        partition_graphs = [request.client_graph_def]
 
-      init_command = "lt"
-      title_color = "green"
-      if self._run_till_filter_pass:
-        if not debug_dump.find(
-            self._tensor_filters[self._run_till_filter_pass], first_n=1):
-          # No dumped tensor passes the filter in this run. Clean up the dump
-          # directory and move on.
-          shutil.rmtree(self._dump_root)
-          return framework.OnRunEndResponse()
-        else:
-          # Some dumped tensor(s) from this run passed the filter.
-          init_command = "lt -f %s" % self._run_till_filter_pass
-          title_color = "red"
-          self._run_till_filter_pass = None
+      debug_dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=partition_graphs)
+
+      if request.tf_error:
+        op_name = request.tf_error.op.name
+
+        # Prepare help introduction for the TensorFlow error that occurred
+        # during the run.
+        help_intro = [
+            "--------------------------------------",
+            "!!! An error occurred during the run !!!",
+            "",
+            "  * Use command \"ni %s\" to see the information about the "
+            "failing op." % op_name,
+            "  * Use command \"li -r %s\" to see the inputs to the "
+            "failing op." % op_name,
+            "  * Use command \"lt\" to view the dumped tensors.",
+            "",
+            "Op name:    " + op_name,
+            "Error type: " + str(type(request.tf_error)),
+            "",
+            "Details:",
+            str(request.tf_error),
+            "",
+            "WARNING: Using client GraphDef due to the error, instead of "
+            "executor GraphDefs.",
+            "--------------------------------------",
+            "",
+        ]
+        init_command = "help"
+        title_color = "red"
+      else:
+        help_intro = None
+        init_command = "lt"
+
+        title_color = "green"
+        if self._run_till_filter_pass:
+          if not debug_dump.find(
+              self._tensor_filters[self._run_till_filter_pass], first_n=1):
+            # No dumped tensor passes the filter in this run. Clean up the dump
+            # directory and move on.
+            shutil.rmtree(self._dump_root)
+            return framework.OnRunEndResponse()
+          else:
+            # Some dumped tensor(s) from this run passed the filter.
+            init_command = "lt -f %s" % self._run_till_filter_pass
+            title_color = "red"
+            self._run_till_filter_pass = None
 
       analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
 
@@ -327,6 +363,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       #    completion contexts and registered command handlers.
 
       title = "run-end: " + self._run_description
+      run_end_cli.set_help_intro(help_intro)
       run_end_cli.run_ui(
           init_command=init_command, title=title, title_color=title_color)
 

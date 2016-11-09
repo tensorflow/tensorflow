@@ -94,10 +94,12 @@ class RichTextLines(object):
     self._font_attr_segs = font_attr_segs
     if not self._font_attr_segs:
       self._font_attr_segs = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
     self._annotations = annotations
     if not self._annotations:
       self._annotations = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
   @property
   def lines(self):
