@@ -2572,6 +2572,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       `Tensor`, and `TensorArray` objects.
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel.
+      It must be a positive integer.
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     name: Optional name prefix for the returned tensors.
@@ -2625,6 +2626,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       raise TypeError("cond must be callable.")
     if not callable(body):
       raise TypeError("body must be callable.")
+    if parallel_iterations < 1:
+      raise TypeError("parallel_iterations must be a positive integer.")
 
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)

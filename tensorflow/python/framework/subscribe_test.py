@@ -54,6 +54,36 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertEquals(d_out, [42])
     self.assertEquals(shared, [2, 2, 2])
 
+  def testCaching(self):
+    """Confirm caching of control output is recacluated between calls."""
+    a = tf.constant(1)
+    b = tf.constant(2)
+    with tf.control_dependencies([a]):
+      c = tf.constant(42)
+
+    shared = {}
+
+    def sub(t):
+      shared[t] = shared.get(t, 0) + 1
+      return t
+
+    a = subscribe.subscribe(a, lambda t: tf.py_func(sub, [t], [t.dtype]))
+
+    with tf.control_dependencies([b]):
+      d = tf.constant(11)
+
+    # If it was using outdated cached control_outputs then
+    # evaling would not trigger the new subscription.
+    b = subscribe.subscribe(b, lambda t: tf.py_func(sub, [t], [t.dtype]))
+
+    with self.test_session() as sess:
+      c_out = sess.run([c])
+      d_out = sess.run([d])
+
+    self.assertEquals(c_out, [42])
+    self.assertEquals(d_out, [11])
+    self.assertEquals(shared, {2: 1, 1: 1})
+
 
 if __name__ == '__main__':
   googletest.main()

@@ -48,12 +48,13 @@ template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp op, int IXDIM>
 struct ScatterNdFunctor {
   // Returns -1 on success or a nonnegative i s.t. indices[i] is a bad index.
-  Index operator()(const Device& d, const Index slice_size,
-                   typename TTypes<Index>::Scalar Tscratch,
-                   typename TTypes<T, IXDIM + 1>::Tensor Tparams,
-                   typename TTypes<Index, 2>::ConstTensor Tindices,
-                   typename TTypes<T, 2>::ConstTensor Tupdates,
-                   typename TTypes<T, IXDIM + 1>::Tensor Toutput);
+  Index operator()(
+      const Device& d, const Index slice_size,
+      const Eigen::array<Eigen::DenseIndex, IXDIM> output_shape_prefix,
+      typename TTypes<T, 2>::Tensor Tparams,
+      typename TTypes<Index, 2>::ConstTensor Tindices,
+      typename TTypes<T, 2>::ConstTensor Tupdates,
+      typename TTypes<T, 2>::Tensor Toutput);
 };
 
 }  // namespace functor

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -25,6 +26,16 @@ namespace {
 
 REGISTER_NO_GRADIENT_OP("Const");
 REGISTER_NO_GRADIENT_OP("StopGradient");
+REGISTER_NO_GRADIENT_OP("ConcatOffset");
+REGISTER_NO_GRADIENT_OP("EditDistance");
+REGISTER_NO_GRADIENT_OP("ZerosLike");
+REGISTER_NO_GRADIENT_OP("InvertPermutation");
+REGISTER_NO_GRADIENT_OP("Shape");
+REGISTER_NO_GRADIENT_OP("ShapeN");
+REGISTER_NO_GRADIENT_OP("Rank");
+REGISTER_NO_GRADIENT_OP("Size");
+REGISTER_NO_GRADIENT_OP("BroadcastGradientArgs");
+REGISTER_NO_GRADIENT_OP("OneHot");
 
 Status PackGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
@@ -68,6 +79,39 @@ Status RefIdentityGrad(const Scope& scope, const Operation& op,
   return Status::OK();
 }
 REGISTER_GRADIENT_OP("RefIdentity", RefIdentityGrad);
+
+Status SplitGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(Concat(scope, op.input(0), grad_inputs));
+  return Status::OK();
+}
+REGISTER_GRADIENT_OP("Split", SplitGrad);
+
+Status DiagGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(DiagPart(scope, grad_inputs[0]));
+  return Status::OK();
+}
+REGISTER_GRADIENT_OP("Diag", DiagGrad);
+
+Status DiagPartGrad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Diag(scope, grad_inputs[0]));
+  return Status::OK();
+}
+REGISTER_GRADIENT_OP("DiagPart", DiagPartGrad);
+
+Status MatrixDiagGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(MatrixDiagPart(scope, grad_inputs[0]));
+  return Status::OK();
+}
+REGISTER_GRADIENT_OP("MatrixDiag", MatrixDiagGrad);
 
 }  // anonymous namespace
 }  // namespace ops

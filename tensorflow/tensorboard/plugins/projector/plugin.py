@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import imghdr
 import os
+import numpy as np
 
 from google.protobuf import json_format
 from google.protobuf import text_format
@@ -57,8 +58,8 @@ def _read_tensor_file(fpath):
     tensor = []
     for line in f:
       if line:
-        tensor.append(line.rstrip('\n').split('\t'))
-  return tensor
+        tensor.append(map(float, line.rstrip('\n').split('\t')))
+  return np.array(tensor, dtype='float32')
 
 
 def _latest_checkpoints_changed(configs, run_path_pairs):
@@ -341,9 +342,10 @@ class ProjectorPlugin(TBPlugin):
 
     # Sample the tensor
     tensor = tensor[:LIMIT_NUM_POINTS]
-    # Stream it as TSV.
-    tsv = '\n'.join(['\t'.join([str(val) for val in row]) for row in tensor])
-    request.respond(tsv, 'text/tab-separated-values')
+    if tensor.dtype != 'float32':
+      tensor = tensor.astype(dtype='float32', copy=False)
+    data_bytes = tensor.tobytes()
+    request.respond(data_bytes, 'application/octet-stream')
 
   def _serve_bookmarks(self, request, query_params):
     run = query_params.get('run')

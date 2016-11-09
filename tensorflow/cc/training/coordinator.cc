@@ -36,6 +36,14 @@ Coordinator::~Coordinator() {
 }
 
 Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {
+  {
+    mutex_lock l(mu_);
+    if (should_stop_) {
+      return Status(error::FAILED_PRECONDITION,
+                    "The coordinator has been stopped.");
+    }
+  }
+  mutex_lock l(runners_lock_);
   runners_.push_back(std::move(runner));
   return Status::OK();
 }
@@ -57,13 +65,23 @@ bool Coordinator::ShouldStop() {
 }
 
 Status Coordinator::Join() {
-  // TODO(yuefengz): deal with unexpected calls to Join().
   // TODO(yuefengz): deal with stragglers.
-  for (const auto& t : runners_) {
-    ReportStatus(t->Join());
+  {
+    mutex_lock l(mu_);
+    if (!should_stop_) {
+      return Status(error::FAILED_PRECONDITION,
+                    "Joining coordinator without requesting to stop.");
+    }
   }
-  runners_.clear();
-  return status_;
+
+  {
+    mutex_lock l(runners_lock_);
+    for (const auto& t : runners_) {
+      ReportStatus(t->Join());
+    }
+    runners_.clear();
+  }
+  return GetStatus();
 }
 
 void Coordinator::ReportStatus(const Status& status) {

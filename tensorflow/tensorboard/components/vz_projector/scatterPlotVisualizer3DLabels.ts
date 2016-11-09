@@ -271,6 +271,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     };
 
     this.labelsMesh = new THREE.Mesh(this.geometry, this.material);
+    this.labelsMesh.frustumCulled = false;
     this.scene.add(this.labelsMesh);
   }
 

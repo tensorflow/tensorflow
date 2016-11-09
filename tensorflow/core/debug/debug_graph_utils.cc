@@ -24,8 +24,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-const string SummarizeDebugTensorWatches(
-    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches) {
+DebuggerState::DebuggerState(
+    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches)
+    : watches(watches), debug_urls_() {
+  for (const DebugTensorWatch& watch : watches) {
+    for (const string& url : watch.debug_urls()) {
+      debug_urls_.insert(url);
+    }
+  }
+}
+
+DebuggerState::~DebuggerState() {
+  // TODO(cais): This is currently no-op. For gRPC debug URLs in debug_urls_,
+  // add cleanup actions such as closing streams.
+}
+
+const string DebuggerState::SummarizeDebugTensorWatches() {
   std::ostringstream oss;
 
   for (const DebugTensorWatch& watch : watches) {
@@ -46,6 +60,10 @@ const string SummarizeDebugTensorWatches(
   }
 
   return oss.str();
+}
+
+Status DebuggerState::InsertNodes(Graph* graph, Device* device) {
+  return DebugNodeInserter::InsertNodes(watches, graph, device);
 }
 
 // static

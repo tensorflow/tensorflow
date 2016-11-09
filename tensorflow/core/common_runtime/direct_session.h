@@ -159,7 +159,7 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
-    protobuf::RepeatedPtrField<DebugTensorWatch> debug_tensor_watches;
+    std::unique_ptr<DebuggerState> debugger_state;
   };
 
   // Initializes the base execution state given the 'graph',

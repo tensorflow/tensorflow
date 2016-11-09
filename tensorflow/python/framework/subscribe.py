@@ -57,25 +57,51 @@ def _recursive_apply(tensors, apply_fn):
                     (tensors, tensors_type))
 
 
-def _control_outputs(op):
-  """Returns the control_input consumers for the supplied `Operation`.
+class _ControlOutputCache(object):
+  """Helper class to manage calculating and caching control_outputs in graph."""
 
-  Args:
-    op: The `Operation` to find consumers of.
-  Yields:
-    A list of ops that have op as a control dependency.
-  """
-  for o in op.graph.get_operations():
-    if op in o.control_inputs:
-      yield o
+  def __init__(self):
+    self.cache = {}
+
+  def calc_control_outputs(self, graph):
+    """Returns the map of control_outputs for a given graph.
+
+    Args:
+      graph: The graph to parse.
+    Returns:
+      A map of the control outputs.
+    """
+    control_outputs = {}
+    for op in graph.get_operations():
+      for control_input in op.control_inputs:
+        if control_input not in control_outputs:
+          control_outputs[control_input] = set()
+        control_outputs[control_input].add(op)
+    return control_outputs
+
+  def get_control_outputs(self, op):
+    """Return the control outputs for a given op.
+
+    Args:
+      op: The op to fetch control outputs for.
+    Returns:
+      Iterable of control output ops.
+    """
+    if op.graph not in self.cache:
+      control_outputs = self.calc_control_outputs(op.graph)
+      self.cache[op.graph] = control_outputs
+    else:
+      control_outputs = self.cache[op.graph]
+    return control_outputs.get(op, [])
 
 
-def _subscribe(tensor, side_effects):
+def _subscribe(tensor, side_effects, control_cache):
   """Helper method that subscribes a single tensor to a list of side_effects.
 
   Args:
     tensor: `tf.Tensor`
     side_effects: List of side_effect functions see subscribe for details.
+    control_cache: `_ControlOutputCache` helper to get control_outputs faster.
   Returns:
     The modified replacement to the passed in tensor which triggers the side
     effects.
@@ -84,7 +110,7 @@ def _subscribe(tensor, side_effects):
   for consumer_op in list(tensor.consumers()):  # explicit copy
     update_input.append((consumer_op, list(consumer_op.inputs).index(tensor)))
 
-  update_control_input = list(_control_outputs(tensor.op))
+  update_control_input = control_cache.get_control_outputs(tensor.op)
 
   # Trailing slash on name scope to replace the scope.
   name_scope = tensor.op.name + '/subscription/'
@@ -141,4 +167,8 @@ def subscribe(tensors, side_effects):
   """
   if not hasattr(side_effects, '__iter__'):
     side_effects = [side_effects]
-  return _recursive_apply(tensors, lambda t: _subscribe(t, side_effects))
+
+  control_outputs = _ControlOutputCache()
+  result = _recursive_apply(
+      tensors, lambda t: _subscribe(t, side_effects, control_outputs))
+  return result

@@ -155,6 +155,7 @@ TEST(CoordinatorTest, TestJoin) {
       new MockQueueRunner(&coord, &join_counter));
   coord.RegisterRunner(std::move(qr2));
 
+  coord.RequestStop();
   TF_EXPECT_OK(coord.Join());
   EXPECT_EQ(join_counter, 2);
 }
@@ -176,7 +177,16 @@ TEST(CoordinatorTest, StatusReporting) {
   coord.RegisterRunner(std::move(qr3));
 
   counter.Wait();
+  coord.RequestStop();
   EXPECT_EQ(coord.Join().code(), Code::INVALID_ARGUMENT);
+}
+
+TEST(CoordinatorTest, JoinWithoutStop) {
+  Coordinator coord;
+  std::unique_ptr<MockQueueRunner> qr(new MockQueueRunner(&coord));
+  coord.RegisterRunner(std::move(qr));
+
+  EXPECT_EQ(coord.Join().code(), Code::FAILED_PRECONDITION);
 }
 
 }  // namespace

@@ -995,4 +995,84 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
   EXPECT_EQ(f3->DebugString(), f4->DebugString());
 }
 
+TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  FunctionLibraryDefinition lib(OpRegistry::Global(), proto);
+
+  NodeDef ndef;
+  bool annotation;
+
+  // Not a function.
+  ndef.set_op("Matmul");
+  EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+
+  // A function. No attr defined.
+  ndef.set_op("XTimesTwo");
+  EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+
+  // ndef defines the attr. But we don't care.
+  AddNodeAttr("annotation", true, &ndef);
+  EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+}
+
+template <typename T>
+void SetAttrValue(FunctionDef* fdef, const string& attr, const T& value) {
+  AttrValue attr_value;
+  SetAttrValue(value, &attr_value);
+  fdef->mutable_attr()->insert({attr, attr_value});
+}
+
+TEST(FunctionLibraryDefinitionTest, GetAttr_FuncWithAttr) {
+  FunctionDefLibrary proto;
+  auto fdef = proto.add_function();
+  *fdef = test::function::XTimesTwo();
+  SetAttrValue(fdef, "annotation", true);
+  SetAttrValue(fdef, "options", "some string data");
+  FunctionLibraryDefinition lib(OpRegistry::Global(), proto);
+
+  NodeDef ndef;
+  bool annotation;
+
+  // A function. No attr defined in ndef.
+  ndef.set_op("XTimesTwo");
+  TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
+  EXPECT_EQ(annotation, true);
+
+  string str;
+  TF_EXPECT_OK(lib.GetAttr(ndef, "options", &str));
+  EXPECT_EQ(str, "some string data");
+}
+
+TEST(FunctionLibraryDefinitionTest, GetAttr_Gradient) {
+  FunctionDefLibrary proto;
+  auto fdef = proto.add_function();
+  *fdef = test::function::XTimesTwo();
+  SetAttrValue(fdef, "annotation", true);
+  *fdef = test::function::WXPlusB();
+  SetAttrValue(fdef, "annotation", false);
+  auto func_grad = proto.add_gradient();
+  func_grad->set_function_name("XTimesTwo");
+  func_grad->set_gradient_func("WXPlusB");
+  FunctionLibraryDefinition lib(OpRegistry::Global(), proto);
+
+  NodeDef ndef;
+  ndef.set_op(FunctionLibraryDefinition::kGradientOp);
+
+  bool annotation;
+  EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+
+  NameAttrList nal;
+  nal.set_name("XTimesTwo");
+  AddNodeAttr(FunctionLibraryDefinition::kFuncAttr, nal, &ndef);
+  TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
+  EXPECT_EQ(annotation, false);  // XTimesTwo's gradient is WXPlusB.
+
+  nal.set_name("WXPlusB");
+  ndef.clear_attr();
+  AddNodeAttr(FunctionLibraryDefinition::kFuncAttr, nal, &ndef);
+  TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
+  EXPECT_EQ(annotation, false);  // WXPlusB has no custom gradient.
+}
+
 }  // end namespace tensorflow

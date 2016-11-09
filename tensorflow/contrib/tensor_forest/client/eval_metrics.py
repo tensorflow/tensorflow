@@ -73,12 +73,22 @@ def _class_log_loss(probabilities, targets, weights=None):
       weights=weights)
 
 
+def _precision(predictions, targets, weights=None):
+  return metric_ops.streaming_precision(predictions, targets, weights=weights)
+
+
+def _recall(predictions, targets, weights=None):
+  return metric_ops.streaming_recall(predictions, targets, weights=weights)
+
+
 _EVAL_METRICS = {'sigmoid_entropy': _sigmoid_entropy,
                  'softmax_entropy': _softmax_entropy,
                  'accuracy': _accuracy,
                  'r2': _r2,
                  'predictions': _predictions,
-                 'classification_log_loss': _class_log_loss}
+                 'classification_log_loss': _class_log_loss,
+                 'precision': _precision,
+                 'recall': _recall}
 
 
 _PREDICTION_KEYS = {'sigmoid_entropy': INFERENCE_PROB_NAME,
@@ -86,7 +96,9 @@ _PREDICTION_KEYS = {'sigmoid_entropy': INFERENCE_PROB_NAME,
                     'accuracy': INFERENCE_PRED_NAME,
                     'r2': INFERENCE_PROB_NAME,
                     'predictions': INFERENCE_PRED_NAME,
-                    'classification_log_loss': INFERENCE_PROB_NAME}
+                    'classification_log_loss': INFERENCE_PROB_NAME,
+                    'precision': INFERENCE_PRED_NAME,
+                    'recall': INFERENCE_PRED_NAME}
 
 
 def get_metric(metric_name):

@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -136,10 +138,14 @@ Status FoldConstants(const GraphDef& input_graph_def,
                      const std::vector<string>& inputs,
                      const std::vector<string>& outputs,
                      GraphDef* output_graph_def) {
+  // Some older GraphDefs have saved _output_shapes attributes which are out of
+  // date and cause import errors, so clean them up first.
+  GraphDef cleaned_graph_def;
+  RemoveAttributes(input_graph_def, {"_output_shapes"}, &cleaned_graph_def);
   Graph input_graph(OpRegistry::Global());
   ImportGraphDefOptions import_opts;
   TF_RETURN_IF_ERROR(
-      ImportGraphDef(import_opts, input_graph_def, &input_graph, nullptr));
+      ImportGraphDef(import_opts, cleaned_graph_def, &input_graph, nullptr));
   DeviceAttributes device_attributes;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       &input_graph, inputs, outputs, {}, device_attributes));

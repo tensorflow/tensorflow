@@ -79,6 +79,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
     const camPos = rc.camera.position;
     const camToTarget = camPos.clone().sub(rc.cameraTarget);
+    let camToPoint = new THREE.Vector3();
 
     this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
@@ -96,7 +97,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
           util.vector3FromPackedArray(this.worldSpacePointPositions, index);
 
       // discard points that are behind the camera
-      const camToPoint = camPos.clone().sub(point);
+      camToPoint.copy(camPos).sub(point);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
@@ -108,7 +109,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
       // Computing the width of the font is expensive,
       // so we assume width of 1 at first. Then, if the label doesn't
       // conflict with other labels, we measure the actual width.
-      const textBoundingBox = {
+      const textBoundingBox: BoundingBox = {
         loX: x - labelMargin,
         hiX: x + 1 + labelMargin,
         loY: y - labelHeight / 2 - labelMargin,

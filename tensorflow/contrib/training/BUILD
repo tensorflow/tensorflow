@@ -12,6 +12,7 @@ py_library(
     srcs = [
         "__init__.py",
         "python/training/bucket_ops.py",
+        "python/training/device_setter.py",
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
@@ -24,6 +25,18 @@ py_library(
         "//tensorflow/python:ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
+    ],
+)
+
+py_test(
+    name = "device_setter_test",
+    size = "small",
+    srcs = ["python/training/device_setter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

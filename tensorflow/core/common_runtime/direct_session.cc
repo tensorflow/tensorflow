@@ -397,9 +397,8 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // EXPERIMENTAL: Options that allow the client to insert nodes into partition
   // graphs for debugging.
-  if (!run_options.debug_tensor_watch_opts().empty()) {
-    run_state_args.debug_tensor_watches = run_options.debug_tensor_watch_opts();
-  }
+  run_state_args.debugger_state.reset(
+      new DebuggerState(run_options.debug_tensor_watch_opts()));
 
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
@@ -847,11 +846,15 @@ Status DirectSession::GetOrCreateExecutors(
   std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
   std::sort(tn_sorted.begin(), tn_sorted.end());
 
+  string debug_tensor_watches_summary;
+  if (run_state_args->debugger_state) {
+    debug_tensor_watches_summary =
+        run_state_args->debugger_state->SummarizeDebugTensorWatches();
+  }
   const string key = strings::StrCat(
       str_util::Join(inputs_sorted, ","), "->",
       str_util::Join(outputs_sorted, ","), "/", str_util::Join(tn_sorted, ","),
-      "/", run_state_args->is_partial_run, "/",
-      SummarizeDebugTensorWatches(run_state_args->debug_tensor_watches));
+      "/", run_state_args->is_partial_run, "/", debug_tensor_watches_summary);
 
   // Set the handle.
   run_state_args->handle =
@@ -947,10 +950,9 @@ Status DirectSession::GetOrCreateExecutors(
     optimizer.Optimize(lib, options_.env, device, &partition_graph);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
-    if (!run_state_args->debug_tensor_watches.empty()) {
-      TF_RETURN_IF_ERROR(
-          DebugNodeInserter::InsertNodes(run_state_args->debug_tensor_watches,
-                                         partition_graph, params.device));
+    if (run_state_args->debugger_state) {
+      TF_RETURN_IF_ERROR(run_state_args->debugger_state->InsertNodes(
+          partition_graph, params.device));
     }
     iter->second.reset(partition_graph);
 

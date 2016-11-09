@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 
 __all__ = ["print_op"]
 
@@ -48,6 +49,11 @@ def _get_tensor_repr(t,
       t_type_str = "Type: SparseTensor ({})".format(t.dtype.name)
     elif isinstance(t, tensor_array_ops.TensorArray):
       t_type_str = "Type: TensorArray ({})".format(t.dtype.name)
+    elif isinstance(t, variables.Variable):
+      t_type_str = "Type: Variable ({})".format(t.dtype.name)
+    else:
+      raise ValueError("t must be a Tensor, SparseTensor, TensorArray or "
+                       "Variable.")
 
     tensor_list.append(constant_op.constant(t_type_str))
 
@@ -135,7 +141,7 @@ def print_op(input_,
                                           print_tensor_type, print_shape,
                                           summarize_indicator_vector))
 
-  if isinstance(input_, ops.Tensor):
+  if isinstance(input_, ops.Tensor) or isinstance(input_, variables.Variable):
     input_ = logging_ops.Print(input_, tensor_list, message, first_n, summarize,
                                name)
   elif isinstance(input_, sparse_tensor.SparseTensor):

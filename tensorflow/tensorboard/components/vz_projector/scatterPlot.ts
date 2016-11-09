@@ -43,7 +43,7 @@ const CTRL_KEY = 17;
 
 const START_CAMERA_POS_3D = new THREE.Vector3(0.45, 0.9, 1.6);
 const START_CAMERA_TARGET_3D = new THREE.Vector3(0, 0, 0);
-const START_CAMERA_POS_2D = new THREE.Vector3(0, 0, 1);
+const START_CAMERA_POS_2D = new THREE.Vector3(0, 0, 4);
 const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
 
 const ORBIT_MOUSE_ROTATION_SPEED = 1;

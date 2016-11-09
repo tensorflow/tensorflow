@@ -157,7 +157,7 @@ TEST(CAPI, SessionOptions) {
 TEST(CAPI, SessionWithRunMetadata) {
   TF_Status* s = TF_NewStatus();
   TF_SessionOptions* opt = TF_NewSessionOptions();
-  TF_Session* session = TF_NewSession(opt, s);
+  TF_DeprecatedSession* session = TF_NewDeprecatedSession(opt, s);
   TF_DeleteSessionOptions(opt);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
@@ -171,7 +171,7 @@ TEST(CAPI, SessionWithRunMetadata) {
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
-  TF_DeleteSession(session, s);
+  TF_DeleteDeprecatedSession(session, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_DeleteStatus(s);

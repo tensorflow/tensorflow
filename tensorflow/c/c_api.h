@@ -784,7 +784,7 @@ extern void TF_OperationToNodeDef(TF_Operation* oper,
 // The new session API that uses TF_Graph*.  The intent is this will
 // replace the TF_ExtendGraph() API.
 
-// TODO(josh11b): Rename this TF_Session once we delete the old API.
+// TODO(ashankar,josh11b): Rename this to TF_Session before v1.0.
 typedef struct TF_SessionWithGraph TF_SessionWithGraph;
 
 // Return a new execution session with the associated graph, or NULL
@@ -808,7 +808,30 @@ extern void TF_CloseSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
 // TODO(josh11b): Rename this TF_DeleteSession() once we delete the old API.
 extern void TF_DeleteSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
 
-// See TF_Run() below.
+// Run the graph associated with the session starting with the supplied inputs
+// (inputs[0,ninputs-1] with corresponding values in input_values[0,ninputs-1])/
+// Regardless of success or failure, the TF_SessionRun call takes ownership the
+// elements of input_values and will eventually call TF_DeleteTensor on them.
+//
+// Any NULL and non-NULL value combinations for (`run_options`,
+// `run_metadata`) are valid.
+//
+//    - `run_options` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to a `TF_Buffer` containing the
+//      serialized representation of a `RunOptions` protocol buffer.
+//    - `run_metadata` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to an empty, freshly allocated
+//      `TF_Buffer` that may be updated to contain the serialized representation
+//      of a `RunMetadata` protocol buffer.
+//
+// The caller retains the ownership of `run_options` and/or `run_metadata` (when
+// not NULL) and should manually call TF_DeleteBuffer on them.
+//
+// On success, the tensors corresponding to outputs[0,noutputs-1] are placed in
+// output_values[]. Ownership of the elements of output_values[] is transferred
+// to the caller, which must eventually call TF_DeleteTensor on them.
+//
+// On failure, output_values[] contains NULLs.
 extern void TF_SessionRun(TF_SessionWithGraph* session,
                           // RunOptions
                           const TF_Buffer* run_options,
@@ -825,7 +848,14 @@ extern void TF_SessionRun(TF_SessionWithGraph* session,
                           // Output status
                           TF_Status*);
 
-// See TF_PRunSetup() below.
+// Set up the graph with the intended feeds (inputs) and fetches (outputs) for a
+// sequence of partial run calls.
+//
+// On success, returns a handle that is used for subsequent PRun calls.
+//
+// On failure, out_status contains a tensorflow::Status with an error
+// message.
+// NOTE: This is EXPERIMENTAL and subject to change.
 extern void TF_SessionPRunSetup(TF_SessionWithGraph*,
                                 // Input names
                                 const TF_Port* inputs, int ninputs,
@@ -839,7 +869,9 @@ extern void TF_SessionPRunSetup(TF_SessionWithGraph*,
                                 // Output status
                                 TF_Status*);
 
-// See TF_PRun() below.
+// Continue to run the graph with additional feeds and fetches. The
+// execution state is uniquely identified by the handle.
+// NOTE: This is EXPERIMENTAL and subject to change.
 extern void TF_SessionPRun(TF_SessionWithGraph*, const char* handle,
                            // Input tensors
                            const TF_Port* inputs,
@@ -855,19 +887,21 @@ extern void TF_SessionPRun(TF_SessionWithGraph*, const char* handle,
 
 // --------------------------------------------------------------------------
 // The deprecated session API.  Please switch to the above instead of
-// TF_ExtendGraph().  TF_Session manages a single graph and execution.
+// TF_ExtendGraph().  TF_DeprecatedSession manages a single graph and execution.
 
-typedef struct TF_Session TF_Session;
+typedef struct TF_DeprecatedSession TF_DeprecatedSession;
 
 // Return a new execution session, or NULL on error.
-extern TF_Session* TF_NewSession(const TF_SessionOptions*, TF_Status* status);
+extern TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions*,
+                                                     TF_Status* status);
 
 // Close a session.
-extern void TF_CloseSession(TF_Session*, TF_Status* status);
+extern void TF_CloseDeprecatedSession(TF_DeprecatedSession*, TF_Status* status);
 
 // Destroy a session.  Even if error information is recorded in *status,
 // this call discards all resources associated with the session.
-extern void TF_DeleteSession(TF_Session*, TF_Status* status);
+extern void TF_DeleteDeprecatedSession(TF_DeprecatedSession*,
+                                       TF_Status* status);
 
 // Closes all existing sessions connected to the `target` specified in the
 // `SessionOptions`, and frees shared resources in `containers` on `target'.
@@ -877,35 +911,11 @@ extern void TF_Reset(const TF_SessionOptions* opt, const char** containers,
 
 // Treat the bytes proto[0,proto_len-1] as a serialized GraphDef and
 // add the nodes in that GraphDef to the graph for the session.
-extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
-                           TF_Status*);
+extern void TF_ExtendGraph(TF_DeprecatedSession*, const void* proto,
+                           size_t proto_len, TF_Status*);
 
-// Run the graph associated with the session starting with the
-// supplied inputs (inputs[0,ninputs-1]).  Regardless of success or
-// failure, inputs[] become the property of the implementation (the
-// implementation will eventually call TF_DeleteTensor on each input).
-//
-// Any NULL and non-NULL value combinations for (`run_options`,
-// `run_metadata`) are valid.
-//
-//    - `run_options` may be NULL, in which case it will be ignored; or
-//      non-NULL, in which case it must point to a `TF_Buffer` containing the
-//      serialized representation of a `RunOptions` protocol buffer.
-//    - `run_metadata` may be NULL, in which case it will be ignored; or
-//      non-NULL, in which case it must point to an empty, freshly allocated
-//      `TF_Buffer` that may be updated to contain the serialized representation
-//      of a `RunMetadata` protocol buffer.
-//
-// The caller retains the ownership of `run_options` and/or `run_metadata` (when
-// not NULL) and should manually call TF_DeleteBuffer on them.
-//
-// On success, the tensors corresponding to output_names[0,noutputs-1]
-// are placed in outputs[], and these outputs[] become the property
-// of the caller (the caller must eventually call TF_DeleteTensor on
-// them).
-//
-// On failure, outputs[] contains NULLs.
-extern void TF_Run(TF_Session*,
+// See TF_SessionRun() above.
+extern void TF_Run(TF_DeprecatedSession*,
                    // RunOptions
                    const TF_Buffer* run_options,
                    // Input tensors
@@ -919,15 +929,8 @@ extern void TF_Run(TF_Session*,
                    // Output status
                    TF_Status*);
 
-// Set up the graph with the intended feeds and fetches for a sequence
-// of partial run calls.
-//
-// On success, returns a handle that is used for subsequent PRun calls.
-//
-// On failure, out_status contains a tensorflow::Status with an error
-// message.
-// NOTE: This is EXPERIMENTAL and subject to change.
-extern void TF_PRunSetup(TF_Session*,
+// See TF_SessionPRunSetup() above.
+extern void TF_PRunSetup(TF_DeprecatedSession*,
                          // Input names
                          const char** input_names, int ninputs,
                          // Output names
@@ -939,10 +942,8 @@ extern void TF_PRunSetup(TF_Session*,
                          // Output status
                          TF_Status*);
 
-// Continue to run the graph with additional feeds and fetches. The
-// execution state is uniquely identified by the handle.
-// NOTE: This is EXPERIMENTAL and subject to change.
-extern void TF_PRun(TF_Session*, const char* handle,
+// See TF_SessionPRun above.
+extern void TF_PRun(TF_DeprecatedSession*, const char* handle,
                     // Input tensors
                     const char** input_names, TF_Tensor** inputs, int ninputs,
                     // Output tensors
