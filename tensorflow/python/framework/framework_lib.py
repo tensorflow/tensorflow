@@ -20,6 +20,7 @@
 
 @@Graph
 @@Operation
+@@Output
 @@Tensor
 
 ## Tensor types

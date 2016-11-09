@@ -10,6 +10,8 @@ BUS_ANY was used.
   by adding .ok() to the call.
 * The C API type `TF_Session` has been renamed to `TF_DeprecatedSession`.
   Please use `TF_SessionWithGraph` instead.
+* Renamed Tensor to Output in the Python API. Tensor will be an alias for Output
+  until TensorFlow 2.0 is released.
 
 # Release 0.11.0
 
