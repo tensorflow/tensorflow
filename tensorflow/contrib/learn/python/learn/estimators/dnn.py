@@ -83,8 +83,8 @@ def _centered_bias(num_label_columns):
       array_ops.zeros([num_label_columns]),
       collections=[_CENTERED_BIAS, ops.GraphKeys.GLOBAL_VARIABLES],
       name=_CENTERED_BIAS_WEIGHT)
-  summary.scalar(["centered_bias %d" % cb for cb in range(num_label_columns)],
-                 array_ops.reshape(centered_bias, [-1]))
+  for i in range(num_label_columns):
+    summary.scalar("centered_bias %d" % i, centered_bias[i])
   return centered_bias
 
 
