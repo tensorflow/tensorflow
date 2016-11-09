@@ -98,6 +98,11 @@ export class ServerDataProvider implements DataProvider {
     xhr.onload = () => {
       let data = new Float32Array(xhr.response);
       this.getEmbeddingInfo(run, tensorName, embedding => {
+        if (embedding.tensorShape[0] > LIMIT_NUM_POINTS) {
+          logging.setWarningMessage(
+            `Showing the first ${LIMIT_NUM_POINTS.toLocaleString()}` +
+            ` of ${embedding.tensorShape[0].toLocaleString()} data points`);
+        }
         let dim = embedding.tensorShape[1];
         dataProvider.parseTensorsFromFloat32Array(data, dim).then(
             dataPoints => {
