@@ -27,6 +27,7 @@ from tensorflow.python.ops import gen_logging_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 
 # The python wrapper for Assert is in control_flow_ops, as the Assert
@@ -75,6 +76,11 @@ def _Collect(val, collections, default_collections):
     ops.add_to_collection(key, val)
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.histogram. Note that "
+    "tf.summary.histogram uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on their scope.")
 def histogram_summary(tag, values, collections=None, name=None):
   """Outputs a `Summary` protocol buffer with a histogram.
 
@@ -103,6 +109,12 @@ def histogram_summary(tag, values, collections=None, name=None):
   return val
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.image. Note that "
+    "tf.summary.histogram uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in. Also, the max_images "
+    "argument was renamed to max_outputs.")
 def image_summary(tag, tensor, max_images=3, collections=None, name=None):
   """Outputs a `Summary` protocol buffer with images.
 
@@ -154,6 +166,11 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
   return val
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.audio. Note that "
+    "tf.summary.histogram uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in.")
 def audio_summary(tag,
                   tensor,
                   sample_rate,
@@ -203,6 +220,7 @@ def audio_summary(tag,
   return val
 
 
+@deprecated("2016-11-30", "Please switch to tf.summary.merge.")
 def merge_summary(inputs, collections=None, name=None):
   # pylint: disable=line-too-long
   """Merges summaries.
@@ -232,6 +250,7 @@ def merge_summary(inputs, collections=None, name=None):
   return val
 
 
+@deprecated("2016-11-30", "Please switch to tf.summary.merge_all.")
 def merge_all_summaries(key=ops.GraphKeys.SUMMARIES):
   """Merges all summaries collected in the default graph.
 
@@ -275,6 +294,13 @@ def get_summary_op():
   return summary_op
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.scalar. Note that "
+    "tf.summary.histogram uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in. Also, passing a "
+    "tensor or list of tags to a single scalar summary is no longer "
+    "supported.")
 def scalar_summary(tags, values, collections=None, name=None):
   """Outputs a `Summary` protocol buffer with scalar values.
 
