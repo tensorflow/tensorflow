@@ -156,6 +156,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `pt hidden/Relu:0` | Print the value of the tensor `hidden/Relu:0`. |
 | `pt hidden/Relu:0[0:50,:]` | Print a subarray of the tensor `hidden/Relu:0`, using [numpy](http://www.numpy.org/)-style array slicing. |
 | `pt hidden/Relu:0[0:50,:] -a` | For a large tensor like the one here, print its value in its entirety—i.e., without using any ellipsis. May take a long time for large tensors. |
+| `pt hidden/Relu:0[0:10,:] -a -r [1,inf]` | Use the `-r` flag to highlight elements falling into the specified numerical range. Multiple ranges can be used in conjunction, e.g., `-r [[-inf,-1],[1,inf]]`.|
 | `@[10,0]` or `@10,0` | Navigate to indices [10, 0] in the tensor being displayed. |
 | `/inf` | Search the screen output with the regex `inf` and highlight any matches. |
 | `/` | Scroll to the next line with matches to the searched regex (if any). |

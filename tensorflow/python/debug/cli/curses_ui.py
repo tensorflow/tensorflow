@@ -448,7 +448,7 @@ class CursesUI(object):
       if indices_str:
         try:
           indices = command_parser.parse_indices(indices_str)
-          omitted, line_index = tensor_format.locate_tensor_element(
+          omitted, line_index, _, _ = tensor_format.locate_tensor_element(
               self._curr_wrapped_output, indices)
 
           if not omitted:
