@@ -230,8 +230,10 @@ tf_cc_test(
     srcs = ["ops_util_test.cc"],
     deps = [
         ":ops_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//third_party/eigen3",
     ],
 )
 
