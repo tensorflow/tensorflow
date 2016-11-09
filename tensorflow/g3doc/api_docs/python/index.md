@@ -705,7 +705,6 @@
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#get_current_value_type)
   * [`MeanValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MeanValue)
   * [`ObservedStochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#ObservedStochasticTensor)
-  * [`SampleAndReshapeValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#SampleAndReshapeValue)
   * [`SampleValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#SampleValue)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#StochasticTensor)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#value_type)
