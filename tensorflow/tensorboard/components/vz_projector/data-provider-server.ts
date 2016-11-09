@@ -18,6 +18,8 @@ import {ProjectorConfig, DataProvider, TENSORS_MSG_ID, EmbeddingInfo} from './da
 import * as dataProvider from './data-provider';
 import * as logging from './logging';
 
+// Limit for the number of data points we receive from the server.
+const LIMIT_NUM_POINTS = 100000;
 
 /**
  * Data provider that loads data provided by a python server (usually backed
@@ -83,7 +85,8 @@ export class ServerDataProvider implements DataProvider {
     // Get the tensor.
     logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
     let xhr = new XMLHttpRequest();
-    xhr.open('GET', `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`);
+    xhr.open('GET', `${this.routePrefix}/tensor?` +
+        `run=${run}&name=${tensorName}&num_rows=${LIMIT_NUM_POINTS}`);
     xhr.responseType = 'arraybuffer';
     xhr.onprogress = (ev) => {
       if (ev.lengthComputable) {
@@ -114,7 +117,8 @@ export class ServerDataProvider implements DataProvider {
       let metadataPath = null;
       if (embedding.metadataPath) {
         metadataPath =
-            `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`;
+            `${this.routePrefix}/metadata?` +
+            `run=${run}&name=${tensorName}&num_rows=${LIMIT_NUM_POINTS}`;
       }
       let spriteImagePath = null;
       if (embedding.sprite && embedding.sprite.imagePath) {
