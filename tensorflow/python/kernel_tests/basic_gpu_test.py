@@ -22,6 +22,7 @@ import tensorflow as tf
 import math
 import numpy as np
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
 
 class GPUBinaryOpsTest(tf.test.TestCase):
   def _compareGPU(self, x, y, np_func, tf_func):
@@ -46,6 +47,15 @@ class GPUBinaryOpsTest(tf.test.TestCase):
     self._compareGPU(x, y, np.subtract, tf.sub)
     self._compareGPU(x, y, np.multiply, tf.mul)
     self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+
+  def _GetGradientArgs(self, xs, ys):
+    with self.test_session(use_gpu=True) as sess:
+      return sess.run(_broadcast_gradient_args(xs, ys))
+
+  def testBroadcast(self):
+    r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
+    self.assertAllEqual(r0, [])
+    self.assertAllEqual(r1, [0, 1, 2])
       
 if __name__ == "__main__":
   tf.test.main()

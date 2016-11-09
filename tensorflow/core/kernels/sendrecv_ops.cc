@@ -80,6 +80,8 @@ REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_GPU), SendOp);
 
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_SYCL), SendOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
 #endif
 
 REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);

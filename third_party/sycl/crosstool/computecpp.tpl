@@ -50,7 +50,7 @@ def main():
 
       x = subprocess.call([COMPUTECPP_DRIVER] +computecpp_compiler_flags )
       if(x == 0):
-          host_compiler_flags = ['-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, "--include",bc_out] + host_compiler_flags
+          host_compiler_flags = ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, "--include",bc_out] + host_compiler_flags
           return subprocess.call([CPU_CXX_COMPILER] +host_compiler_flags )
       return x
   else:

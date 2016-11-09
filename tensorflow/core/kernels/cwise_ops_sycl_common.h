@@ -44,7 +44,7 @@ template <typename Functor>
 struct UnaryFunctor<SYCLDevice, Functor> {
   void operator()(const SYCLDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
-    LOG(FATAL) << "UnaryFunctor::operator() NOT IMPLEMENTED ! ";
+    To32Bit(out).device(d) = To32Bit(in).unaryExpr(typename Functor::func());
   }
 };
 
@@ -54,19 +54,21 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
   void operator()(const SYCLDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
                   typename Functor::tin_type in1, bool* error) {
-    Assign(d, out, in0.binaryExpr(in1, typename Functor::func()));
+    To32Bit(out).device(d) = To32Bit(in0).binaryExpr(in1, typename Functor::func());
   }
 
   void Left(const SYCLDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
             typename Functor::tin_type in, bool* error) {
-    LOG(FATAL) << "BinaryFunctor::Left NOT IMPLEMENTED ! ";
+    typedef typename Functor::func Binary;
+    To32Bit(out).device(d) = To32Bit(in).binaryExpr(typename Functor::tin_type(scalar.data(),in.dimensions()), Binary());
   }
 
   void Right(const SYCLDevice& d, typename Functor::tout_type out,
              typename Functor::tin_type in,
              typename Functor::tscalar_type scalar, bool* error) {
-    LOG(FATAL) << "BinaryFunctor::Right NOT IMPLEMENTED ! ";
+    typedef typename Functor::func Binary;
+    To32Bit(out).device(d) = To32Bit(in).binaryExpr(typename Functor::tin_type(scalar.data(),in.dimensions()), Binary());
   }
 
   void BCast(const SYCLDevice& d,
@@ -76,7 +78,25 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
              bool* error) {
-    LOG(FATAL) << "BinaryFunctor::BCast NOT IMPLEMENTED ";
+    typedef typename Functor::in_type T;
+    typename Functor::func func;
+    if ((NDIMS == 2) && Functor::use_bcast_optimization &&
+        use_bcast_optimization<T>::value) {
+      const bool bcast0_all_one = AllOne<NDIMS>(bcast0);
+      const bool bcast1_all_one = AllOne<NDIMS>(bcast1);
+      if (bcast0_all_one && !bcast1_all_one) {
+        To32Bit(out).device(d) =
+            To32Bit(in0).binaryExpr(To32Bit(in1).broadcast(bcast1), func);
+        return;
+      }
+      if (!bcast0_all_one && bcast1_all_one) {
+        To32Bit(out).device(d) =
+            To32Bit(in0).broadcast(bcast0).binaryExpr(To32Bit(in1), func);
+        return;
+      }
+    }
+    To32Bit(out).device(d) = To32Bit(in0).broadcast(bcast0).binaryExpr(
+        To32Bit(in1).broadcast(bcast1), func);
   }
 };
 
