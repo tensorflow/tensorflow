@@ -1412,7 +1412,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//third_party/eigen3",
-        #"@local_config_sycl//sycl:sycl",
+        "@local_config_sycl//sycl:sycl",
     ],
     alwayslink = 1,
 )
