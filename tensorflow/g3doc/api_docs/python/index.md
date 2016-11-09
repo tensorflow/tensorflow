@@ -961,6 +961,7 @@
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
   * [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier)
   * [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor)
+  * [`LogisticRegressor`](../../api_docs/python/contrib.learn.md#LogisticRegressor)
   * [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys)
   * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
   * [`read_batch_examples`](../../api_docs/python/contrib.learn.md#read_batch_examples)
