@@ -64,7 +64,7 @@ class _RefVariableProcessor(_OptimizableVariable):
 
 
 class _DenseResourceVariableProcessor(_OptimizableVariable):
-  """Processor for DenseResourceVariable."""
+  """Processor for dense ResourceVariables."""
 
   def __init__(self, v):
     self._v = v
@@ -77,11 +77,28 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
     return optimizer._resource_apply_dense(g, self._v.op.inputs[0])
 
 
+class _SparseResourceVariableProcessor(_OptimizableVariable):
+  """Processor for sparse ResourceVariables."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    # pylint: disable=protected-access
+    return optimizer._resource_apply_sparse(
+        g, self._v.op.inputs[0], self._v.op.inputs[1])
+
+
 def _get_processor(v):
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
   if v.op.type == "ReadVariableOp":
     return _DenseResourceVariableProcessor(v)
+  if v.op.type == "ResourceGather":
+    return _SparseResourceVariableProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 

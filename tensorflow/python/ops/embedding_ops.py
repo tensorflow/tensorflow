@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
@@ -90,8 +91,12 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
     params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
       with ops.colocate_with(params[0]):
-        return array_ops.gather(params[0], ids, name=name,
-                                validate_indices=validate_indices)
+        # TODO(apassos): implement the sharded version as well.
+        if isinstance(params[0], resource_variable_ops.ResourceVariable):
+          return params[0].sparse_read(ids, name=name)
+        else:
+          return array_ops.gather(params[0], ids, name=name,
+                                  validate_indices=validate_indices)
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])

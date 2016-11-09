@@ -55,6 +55,10 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     return resource_variable_ops.assign_add_variable_op(
         handle, -grad * self._learning_rate)
 
+  def _resource_apply_sparse(self, grad, handle, indices):
+    return resource_variable_ops.resource_scatter_add(
+        handle, indices, -grad * self._learning_rate)
+
   def _apply_sparse(self, grad, var):
     delta = ops.IndexedSlices(
         grad.values *

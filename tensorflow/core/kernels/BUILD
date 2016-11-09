@@ -230,8 +230,10 @@ tf_cc_test(
     srcs = ["ops_util_test.cc"],
     deps = [
         ":ops_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1081,6 +1083,9 @@ tf_kernel_library(
     name = "resource_variable_ops",
     srcs = ["resource_variable_ops.cc"],
     deps = [
+        ":bounds_check",
+        ":gather_functor",
+        ":scatter_functor",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

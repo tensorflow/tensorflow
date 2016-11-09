@@ -683,8 +683,8 @@ struct TF_Graph {
   // TF_Graph may only / must be deleted when
   //   num_sessions == 0 && delete_requested == true
 
-  // num_sessions incremented by TF_NewSessionWithGraph, and decremented by
-  // TF_DeleteSessionWithGraph.
+  // num_sessions incremented by TF_NewSession, and decremented by
+  // TF_DeleteSession.
   int num_sessions GUARDED_BY(mu);
   bool delete_requested GUARDED_BY(mu);  // set true by TF_DeleteGraph
 };
@@ -703,8 +703,8 @@ struct TF_Operation {
   Node node;
 };
 
-struct TF_SessionWithGraph {
-  TF_SessionWithGraph(Session* s, TF_Graph* g)
+struct TF_Session {
+  TF_Session(Session* s, TF_Graph* g)
       : session(s), graph(g), last_num_graph_nodes(0) {}
   Session* session;
   TF_Graph* graph;
@@ -1610,11 +1610,10 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
   }
 }
 
-// TF_SessionWithGraph functions ----------------------------------------------
+// TF_Session functions ----------------------------------------------
 
-TF_SessionWithGraph* TF_NewSessionWithGraph(TF_Graph* graph,
-                                            const TF_SessionOptions* opt,
-                                            TF_Status* status) {
+TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
+                          TF_Status* status) {
   Session* session;
   status->status = NewSession(opt->options, &session);
   if (status->status.ok()) {
@@ -1622,18 +1621,18 @@ TF_SessionWithGraph* TF_NewSessionWithGraph(TF_Graph* graph,
       mutex_lock l(graph->mu);
       graph->num_sessions += 1;
     }
-    return new TF_SessionWithGraph(session, graph);
+    return new TF_Session(session, graph);
   } else {
     DCHECK_EQ(nullptr, session);
     return NULL;
   }
 }
 
-void TF_CloseSessionWithGraph(TF_SessionWithGraph* s, TF_Status* status) {
+void TF_CloseSession(TF_Session* s, TF_Status* status) {
   status->status = s->session->Close();
 }
 
-void TF_DeleteSessionWithGraph(TF_SessionWithGraph* s, TF_Status* status) {
+void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   status->status = Status::OK();
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
@@ -1650,8 +1649,7 @@ void TF_DeleteSessionWithGraph(TF_SessionWithGraph* s, TF_Status* status) {
 // TODO(josh11b,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and
 // call Session::Extend().
-static bool ExtendSessionGraphHelper(TF_SessionWithGraph* session,
-                                     TF_Status* status) {
+static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
   if (session->graph != nullptr) {
     mutex_lock session_lock(session->mu);
     session->graph->mu.lock();
@@ -1687,7 +1685,7 @@ static bool ExtendSessionGraphHelper(TF_SessionWithGraph* session,
   return true;
 }
 
-void TF_SessionRun(TF_SessionWithGraph* session, const TF_Buffer* run_options,
+void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
                    const TF_Port* inputs, TF_Tensor* const* input_values,
                    int ninputs, const TF_Port* outputs,
                    TF_Tensor** output_values, int noutputs,
@@ -1730,7 +1728,7 @@ void TF_SessionRun(TF_SessionWithGraph* session, const TF_Buffer* run_options,
                 status);
 }
 
-void TF_SessionPRunSetup(TF_SessionWithGraph* session, const TF_Port* inputs,
+void TF_SessionPRunSetup(TF_Session* session, const TF_Port* inputs,
                          int ninputs, const TF_Port* outputs, int noutputs,
                          const TF_Operation* const* target_opers, int ntargets,
                          const char** handle, TF_Status* status) {
@@ -1763,7 +1761,7 @@ void TF_SessionPRunSetup(TF_SessionWithGraph* session, const TF_Port* inputs,
   }
 }
 
-void TF_SessionPRun(TF_SessionWithGraph* session, const char* handle,
+void TF_SessionPRun(TF_Session* session, const char* handle,
                     const TF_Port* inputs, TF_Tensor* const* input_values,
                     int ninputs, const TF_Port* outputs,
                     TF_Tensor** output_values, int noutputs,
