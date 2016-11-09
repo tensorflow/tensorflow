@@ -37,42 +37,42 @@ result = sess.run(e)
 
 - - -
 
-#### `tf.Tensor.dtype` {#Tensor.dtype}
+#### `tf.Output.dtype` {#Output.dtype}
 
 The `DType` of elements in this tensor.
 
 
 - - -
 
-#### `tf.Tensor.name` {#Tensor.name}
+#### `tf.Output.name` {#Output.name}
 
 The string name of this tensor.
 
 
 - - -
 
-#### `tf.Tensor.value_index` {#Tensor.value_index}
+#### `tf.Output.value_index` {#Output.value_index}
 
 The index of this tensor in the outputs of its `Operation`.
 
 
 - - -
 
-#### `tf.Tensor.graph` {#Tensor.graph}
+#### `tf.Output.graph` {#Output.graph}
 
 The `Graph` that contains this tensor.
 
 
 - - -
 
-#### `tf.Tensor.op` {#Tensor.op}
+#### `tf.Output.op` {#Output.op}
 
 The `Operation` that produces this tensor as an output.
 
 
 - - -
 
-#### `tf.Tensor.consumers()` {#Tensor.consumers}
+#### `tf.Output.consumers()` {#Output.consumers}
 
 Returns a list of `Operation`s that consume this tensor.
 
@@ -84,7 +84,7 @@ Returns a list of `Operation`s that consume this tensor.
 
 - - -
 
-#### `tf.Tensor.eval(feed_dict=None, session=None)` {#Tensor.eval}
+#### `tf.Output.eval(feed_dict=None, session=None)` {#Output.eval}
 
 Evaluates this tensor in a `Session`.
 
@@ -113,7 +113,7 @@ available, or `session` must be specified explicitly.
 
 - - -
 
-#### `tf.Tensor.get_shape()` {#Tensor.get_shape}
+#### `tf.Output.get_shape()` {#Output.get_shape}
 
 Returns the `TensorShape` that represents the shape of this tensor.
 
@@ -160,7 +160,7 @@ inferred shape.
 
 - - -
 
-#### `tf.Tensor.set_shape(shape)` {#Tensor.set_shape}
+#### `tf.Output.set_shape(shape)` {#Output.set_shape}
 
 Updates the shape of this tensor.
 
@@ -201,7 +201,7 @@ print(image.get_shape())
 #### Other Methods
 - - -
 
-#### `tf.Tensor.__abs__(x, name=None)` {#Tensor.__abs__}
+#### `tf.Output.__abs__(x, name=None)` {#Output.__abs__}
 
 Computes the absolute value of a tensor.
 
@@ -228,7 +228,7 @@ number.
 
 - - -
 
-#### `tf.Tensor.__add__(x, y)` {#Tensor.__add__}
+#### `tf.Output.__add__(x, y)` {#Output.__add__}
 
 Returns x + y element-wise.
 
@@ -249,7 +249,7 @@ Returns x + y element-wise.
 
 - - -
 
-#### `tf.Tensor.__and__(x, y)` {#Tensor.__and__}
+#### `tf.Output.__and__(x, y)` {#Output.__and__}
 
 Returns the truth value of x AND y element-wise.
 
@@ -270,7 +270,7 @@ Returns the truth value of x AND y element-wise.
 
 - - -
 
-#### `tf.Tensor.__bool__()` {#Tensor.__bool__}
+#### `tf.Output.__bool__()` {#Output.__bool__}
 
 Dummy method to prevent a tensor from being used as a Python `bool`.
 
@@ -296,7 +296,7 @@ dynamic condition of the `Output`.
 
 - - -
 
-#### `tf.Tensor.__div__(x, y)` {#Tensor.__div__}
+#### `tf.Output.__div__(x, y)` {#Output.__div__}
 
 Returns x / y element-wise.
 
@@ -317,14 +317,14 @@ Returns x / y element-wise.
 
 - - -
 
-#### `tf.Tensor.__eq__(other)` {#Tensor.__eq__}
+#### `tf.Output.__eq__(other)` {#Output.__eq__}
 
 
 
 
 - - -
 
-#### `tf.Tensor.__floordiv__(x, y)` {#Tensor.__floordiv__}
+#### `tf.Output.__floordiv__(x, y)` {#Output.__floordiv__}
 
 Divides `x / y` elementwise, rounding down for floating point.
 
@@ -359,7 +359,7 @@ as well.
 
 - - -
 
-#### `tf.Tensor.__ge__(x, y, name=None)` {#Tensor.__ge__}
+#### `tf.Output.__ge__(x, y, name=None)` {#Output.__ge__}
 
 Returns the truth value of (x >= y) element-wise.
 
@@ -380,7 +380,7 @@ Returns the truth value of (x >= y) element-wise.
 
 - - -
 
-#### `tf.Tensor.__getitem__(tensor, slice_spec, var=None)` {#Tensor.__getitem__}
+#### `tf.Output.__getitem__(tensor, slice_spec, var=None)` {#Output.__getitem__}
 
 Overload for Tensor.__getitem__.
 
@@ -440,7 +440,7 @@ print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
 
 - - -
 
-#### `tf.Tensor.__gt__(x, y, name=None)` {#Tensor.__gt__}
+#### `tf.Output.__gt__(x, y, name=None)` {#Output.__gt__}
 
 Returns the truth value of (x > y) element-wise.
 
@@ -461,14 +461,14 @@ Returns the truth value of (x > y) element-wise.
 
 - - -
 
-#### `tf.Tensor.__hash__()` {#Tensor.__hash__}
+#### `tf.Output.__hash__()` {#Output.__hash__}
 
 
 
 
 - - -
 
-#### `tf.Tensor.__init__(op, value_index, dtype)` {#Tensor.__init__}
+#### `tf.Output.__init__(op, value_index, dtype)` {#Output.__init__}
 
 Creates a new `Output`.
 
@@ -488,7 +488,7 @@ Creates a new `Output`.
 
 - - -
 
-#### `tf.Tensor.__invert__(x, name=None)` {#Tensor.__invert__}
+#### `tf.Output.__invert__(x, name=None)` {#Output.__invert__}
 
 Returns the truth value of NOT x element-wise.
 
@@ -505,7 +505,7 @@ Returns the truth value of NOT x element-wise.
 
 - - -
 
-#### `tf.Tensor.__iter__()` {#Tensor.__iter__}
+#### `tf.Output.__iter__()` {#Output.__iter__}
 
 Dummy method to prevent iteration. Do not call.
 
@@ -522,7 +522,7 @@ behavior.
 
 - - -
 
-#### `tf.Tensor.__le__(x, y, name=None)` {#Tensor.__le__}
+#### `tf.Output.__le__(x, y, name=None)` {#Output.__le__}
 
 Returns the truth value of (x <= y) element-wise.
 
@@ -543,7 +543,7 @@ Returns the truth value of (x <= y) element-wise.
 
 - - -
 
-#### `tf.Tensor.__lt__(x, y, name=None)` {#Tensor.__lt__}
+#### `tf.Output.__lt__(x, y, name=None)` {#Output.__lt__}
 
 Returns the truth value of (x < y) element-wise.
 
@@ -564,7 +564,7 @@ Returns the truth value of (x < y) element-wise.
 
 - - -
 
-#### `tf.Tensor.__mod__(x, y)` {#Tensor.__mod__}
+#### `tf.Output.__mod__(x, y)` {#Output.__mod__}
 
 Returns element-wise remainder of division.
 
@@ -585,14 +585,14 @@ Returns element-wise remainder of division.
 
 - - -
 
-#### `tf.Tensor.__mul__(x, y)` {#Tensor.__mul__}
+#### `tf.Output.__mul__(x, y)` {#Output.__mul__}
 
 Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse".
 
 
 - - -
 
-#### `tf.Tensor.__neg__(x, name=None)` {#Tensor.__neg__}
+#### `tf.Output.__neg__(x, name=None)` {#Output.__neg__}
 
 Computes numerical negative value element-wise.
 
@@ -611,7 +611,7 @@ I.e., \\(y = -x\\).
 
 - - -
 
-#### `tf.Tensor.__nonzero__()` {#Tensor.__nonzero__}
+#### `tf.Output.__nonzero__()` {#Output.__nonzero__}
 
 Dummy method to prevent a tensor from being used as a Python `bool`.
 
@@ -624,7 +624,7 @@ This is the Python 2.x counterpart to `__bool__()` above.
 
 - - -
 
-#### `tf.Tensor.__or__(x, y)` {#Tensor.__or__}
+#### `tf.Output.__or__(x, y)` {#Output.__or__}
 
 Returns the truth value of x OR y element-wise.
 
@@ -645,7 +645,7 @@ Returns the truth value of x OR y element-wise.
 
 - - -
 
-#### `tf.Tensor.__pow__(x, y)` {#Tensor.__pow__}
+#### `tf.Output.__pow__(x, y)` {#Output.__pow__}
 
 Computes the power of one value to another.
 
@@ -674,7 +674,7 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 
 - - -
 
-#### `tf.Tensor.__radd__(y, x)` {#Tensor.__radd__}
+#### `tf.Output.__radd__(y, x)` {#Output.__radd__}
 
 Returns x + y element-wise.
 
@@ -695,7 +695,7 @@ Returns x + y element-wise.
 
 - - -
 
-#### `tf.Tensor.__rand__(y, x)` {#Tensor.__rand__}
+#### `tf.Output.__rand__(y, x)` {#Output.__rand__}
 
 Returns the truth value of x AND y element-wise.
 
@@ -716,7 +716,7 @@ Returns the truth value of x AND y element-wise.
 
 - - -
 
-#### `tf.Tensor.__rdiv__(y, x)` {#Tensor.__rdiv__}
+#### `tf.Output.__rdiv__(y, x)` {#Output.__rdiv__}
 
 Returns x / y element-wise.
 
@@ -737,14 +737,14 @@ Returns x / y element-wise.
 
 - - -
 
-#### `tf.Tensor.__repr__()` {#Tensor.__repr__}
+#### `tf.Output.__repr__()` {#Output.__repr__}
 
 
 
 
 - - -
 
-#### `tf.Tensor.__rfloordiv__(y, x)` {#Tensor.__rfloordiv__}
+#### `tf.Output.__rfloordiv__(y, x)` {#Output.__rfloordiv__}
 
 Divides `x / y` elementwise, rounding down for floating point.
 
@@ -779,7 +779,7 @@ as well.
 
 - - -
 
-#### `tf.Tensor.__rmod__(y, x)` {#Tensor.__rmod__}
+#### `tf.Output.__rmod__(y, x)` {#Output.__rmod__}
 
 Returns element-wise remainder of division.
 
@@ -800,14 +800,14 @@ Returns element-wise remainder of division.
 
 - - -
 
-#### `tf.Tensor.__rmul__(y, x)` {#Tensor.__rmul__}
+#### `tf.Output.__rmul__(y, x)` {#Output.__rmul__}
 
 Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse".
 
 
 - - -
 
-#### `tf.Tensor.__ror__(y, x)` {#Tensor.__ror__}
+#### `tf.Output.__ror__(y, x)` {#Output.__ror__}
 
 Returns the truth value of x OR y element-wise.
 
@@ -828,7 +828,7 @@ Returns the truth value of x OR y element-wise.
 
 - - -
 
-#### `tf.Tensor.__rpow__(y, x)` {#Tensor.__rpow__}
+#### `tf.Output.__rpow__(y, x)` {#Output.__rpow__}
 
 Computes the power of one value to another.
 
@@ -857,7 +857,7 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 
 - - -
 
-#### `tf.Tensor.__rsub__(y, x)` {#Tensor.__rsub__}
+#### `tf.Output.__rsub__(y, x)` {#Output.__rsub__}
 
 Returns x - y element-wise.
 
@@ -878,7 +878,7 @@ Returns x - y element-wise.
 
 - - -
 
-#### `tf.Tensor.__rtruediv__(y, x)` {#Tensor.__rtruediv__}
+#### `tf.Output.__rtruediv__(y, x)` {#Output.__rtruediv__}
 
 Divides x / y elementwise, always producing floating point results.
 
@@ -912,21 +912,21 @@ and `int64` (matching the behavior of Numpy).
 
 - - -
 
-#### `tf.Tensor.__rxor__(y, x)` {#Tensor.__rxor__}
+#### `tf.Output.__rxor__(y, x)` {#Output.__rxor__}
 
 x ^ y = (x | y) & ~(x & y).
 
 
 - - -
 
-#### `tf.Tensor.__str__()` {#Tensor.__str__}
+#### `tf.Output.__str__()` {#Output.__str__}
 
 
 
 
 - - -
 
-#### `tf.Tensor.__sub__(x, y)` {#Tensor.__sub__}
+#### `tf.Output.__sub__(x, y)` {#Output.__sub__}
 
 Returns x - y element-wise.
 
@@ -947,7 +947,7 @@ Returns x - y element-wise.
 
 - - -
 
-#### `tf.Tensor.__truediv__(x, y)` {#Tensor.__truediv__}
+#### `tf.Output.__truediv__(x, y)` {#Output.__truediv__}
 
 Divides x / y elementwise, always producing floating point results.
 
@@ -981,14 +981,14 @@ and `int64` (matching the behavior of Numpy).
 
 - - -
 
-#### `tf.Tensor.__xor__(x, y)` {#Tensor.__xor__}
+#### `tf.Output.__xor__(x, y)` {#Output.__xor__}
 
 x ^ y = (x | y) & ~(x & y).
 
 
 - - -
 
-#### `tf.Tensor.device` {#Tensor.device}
+#### `tf.Output.device` {#Output.device}
 
 The name of the device on which this tensor will be produced, or None.
 
