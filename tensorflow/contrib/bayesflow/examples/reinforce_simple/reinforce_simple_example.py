@@ -113,7 +113,7 @@ class REINFORCESimpleExample(tf.test.TestCase):
 
     with self.test_session() as sess:
       # Use sampling to train REINFORCE
-      with st.value_type(st.SampleAndReshapeValue(n=1)):
+      with st.value_type(st.SampleValue()):
         (route_selection,
          routing_loss,
          final_loss) = build_split_apply_merge_model()
