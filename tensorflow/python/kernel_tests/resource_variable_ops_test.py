@@ -79,9 +79,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
       resource_variable_ops.create_variable_op(
           handle, constant_op.constant(1, dtype=dtypes.int32)).run()
-      assign_add = resource_variable_ops.assign_add_variable_op(
-          handle, constant_op.constant(1, dtype=dtypes.int32))
-      self.assertEqual(assign_add.eval(), 2)
+      resource_variable_ops.assign_add_variable_op(
+          handle, constant_op.constant(1, dtype=dtypes.int32)).run()
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(read.eval(), 2)
+
+  def testScatterAdd(self):
+    with self.test_session():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      resource_variable_ops.create_variable_op(
+          handle, constant_op.constant([[1]], dtype=dtypes.int32)).run()
+      resource_variable_ops.resource_scatter_add(
+          handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)).run()
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(read.eval(), [[3]])
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ import (
 // perform the computation and potentially fetch outputs as Tensors.
 // A Session allows concurrent calls to Run().
 type Session struct {
-	c *C.TF_SessionWithGraph
+	c *C.TF_Session
 
 	// For ensuring that:
 	// - Close() blocks on all Run() calls to complete.
@@ -48,7 +48,7 @@ type Session struct {
 func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 	status := newStatus()
 	cOpt := options.c()
-	cSess := C.TF_NewSessionWithGraph(graph.c, cOpt, status.c)
+	cSess := C.TF_NewSession(graph.c, cOpt, status.c)
 	C.TF_DeleteSessionOptions(cOpt)
 	if err := status.Err(); err != nil {
 		return nil, err
@@ -139,11 +139,11 @@ func (s *Session) Close() error {
 		return nil
 	}
 	status := newStatus()
-	C.TF_CloseSessionWithGraph(s.c, status.c)
+	C.TF_CloseSession(s.c, status.c)
 	if err := status.Err(); err != nil {
 		return err
 	}
-	C.TF_DeleteSessionWithGraph(s.c, status.c)
+	C.TF_DeleteSession(s.c, status.c)
 	s.c = nil
 	return status.Err()
 }
