@@ -211,6 +211,14 @@ class StudentT(distribution.Distribution):
             (math_ops.sqrt(self.df) * math.sqrt(math.pi) * self.sigma) *
             math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
 
+  def _log_cdf(self, x):
+    return math_ops.log(self._cdf(x))
+
+  def _cdf(self, x):
+    y = (x - self.mu) / self.sigma
+    #beta_y = self.df / (math_ops.square(y) + self.df)
+    return 1 - 0.5 * math_ops.betainc(self.df/2, 0.5, y)
+
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
     v = array_ops.expand_dims(self._ones(), -1)
