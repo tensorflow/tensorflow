@@ -157,9 +157,7 @@ concrete example of a sprite, see
 [this sprite image](../../images/mnist_10k_sprite.png) of 10,000 MNIST digits
 (100x100).
 
-Note: We currently support sprites up to 4096px X 4096px.
-
-
+Note: We currently support sprites up to 8192px X 8192px.
 
 After constructing the sprite, you need to tell the Embedding Projector where
 to find it:
