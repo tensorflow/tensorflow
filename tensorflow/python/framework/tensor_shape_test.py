@@ -23,6 +23,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
+import numpy as np
+
 
 class DimensionTest(test_util.TensorFlowTestCase):
 
@@ -380,6 +382,45 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
     self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(
         (2, None, 4)).as_list())
+
+  def testBroadcastable(self):
+      # Define a list of parameters with entries (dims1, dims2, broadcastable)
+      params = [
+          # The following should be broadcastable
+          (None, None, True),
+          (None, 1, True),
+          (None, [3, 4, 5], True),
+          ([3, 4], [109, 3, 4], True),
+          ([109, None, 64], 64, True),
+          ([109, None, 64], [32, 64], True),
+          ([109, 1, 64], [32, 64], True),
+          ([109, 1, 64], 1, True),
+          ([109, 7, None], [None, 8], True),
+          # The following should not be broadcastable
+          (3, 4, False),
+          ([109, 3, 4], [7, 4], False),
+          ([None, 3, 4], [7, None], False),
+      ]
+      # Iterate over all configurations
+      for dims1, dims2, broadcastable in params:
+          shape1 = tensor_shape.TensorShape(dims1)
+          shape2 = tensor_shape.TensorShape(dims2)
+          # Ensure symmetry and check the expected value
+          assert shape1.is_broadcastable_with(shape2) == shape2.is_broadcastable_with(shape1), \
+            "is_broadcastable violated symmetry"
+          assert broadcastable == shape1.is_broadcastable_with(shape2), "%s should %s be " \
+            "broadcastable with %s" % (dims1, "" if broadcastable else "not", dims2)
+          # Double check with numpy if fully defined
+          if shape1.is_fully_defined() and shape2.is_fully_defined():
+              x = np.zeros(dims1)
+              y = np.zeros(dims2)
+              # Do the multiplication to test
+              try:
+                  z = x * y
+                  assert broadcastable, "%s and %s can be broadcast" % (dims1, dims2)
+              except ValueError:
+                  assert not broadcastable,"%s and %s cannot be broadcast" % (dims1, dims2)
+
 
 if __name__ == "__main__":
   googletest.main()
