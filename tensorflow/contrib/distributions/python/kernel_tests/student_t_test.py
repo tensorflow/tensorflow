@@ -80,13 +80,13 @@ class StudentTTest(tf.test.TestCase):
   def testStudentCDFAndLogCDF(self):
     with self.test_session():
       batch_size = 6
-      df = tf.constant([3.0] * batch_size)
-      mu = tf.constant([7.0] * batch_size)
-      sigma = tf.constant([8.0] * batch_size)
-      df_v = 3.0
-      mu_v = 7.0
-      sigma_v = 8.0
-      t = np.array([-2.5, 2.5, 8.0, 0.0, -1.0, 2.0], dtype=np.float32)
+      df = tf.constant([3.] * batch_size)
+      mu = tf.constant([7.] * batch_size)
+      sigma = tf.constant([8.] * batch_size)
+      df_v = 3.
+      mu_v = 7.
+      sigma_v = 8.
+      t = np.array([-2.5, 2.5, 8., 0., -1., 2.], dtype=np.float32)
       student = tf.contrib.distributions.StudentT(df, mu=mu, sigma=sigma)
 
       log_cdf = student.log_cdf(t)
