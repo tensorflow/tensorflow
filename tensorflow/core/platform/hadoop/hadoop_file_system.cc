@@ -56,8 +56,8 @@ class LibHDFS {
   std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
-  std::function<void(hdfsBuilder*, const char *kerbTicketCachePath)>
-    hdfsBuilderSetKerbTicketCachePath;
+  std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
+      hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
   std::function<tSize(hdfsFS, hdfsFile, tOffset, void*, tSize)> hdfsPread;
   std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;

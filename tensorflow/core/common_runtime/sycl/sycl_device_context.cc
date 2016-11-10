@@ -18,9 +18,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-					      Tensor* device_tensor,
-					      StatusCallback done) const {
+void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
+                                              Device* device,
+                                              Tensor* device_tensor,
+                                              StatusCallback done) const {
   const int64 total_bytes = cpu_tensor->TotalBytes();
   if (total_bytes > 0) {
     const void* src_ptr = DMAHelper::base(cpu_tensor);
@@ -29,10 +30,12 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* 
   }
   done(Status::OK());
 }
-  
-void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
-					      Device* device, Tensor* cpu_tensor,
-					      StatusCallback done) {
+
+void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
+                                              StringPiece edge_name,
+                                              Device* device,
+                                              Tensor* cpu_tensor,
+                                              StatusCallback done) {
   const int64 total_bytes = device_tensor->TotalBytes();
   if (total_bytes > 0) {
     const void* src_ptr = DMAHelper::base(device_tensor);
@@ -43,4 +46,3 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor, Strin
 }
 
 }  // namespace tensorflow
-
