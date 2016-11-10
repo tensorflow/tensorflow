@@ -35,9 +35,6 @@ from tensorflow.contrib.learn.python.learn.datasets import text_datasets
 load_iris = base.load_iris
 load_boston = base.load_boston
 
-# Export utilities
-# split_data = base.train_test_split
-
 # List of all available datasets.
 # Note, currently they may return different types.
 DATASETS = {
