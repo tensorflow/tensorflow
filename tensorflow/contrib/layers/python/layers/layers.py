@@ -1489,8 +1489,8 @@ def maxout(inputs,
            outputs_collections=None,
            scope=None):
   """Adds a maxout op which is a max pooling performed in filter/channel
-  dimension. This can also be used after fully-connected layers to number of
-  features.
+  dimension. This can also be used after fully-connected layers to reduce
+  number of features.
 
 
   Args:
