@@ -1521,7 +1521,8 @@ def maxout(inputs,
               .format(num_channels, num_units))
     shape[axis] = -1
     shape += [num_channels // num_units]
-    outputs = math_ops.reduce_max(gen_array_ops.reshape(inputs, shape), axis)
+    outputs = math_ops.reduce_max(gen_array_ops.reshape(inputs, shape), -1,
+                                  keep_dims=False)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
