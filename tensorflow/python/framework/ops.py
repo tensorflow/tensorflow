@@ -44,7 +44,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
-from tensorflow.contrib.framework import deprecated
+from tensorflow.python.util import deprecation
 
 
 def _override_helper(clazz_object, operator, func):
@@ -3919,7 +3919,7 @@ class GraphKeys(object):
   WHILE_CONTEXT = "while_context"
 
   @property
-  @deprecated("2017-03-02",
+  @deprecation.deprecated("2017-03-02",
               "VARIABLES collection name is deprecated, "
               "please use GLOBAL_VARIABLES instead")
   def VARIABLES(self):
