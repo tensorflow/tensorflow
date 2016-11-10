@@ -1489,15 +1489,12 @@ def maxout(inputs,
            outputs_collections=None,
            scope=None):
   """Adds a maxout op which is a max pooling performed in filter/channel
-  dimension.
+  dimension. This can also be used after fully-connected layers to number of
+  features.
 
 
   Args:
-    inputs: Tensor of rank N+2, of shape
-      `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
-      not start with "NC" (default), or
-      `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC".  Maxout is performed over the channel dimension only.
+    inputs: A Tensor on which maxout will be performed
     num_units: Specifies how many features will remain after max pooling at the
       channel dimension. This must be multiple of number of channels.
     axis: The dimension where max pooling will be performed. Default is the
@@ -1509,7 +1506,7 @@ def maxout(inputs,
     A `Tensor` representing the results of the pooling operation.
 
   Raises:
-    ValueError: if num_units is not multiple of number of channels.
+    ValueError: if num_units is not multiple of number of features.
     """
   with ops.name_scope(scope, 'MaxOut', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
@@ -1519,7 +1516,7 @@ def maxout(inputs,
       axis = -1
     num_channels = shape[axis]
     if num_channels % num_units:
-      raise ValueError('number of channels({}) is not '
+      raise ValueError('number of features({}) is not '
                        'a multiple of num_units({})'
               .format(num_channels, num_units))
     shape[axis] = -1
