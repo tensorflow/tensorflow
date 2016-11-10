@@ -95,7 +95,7 @@ def _MatrixSolveLsGrad(op, grad):
     """
     a = op.inputs[0]
     b = op.inputs[1]
-    l2_regularizer = op.inputs[2]
+    l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
     x = op.outputs[0]
     a_shape = array_ops.shape(a)
     batch_shape = a_shape[:-2]
@@ -125,7 +125,7 @@ def _MatrixSolveLsGrad(op, grad):
     """
     a = op.inputs[0]
     b = op.inputs[1]
-    l2_regularizer = op.inputs[2]
+    l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
     a_shape = array_ops.shape(a)
     batch_shape = a_shape[:-2]
     m = a_shape[-2]
@@ -135,11 +135,13 @@ def _MatrixSolveLsGrad(op, grad):
         a, a, adj_y=True) + l2_regularizer * identity
     chol = linalg_ops.cholesky(gramian)
     grad_b = linalg_ops.cholesky_solve(chol, math_ops.batch_matmul(a, grad))
-    # Temporary z = (A * A^T + lambda * I)^{-1} * B.
-    z = linalg_ops.cholesky_solve(chol, b)
-    bz = -math_ops.batch_matmul(grad_b, z, adj_y=True)
-    bz_sym = bz + array_ops.matrix_transpose(bz)
-    grad_a = math_ops.batch_matmul(bz_sym, a) + math_ops.batch_matmul(z, grad)
+    # Temporary tmp = (A * A^T + lambda * I)^{-1} * B.
+    tmp = linalg_ops.cholesky_solve(chol, b)
+    a1 = math_ops.batch_matmul(tmp, a, adj_x=True)
+    a1 = -math_ops.batch_matmul(grad_b, a1)
+    a2 = grad - math_ops.batch_matmul(a, grad_b, adj_x=True)
+    a2 = math_ops.batch_matmul(tmp, a2, adj_y=True)
+    grad_a = a1 + a2
     return (grad_a, grad_b, None)
 
   fast = op.get_attr("fast")

@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
@@ -248,7 +249,8 @@ def _get_shared_file_name_queue(file_names, shuffle, num_epochs, name):
         shuffle=shuffle,
         num_epochs=num_epochs,
         name=name,
-        shared_name=name)
+        shared_name=name,
+        cancel_op=control_flow_ops.no_op())
     return shared_file_name_queue
 
 

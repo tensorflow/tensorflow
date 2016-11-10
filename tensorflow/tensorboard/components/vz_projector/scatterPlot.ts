@@ -189,6 +189,29 @@ export class ScatterPlot {
     cameraControls.addEventListener('end', () => {});
   }
 
+  private makeOrbitControls(
+      camera: THREE.Camera, cameraDef: CameraDef, enableRotate: boolean) {
+    if (this.orbitCameraControls != null) {
+      this.orbitCameraControls.dispose();
+    }
+    const occ =
+        new (THREE as any).OrbitControls(camera, this.renderer.domElement);
+    occ.target0 = new THREE.Vector3(
+        cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
+    occ.position0 = new THREE.Vector3().copy(camera.position);
+    occ.zoom0 = cameraDef.zoom;
+    occ.enableRotate = enableRotate;
+    occ.autoRotate = false;
+    occ.rotateSpeed = ORBIT_MOUSE_ROTATION_SPEED;
+    occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+    occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
+    occ.reset();
+
+    this.camera = camera;
+    this.orbitCameraControls = occ;
+    this.addCameraControlsEventListeners(this.orbitCameraControls);
+  }
+
   private makeCamera3D(cameraDef: CameraDef, w: number, h: number) {
     let camera: THREE.PerspectiveCamera;
     {
@@ -202,23 +225,10 @@ export class ScatterPlot {
           cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
       camera.lookAt(at);
       camera.zoom = cameraDef.zoom;
+      camera.updateProjectionMatrix();
     }
-
-    const occ =
-        new (THREE as any).OrbitControls(camera, this.renderer.domElement);
-
-    occ.enableRotate = true;
-    occ.rotateSpeed = ORBIT_MOUSE_ROTATION_SPEED;
-    occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
-
-    if (this.orbitCameraControls != null) {
-      this.orbitCameraControls.dispose();
-    }
-
     this.camera = camera;
-    this.orbitCameraControls = occ;
-    this.addCameraControlsEventListeners(this.orbitCameraControls);
+    this.makeOrbitControls(camera, cameraDef, true);
   }
 
   private makeCamera2D(cameraDef: CameraDef, w: number, h: number) {
@@ -246,25 +256,10 @@ export class ScatterPlot {
       camera.up = new THREE.Vector3(0, 1, 0);
       camera.lookAt(target);
       camera.zoom = cameraDef.zoom;
+      camera.updateProjectionMatrix();
     }
-
-    const occ =
-        new (THREE as any).OrbitControls(camera, this.renderer.domElement);
-
-    occ.target = target;
-    occ.enableRotate = false;
-    occ.enableDamping = false;
-    occ.autoRotate = false;
-    occ.mouseButtons.ORBIT = null;
-    occ.mouseButtons.PAN = THREE.MOUSE.LEFT;
-
-    if (this.orbitCameraControls != null) {
-      this.orbitCameraControls.dispose();
-    }
-
     this.camera = camera;
-    this.orbitCameraControls = occ;
-    this.addCameraControlsEventListeners(occ);
+    this.makeOrbitControls(camera, cameraDef, false);
   }
 
   private makeDefaultCameraDef(dimensionality: number): CameraDef {

@@ -121,6 +121,16 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
+           "Range: 7-21\n",
+           "789abcdef"),
+       new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 20-34\n",
+           ""),
+       new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
            "Range: 0-14\n",
            "01234567")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -155,16 +165,14 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
   EXPECT_EQ("6789abcd", result);
 
   // The range cannot be satisfied, and the requested offset lies within the
-  // buffer. No additional requests will be made as the EOF was reached in
-  // the last request.
+  // buffer, but the end of the range is outside of the buffer.
+  // A new request will be made to read 10 + 5 = 15 bytes.
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
             file->Read(7, 10, &result, scratch).code());
-  EXPECT_EQ("789abcd", result);
+  EXPECT_EQ("789abcdef", result);
 
   // The range cannot be satisfied, and the requested offset is greater than the
-  // buffered range. No additional requests will be made as the EOF was reached
-  // in
-  // the last request.
+  // buffered range. A new request will be made to read 10 + 5 = 15 bytes.
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
             file->Read(20, 10, &result, scratch).code());
   EXPECT_TRUE(result.empty());

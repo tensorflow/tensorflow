@@ -1923,12 +1923,14 @@ def _TileShape(op):
   # us to handle partially-known multiples.
   multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
       input_shape.ndims)
+
   if multiples.ndims is None:
     return [tensor_shape.unknown_shape()]
   else:
+    input_dims = input_shape.dims or [None for _ in multiples.dims]
     output_dims = []
-    for dim, multiple in zip(input_shape.dims, multiples.dims):
-      output_dims.append(dim * multiple)
+    for dim, multiple in zip(input_dims, multiples.dims):
+      output_dims.append(multiple * dim)
     return [tensor_shape.TensorShape(output_dims)]
 
 
