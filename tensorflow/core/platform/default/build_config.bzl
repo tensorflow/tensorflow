@@ -6,6 +6,7 @@ load("@protobuf//:protobuf.bzl", "py_proto_library")
 # configure may change the following lines to True
 WITH_GCP_SUPPORT = False
 WITH_HDFS_SUPPORT = False
+WITH_LIBJPEG_TURBO_SUPPORT = False 
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -66,6 +67,12 @@ def tf_proto_library_py(name, srcs=[], deps=[], visibility=[], testonly=0,
       visibility = visibility,
       testonly = testonly,
   )
+
+def libjpeg_or_turbo():
+  if WITH_LIBJPEG_TURBO_SUPPORT:
+    return "@jpeg_turbo_archive//:jpeg"
+  else:
+    return "@jpeg_archive//:jpeg"
 
 def tf_proto_library(name, srcs = [], has_services = None,
                      deps = [], visibility = [], testonly = 0,
@@ -158,3 +165,4 @@ def tf_additional_lib_deps():
   if WITH_HDFS_SUPPORT:
     deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
   return deps
+

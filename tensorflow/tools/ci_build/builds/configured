@@ -32,6 +32,10 @@ shift 1
 export TF_NEED_GCP=1
 # Enable support for HDFS
 export TF_NEED_HDFS=1
+# Disable libjpeg-turbo for CI because building it requires
+# autoconf, automake, libtool and nasm on the CI machines.
+# When disabled, libjpeg (pure cc_library) will be used for the build instead.
+export TF_NEED_LIBJPEG_TURBO=0
 
 if [[ "$1" == "--disable-gcp" ]]; then
   export TF_NEED_GCP=0

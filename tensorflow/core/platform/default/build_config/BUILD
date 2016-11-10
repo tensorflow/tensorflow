@@ -11,6 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
+load("//tensorflow/core:platform/default/build_config.bzl", "libjpeg_or_turbo")
 
 cc_library(
     name = "gtest",
@@ -83,6 +84,7 @@ cc_library(
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
         "@highwayhash//:sip_hash",
+        libjpeg_or_turbo(),
         "@png_archive//:png",
     ],
 )
@@ -99,7 +101,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg_archive//:jpeg",
+       libjpeg_or_turbo()
     ],
 )
 
