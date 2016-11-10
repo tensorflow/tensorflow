@@ -95,9 +95,16 @@ def limit_epochs(tensor, num_epochs=None, name=None):
       return array_ops.identity(tensor, name=name)
 
 
-def input_producer(input_tensor, element_shape=None, num_epochs=None,
-                   shuffle=True, seed=None, capacity=32, shared_name=None,
-                   summary_name=None, name=None):
+def input_producer(input_tensor,
+                   element_shape=None,
+                   num_epochs=None,
+                   shuffle=True,
+                   seed=None,
+                   capacity=32,
+                   shared_name=None,
+                   summary_name=None,
+                   name=None,
+                   cancel_op=None):
   """Output the rows of `input_tensor` to a queue for an input pipeline.
 
   Args:
@@ -120,6 +127,7 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
     summary_name: (Optional.) If set, a scalar summary for the current queue
       size will be generated, using this name as part of the tag.
     name: (Optional.) A name for queue.
+    cancel_op: (Optional.) Cancel op for the queue
 
   Returns:
     A queue with the output rows.  A `QueueRunner` for the queue is
@@ -146,15 +154,23 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
                                 shapes=[element_shape],
                                 shared_name=shared_name, name=name)
     enq = q.enqueue_many([input_tensor])
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(
+            q, [enq], cancel_op=cancel_op))
     if summary_name is not None:
       summary.scalar("queue/%s/%s" % (q.name, summary_name),
                      math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
     return q
 
 
-def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
-                          seed=None, capacity=32, shared_name=None, name=None):
+def string_input_producer(string_tensor,
+                          num_epochs=None,
+                          shuffle=True,
+                          seed=None,
+                          capacity=32,
+                          shared_name=None,
+                          name=None,
+                          cancel_op=None):
   """Output strings (e.g. filenames) to a queue for an input pipeline.
 
   Args:
@@ -171,6 +187,7 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: A name for the operations (optional).
+    cancel_op: Cancel op for the queue (optional).
 
   Returns:
     A queue with the output strings.  A `QueueRunner` for the Queue
@@ -200,7 +217,8 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
         capacity=capacity,
         shared_name=shared_name,
         name=name,
-        summary_name="fraction_of_%d_full" % capacity)
+        summary_name="fraction_of_%d_full" % capacity,
+        cancel_op=cancel_op)
 
 
 def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,

@@ -258,7 +258,7 @@ def _fused_batch_norm(
     gamma_collections = utils.get_variable_collections(variables_collections,
                                                        'gamma')
     gamma_initializer = param_initializers.get('gamma',
-                                               init_ops.ones_initializer)
+                                               init_ops.ones_initializer())
     gamma = variables.model_variable(
         'gamma',
         shape=params_shape,
@@ -283,7 +283,7 @@ def _fused_batch_norm(
     moving_variance_collections = utils.get_variable_collections(
         variables_collections, 'moving_variance')
     moving_variance_initializer = param_initializers.get(
-        'moving_variance', init_ops.ones_initializer)
+        'moving_variance', init_ops.ones_initializer())
     moving_variance = variables.model_variable(
         'moving_variance',
         shape=params_shape,
@@ -505,7 +505,7 @@ def batch_norm(
       gamma_collections = utils.get_variable_collections(variables_collections,
                                                          'gamma')
       gamma_initializer = param_initializers.get('gamma',
-                                                 init_ops.ones_initializer)
+                                                 init_ops.ones_initializer())
       gamma = variables.model_variable('gamma',
                                        shape=params_shape,
                                        dtype=dtype,
@@ -534,7 +534,7 @@ def batch_norm(
       moving_variance_collections = utils.get_variable_collections(
           variables_collections, 'moving_variance')
       moving_variance_initializer = param_initializers.get(
-          'moving_variance', init_ops.ones_initializer)
+          'moving_variance', init_ops.ones_initializer())
       moving_variance = variables.model_variable(
           'moving_variance',
           shape=params_shape,
@@ -1406,12 +1406,13 @@ def layer_norm(inputs,
     if scale:
       gamma_collections = utils.get_variable_collections(variables_collections,
                                                          'gamma')
-      gamma = variables.model_variable('gamma',
-                                       shape=params_shape,
-                                       dtype=dtype,
-                                       initializer=init_ops.ones_initializer,
-                                       collections=gamma_collections,
-                                       trainable=trainable)
+      gamma = variables.model_variable(
+          'gamma',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=init_ops.ones_initializer(),
+          collections=gamma_collections,
+          trainable=trainable)
     # Calculate the moments on the last axis (layer activations).
     mean, variance = nn.moments(inputs, axis, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.

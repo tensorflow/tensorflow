@@ -95,6 +95,7 @@ DEFINE_SETZERO_GPU(float);
 DEFINE_SETZERO_GPU(double);
 DEFINE_SETZERO_GPU(complex64);
 DEFINE_SETZERO_GPU(complex128);
+DEFINE_SETZERO_GPU(int64);
 #undef DEFINE_SETZERO_GPU
 
 }  // end namespace functor

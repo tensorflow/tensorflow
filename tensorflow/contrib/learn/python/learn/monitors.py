@@ -105,6 +105,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
+from tensorflow.python.util import deprecation
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -117,6 +118,9 @@ class BaseMonitor(object):
   to run exclusively on the elected chief worker.
   """
 
+  @deprecation.deprecated(
+      "2016-12-05",
+      "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
     self._begun = False
     self._current_epoch = None

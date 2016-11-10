@@ -2616,7 +2616,7 @@ An adaptor for zeros() to match the Initializer spec.
 
 - - -
 
-### `tf.ones_initializer(shape, dtype=tf.float32, partition_info=None)` {#ones_initializer}
+### `tf.ones_initializer(dtype=tf.float32, partition_info=None)` {#ones_initializer}
 
 An adaptor for ones() to match the Initializer spec.
 

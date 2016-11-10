@@ -19,6 +19,7 @@ import {runAsyncTask} from './util';
 
 /** Maximum number of colors supported in the color map. */
 const NUM_COLORS_COLOR_MAP = 50;
+const MAX_SPRITE_IMAGE_SIZE_PX = 8192;
 
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';
@@ -296,8 +297,17 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
       logging.setModalMessage(null, spriteMsgId);
     }
     let [metadata, spriteImage] = values;
-    metadata.spriteImage = spriteImage;
-    metadata.spriteMetadata = spriteMetadata;
-    callback(metadata);
+
+    if (spriteImage && (spriteImage.height > MAX_SPRITE_IMAGE_SIZE_PX ||
+                        spriteImage.width > MAX_SPRITE_IMAGE_SIZE_PX)) {
+      logging.setModalMessage(
+          `Error: Sprite image of dimensions ${spriteImage.width}px x ` +
+          `${spriteImage.height}px exceeds maximum dimensions ` +
+          `${MAX_SPRITE_IMAGE_SIZE_PX}px x ${MAX_SPRITE_IMAGE_SIZE_PX}px`);
+    } else {
+      metadata.spriteImage = spriteImage;
+      metadata.spriteMetadata = spriteMetadata;
+      callback(metadata);
+    }
   });
 }
