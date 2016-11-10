@@ -33,7 +33,14 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   if (total_bytes > 0) {
     const void* src_ptr = DMAHelper::base(cpu_tensor);
     void* dst_ptr = DMAHelper::base(device_tensor);
-    ::memcpy(dst_ptr, src_ptr, total_bytes);
+    switch (cpu_tensor.type()) {
+    case DT_FLOAT:
+      device->eigen_sycl_device()->memcpyHostToDevice(static_cast<float*>(dst_ptr),
+          static_cast<const float*>(src_ptr), total_bytes);
+      break;
+    default:
+      assert(false && "unsupported type");
+    }
   }
   done(Status::OK());
 }
@@ -48,7 +55,14 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     device->eigen_sycl_device()->deallocate_all();
     const void* src_ptr = DMAHelper::base(device_tensor);
     void* dst_ptr = DMAHelper::base(cpu_tensor);
-    ::memcpy(dst_ptr, src_ptr, total_bytes);
+    switch (cpu_tensor.type()) {
+    case DT_FLOAT:
+      device->eigen_sycl_device()->memcpyDeviceToHost(static_cast<float*>(dst_ptr),
+         static_cast<const float*>(src_ptr), total_bytes);
+      break;
+    default:
+      assert(false && "unsupported type");
+    }
   }
   done(Status::OK());
 }
