@@ -58,7 +58,7 @@ class TransformTest(tf.test.TestCase):
       self.assertEqual(t.name, t_.name)
       self.assertEqual(info.original(t_), t)
 
-  def test_copy_Assert(self):
+  def test_copy_assert(self):
     tf.reset_default_graph()
     a = tf.constant(1)
     b = tf.constant(1)
