@@ -29,6 +29,7 @@ from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -430,26 +431,17 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is None:
-      monitors = []
-    deprecated_monitors = [
-        m for m in monitors
-        if not isinstance(m, session_run_hook.SessionRunHook)
-    ]
-    for monitor in deprecated_monitors:
-      monitor.set_estimator(self)
-      monitor._lock_estimator()  # pylint: disable=protected-access
-
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
     if self._additional_run_hook:
-      monitors.append(self._additional_run_hook)
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
-
-    for monitor in deprecated_monitors:
-      monitor._unlock_estimator()  # pylint: disable=protected-access
-
-    return result
+      hooks.append(self._additional_run_hook)
+    self._estimator.fit(x=x,
+                        y=y,
+                        input_fn=input_fn,
+                        steps=steps,
+                        batch_size=batch_size,
+                        monitors=hooks,
+                        max_steps=max_steps)
+    return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
@@ -698,26 +690,17 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is None:
-      monitors = []
-    deprecated_monitors = [
-        m for m in monitors
-        if not isinstance(m, session_run_hook.SessionRunHook)
-    ]
-    for monitor in deprecated_monitors:
-      monitor.set_estimator(self)
-      monitor._lock_estimator()  # pylint: disable=protected-access
-
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
     if self._additional_run_hook:
-      monitors.append(self._additional_run_hook)
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
-
-    for monitor in deprecated_monitors:
-      monitor._unlock_estimator()  # pylint: disable=protected-access
-
-    return result
+      hooks.append(self._additional_run_hook)
+    self._estimator.fit(x=x,
+                        y=y,
+                        input_fn=input_fn,
+                        steps=steps,
+                        batch_size=batch_size,
+                        monitors=hooks,
+                        max_steps=max_steps)
+    return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
