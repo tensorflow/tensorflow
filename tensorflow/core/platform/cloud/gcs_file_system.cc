@@ -223,7 +223,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
     const bool range_start_included = offset >= buffer_start_offset_;
     const bool range_end_included =
         offset + n <= buffer_start_offset_ + buffer_content_size_;
-    if (range_start_included && (range_end_included || buffer_reached_eof_)) {
+    if (range_start_included && range_end_included) {
       // The requested range can be filled from the buffer.
       const size_t offset_in_buffer =
           std::min<uint64>(offset - buffer_start_offset_, buffer_content_size_);
@@ -246,7 +246,6 @@ class GcsRandomAccessFile : public RandomAccessFile {
       TF_RETURN_IF_ERROR(
           ReadFromGCS(offset, buffer_size_, &buffer_content, buffer_.get()));
       buffer_content_size_ = buffer_content.size();
-      buffer_reached_eof_ = buffer_content_size_ < buffer_size_;
 
       // Set the results.
       *result = StringPiece(scratch, std::min(buffer_content_size_, n));
@@ -297,7 +296,6 @@ class GcsRandomAccessFile : public RandomAccessFile {
   // The original file offset of the first byte in the buffer.
   mutable size_t buffer_start_offset_ GUARDED_BY(mu_) = 0;
   mutable size_t buffer_content_size_ GUARDED_BY(mu_) = 0;
-  mutable bool buffer_reached_eof_ GUARDED_BY(mu_) = false;
 };
 
 /// \brief GCS-based implementation of a writeable file.
