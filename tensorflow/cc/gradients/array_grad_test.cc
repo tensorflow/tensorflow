@@ -32,6 +32,7 @@ class ArrayGradTest : public ::testing::Test {
 
   void RunTest(const Output& x, const TensorShape& x_shape, const Output& y,
                const TensorShape& y_shape) {
+    TF_ASSERT_OK(scope_.status());
     float max_error;
     TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
                                       &max_error));
@@ -40,6 +41,7 @@ class ArrayGradTest : public ::testing::Test {
 
   void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
                const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
+    TF_ASSERT_OK(scope_.status());
     float max_error;
     TF_ASSERT_OK(
         ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
@@ -125,6 +127,71 @@ TEST_F(ArrayGradTest, MatrixDiagGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = MatrixDiag(scope_, x);
   TensorShape y_shape({5, 2, 2});
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, MatrixBandPartGrad) {
+  TensorShape shape({5, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  const int64 num_lower = 1;
+  const int64 num_upper = 2;
+  auto y = MatrixBandPart(scope_, x, num_lower, num_upper);
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, GatherNdGrad_SimpleIndexing) {
+  TensorShape x_shape({2, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto indices = Const(scope_, {{0, 0}, {1, 1}});
+  TensorShape y_shape({2});
+  auto y = GatherNd(scope_, x, indices);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherNdGrad_SliceIndexing) {
+  TensorShape shape({2, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto indices = Const(scope_, {{1}, {0}});
+  auto y = GatherNd(scope_, x, indices);
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, CheckNumericsGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = CheckNumerics(scope_, x, "CheckNumerics failed");
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, ReshapeGrad) {
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({2, 5});
+  auto y = Reshape(scope_, x, {2, 5});
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, ExpandDimsGrad) {
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({1, 5, 2});
+  auto y = ExpandDims(scope_, x, 0);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, SqueezeGrad) {
+  TensorShape x_shape({1, 5, 1, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({5, 2});
+  auto y = Squeeze(scope_, x);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, TransposeGrad) {
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({2, 5});
+  auto y = Transpose(scope_, x, {1, 0});
   RunTest(x, x_shape, y, y_shape);
 }
 
