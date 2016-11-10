@@ -21,6 +21,6 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.summary.summary_iterator import summary_iterator
-from tensorflow.python.summary.writer.writer import LegacySummaryWriter as SummaryWriter
+from tensorflow.python.summary.writer.writer import FileWriter as SummaryWriter
 from tensorflow.python.summary.writer.writer_cache import SummaryWriterCache
 # pylint: enable=unused-import

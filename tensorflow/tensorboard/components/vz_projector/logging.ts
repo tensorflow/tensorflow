@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 /** Duration in ms for showing warning messages to the user */
-const WARNING_DURATION_MS = 5000;
+const WARNING_DURATION_MS = 10000;
 
 /**
  * Animation duration for the user message which should be +20ms more than the
@@ -76,12 +76,8 @@ export function setModalMessage(msg: string, id: string = null): string {
  * Shows a warning message to the user for a certain amount of time.
  */
 export function setWarningMessage(msg: string): void {
-  let warningMsg = dom.querySelector('#warning-msg') as HTMLElement;
-  let warningDiv = d3.select(warningMsg);
-  warningDiv.style('display', 'block').text('Warning: ' + msg);
-
-  // Hide the warning message after a certain timeout.
-  setTimeout(() => {
-    warningDiv.style('display', 'none');
-  }, WARNING_DURATION_MS);
+  let toast = dom.querySelector('#toast') as any;
+  toast.text = msg;
+  toast.duration = WARNING_DURATION_MS;
+  toast.open();
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -38,9 +39,41 @@ bool g_use_local_context = false;
 
 #ifdef TENSORFLOW_USE_META
 
-uint8_t* GetScratch() {
-  static uint8_t* scratch = new uint8_t[2048 * 1024];
-  return scratch;
+const int kAlignment = 32;
+const int kScratchSize = 2048 * 1024 + kAlignment;
+
+class Scratch : public ResourceBase {
+ public:
+  Scratch() : scratch_(new uint8_t[kScratchSize]) {
+    // Make sure scratch is aligned to 32 bytes. Scratch object owns the
+    // scratch buffer.
+    scratch_32_aligned_ =
+        scratch_.get() + kAlignment -
+        (reinterpret_cast<uintptr_t>(scratch_.get()) % kAlignment);
+  }
+
+  uint8_t* buffer() { return scratch_32_aligned_; }
+
+  string DebugString() { return "MetaGemmScratchResource"; }
+
+ private:
+  std::unique_ptr<uint8_t> scratch_;
+  uint8_t* scratch_32_aligned_;
+};
+
+uint8_t* GetScratch(OpKernelContext* context) {
+  Scratch* scratch = nullptr;
+  std::function<Status(Scratch**)> creator = [](Scratch** resource) {
+    *resource = new Scratch();
+    return Status::OK();
+  };
+  Status s = context->resource_manager()->LookupOrCreate(
+      "MetaGemm", "ScratchBuffer", &scratch, creator);
+  if (!s.ok()) {
+    context->CtxFailureWithWarning(s);
+    return nullptr;
+  }
+  return scratch->buffer();
 }
 
 gemmlowp::WorkersPool* GetWorkersPool() {
@@ -99,7 +132,7 @@ void QuantizedGemmImpl(OpKernelContext* tf_context, const quint8* a_data,
   params.lhs = reinterpret_cast<const uint8_t*>(&(a_data->value));
   params.rhs = reinterpret_cast<const uint8_t*>(&(b_data->value));
   params.result = reinterpret_cast<int32_t*>(&(c_data->value));
-  params.scratch = GetScratch();
+  params.scratch = CHECK_NOTNULL(GetScratch(tf_context));
 
   params.left_stream.count = k;
   params.left_stream.stride = lda;

@@ -24,17 +24,16 @@ namespace tensorflow {
 class SYCLDeviceContext : public DeviceContext {
  public:
   SYCLDeviceContext() {}
-  
+
   ~SYCLDeviceContext() override {}
-  
+
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-			     Tensor* device_tensor,
-			     StatusCallback done) const override;
-  
+                             Tensor* device_tensor,
+                             StatusCallback done) const override;
+
   void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
-			     Device* device, Tensor* cpu_tensor,
-			     StatusCallback done) override;
-  
+                             Device* device, Tensor* cpu_tensor,
+                             StatusCallback done) override;
 };
 
 }  // namespace tensorflow

@@ -636,12 +636,13 @@ def call_cpp_shape_fn(op,
     except Exception as err:
       raise AssertionError("Python shape function return error but "
                            "C++ shape functon did not: %s" % str(err))
-    if str(result) != str(python_result):
+    result_as_shapes = [tensor_shape.as_shape(s) for s in result]
+    if str(result_as_shapes) != str(python_result):
       raise ValueError(
           ("Python vs CPP shape mismatch.  "
            "CPP: %s vs python: %s on node %s "
            "with input shapes %s") % (
-               str(result), str(python_result), str(op.node_def),
+               str(result_as_shapes), str(python_result), str(op.node_def),
                ",".join([str(i.get_shape()) for i in op.inputs])))
 
   return {"shapes": result,

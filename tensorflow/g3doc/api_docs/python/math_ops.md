@@ -191,7 +191,7 @@ and `int64` (matching the behavior of Numpy).
 
 ### `tf.floordiv(x, y, name=None)` {#floordiv}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -220,6 +220,124 @@ as well.
 
 
 *  <b>`TypeError`</b>: If the inputs are complex.
+
+
+- - -
+
+### `tf.realdiv(x, y, name=None)` {#realdiv}
+
+Returns x / y element-wise for real types.
+
+If `x` and `y` are reals, this will return the floating-point division.
+
+*NOTE*: `Div` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.truncatediv(x, y, name=None)` {#truncatediv}
+
+Returns x / y element-wise for integer types.
+
+Truncation designates that negative numbers will round fractional quantities
+toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+than Python semantics. See `FloorDiv` for a division function that matches
+Python Semantics.
+
+*NOTE*: `TruncateDiv` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.floor_div(x, y, name=None)` {#floor_div}
+
+Returns x // y element-wise.
+
+*NOTE*: `FloorDiv` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.truncatemod(x, y, name=None)` {#truncatemod}
+
+Returns element-wise remainder of division. This emulates C semantics where
+
+true, this follows C semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.floormod(x, y, name=None)` {#floormod}
+
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2571,32 +2689,77 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 - - -
 
-### `tf.einsum(axes, *inputs)` {#einsum}
+### `tf.einsum(equation, *inputs)` {#einsum}
 
 A generalized contraction between tensors of arbitrary dimension.
 
-Like `numpy.einsum`, but does not support:
+This function returns a tensor whose elements are defined by `equation`,
+which is written in a shorthand form inspired by the Einstein summation
+convention.  As an example, consider multiplying two matrices
+A and B to form a matrix C.  The elements of C are given by:
+
+```
+  C[i,k] = sum_j A[i,j] * B[j,k]
+```
+
+The corresponding `equation` is:
+
+```
+  ij,jk->ik
+```
+
+In general, the `equation` is obtained from the more familiar element-wise
+equation by
+  1. removing variable names, brackets, and commas,
+  2. replacing "*" with ",",
+  3. dropping summation signs, and
+  4. moving the output to the right, and replacing "=" with "->".
+
+Many common operations can be expressed in this way.  For example:
+
+# Matrix multiplication
+>>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
+
+# Dot product
+>>> einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
+
+# Outer product
+>>> einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
+
+# Transpose
+>>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
+
+# Batch matrix multiplication
+>>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+
+This function behaves like `numpy.einsum`, but does not support:
 * Ellipses (subscripts like `ij...,jk...->ik...`)
-* Subscripts where an axis appears more than once for a single input (e.g. `ijj,jk->ik`).
+* Subscripts where an axis appears more than once for a single input
+  (e.g. `ijj,k->ik`).
+* Subscripts that are summed across multiple inputs (e.g., `ij,ij,jk->ik`).
 
 ##### Args:
 
 
-*  <b>`axes`</b>: a `str` describing the contraction, in the same format as `numpy.einsum`.
-*  <b>`inputs`</b>: the inputs to contract (each one a `Tensor`), whose shapes should be consistent with `axes`.
+*  <b>`equation`</b>: a `str` describing the contraction, in the same format as
+    `numpy.einsum`.
+*  <b>`inputs`</b>: the inputs to contract (each one a `Tensor`), whose shapes should
+    be consistent with `equation`.
 
 ##### Returns:
 
-  The contracted `Tensor`, with shape determined by `axes`.
+  The contracted `Tensor`, with shape determined by `equation`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the format of `axes` is incorrect,
-              or the number of inputs implied by `axes` does not match `len(inputs)`,
-              or an axis appears in the output subscripts but not in any of the inputs,
-              or the number of dimensions of an input differs from the number of indices in its subscript,
-              or the input shapes are inconsistent along a particular axis.
+*  <b>`ValueError`</b>: If
+    - the format of `equation` is incorrect,
+    - the number of inputs implied by `equation` does not match `len(inputs)`,
+    - an axis appears in the output subscripts but not in any of the inputs,
+    - the number of dimensions of an input differs from the number of
+      indices in its subscript, or
+    - the input shapes are inconsistent along a particular axis.
 
 
 

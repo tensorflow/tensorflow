@@ -110,7 +110,7 @@ class StudentTTest(tf.test.TestCase):
       sigma_v = np.sqrt(10.0)
       n = tf.constant(200000)
       student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
-      samples = student.sample_n(n)
+      samples = student.sample(n)
       sample_values = samples.eval()
       n_val = 200000
       self.assertEqual(sample_values.shape, (n_val,))
@@ -134,12 +134,12 @@ class StudentTTest(tf.test.TestCase):
       tf.set_random_seed(654321)
       student = tf.contrib.distributions.StudentT(
           df=df, mu=mu, sigma=sigma, name="student_t1")
-      samples1 = student.sample_n(n, seed=123456).eval()
+      samples1 = student.sample(n, seed=123456).eval()
 
       tf.set_random_seed(654321)
       student2 = tf.contrib.distributions.StudentT(
           df=df, mu=mu, sigma=sigma, name="student_t2")
-      samples2 = student2.sample_n(n, seed=123456).eval()
+      samples2 = student2.sample(n, seed=123456).eval()
 
       self.assertAllClose(samples1, samples2)
 
@@ -149,7 +149,7 @@ class StudentTTest(tf.test.TestCase):
       df = tf.constant(df_v)
       n = tf.constant(200000)
       student = tf.contrib.distributions.StudentT(df=df, mu=1.0, sigma=1.0)
-      samples = student.sample_n(n)
+      samples = student.sample(n)
       sample_values = samples.eval()
       n_val = 200000
       self.assertEqual(sample_values.shape, (n_val, 4))
@@ -166,7 +166,7 @@ class StudentTTest(tf.test.TestCase):
       sigma_v = [np.sqrt(10.0), np.sqrt(15.0)]
       n = tf.constant(200000)
       student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
-      samples = student.sample_n(n)
+      samples = student.sample(n)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (200000, batch_size, 2))
       self.assertAllClose(
@@ -208,7 +208,7 @@ class StudentTTest(tf.test.TestCase):
       self.assertEqual(student.entropy().get_shape(), (3,))
       self.assertEqual(student.log_pdf(2.).get_shape(), (3,))
       self.assertEqual(student.pdf(2.).get_shape(), (3,))
-      self.assertEqual(student.sample_n(37).get_shape(), (37, 3,))
+      self.assertEqual(student.sample(37).get_shape(), (37, 3,))
 
     _check(tf.contrib.distributions.StudentT(df=[2., 3., 4.,], mu=2., sigma=1.))
     _check(tf.contrib.distributions.StudentT(df=7., mu=[2., 3., 4.,], sigma=1.))
@@ -377,7 +377,7 @@ class StudentTTest(tf.test.TestCase):
     with self.test_session() as sess:
       student = tf.contrib.distributions.StudentT(df=3., mu=np.pi, sigma=1.)
       num = 20000
-      samples = student.sample_n(num)
+      samples = student.sample(num)
       pdfs = student.pdf(samples)
       mean = student.mean()
       mean_pdf = student.pdf(student.mean())
@@ -398,7 +398,7 @@ class StudentTTest(tf.test.TestCase):
                                                   mu=[[5.], [6.]],
                                                   sigma=3.)
       num = 50000
-      samples = student.sample_n(num)
+      samples = student.sample(num)
       pdfs = student.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))

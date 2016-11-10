@@ -227,7 +227,9 @@
   * [`fft2d`](../../api_docs/python/math_ops.md#fft2d)
   * [`fft3d`](../../api_docs/python/math_ops.md#fft3d)
   * [`floor`](../../api_docs/python/math_ops.md#floor)
+  * [`floor_div`](../../api_docs/python/math_ops.md#floor_div)
   * [`floordiv`](../../api_docs/python/math_ops.md#floordiv)
+  * [`floormod`](../../api_docs/python/math_ops.md#floormod)
   * [`ifft`](../../api_docs/python/math_ops.md#ifft)
   * [`ifft2d`](../../api_docs/python/math_ops.md#ifft2d)
   * [`ifft3d`](../../api_docs/python/math_ops.md#ifft3d)
@@ -261,6 +263,7 @@
   * [`polygamma`](../../api_docs/python/math_ops.md#polygamma)
   * [`pow`](../../api_docs/python/math_ops.md#pow)
   * [`real`](../../api_docs/python/math_ops.md#real)
+  * [`realdiv`](../../api_docs/python/math_ops.md#realdiv)
   * [`reduce_all`](../../api_docs/python/math_ops.md#reduce_all)
   * [`reduce_any`](../../api_docs/python/math_ops.md#reduce_any)
   * [`reduce_logsumexp`](../../api_docs/python/math_ops.md#reduce_logsumexp)
@@ -294,6 +297,8 @@
   * [`trace`](../../api_docs/python/math_ops.md#trace)
   * [`transpose`](../../api_docs/python/math_ops.md#transpose)
   * [`truediv`](../../api_docs/python/math_ops.md#truediv)
+  * [`truncatediv`](../../api_docs/python/math_ops.md#truncatediv)
+  * [`truncatemod`](../../api_docs/python/math_ops.md#truncatemod)
   * [`unique`](../../api_docs/python/math_ops.md#unique)
   * [`unsorted_segment_sum`](../../api_docs/python/math_ops.md#unsorted_segment_sum)
   * [`where`](../../api_docs/python/math_ops.md#where)
@@ -309,6 +314,7 @@
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
   * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
   * [`string_to_hash_bucket_strong`](../../api_docs/python/string_ops.md#string_to_hash_bucket_strong)
+  * [`substr`](../../api_docs/python/string_ops.md#substr)
 
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
@@ -666,12 +672,15 @@
 
 * **[Summary Operations](../../api_docs/python/summary.md)**:
   * [`audio`](../../api_docs/python/summary.md#audio)
+  * [`FileWriter`](../../api_docs/python/summary.md#FileWriter)
   * [`get_summary_description`](../../api_docs/python/summary.md#get_summary_description)
   * [`histogram`](../../api_docs/python/summary.md#histogram)
   * [`image`](../../api_docs/python/summary.md#image)
   * [`merge`](../../api_docs/python/summary.md#merge)
   * [`merge_all`](../../api_docs/python/summary.md#merge_all)
   * [`scalar`](../../api_docs/python/summary.md#scalar)
+  * [`SummaryDescription`](../../api_docs/python/summary.md#SummaryDescription)
+  * [`TaggedRunMetadata`](../../api_docs/python/summary.md#TaggedRunMetadata)
   * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
 
 * **[Testing](../../api_docs/python/test.md)**:
@@ -705,7 +714,6 @@
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#get_current_value_type)
   * [`MeanValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MeanValue)
   * [`ObservedStochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#ObservedStochasticTensor)
-  * [`SampleAndReshapeValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#SampleAndReshapeValue)
   * [`SampleValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#SampleValue)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#StochasticTensor)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#value_type)
@@ -962,6 +970,7 @@
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
   * [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier)
   * [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor)
+  * [`LogisticRegressor`](../../api_docs/python/contrib.learn.md#LogisticRegressor)
   * [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys)
   * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
   * [`read_batch_examples`](../../api_docs/python/contrib.learn.md#read_batch_examples)

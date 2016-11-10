@@ -33,7 +33,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       with tf.name_scope('outer'):
         im = tf.summary.scalar('inner', i)
       summary_str = s.run(im)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summary_str)
     values = summary.value
     self.assertEqual(len(values), 1)
@@ -48,7 +48,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       init = tf.global_variables_initializer()
       s.run(init)
       summ_str = s.run(ss)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summ_str)
     self.assertEqual(len(summary.value), 1)
     value = summary.value[0]
@@ -61,7 +61,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       with tf.name_scope('outer'):
         im = tf.summary.image('inner', i, max_outputs=3)
       summary_str = s.run(im)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summary_str)
     values = summary.value
     self.assertEqual(len(values), 3)
@@ -75,7 +75,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       with tf.name_scope('outer'):
         summ_op = tf.summary.histogram('inner', i)
       summary_str = s.run(summ_op)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summary_str)
     self.assertEqual(len(summary.value), 1)
     self.assertEqual(summary.value[0].tag, 'outer/inner')

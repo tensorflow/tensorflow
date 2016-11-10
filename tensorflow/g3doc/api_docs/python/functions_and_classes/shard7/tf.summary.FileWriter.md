@@ -8,7 +8,7 @@ training.
 
 - - -
 
-#### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
+#### `tf.summary.FileWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#FileWriter.__init__}
 
 Creates a `FileWriter` and an event file.
 
@@ -54,7 +54,7 @@ the event file:
 
 - - -
 
-#### `tf.train.SummaryWriter.add_summary(summary, global_step=None)` {#SummaryWriter.add_summary}
+#### `tf.summary.FileWriter.add_summary(summary, global_step=None)` {#FileWriter.add_summary}
 
 Adds a `Summary` protocol buffer to the event file.
 
@@ -78,7 +78,7 @@ commonly done to report evaluation results in event files.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
+#### `tf.summary.FileWriter.add_session_log(session_log, global_step=None)` {#FileWriter.add_session_log}
 
 Adds a `SessionLog` protocol buffer to the event file.
 
@@ -95,7 +95,7 @@ and adds it to the event file.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_event(event)` {#SummaryWriter.add_event}
+#### `tf.summary.FileWriter.add_event(event)` {#FileWriter.add_event}
 
 Adds an event to the event file.
 
@@ -107,7 +107,7 @@ Adds an event to the event file.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_graph(graph, global_step=None, graph_def=None)` {#SummaryWriter.add_graph}
+#### `tf.summary.FileWriter.add_graph(graph, global_step=None, graph_def=None)` {#FileWriter.add_graph}
 
 Adds a `Graph` to the event file.
 
@@ -130,7 +130,7 @@ TensorBoard. Most users pass a graph in the constructor instead.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
+#### `tf.summary.FileWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#FileWriter.add_run_metadata}
 
 Adds a metadata information for a single session.run() call.
 
@@ -150,7 +150,7 @@ Adds a metadata information for a single session.run() call.
 
 - - -
 
-#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
+#### `tf.summary.FileWriter.get_logdir()` {#FileWriter.get_logdir}
 
 Returns the directory where event file will be written.
 
@@ -158,7 +158,7 @@ Returns the directory where event file will be written.
 
 - - -
 
-#### `tf.train.SummaryWriter.flush()` {#SummaryWriter.flush}
+#### `tf.summary.FileWriter.flush()` {#FileWriter.flush}
 
 Flushes the event file to disk.
 
@@ -168,7 +168,7 @@ disk.
 
 - - -
 
-#### `tf.train.SummaryWriter.close()` {#SummaryWriter.close}
+#### `tf.summary.FileWriter.close()` {#FileWriter.close}
 
 Flushes the event file to disk and close the file.
 
@@ -179,7 +179,7 @@ Call this method when you do not need the summary writer anymore.
 #### Other Methods
 - - -
 
-#### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
+#### `tf.summary.FileWriter.reopen()` {#FileWriter.reopen}
 
 Reopens the EventFileWriter.
 

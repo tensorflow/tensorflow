@@ -30,6 +30,11 @@ operators to your graph.
 @@divide
 @@truediv
 @@floordiv
+@@realdiv
+@@truncatediv
+@@floor_div
+@@truncatemod
+@@floormod
 @@mod
 @@cross
 
@@ -899,8 +904,10 @@ def truediv(x, y, name=None):
     return gen_math_ops.div(x, y, name=name)
 
 
+# TODO(aselle): Deprecate this once all internal functionality uses
+# tf.truncatediv
 def floordiv(x, y, name=None):
-  """Divides `x / y` elementwise, rounding down for floating point.
+  """Divides `x / y` elementwise, rounding toward the most negative integer.
 
   The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
   floating point arguments so that the result is always an integer (though
@@ -936,6 +943,14 @@ def floordiv(x, y, name=None):
       # TODO(aselle): Switch to math_ops.floor_div() when ready
       # return gen_math_ops.floor_div(x, y, name=name)
       return gen_math_ops.div(x, y, name=name)
+
+
+realdiv = gen_math_ops.real_div
+truncatediv = gen_math_ops.truncate_div
+# TODO(aselle): Rename this to floordiv when we can.
+floor_div = gen_math_ops.floor_div
+truncatemod = gen_math_ops.truncate_mod
+floormod = gen_math_ops.floor_mod
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1938,6 +1953,9 @@ ops.RegisterShape("Minimum")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Mod")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FloorMod")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FloorDiv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TruncateMod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TruncateDiv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RealDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Mul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("NotEqual")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Pow")(common_shapes.call_cpp_shape_fn)

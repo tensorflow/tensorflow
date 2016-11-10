@@ -1512,6 +1512,23 @@ class FIFOQueueWithTimeoutTest(tf.test.TestCase):
                                    "Timed out waiting for notification"):
         sess.run(dequeued_t)
 
+  def testReusableAfterTimeout(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32)
+      dequeued_t = q.dequeue()
+      enqueue_op = q.enqueue(37)
+
+      with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
+                                   "Timed out waiting for notification"):
+        sess.run(dequeued_t, options=tf.RunOptions(timeout_in_ms=10))
+
+      with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
+                                   "Timed out waiting for notification"):
+        sess.run(dequeued_t, options=tf.RunOptions(timeout_in_ms=10))
+
+      sess.run(enqueue_op)
+      self.assertEqual(37, sess.run(dequeued_t))
+
 
 class QueueContainerTest(tf.test.TestCase):
 
