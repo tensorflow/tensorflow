@@ -103,30 +103,6 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose(expected_cdf, cdf_values)
       self.assertAllClose(np.exp(expected_log_cdf), cdf_values)
 
-  def testStudentLogCDFMultidimensional(self):
-    with self.test_session():
-      batch_size = 6
-      df = tf.constant([[1.5, 7.2]] * batch_size)
-      mu = tf.constant([[3.0, -3.0]] * batch_size)
-      sigma = tf.constant([[math.sqrt(10.0), math.sqrt(15.0)]] * batch_size)
-      df_v = np.array([1.5, 7.2])
-      mu_v = np.array([3.0, -3.0])
-      sigma_v = np.array([np.sqrt(10.0), np.sqrt(15.0)])
-      t = np.array([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=np.float32).T
-      student = tf.contrib.distributions.StudentT(df, mu=mu, sigma=sigma)
-      log_cdf = student.log_cdf(t)
-      log_cdf_values = log_cdf.eval()
-      self.assertEqual(log_cdf.get_shape(), (6, 2))
-      cdf = student.cdf(t)
-      cdf_values = cdf.eval()
-      self.assertEqual(cdf.get_shape(), (6, 2))
-      expected_log_cdf = stats.t.logcdf(t, df_v, loc=mu_v, scale=sigma_v)
-      expected_cdf = stats.t.cdf(t, df_v, loc=mu_v, scale=sigma_v)
-      self.assertAllClose(expected_log_cdf, log_cdf_values)
-      self.assertAllClose(np.log(expected_cdf), log_cdf_values)
-      self.assertAllClose(expected_cdf, cdf_values)
-      self.assertAllClose(np.exp(expected_log_cdf), cdf_values)
-
   def testStudentEntropy(self):
     df_v = np.array([[2., 3., 7.]])  # 1x3
     mu_v = np.array([[1., -1, 0]])  # 1x3
