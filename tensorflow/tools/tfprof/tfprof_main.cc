@@ -172,8 +172,8 @@ int main(int argc, char** argv) {
 
   printf("Reading Files...\n");
   std::unique_ptr<tensorflow::GraphDef> graph(new tensorflow::GraphDef());
-  TF_CHECK_OK(tensorflow::tfprof::ReadGraphDefText(
-      tensorflow::Env::Default(), FLAGS_graph_path, graph.get()));
+  TF_CHECK_OK(tensorflow::tfprof::ReadGraphDef(tensorflow::Env::Default(),
+                                               FLAGS_graph_path, graph.get()));
 
   std::unique_ptr<tensorflow::RunMetadata> run_meta(
       new tensorflow::RunMetadata());

@@ -72,11 +72,14 @@ string StringReplace(const string& str, const string& oldsub,
   return out;
 }
 
-Status ReadGraphDefText(Env* env, const string& fname, GraphDef* graph_def) {
+Status ReadGraphDef(Env* env, const string& fname, GraphDef* graph_def) {
   string out;
   Status s = ReadFileToString(env, fname, &out);
   if (!s.ok()) return s;
   if (protobuf::TextFormat::ParseFromString(out, graph_def)) {
+    return Status();
+  } else if (ReadBinaryProto(tensorflow::Env::Default(), fname, graph_def)
+                 .ok()) {
     return Status();
   }
   return errors::InvalidArgument("Cannot parse proto string.");
