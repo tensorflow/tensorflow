@@ -504,6 +504,10 @@ def _ExtractImagePatchesGrad(op, grad):
   batch_size, rows_in, cols_in, channels = [
     dim.value for dim in op.inputs[0].get_shape()
   ]
+  input_bhwc = array_ops.shape(op.inputs[0])
+  batch_size = input_bhwc[0]
+  channels = input_bhwc[3]
+
   _, rows_out, cols_out, _ = [
     dim.value for dim in op.outputs[0].get_shape()
   ]
