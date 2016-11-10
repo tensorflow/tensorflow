@@ -475,7 +475,8 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
         # Partitioned variables do not.
         var_x = tf.get_variable(
             "x",
-            initializer=tf.ones_initializer([2]),
+            shape=[2],
+            initializer=tf.ones_initializer(),
             partitioner=tf.variable_axis_size_partitioner(4))
 
         ops_before_read = session.graph.get_operations()

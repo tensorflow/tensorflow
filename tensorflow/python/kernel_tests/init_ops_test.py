@@ -97,7 +97,7 @@ class ConstantInitializersTest(tf.test.TestCase):
   def testOnesInitializer(self):
     with self.test_session(use_gpu=True):
       shape = [2, 3]
-      x = tf.get_variable("x", shape=shape, initializer=tf.ones_initializer)
+      x = tf.get_variable("x", shape=shape, initializer=tf.ones_initializer())
       x.initializer.run()
       self.assertAllEqual(x.eval(), np.ones(shape))
 

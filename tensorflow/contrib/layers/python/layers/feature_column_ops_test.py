@@ -647,7 +647,10 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
                                   shape=[3, 2])
     features = {"wire": wire_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(
-        hashed_sparse, 1, combiner="sum", initializer=init_ops.ones_initializer)
+        hashed_sparse,
+        1,
+        combiner="sum",
+        initializer=init_ops.ones_initializer())
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
@@ -668,7 +671,10 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(
-        weighted_ids, 1, combiner="sum", initializer=init_ops.ones_initializer)
+        weighted_ids,
+        1,
+        combiner="sum",
+        initializer=init_ops.ones_initializer())
     output = tf.contrib.layers.input_from_feature_columns(features,
                                                           [embeded_sparse])
     with self.test_session():
