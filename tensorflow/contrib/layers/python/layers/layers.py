@@ -320,9 +320,9 @@ def _fused_batch_norm(
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
@@ -332,9 +332,9 @@ def _fused_batch_norm(
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
         update_mean, update_variance = utils.smart_cond(is_training,
                                                         _delay_updates,
@@ -564,9 +564,9 @@ def batch_norm(
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies([update_moving_mean,
                                          update_moving_variance]):
             return array_ops.identity(mean), array_ops.identity(variance)
@@ -577,9 +577,9 @@ def batch_norm(
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
 
         update_mean, update_variance = utils.smart_cond(is_training,

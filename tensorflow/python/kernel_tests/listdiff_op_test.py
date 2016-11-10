@@ -34,7 +34,7 @@ class ListDiffTest(tf.test.TestCase):
         x = [tf.compat.as_bytes(str(a)) for a in x]
         y = [tf.compat.as_bytes(str(a)) for a in y]
         out = [tf.compat.as_bytes(str(a)) for a in out]
-      for diff_func in [tf.listdiff, tf.setdiff1d]:
+      for diff_func in [tf.setdiff1d]:
         with self.test_session() as sess:
           x_tensor = tf.convert_to_tensor(x, dtype=dtype)
           y_tensor = tf.convert_to_tensor(y, dtype=dtype)

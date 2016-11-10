@@ -65,6 +65,7 @@ sequences and large batches.
     `Tensor`, and `TensorArray` objects.
 *  <b>`shape_invariants`</b>: The shape invariants for the loop variables.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
+    It must be a positive integer.
 *  <b>`back_prop`</b>: Whether backprop is enabled for this while loop.
 *  <b>`swap_memory`</b>: Whether GPU-CPU memory swap is enabled for this loop.
 *  <b>`name`</b>: Optional name prefix for the returned tensors.

@@ -42,7 +42,7 @@ def input_op_fn(features):
       features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE, scope='words')
   # Split into list of embedding per word, while removing doc length dim.
   # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-  word_list = tf.unpack(word_vectors, axis=1)
+  word_list = tf.unstack(word_vectors, axis=1)
   return word_list
 
 

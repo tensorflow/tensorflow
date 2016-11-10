@@ -530,6 +530,11 @@ class _DefinedFunction(object):
     # Build the FunctionDef
     self._definition = _graph_to_function_def(temp_graph, inputs, outputs)
 
+    # Extra kwargs are treated as attrs on the function def.
+    kwargs_attr = _parse_kwargs_as_attrs(**self._extra_kwargs)
+    for k in kwargs_attr:
+      self._definition.attr[k].CopyFrom(kwargs_attr[k])
+
     # Hash the definition and its dependencies.
     hasher = hashlib.sha1()
 
@@ -607,10 +612,6 @@ class _DefinedFunction(object):
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
     args = [ops.convert_to_tensor(_) for _ in args] + self._extra_inputs
-    if self._extra_kwargs:
-      for k in self._extra_kwargs:
-        if k not in kwargs:
-          kwargs[k] = self._extra_kwargs[k]
     return _call(self._definition.signature, *args, **kwargs)
 
 # NOTE: The list needs to be extended when more data types are added.

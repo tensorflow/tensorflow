@@ -213,11 +213,11 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
         features dict passed to `fit()`.
       initial_state_key: the key for input values in the features dict passed to
         `fit()`.
-      dtype: Parameter passed ot `dynamic_rnn`. The dtype of the state and
+      dtype: Parameter passed to `dynamic_rnn`. The dtype of the state and
         output returned by `RNNCell`.
-      parallel_iterations: Parameter passed ot `dynamic_rnn`. The number of
+      parallel_iterations: Parameter passed to `dynamic_rnn`. The number of
         iterations to run in parallel.
-      swap_memory: Parameter passed ot `dynamic_rnn`. Transparently swap the
+      swap_memory: Parameter passed to `dynamic_rnn`. Transparently swap the
         tensors produced in forward inference but needed for back prop from GPU
         to CPU.
       name: Optional name for the `Estimator`.

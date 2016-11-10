@@ -82,17 +82,30 @@ export class ServerDataProvider implements DataProvider {
       callback: (ds: DataSet) => void) {
     // Get the tensor.
     logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
-    d3.text(
-        `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
-        (err: any, tsv: string) => {
-          if (err) {
-            logging.setModalMessage('Error: ' + err.responseText);
-            return;
-          }
-          dataProvider.parseTensors(tsv).then(dataPoints => {
-            callback(new DataSet(dataPoints));
-          });
+    let xhr = new XMLHttpRequest();
+    xhr.open('GET', `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`);
+    xhr.responseType = 'arraybuffer';
+    xhr.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        let percent = (ev.loaded * 100 / ev.total).toFixed(1);
+        logging.setModalMessage('Fetching tensor values: ' + percent + '%',
+                                TENSORS_MSG_ID);
+      }
+    };
+    xhr.onload = () => {
+      let data = new Float32Array(xhr.response);
+      this.getEmbeddingInfo(run, tensorName, embedding => {
+        let dim = embedding.tensorShape[1];
+        dataProvider.parseTensorsFromFloat32Array(data, dim).then(
+            dataPoints => {
+          callback(new DataSet(dataPoints));
         });
+      });
+    };
+    xhr.onerror = () => {
+      logging.setModalMessage('Error: ' + xhr.responseText);
+    };
+    xhr.send(null);
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,

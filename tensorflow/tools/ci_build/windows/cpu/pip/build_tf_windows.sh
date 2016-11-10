@@ -44,6 +44,9 @@ export PATH="/c/Program Files/Anaconda3:$PATH"
 bazel clean
 output_base=$(bazel info output_base)
 bazel shutdown
+# Sleep 5s to wait for jvm shutdown completely
+# otherwise rm will fail with device or resource busy error
+sleep 5
 rm -rf ${output_base}
 
 echo "" | ./configure

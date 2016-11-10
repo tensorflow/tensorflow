@@ -109,7 +109,15 @@ class MetricSpec(object):
     return self._metric_fn
 
   def __str__(self):
-    return ('MetricSpec(metric_fn=%s, ' % self.metric_fn.__name__ +
+    if hasattr(self.metric_fn, '__name__'):
+      fn_name = self.metric_fn.__name__
+    elif (hasattr(self.metric_fn, 'func') and
+          hasattr(self.metric_fn.func, '__name__')):
+      fn_name = self.metric_fn.func.__name__  # If it's a functools.partial.
+    else:
+      fn_name = '%s' % self.metric_fn
+
+    return ('MetricSpec(metric_fn=%s, ' % fn_name +
             'prediction_key=%s, ' % self.prediction_key +
             'label_key=%s, ' % self.label_key +
             'weight_key=%s)' % self.weight_key

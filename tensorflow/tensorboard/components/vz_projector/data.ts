@@ -60,7 +60,7 @@ export interface SpriteAndMetadataInfo {
 
 export interface DataPoint extends scatterPlot.DataPoint {
   /** The point in the original space. */
-  vector: number[];
+  vector: Float32Array;
 
   /*
    * Metadata for each point. Each metadata is a set of key/value pairs

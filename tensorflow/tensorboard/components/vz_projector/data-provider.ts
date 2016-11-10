@@ -122,9 +122,9 @@ export function parseTensors(
       // If the first label is not a number, take it as the label.
       if (isNaN(row[0] as any) || numDim === row.length - 1) {
         dataPoint.metadata['label'] = row[0];
-        dataPoint.vector = row.slice(1).map(Number);
+        dataPoint.vector = new Float32Array(row.slice(1).map(Number));
       } else {
-        dataPoint.vector = row.map(Number);
+        dataPoint.vector = new Float32Array(row.map(Number));
       }
       data.push(dataPoint);
       if (numDim == null) {
@@ -142,6 +142,29 @@ export function parseTensors(
       }
     });
     return data;
+  }, TENSORS_MSG_ID).then(dataPoints => {
+    logging.setModalMessage(null, TENSORS_MSG_ID);
+    return dataPoints;
+  });
+}
+
+/** Parses a tsv text file. */
+export function parseTensorsFromFloat32Array(data: Float32Array,
+    dim: number): Promise<DataPoint[]> {
+  return runAsyncTask('Parsing tensors...', () => {
+    let N = data.length / dim;
+    let dataPoints: DataPoint[] = [];
+    let offset = 0;
+    for (let i = 0; i < N; ++i) {
+      dataPoints.push({
+        metadata: {},
+        vector: data.subarray(offset, offset + dim),
+        index: i,
+        projections: null,
+      });
+      offset += dim;
+    }
+    return dataPoints;
   }, TENSORS_MSG_ID).then(dataPoints => {
     logging.setModalMessage(null, TENSORS_MSG_ID);
     return dataPoints;

@@ -28,7 +28,7 @@ function makePointsWithTraces(traces: number[]) {
     let metadata: {[key: string]: any} = {};
     metadata[nextAttr] = t >= 0 ? t : null;
     points.push({
-      vector: [],
+      vector: new Float32Array(0),
       metadata: metadata,
       projections: {},
       index: i

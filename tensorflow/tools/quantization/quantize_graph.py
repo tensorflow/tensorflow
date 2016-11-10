@@ -66,6 +66,18 @@ flags.DEFINE_float("quantized_input_min", 0,
 flags.DEFINE_float("quantized_input_max", 1,
                    "The maximum of the actual input range when "
                    "--quantized_input")
+flags.DEFINE_float(
+    "quantized_fallback_min", None,
+    "The fallback 'min' value to use for layers which lack min-max "
+    "information. Note: this should be considered a coarse tool just good "
+    "enough for experimentation purposes, since graphs quantized in this way "
+    "would be very inaccurate.")
+flags.DEFINE_float(
+    "quantized_fallback_max", None,
+    "The fallback 'max' value to use for layers which lack min-max "
+    "information. Note: this should be considered a coarse tool just good "
+    "enough for experimentation purposes, since graphs quantized in this way "
+    "would be very inaccurate.")
 
 
 def print_input_nodes(current_node, nodes_map, indent, already_visited):
@@ -292,7 +304,8 @@ EightbitizeRecursionState = collections.namedtuple(
 class GraphRewriter(object):
   """Takes a float graph, and rewrites it in quantized form."""
 
-  def __init__(self, input_graph, mode, quantized_input_range):
+  def __init__(self, input_graph, mode, quantized_input_range,
+               fallback_quantization_range=None):
     """Sets up the class to rewrite a float graph.
 
     Args:
@@ -302,6 +315,10 @@ class GraphRewriter(object):
       quantized_input_range: if set, assume the input is
         quantized and represents the range
         [quantized_input_range[0], quantized_input_range[1]]
+      fallback_quantization_range: if set, then for nodes where the quantization
+        range can't be inferred from the graph, use the range
+        [fallback_quantization_range[0], fallback_quantization_range[1]) instead
+        of using a RequantizationRange node in the graph.
 
     Raises:
       ValueError: Two nodes with the same name were found in the graph.
@@ -321,6 +338,20 @@ class GraphRewriter(object):
             "quantized_input_range can only be specified in eightbit mode")
     else:
       self.input_range = None
+
+    if fallback_quantization_range:
+      self.fallback_quantization_range = [fallback_quantization_range[0],
+                                          fallback_quantization_range[1]]
+      if (self.fallback_quantization_range[0] >=
+          self.fallback_quantization_range[1]):
+        raise ValueError("Invalid fallback_quantization_range: [%s,%s]" %
+                         self.fallback_quantization_range)
+      if self.mode != "eightbit":
+        raise ValueError(
+            "fallback_quantization_range can only be "
+            "specified in eightbit mode")
+    else:
+      self.fallback_quantization_range = None
 
     # Data that is valid only during the recursive call to rewrite the graph.
     self.state = None
@@ -373,6 +404,13 @@ class GraphRewriter(object):
             "quantized_input_min_value", self.input_range[0], tf.float32, []))
         self.add_output_graph_node(create_constant_node(
             "quantized_input_max_value", self.input_range[1], tf.float32, []))
+      if self.fallback_quantization_range:
+        self.add_output_graph_node(create_constant_node(
+            "fallback_quantization_min_value",
+            self.fallback_quantization_range[0], tf.float32, []))
+        self.add_output_graph_node(create_constant_node(
+            "fallback_quantization_max_value",
+            self.fallback_quantization_range[1], tf.float32, []))
       if FLAGS.strip_redundant_quantization:
         self.output_graph = self.remove_redundant_quantization(
             self.output_graph)
@@ -563,6 +601,11 @@ class GraphRewriter(object):
         new_node = tf.NodeDef()
         new_node.CopyFrom(current_node)
         self.add_output_graph_node(new_node)
+
+    ###################################################################
+    # Note: if more cases are added here, you may need to update the op
+    # name lists in the loop over children at the start of the function.
+    ###################################################################
     else:
       new_node = tf.NodeDef()
       new_node.CopyFrom(current_node)
@@ -653,6 +696,9 @@ class GraphRewriter(object):
       min_max_inputs = [fake_quant_node.input[1], fake_quant_node.input[2]]
       assert original_node.name not in self.state.merged_with_fake_quant
       self.state.merged_with_fake_quant[original_node.name] = True
+    elif self.fallback_quantization_range:
+      min_max_inputs = ["fallback_quantization_min_value:0",
+                        "fallback_quantization_max_value:0"]
     else:
       # Add a RequantizationRange node for finding the min and max values.
       requant_range_node = create_node(
@@ -1187,7 +1233,16 @@ def main(unused_args):
     quantized_input_range = [FLAGS.quantized_input_min,
                              FLAGS.quantized_input_max]
 
-  rewriter = GraphRewriter(tf_graph, FLAGS.mode, quantized_input_range)
+  fallback_quantization_range = None
+  if (FLAGS.quantized_fallback_min is not None or
+      FLAGS.quantized_fallback_max is not None):
+    assert FLAGS.quantized_fallback_min is not None
+    assert FLAGS.quantized_fallback_max is not None
+    fallback_quantization_range = [FLAGS.quantized_fallback_min,
+                                   FLAGS.quantized_fallback_max]
+
+  rewriter = GraphRewriter(tf_graph, FLAGS.mode, quantized_input_range,
+                           fallback_quantization_range)
 
   output_graph = rewriter.rewrite(FLAGS.output_node_names.split(","))
 

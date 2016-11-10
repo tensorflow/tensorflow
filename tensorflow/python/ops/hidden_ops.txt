@@ -6,6 +6,7 @@ Concat
 ConcatV2
 Const
 EditDistance
+ListDiff
 MirrorPad
 MirrorPadGrad
 OneHot

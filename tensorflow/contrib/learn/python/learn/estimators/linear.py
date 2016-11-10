@@ -628,7 +628,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      label_dimension: dimension of the label for multilabels.
+      label_dimension: Dimension of the label for multilabels. Defaults to 1.
       _joint_weights: If True use a single (possibly partitioned) variable to
         store the weights. It's faster, but requires all feature columns are
         sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.

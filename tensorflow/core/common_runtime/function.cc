@@ -39,12 +39,17 @@ limitations under the License.
 namespace tensorflow {
 
 // A few string constant used throughout this module.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetOp = "_Retval";
-static const char* const kGradientOp = "SymbolicGradient";
-static const char* const kNodeLabel = "Func";
-static const char* const kFuncAttr = "f";
-static const char* const kNoInlineAttr = "_noinline";
+//
+// TODO(zhifengc): Dedup some of these constants into
+// framework/function.h
+static constexpr const char* const kArgOp = "_Arg";
+static constexpr const char* const kRetOp = "_Retval";
+static constexpr const char* const kGradientOp =
+    FunctionLibraryDefinition::kGradientOp;
+static constexpr const char* const kNodeLabel = "Func";
+static constexpr const char* const kFuncAttr =
+    FunctionLibraryDefinition::kFuncAttr;
+static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -926,46 +931,13 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
 }
 
-// Given a node's NodeDef, returns false iff the node explicitly
-// specified _noinline. This gives ExpandInlineFunctions a heuristic
-// to decide whether to inline the function.
-bool ShouldInline(const NodeDef& ndef) {
-  bool noinline = false;
-  if (GetNodeAttr(ndef, kNoInlineAttr, &noinline).ok()) {
-    // If the node specifies attribute '_noinline', returns accordingly.
-    return !noinline;
-  }
-  if (ndef.op() != kGradientOp) {
-    // If the op is not SymbolicGradient, we should be free to decide
-    // whether to inline or not.
-    return true;
-  }
-  // If the node is a SymbolicGradient, we use the forward
-  // function's attribute '_noinline' instead.
-  const NameAttrList* forward_func_attrs;
-  Status s =
-      GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
-  if (!s.ok()) {
-    // The node def is malformed (missing attribute 'f'), we'll just
-    // continue and the runtime will error out.
-    return false;
-  }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoInlineAttr,
-                  &noinline);
-  if (!s.ok()) {
-    // The forward function doesn't specify '_noinline' attr, we should
-    // be free to decide.
-    return true;
-  }
-  // Otherwise, make inline decision according to the attr.
-  return !noinline;
-}
-
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
+  const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
-    if (!ShouldInline(node->def())) {
+    bool noinline;
+    if (fld->GetAttr(node->def(), kNoInlineAttr, &noinline).ok() && noinline) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }

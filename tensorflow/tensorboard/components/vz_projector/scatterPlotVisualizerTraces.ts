@@ -62,6 +62,7 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
       });
 
       const trace = new THREE.LineSegments(geometry, material);
+      trace.frustumCulled = false;
       this.traces.push(trace);
       scene.add(trace);
     }

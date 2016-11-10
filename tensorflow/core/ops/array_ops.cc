@@ -4395,12 +4395,16 @@ REGISTER_OP("ScatterNd")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Doc(
-        R"doc(Creates a new tensor by applying sparse `updates` to individual values or slices within a zero tensor of the given `shape` tensor according to indices.
-This operator is the inverse of the [tf.gather_nd](#gather_nd) operator which extracts values or slices from a given tensor.
+        R"doc(Creates a new tensor by applying sparse `updates` to individual
+values or slices within a zero tensor of the given `shape` tensor according to
+indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
+operator which extracts values or slices from a given tensor.
 
-TODO(simister): Add a link to Variable.__getitem__ documentation on slice syntax.
+TODO(simister): Add a link to Variable.__getitem__ documentation on slice
+syntax.
 
-`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
+`Q`.
 
 `indices` must be integer tensor, containing indices into `shape`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -4415,7 +4419,9 @@ dimension of `shape`.
 [d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
 ```
 
-The simplest form of scatter is to insert individual elements in a tensor by index. For example, say we want to insert 4 scattered elements in a rank-1 tensor with 8 elements.
+The simplest form of scatter is to insert individual elements in a tensor by
+index. For example, say we want to insert 4 scattered elements in a rank-1
+tensor with 8 elements.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/ScatterNd1.png" alt>
@@ -4434,7 +4440,9 @@ The resulting tensor would look like this:
 
     [0, 11, 0, 10, 9, 0, 0, 12]
 
-We can also, insert entire slices of a higher rank tensor all at once. For example, if we wanted to insert two slices in the first dimension of a rank-3 tensor with two matrices of new values.
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/ScatterNd2.png" alt>
@@ -4459,10 +4467,14 @@ The resulting tensor would look like this:
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
 
-indices: A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
-updates: A Tensor. Must have the same type as tensor. A tensor of updated values to store in ref.
+indices: A Tensor. Must be one of the following types: int32, int64.
+  A tensor of indices into ref.
+updates: A Tensor. Must have the same type as tensor. A tensor of updated values
+  to store in ref.
 shape: A vector. The shape of the resulting tensor.
-output: A new tensor with the given shape and updates applied according to the indices.)doc");
+output: A new tensor with the given shape and updates applied according
+  to the indices.
+)doc");
 
 REGISTER_OP("FakeQuantWithMinMaxArgs")
     .Attr("min: float = -6.0")

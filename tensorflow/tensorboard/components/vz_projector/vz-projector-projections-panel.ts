@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {DataSet, SpriteAndMetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {Vector} from './vector';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -44,12 +45,16 @@ export let ProjectionsPanelPolymer = PolymerElement({
 type InputControlName = 'xLeft' | 'xRight' | 'yUp' | 'yDown';
 
 type CentroidResult = {
-  centroid?: number[]; numMatches?: number;
+  centroid?: Vector;
+  numMatches?: number;
 };
 
 type Centroids = {
-  [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
-  yDown: number[];
+  [key: string]: Vector;
+  xLeft: Vector;
+  xRight: Vector;
+  yUp: Vector;
+  yDown: Vector;
 };
 
 /**

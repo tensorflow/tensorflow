@@ -38,6 +38,20 @@ class MovingAveragesTest(tf.test.TestCase):
                            11.0 * 0.25 + 2.0 * (1.0 - 0.25)],
                           var.eval())
 
+  def testAssignMovingAverageWithZeroDebias(self):
+    with self.test_session():
+      var = tf.Variable([0.0, 0.0])
+      val = tf.constant([1.0, 2.0], tf.float32)
+      decay = 0.25
+      assign = moving_averages.assign_moving_average(
+          var, val, decay, zero_debias=True)
+      tf.global_variables_initializer().run()
+      self.assertAllClose([0.0, 0.0], var.eval())
+      assign.op.run()
+      self.assertAllClose([1.0 * (1.0 - 0.25) / (1 - 0.25 ** 2),
+                           2.0 * (1.0 - 0.25) / (1 - 0.25 ** 2)],
+                          var.eval())
+
   def testWeightedMovingAverage(self):
     with self.test_session() as sess:
       decay = 0.5

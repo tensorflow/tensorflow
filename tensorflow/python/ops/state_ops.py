@@ -98,8 +98,6 @@ automatically by the optimizers in most cases.
 @@scatter_nd_update
 @@scatter_nd_add
 @@scatter_nd_sub
-@@scatter_nd_mul
-@@scatter_nd_div
 @@sparse_mask
 @@IndexedSlices
 

@@ -69,8 +69,10 @@ from tensorflow.python.ops.state_ops import scatter_sub
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.state_ops import scatter_nd_add
 from tensorflow.python.ops.state_ops import scatter_nd_sub
-from tensorflow.python.ops.state_ops import scatter_nd_mul
-from tensorflow.python.ops.state_ops import scatter_nd_div
+# TODO(simister): Re-enable once binary size increase due to scatter_nd
+# ops is under control.
+# from tensorflow.python.ops.state_ops import scatter_nd_mul
+# from tensorflow.python.ops.state_ops import scatter_nd_div
 from tensorflow.python.ops.state_ops import scatter_nd_update
 from tensorflow.python.ops.string_ops import *
 from tensorflow.python.ops.template import *

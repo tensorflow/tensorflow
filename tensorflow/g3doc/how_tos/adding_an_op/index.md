@@ -491,7 +491,7 @@ for the types](../../resources/dims_types.md#data-types).
 
 For ops that can take different types as input or produce different output
 types, you can specify [an attr](#attrs) in
-[an input or output type](#inputs-outputs) in the Op registration.  Typically
+[an input or output type](#inputs-and-outputs) in the Op registration.  Typically
 you would then register an `OpKernel` for each supported type.
 
 For instance, if you'd like the `ZeroOut` Op to work on `float`s

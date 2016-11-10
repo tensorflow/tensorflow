@@ -1544,9 +1544,13 @@ class _CrossedColumn(_FeatureColumn,
   """
 
   @staticmethod
-  def _is_crossable(column):
-    return isinstance(column,
-                      (_SparseColumn, _CrossedColumn, _BucketizedColumn))
+  def _assert_is_crossable(column):
+    if isinstance(column, (_SparseColumn, _CrossedColumn, _BucketizedColumn)):
+      return
+    raise TypeError("columns must be a set of _SparseColumn, "
+                    "_CrossedColumn, or _BucketizedColumn instances. "
+                    "(column {} is a {})".format(column,
+                                                 column.__class__.__name__))
 
   def __new__(cls,
               columns,
@@ -1556,10 +1560,7 @@ class _CrossedColumn(_FeatureColumn,
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None):
     for column in columns:
-      if not _CrossedColumn._is_crossable(column):
-        raise TypeError("columns must be a set of _SparseColumn, "
-                        "_CrossedColumn, or _BucketizedColumn instances. "
-                        "column: {}".format(column))
+      _CrossedColumn._assert_is_crossable(column)
 
     if len(columns) < 2:
       raise ValueError("columns must contain at least 2 elements. "

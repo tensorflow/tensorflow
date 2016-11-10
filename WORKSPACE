@@ -463,3 +463,10 @@ http_file(
   name = "weblas_weblas_js",
   url = "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/dist/weblas.js",
 )
+
+new_http_archive(
+  name = "inception5h",
+  build_file = "models.BUILD",
+  url = "https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip",
+  sha256 = "d13569f6a98159de37e92e9c8ec4dae8f674fbf475f69fe6199b514f756d4364"
+)

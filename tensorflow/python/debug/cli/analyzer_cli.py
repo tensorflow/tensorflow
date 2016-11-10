@@ -27,6 +27,7 @@ import argparse
 import copy
 import re
 
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug import debug_data
@@ -201,6 +202,15 @@ class DebugAnalyzer(object):
         default=-1,
         help="0-based dump number for the specified tensor. "
         "Required for tensor with multiple dumps.")
+    ap.add_argument(
+        "-r",
+        "--ranges",
+        dest="ranges",
+        type=str,
+        default="",
+        help="Numerical ranges to highlight tensor elements in. "
+        "Examples: -r 0,1e-8, -r [-0.1,0.1], "
+        "-r \"[[-inf, -0.1], [0.1, inf]]\"")
 
     ap.add_argument(
         "-a",
@@ -476,6 +486,9 @@ class DebugAnalyzer(object):
     else:
       np_printoptions = {}
 
+    # Determine if any range-highlighting is required.
+    highlight_options = self._parse_ranges_highlight(parsed.ranges)
+
     # Determine if there parsed.tensor_name contains any indexing (slicing).
     if parsed.tensor_name.count("[") == 1 and parsed.tensor_name.endswith("]"):
       tensor_name = parsed.tensor_name[:parsed.tensor_name.index("[")]
@@ -489,7 +502,8 @@ class DebugAnalyzer(object):
       return self._error("\"%s\" is not a valid tensor name" %
                          parsed.tensor_name)
 
-    if not self._debug_dump.node_exists(node_name):
+    if (self._debug_dump.loaded_partition_graphs and
+        not self._debug_dump.node_exists(node_name)):
       return self._error(
           "Node \"%s\" does not exist in partition graphs" % node_name)
 
@@ -516,7 +530,8 @@ class DebugAnalyzer(object):
             matching_data[0].watch_key,
             np_printoptions,
             print_all=parsed.print_all,
-            tensor_slicing=tensor_slicing)
+            tensor_slicing=tensor_slicing,
+            highlight_options=highlight_options)
       else:
         return self._error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
@@ -552,14 +567,45 @@ class DebugAnalyzer(object):
             parsed.number,
             np_printoptions,
             print_all=parsed.print_all,
-            tensor_slicing=tensor_slicing)
+            tensor_slicing=tensor_slicing,
+            highlight_options=highlight_options)
+
+  def _parse_ranges_highlight(self, ranges_string):
+    """Process ranges highlight string.
+
+    Args:
+      ranges_string: (str) A string representing a numerical range of a list of
+        numerical ranges. See the help info of the -r flag of the print_tensor
+        command for more details.
+
+    Returns:
+      An instance of tensor_format.HighlightOptions, if range_string is a valid
+        representation of a range or a list of ranges.
+    """
+
+    ranges = None
+
+    def ranges_filter(x):
+      r = np.zeros(x.shape, dtype=bool)
+      for rng_start, rng_end in ranges:
+        r = np.logical_or(r, np.logical_and(x >= rng_start, x <= rng_end))
+
+      return r
+
+    if ranges_string:
+      ranges = command_parser.parse_ranges(ranges_string)
+      return tensor_format.HighlightOptions(
+          ranges_filter, description=ranges_string)
+    else:
+      return None
 
   def _format_tensor(self,
                      tensor,
                      watch_key,
                      np_printoptions,
                      print_all=False,
-                     tensor_slicing=None):
+                     tensor_slicing=None,
+                     highlight_options=None):
     """Generate formatted str to represent a tensor or its slices.
 
     Args:
@@ -574,6 +620,9 @@ class DebugAnalyzer(object):
          can handle.)
       tensor_slicing: (str or None) Slicing of the tensor, e.g., "[:, 1]". If
         None, no slicing will be performed on the tensor.
+      highlight_options: (tensor_format.HighlightOptions) options to highlight
+        elements of the tensor. See the doc of tensor_format.format_tensor()
+        for more details.
 
     Returns:
       (str) Formatted str representing the (potentially sliced) tensor.
@@ -602,7 +651,8 @@ class DebugAnalyzer(object):
         value,
         sliced_name,
         include_metadata=True,
-        np_printoptions=np_printoptions)
+        np_printoptions=np_printoptions,
+        highlight_options=highlight_options)
 
   def list_outputs(self, args, screen_info=None):
     """Command handler for inputs.

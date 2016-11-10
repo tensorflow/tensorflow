@@ -75,6 +75,7 @@ class StridedSliceOp : public OpKernel {
 
     // Optimization #1, slice is a no-op plus reshape
     if (is_identity) {
+      VLOG(1) << "Strided slice identity ";
       Tensor tmp;
       CHECK(tmp.CopyFrom(input, final_shape));
       context->set_output(0, tmp);
@@ -82,8 +83,9 @@ class StridedSliceOp : public OpKernel {
     }
 
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
-    if (slice_dim0 && IsInnerDimsSizeAligned<T>(input.shape())) {
+    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
       CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
+      VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
       Tensor tmp;
       CHECK(tmp.CopyFrom(input.Slice(begin[0], end[0]), final_shape));
       context->set_output(0, tmp);
