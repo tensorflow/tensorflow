@@ -44,6 +44,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.contrib.framework import deprecated
 
 
 def _override_helper(clazz_object, operator, func):
@@ -3917,12 +3918,12 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
-  @decorator_utils.classproperty
-  def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.warning("VARIABLES collection name is deprecated, "
-                    "please use GLOBAL_VARIABLES instead; "
-                    "VARIABLES will be removed after 2017-03-02.")
-    return cls.GLOBAL_VARIABLES
+  @property
+  @deprecated("2017-03-02",
+              "VARIABLES collection name is deprecated, "
+              "please use GLOBAL_VARIABLES instead")
+  def VARIABLES(self):
+    return self.GLOBAL_VARIABLES
 
 
 def add_to_collection(name, value):
