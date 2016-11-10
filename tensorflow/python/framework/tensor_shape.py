@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools as it
+
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.util import compat
 
@@ -581,6 +583,45 @@ class TensorShape(object):
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" %
                          (self, other))
+
+  def broadcast_with(self, other):
+    """Returns a `TensorShape` resulting from broadcasting `self` and `other`.
+
+    The trailing dimensions in `self` and `other` are merged elementwise,
+    according to the rules defined for `Dimension.merge_with()` except a
+    dimension of size `1` is treated as if it was `None`.
+
+    Args:
+      other: Another `TensorShape`.
+
+    Returns:
+      A `TensorShape` containing the broadcast shape of `self` and
+      `other`.
+
+    Raises:
+      ValueError: If `self` and `other` are not broadcstable.
+    """
+    # Just return the shape that isn't None
+    other = as_shape(other)
+    if self._dims is None:
+      return other
+    if other._dims is None:
+      return self
+    # Both shapes are not None so we need to broadcast them by iterating in reverse
+    new_dims = []
+    for dim1, dim2 in it.zip_longest(reversed(self._dims), reversed(other._dims),
+                                     fillvalue=Dimension(None)):
+      # Try to merge the shapes directly
+      try:
+        new_dims.append(dim1.merge_with(dim2))
+      except ValueError:
+        # Is one of them of size one?
+        if dim1._value == 1 or dim2._value == 1:
+          new_dims.append(Dimension(dim1._value * dim2._value))
+        else:
+          raise ValueError("Shapes %s and %s are not broadcastable" %
+                           (self, other))
+    return TensorShape(reversed(new_dims))
 
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.

@@ -410,6 +410,12 @@ class ShapeTest(test_util.TensorFlowTestCase):
             "is_broadcastable violated symmetry"
           assert broadcastable == shape1.is_broadcastable_with(shape2), "%s should %s be " \
             "broadcastable with %s" % (dims1, "" if broadcastable else "not", dims2)
+          # Get the resulting shape
+          if broadcastable:
+            broadcast_shape = shape1.broadcast_with(shape2)
+          else:
+            self.assertRaises(ValueError, lambda: shape1.broadcast_with(shape2))
+            broadcast_shape = None
           # Double check with numpy if fully defined
           if shape1.is_fully_defined() and shape2.is_fully_defined():
               x = np.zeros(dims1)
@@ -417,6 +423,8 @@ class ShapeTest(test_util.TensorFlowTestCase):
               # Do the multiplication to test
               try:
                   z = x * y
+                  assert broadcast_shape.as_list() == list(z.shape), "expected shape %s but got %s" % \
+                    (z.shape, broadcast_shape)
                   assert broadcastable, "%s and %s can be broadcast" % (dims1, dims2)
               except ValueError:
                   assert not broadcastable,"%s and %s cannot be broadcast" % (dims1, dims2)
