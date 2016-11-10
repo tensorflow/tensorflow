@@ -675,4 +675,6 @@ REGISTER_OP_NO_GRADIENT("LogicalNot");
 REGISTER_OP_NO_GRADIENT("Range");
 REGISTER_OP_NO_GRADIENT("LinSpace");
 
+REGISTER_OP_NO_GRADIENT("Floor");
+
 }  // end namespace tensorflow
