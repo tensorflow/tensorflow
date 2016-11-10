@@ -447,3 +447,31 @@ metadata is stored in its NodeDef. This method retrieves the description.
 *  <b>`ValueError`</b>: if the node is not a summary op.
 
 
+
+## Other Functions and Classes
+- - -
+
+### `class tf.summary.SummaryDescription` {#SummaryDescription}
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__getstate__()` {#SummaryDescription.__getstate__}
+
+Support the pickle protocol.
+
+
+
+- - -
+
+### `class tf.summary.TaggedRunMetadata` {#TaggedRunMetadata}
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__getstate__()` {#TaggedRunMetadata.__getstate__}
+
+Support the pickle protocol.
+
+
+
