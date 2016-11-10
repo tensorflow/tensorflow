@@ -2169,10 +2169,12 @@ tf_kernel_libraries(
         "base64_ops",
     ],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:string_ops_op_lib",
+        "//third_party/eigen3",
     ],
 )
 

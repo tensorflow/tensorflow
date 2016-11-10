@@ -28,6 +28,8 @@ limitations under the License.
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-toast/paper-toast.html">
+<link rel="import" href="../paper-styles/typography.html">
 
 <link rel="import" href="vz-projector-bookmark-panel.html">
 <link rel="import" href="vz-projector-data-panel.html">
@@ -135,18 +137,6 @@ limitations under the License.
   opacity: 1;
   padding: 0;
   transition: opacity 0.3s ease-out, height 0.3s ease-out;
-}
-
-#warning-msg {
-  display: none;
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  padding: 5px;
-  font-weight: 500;
-  color: black;
-  background-color: #ffb3b6;
-  border: 1px solid black;
 }
 
 .brush .extent {
@@ -260,11 +250,16 @@ limitations under the License.
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   overflow-y: auto;
 }
+
+#toast {
+  display: flex;
+  align-items: center;
+  --paper-toast-color: #eeff41;
+}
 </style>
 <paper-dialog id="wrapper-notify-msg" modal>
   <div id="notify-msgs"></div>
 </paper-dialog>
-<div id="warning-msg"></div>
 <div id="container">
   <div id="left-pane" class="ink-panel">
     <vz-projector-data-panel id="data-panel"></vz-projector-data-panel>
@@ -319,6 +314,7 @@ limitations under the License.
     </div>
   </div>
 </div>
+<paper-toast id="toast" always-on-top></paper-toast>
 
 </template> <!-- global template -->
 </dom-module>

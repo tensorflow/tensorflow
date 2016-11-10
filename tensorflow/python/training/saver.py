@@ -129,7 +129,7 @@ class BaseSaverBuilder(object):
           validate_shape=restored_shapes is None and
           self.op.get_shape().is_fully_defined())
 
-  def __init__(self, write_version=saver_pb2.SaverDef.V1):
+  def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version
 
   def save_op(self, filename_tensor, saveables):
@@ -966,10 +966,10 @@ class Saver(object):
         variables in the graph. Otherwise, construct the saver anyway and make
         it a no-op.
       write_version: controls what format to use when saving checkpoints.  It
-        also affects certain filepath matching logic.  Defaults to V1
-        currently, and will be switched to the more memory-efficient V2 format
-        in the future.  If set to V2, the Saver is still able to restore from
-        old V1 checkpoints.
+        also affects certain filepath matching logic.  The V2 format is the
+        recommended choice: it is much more optimized than V1 in terms of
+        memory required and latency incurred during restore.  Regardless of
+        this flag, the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -1284,11 +1284,10 @@ class Saver(object):
       latest_filename = "checkpoint"
     if self._write_version != saver_pb2.SaverDef.V2:
       logging.warning("*******************************************************")
-      logging.warning("TensorFlow's V1 checkpoint format is deprecated;"
-                      " V2 will become the default shortly after 10/31/2016.")
-      logging.warning("Consider switching to the more efficient V2 format now:")
+      logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
+      logging.warning("Consider switching to the more efficient V2 format:")
       logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
-      logging.warning("to prevent breakage.")
+      logging.warning("now on by default.")
       logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
@@ -1401,7 +1400,7 @@ class Saver(object):
                                   export_scope=export_scope)
 
 
-def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
+def _prefix_to_checkpoint_path(prefix, format_version):
   """Returns the pathname of a checkpoint file, given the checkpoint prefix.
 
   For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,

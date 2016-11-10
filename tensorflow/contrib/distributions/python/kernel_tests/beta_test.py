@@ -228,7 +228,7 @@ class BetaTest(tf.test.TestCase):
       b = 2.
       beta = tf.contrib.distributions.Beta(a, b)
       n = tf.constant(100000)
-      samples = beta.sample_n(n)
+      samples = beta.sample(n)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000,))
       self.assertFalse(np.any(sample_values < 0.0))
@@ -254,11 +254,11 @@ class BetaTest(tf.test.TestCase):
 
       tf.set_random_seed(654321)
       beta1 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta1")
-      samples1 = beta1.sample_n(n_val, seed=123456).eval()
+      samples1 = beta1.sample(n_val, seed=123456).eval()
 
       tf.set_random_seed(654321)
       beta2 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta2")
-      samples2 = beta2.sample_n(n_val, seed=123456).eval()
+      samples2 = beta2.sample(n_val, seed=123456).eval()
 
       self.assertAllClose(samples1, samples2)
 
@@ -268,7 +268,7 @@ class BetaTest(tf.test.TestCase):
       b = np.random.rand(3, 2, 2).astype(np.float32)
       beta = tf.contrib.distributions.Beta(a, b)
       n = tf.constant(100000)
-      samples = beta.sample_n(n)
+      samples = beta.sample(n)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 3, 2, 2))
       self.assertFalse(np.any(sample_values < 0.0))

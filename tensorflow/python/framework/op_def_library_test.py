@@ -196,7 +196,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", a="Bad string")
     self.assertEqual(str(cm.exception),
-                     "Expected int32, got 'Bad string' of type 'str' instead.")
+                     "Expected int32 passed to parameter 'a' of op 'Simple', "
+                     "got 'Bad string' of type 'str' instead.")
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", a=self.Tensor(dtypes.string))
@@ -222,6 +223,12 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", wrong=7)
     self.assertEqual(str(cm.exception), "No argument for input a")
+
+    with self.assertRaises(TypeError) as cm:
+      self._lib.apply_op("Simple", a={"label": 1})
+    self.assertEqual(str(cm.exception),
+                     "Expected int32 passed to parameter 'a' of op 'Simple', "
+                     "got {'label': 1} of type 'dict' instead.")
 
   def testReservedInput(self):
     self._add_op("name: 'ReservedInput' "
@@ -336,7 +343,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Binary", a="left", b=12)
     self.assertEqual(str(cm.exception),
-                     "Expected string, got 12 of type 'int' instead.")
+                     "Expected string passed to parameter 'b' of op 'Binary', "
+                     "got 12 of type 'int' instead.")
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Binary",

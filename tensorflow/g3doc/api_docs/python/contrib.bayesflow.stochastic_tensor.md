@@ -92,7 +92,7 @@ Construct a `StochasticTensor`.
 `StochasticTensor` is backed by the `dist` distribution and its `value`
 method will return the same value each time it is called. What `value` is
 returned is controlled by the `dist_value_type` (defaults to
-`SampleAndReshapeValue`).
+`SampleValue`).
 
 Some distributions' sample functions are not differentiable (e.g. a sample
 from a discrete distribution like a Bernoulli) and so to differentiate
@@ -242,17 +242,27 @@ reparameterized distributions; it will also return None if the value type is
 
 ### `class tf.contrib.bayesflow.stochastic_tensor.SampleValue` {#SampleValue}
 
-Draw n samples along a new outer dimension.
+Draw samples, possibly adding new outer dimensions along the way.
 
-This ValueType draws `n` samples from StochasticTensors run within its
-context, increasing the rank by one along a new outer dimension.
+This ValueType draws samples from StochasticTensors run within its
+context, increasing the rank according to the requested shape.
 
-Example:
+Examples:
 
 ```python
 mu = tf.zeros((2,3))
 sigma = tf.ones((2, 3))
-with sg.value_type(sg.SampleValue(n=4)):
+with sg.value_type(sg.SampleValue()):
+  st = sg.StochasticTensor(
+    distributions.Normal, mu=mu, sigma=sigma)
+# draws 1 sample and does not reshape
+assertEqual(st.value().get_shape(), (2, 3))
+```
+
+```python
+mu = tf.zeros((2,3))
+sigma = tf.ones((2, 3))
+with sg.value_type(sg.SampleValue(4)):
   st = sg.StochasticTensor(
     distributions.Normal, mu=mu, sigma=sigma)
 # draws 4 samples each with shape (2, 3) and concatenates
@@ -260,14 +270,19 @@ assertEqual(st.value().get_shape(), (4, 2, 3))
 ```
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.__init__(n=1, stop_gradient=False)` {#SampleValue.__init__}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.__init__(shape=(), stop_gradient=False)` {#SampleValue.__init__}
 
-Sample `n` times and concatenate along a new outer dimension.
+Sample according to shape.
+
+For the given StochasticTensor `st` using this value type,
+the shape of `st.value()` will match that of
+`st.distribution.sample(shape)`.
 
 ##### Args:
 
 
-*  <b>`n`</b>: A python integer or int32 tensor. The number of samples to take.
+*  <b>`shape`</b>: A shape tuple or int32 tensor.  The sample shape.
+    Default is a scalar: take one sample and do not change the size.
 *  <b>`stop_gradient`</b>: If `True`, StochasticTensors' values are wrapped in
     `stop_gradient`, to avoid backpropagation through.
 
@@ -275,13 +290,6 @@ Sample `n` times and concatenate along a new outer dimension.
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleValue.declare_inputs}
-
-
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.n` {#SampleValue.n}
 
 
 
@@ -302,89 +310,14 @@ Sample `n` times and concatenate along a new outer dimension.
 
 - - -
 
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.shape` {#SampleValue.shape}
+
+
+
+
+- - -
+
 #### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.stop_gradient` {#SampleValue.stop_gradient}
-
-
-
-
-
-- - -
-
-### `class tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue` {#SampleAndReshapeValue}
-
-Ask the StochasticTensor for n samples and reshape the result.
-
-Sampling from a StochasticTensor increases the rank of the value by 1
-(because each sample represents a new outer dimension).
-
-This ValueType requests `n` samples from StochasticTensors run within its
-context that the outer two dimensions are reshaped to intermix the samples
-with the outermost (usually batch) dimension.
-
-Example:
-
-```python
-# mu and sigma are both shaped (2, 3)
-mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
-sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
-
-with sg.value_type(sg.SampleAndReshapeValue(n=2)):
-  st = sg.StochasticTensor(
-      distributions.Normal, mu=mu, sigma=sigma)
-
-# sample(2) creates a (2, 2, 3) tensor, and the two outermost dimensions
-# are reshaped into one: the final value is a (4, 3) tensor.
-st_value = st.value()
-assertEqual(st_value.get_shape(), (4, 3))
-
-st_value_val = sess.run([st_value])[0]  # or e.g. run([tf.identity(st)])[0]
-assertEqual(st_value_val.shape, (4, 3))
-```
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.__init__(n=1, stop_gradient=False)` {#SampleAndReshapeValue.__init__}
-
-Sample `n` times and reshape the outer 2 axes so rank does not change.
-
-##### Args:
-
-
-*  <b>`n`</b>: A python integer or int32 tensor.  The number of samples to take.
-*  <b>`stop_gradient`</b>: If `True`, StochasticTensors' values are wrapped in
-    `stop_gradient`, to avoid backpropagation through.
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleAndReshapeValue.declare_inputs}
-
-
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.n` {#SampleAndReshapeValue.n}
-
-
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.popped_above(unused_value_type)` {#SampleAndReshapeValue.popped_above}
-
-
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.pushed_above(unused_value_type)` {#SampleAndReshapeValue.pushed_above}
-
-
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.stop_gradient` {#SampleAndReshapeValue.stop_gradient}
 
 
 
@@ -413,7 +346,7 @@ in a `stop_gradients` call to disable any possible backpropagation.
 ##### Args:
 
 
-*  <b>`dist_value_type`</b>: An instance of `MeanValue`, `SampleAndReshapeValue`, or
+*  <b>`dist_value_type`</b>: An instance of `MeanValue`, `SampleValue`, or
     any other stochastic value type.
 
 ##### Yields:

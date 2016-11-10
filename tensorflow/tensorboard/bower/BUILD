@@ -58,6 +58,7 @@ filegroup(
         "@paper_slider//:paper_slider",
         "@paper_styles//:paper_styles",
         "@paper_tabs//:paper_tabs",
+        "@paper_toast//:paper_toast",
         "@paper_toggle_button//:paper_toggle_button",
         "@paper_toolbar//:paper_toolbar",
         "@paper_tooltip//:paper_tooltip",

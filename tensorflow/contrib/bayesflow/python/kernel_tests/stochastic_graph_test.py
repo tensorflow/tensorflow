@@ -38,7 +38,7 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session():
       mu = [0.0, 0.1, 0.2]
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
+      with st.value_type(st.SampleValue()):
         prior = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
         likelihood = st.StochasticTensor(
             distributions.Normal(mu=prior, sigma=sigma))
@@ -76,7 +76,7 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session() as sess:
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
+      with st.value_type(st.SampleValue()):
         prior = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
         likelihood = st.StochasticTensor(NormalNotParam(mu=prior, sigma=sigma))
         prior_2 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
@@ -153,7 +153,7 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session():
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
+      with st.value_type(st.SampleValue()):
         dt = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma),
                                  loss_fn=None)
         self.assertEqual(None, dt.loss(tf.constant([2.0])))
@@ -162,7 +162,7 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session() as sess:
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
+      with st.value_type(st.SampleValue()):
         dt1 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
         dt2 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
         loss = tf.square(tf.identity(dt1)) + 10. + dt2

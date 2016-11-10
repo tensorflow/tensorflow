@@ -190,6 +190,7 @@ filegroup(
         "//tensorflow/tools/tfprof/internal:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
+        "//third_party/sycl:all_files",
     ],
     visibility = [":__subpackages__"],
 )

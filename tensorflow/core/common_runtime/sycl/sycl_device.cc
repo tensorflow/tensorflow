@@ -39,9 +39,7 @@ SYCLDevice::SYCLDevice(const SessionOptions& options, const string& name,
   set_eigen_sycl_device(&device_);
 }
 
-SYCLDevice::~SYCLDevice() {
-  device_context_->Unref();
-}
+SYCLDevice::~SYCLDevice() { device_context_->Unref(); }
 
 void SYCLDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   assert(context);
@@ -71,7 +69,7 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
 }
 
 Status SYCLDevice::FillContextMap(const Graph* graph,
-				  DeviceContextMap* device_context_map) {
+                                  DeviceContextMap* device_context_map) {
   // Fill in the context map.  It is OK for this map to contain
   // duplicate DeviceContexts so long as we increment the refcount.
   device_context_map->resize(graph->num_node_ids());
