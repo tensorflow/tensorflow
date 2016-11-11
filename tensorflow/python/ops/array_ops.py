@@ -2617,7 +2617,8 @@ def _QuantizedReshapeShape(op):
 # TODO(cwhipkey): Verify and enable shape functions for these.
 ops.RegisterShape("QuantizeV2")(None)
 ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
-ops.RegisterShape("QuantizedConcat")(None)
+
+ops.RegisterShape("QuantizedConcat")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ScatterNd")

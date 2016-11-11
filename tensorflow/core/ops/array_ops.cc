@@ -295,7 +295,9 @@ REGISTER_OP("Concat")
     .Output("output: T")
     .Attr("N: int >= 2")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::ConcatShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::ConcatShape(c, c->num_inputs() - 1);
+    })
     .Doc(R"doc(
 Concatenates tensors along one dimension.
 
@@ -4377,9 +4379,10 @@ REGISTER_OP("QuantizedConcat")
     .Attr("N: int >= 2")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c));
+      const int n = (c->num_inputs() - 1) / 3;
+      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c, n));
       ShapeHandle unused;
-      for (int i = std::max(0, c->num_inputs() - 2); i < c->num_inputs(); ++i) {
+      for (int i = n + 1; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
       }
       c->set_output(1, c->Scalar());
