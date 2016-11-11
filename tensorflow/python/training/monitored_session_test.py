@@ -28,6 +28,7 @@ import time
 import tensorflow as tf
 
 from tensorflow.contrib import testing
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.training import monitored_session
 
 
@@ -492,7 +493,11 @@ class HookedSessionTest(tf.test.TestCase):
 
       for hook in [mock_hook, mock_hook2]:
         self.assertEqual(
-            hook.last_run_values, tf.train.SessionRunValues(results=None))
+            hook.last_run_values,
+            tf.train.SessionRunValues(
+                results=None,
+                options=config_pb2.RunOptions(),
+                run_metadata=config_pb2.RunMetadata()))
         self.assertEqual(hook.last_run_context.original_args,
                          tf.train.SessionRunArgs(a_tensor))
         self.assertEqual(hook.last_run_context.session, sess)
@@ -640,6 +645,32 @@ class RaiseOnceAtCountN(tf.train.SessionRunHook):
       self.raised = True
       raise self.ex
     return None
+
+
+class RunOptionsMetadataHook(tf.train.SessionRunHook):
+  """A hook that observes & optionally modifies RunOptions and RunMetadata."""
+
+  def __init__(self, trace_level, timeout_in_ms, output_partition_graphs,
+               debug_tensor_watch):
+    self._trace_level = trace_level
+    self._timeout_in_ms = timeout_in_ms
+    self._output_partition_graphs = output_partition_graphs
+    self._debug_tensor_watch = debug_tensor_watch
+
+    self.run_options_list = []
+    self.run_metadata_list = []
+
+  def before_run(self, run_context):
+    options = config_pb2.RunOptions(
+        trace_level=self._trace_level,
+        timeout_in_ms=self._timeout_in_ms,
+        output_partition_graphs=self._output_partition_graphs)
+    options.debug_tensor_watch_opts.extend([self._debug_tensor_watch])
+    return tf.train.SessionRunArgs(None, None, options=options)
+
+  def after_run(self, run_context, run_values):
+    self.run_options_list.append(run_values.options)
+    self.run_metadata_list.append(run_values.run_metadata)
 
 
 class MonitoredSessionTest(tf.test.TestCase):
@@ -935,6 +966,90 @@ class MonitoredSessionTest(tf.test.TestCase):
     with g.as_default():
       session = tf.train.MonitoredSession()
       self.assertEqual(g, session.graph)
+
+  def test_merge_run_options_from_hooks(self):
+    """Test for rewriting RunOptions and observing RunMetadata with hooks."""
+
+    with tf.Graph().as_default():
+      my_const = tf.constant(42, name='my_const')
+      _ = tf.constant(24, name='my_const_2')
+
+      watch_a = config_pb2.DebugTensorWatch(
+          node_name='my_const',
+          output_slot=0,
+          debug_ops=['DebugIdentity'],
+          debug_urls=[])
+      hook_a = RunOptionsMetadataHook(2, 30000, False, watch_a)
+      watch_b = config_pb2.DebugTensorWatch(
+          node_name='my_const_2',
+          output_slot=0,
+          debug_ops=['DebugIdentity'],
+          debug_urls=[])
+      hook_b = RunOptionsMetadataHook(3, 60000, True, watch_b)
+      with tf.train.MonitoredSession(hooks=[hook_a, hook_b]) as session:
+        self.assertEqual(42, session.run(my_const))
+
+        # trace_level=3 should have overridden trace_level=2;
+        # timeout_in_ms=60000 should have overridden 30000;
+        # output_partition_graphs=True should have overridden False.
+        # The two debug tensor watches should have been merged.
+        self.assertEqual(
+            [
+                config_pb2.RunOptions(
+                    trace_level=3,
+                    timeout_in_ms=60000,
+                    output_partition_graphs=True,
+                    debug_tensor_watch_opts=[watch_a, watch_b])
+            ],
+            hook_b.run_options_list)
+        self.assertEqual(1, len(hook_b.run_metadata_list))
+        self.assertTrue(
+            isinstance(hook_b.run_metadata_list[0], config_pb2.RunMetadata))
+        self.assertGreater(len(hook_b.run_metadata_list[0].partition_graphs), 0)
+
+  def test_merge_caller_and_hook_run_options(self):
+    """Test that RunOptions from caller and hooks can be merged properly."""
+
+    with tf.Graph().as_default():
+      my_const = tf.constant(42, name='my_const')
+      _ = tf.constant(24, name='my_const_2')
+
+      hook_watch = config_pb2.DebugTensorWatch(
+          node_name='my_const_2',
+          output_slot=0,
+          debug_ops=['DebugIdentity'],
+          debug_urls=[])
+      hook = RunOptionsMetadataHook(2, 60000, False, hook_watch)
+      with tf.train.MonitoredSession(hooks=[hook]) as session:
+        caller_watch = config_pb2.DebugTensorWatch(
+            node_name='my_const',
+            output_slot=0,
+            debug_ops=['DebugIdentity'],
+            debug_urls=[])
+        caller_options = config_pb2.RunOptions(
+            trace_level=3, timeout_in_ms=30000, output_partition_graphs=True)
+        caller_options.debug_tensor_watch_opts.extend([caller_watch])
+        self.assertEqual(42, session.run(my_const, options=caller_options))
+
+        # trace_level=3 from the caller should override 2 from the hook.
+        # timeout_in_ms=60000 from the hook should override from the caller.
+        # output_partition_graph=True from the caller should override False
+        # from the hook.
+        # The two debug watches from the caller and the hook should be merged,
+        # in that order.
+        self.assertEqual(
+            [
+                config_pb2.RunOptions(
+                    trace_level=3,
+                    timeout_in_ms=60000,
+                    output_partition_graphs=True,
+                    debug_tensor_watch_opts=[caller_watch, hook_watch])
+            ],
+            hook.run_options_list)
+        self.assertEqual(1, len(hook.run_metadata_list))
+        self.assertTrue(
+            isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
+        self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
 
 
 if __name__ == '__main__':
