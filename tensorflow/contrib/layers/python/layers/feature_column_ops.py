@@ -628,6 +628,61 @@ def parse_feature_columns_from_examples(serialized,
   return columns_to_tensors
 
 
+def transform_features(features, feature_columns):
+  """Returns transformed features based on features columns passed in.
+
+  Example:
+
+  ```python
+  columns_to_tensor = transform_features(features=features,
+                                         feature_columns=feature_columns)
+
+  # Where my_features are:
+  # Define features and transformations
+  sparse_feature_a = sparse_column_with_keys(
+      column_name="sparse_feature_a", keys=["AB", "CD", ...])
+
+  embedding_feature_a = embedding_column(
+      sparse_id_column=sparse_feature_a, dimension=3, combiner="sum")
+
+  sparse_feature_b = sparse_column_with_hash_bucket(
+      column_name="sparse_feature_b", hash_bucket_size=1000)
+
+  embedding_feature_b = embedding_column(
+      sparse_id_column=sparse_feature_b, dimension=16, combiner="sum")
+
+  crossed_feature_a_x_b = crossed_column(
+      columns=[sparse_feature_a, sparse_feature_b], hash_bucket_size=10000)
+
+  real_feature = real_valued_column("real_feature")
+  real_feature_buckets = bucketized_column(
+      source_column=real_feature, boundaries=[...])
+
+  feature_columns = [embedding_feature_b,
+                     real_feature_buckets,
+                     embedding_feature_a]
+  ```
+
+  Args:
+    features: A dictionary of features.
+    feature_columns: An iterable containing all the feature columns. All items
+      should be instances of classes derived from _FeatureColumn.
+
+  Returns:
+    A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
+  """
+  check_feature_columns(feature_columns)
+  columns_to_tensor = features.copy()
+  transformer = _Transformer(columns_to_tensor)
+  for column in sorted(set(feature_columns), key=lambda x: x.key):
+    transformer.transform(column)
+  keys = list(columns_to_tensor.keys())
+  for k in keys:
+    if k not in feature_columns:
+      columns_to_tensor.pop(k)
+  return columns_to_tensor
+
+
 def parse_feature_columns_from_sequence_examples(
     serialized,
     context_feature_columns,
