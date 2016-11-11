@@ -3018,54 +3018,9 @@ ops.RegisterShape("RefNextIteration")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ControlTrigger")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("NoOp")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Abort")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("LoopCond")
-def _LoopCondShape(op):
-  """Shape function for the LoopCond op."""
-  return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
-
-
+ops.RegisterShape("LoopCond")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Merge")(common_shapes.call_cpp_shape_fn)
-
-
-def _MergeShape(op):
-  """Shape function for the Merge op.
-
-  The Merge op takes many inputs of arbitrary shapes, and produces a
-  first output that is one of those inputs, and a second scalar
-  output.
-
-  If all input shapes are known and have the same rank, the output
-  shape must have that rank, otherwise the output shape is unknown.
-  Each output dimension is specified only if that dimension in all
-  inputs are the same.
-
-  Args:
-    op: A Merge Operation.
-
-  Returns:
-    A single-element list containing the Shape of the Merge op.
-
-  """
-  output_shape = op.inputs[0].get_shape()
-  if output_shape.dims is None:
-    return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
-  else:
-    for input_ in op.inputs[1:]:
-      input_shape = input_.get_shape()
-      if input_shape.dims is None or input_shape.ndims != output_shape.ndims:
-        return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
-      else:
-        output_shape = tensor_shape.TensorShape(
-            [input_dim.value if input_dim.value == output_dim.value else None
-             for input_dim, output_dim in zip(input_shape.dims,
-                                              output_shape.dims)])
-    return [output_shape, tensor_shape.scalar()]
-
-ops.RegisterShape("RefMerge")(_MergeShape)
-
-
+ops.RegisterShape("RefMerge")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)
