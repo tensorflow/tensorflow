@@ -217,19 +217,27 @@ py_test(
     ],
 )
 
-cuda_py_test(
-    name = "session_debug_test",
-    size = "small",
-    srcs = [
-        "session_debug_test.py",
-    ],
-    additional_deps = [
+py_library(
+    name = "session_debug_testlib",
+    srcs = ["session_debug_testlib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":debug_data",
         ":debug_utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
+    ],
+)
+
+cuda_py_test(
+    name = "session_debug_file_test",
+    size = "small",
+    srcs = ["session_debug_file_test.py"],
+    additional_deps = [
+        ":session_debug_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
