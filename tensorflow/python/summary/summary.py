@@ -93,7 +93,7 @@ def _clean_tag(name):
   return name
 
 
-def scalar(name, tensor, collections=None):
+def scalar(name, tensor, collections=None, prefix=''):
   """Outputs a `Summary` protocol buffer containing a single scalar value.
 
   The generated Summary has a Tensor.proto containing the input Tensor.
@@ -104,6 +104,7 @@ def scalar(name, tensor, collections=None):
     tensor: A real numeric Tensor containing a single value.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    prefix: Optional string tensor
 
   Returns:
     A scalar `Tensor` of type `string`. Which contains a `Summary` protobuf.
@@ -115,12 +116,12 @@ def scalar(name, tensor, collections=None):
   with _ops.name_scope(name, None, [tensor]) as scope:
     # pylint: disable=protected-access
     val = _gen_logging_ops._scalar_summary(
-        tags=scope.rstrip('/'), values=tensor, name=scope)
+        tags=prefix+scope.rstrip('/'), values=tensor, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
-def image(name, tensor, max_outputs=3, collections=None):
+def image(name, tensor, max_outputs=3, collections=None, prefix=''):
   """Outputs a `Summary` protocol buffer with images.
 
   The summary has up to `max_images` summary values containing images. The
@@ -158,6 +159,7 @@ def image(name, tensor, max_outputs=3, collections=None):
     max_outputs: Max number of batch elements to generate images for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
+    prefix: Optional string tensor
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
@@ -167,7 +169,7 @@ def image(name, tensor, max_outputs=3, collections=None):
   with _ops.name_scope(name, None, [tensor]) as scope:
     # pylint: disable=protected-access
     val = _gen_logging_ops._image_summary(
-        tag=scope.rstrip('/'),
+        tag=prefix+scope.rstrip('/'),
         tensor=tensor,
         max_images=max_outputs,
         name=scope)
@@ -175,7 +177,7 @@ def image(name, tensor, max_outputs=3, collections=None):
   return val
 
 
-def histogram(name, values, collections=None):
+def histogram(name, values, collections=None, prefix=''):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
 
@@ -192,6 +194,7 @@ def histogram(name, values, collections=None):
       build the histogram.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    prefix: Optional string tensor
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
@@ -202,12 +205,12 @@ def histogram(name, values, collections=None):
   with _ops.name_scope(name, 'HistogramSummary', [values]) as scope:
     # pylint: disable=protected-access
     val = _gen_logging_ops._histogram_summary(
-        tag=scope.rstrip('/'), values=values, name=scope)
+        tag=prefix+scope.rstrip('/'), values=values, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
-def audio(name, tensor, sample_rate, max_outputs=3, collections=None):
+def audio(name, tensor, sample_rate, max_outputs=3, collections=None, prefix=''):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with audio.
 
@@ -234,6 +237,7 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None):
     max_outputs: Max number of batch elements to generate audio for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
+    prefix: Optional string tensor
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
@@ -246,7 +250,7 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None):
     sample_rate = _ops.convert_to_tensor(
         sample_rate, dtype=_dtypes.float32, name='sample_rate')
     val = _gen_logging_ops._audio_summary_v2(
-        tag=scope.rstrip('/'),
+        tag=prefix+scope.rstrip('/'),
         tensor=tensor,
         max_outputs=max_outputs,
         sample_rate=sample_rate,
