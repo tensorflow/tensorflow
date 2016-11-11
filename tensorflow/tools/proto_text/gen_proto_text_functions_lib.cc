@@ -446,6 +446,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   Print("StringPiece identifier;");
   Print("if (!scanner->GetResult(nullptr, &identifier)) return false;");
   Print("bool parsed_colon = false;");
+  Print("(void)parsed_colon;"); // Avoid "set but not used" compiler warning
   Print("ProtoSpaceAndComments(scanner);");
   Print("if (scanner->Peek() == ':') {");
   Nest().Print("parsed_colon = true;");
