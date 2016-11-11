@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -279,6 +280,23 @@ TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
       ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::OUTPUT_OP_NAME);
   EXPECT_GE(output_op_id, 0);
   EXPECT_EQ(output_op_id, ops_definitions.GetOutputNodeOpId());
+}
+
+TEST(GraphTransferer, LoadGraphFromProtoFile) {
+  string filename =
+      io::JoinPath(testing::TensorFlowSrcRoot(),
+                   "core/example/testdata/parse_example_graph_def.pbtxt");
+  std::vector<string> input_node_names = {};
+  std::vector<string> output_node_names = {};
+  // Keep following comments for debugging purpose for now
+  // filename = io::JoinPath(testing::TensorFlowSrcRoot(), "");
+  // input_node_names = { "Mul" };
+  // output_node_names = { "softmax" };
+  GraphTransferer gt;
+  ASSERT_TRUE(gt.LoadGraphFromProtoFile(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS,
+                                        filename, input_node_names,
+                                        output_node_names)
+                  .ok());
 }
 
 }  // namespace tensorflow

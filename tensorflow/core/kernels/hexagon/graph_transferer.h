@@ -82,6 +82,12 @@ class GraphTransferer {
                           const std::vector<string>& input_node_names,
                           const std::vector<string>& output_node_names);
 
+  // Load graph structure into GraphTransferer from protobuf file
+  Status LoadGraphFromProtoFile(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const string& graph_def_path, const std::vector<string>& input_node_names,
+      const std::vector<string>& output_node_names);
+
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
 

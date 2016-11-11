@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
 namespace tensorflow {
@@ -70,6 +71,24 @@ void GraphTransferer::LoadGraphFromProto(
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
   }
+}
+
+Status GraphTransferer::LoadGraphFromProtoFile(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const string& graph_def_path, const std::vector<string>& input_node_names,
+    const std::vector<string>& output_node_names) {
+  GraphDef graph_def;
+  string output;
+  Status status = ReadFileToString(Env::Default(), graph_def_path, &output);
+  if (!status.ok()) {
+    return status;
+  }
+  if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
+    return errors::InvalidArgument("Cannot parse proto string.");
+  }
+  LoadGraphFromProto(ops_definitions, graph_def, input_node_names,
+                     output_node_names);
+  return Status();
 }
 
 const std::vector<GraphTransferer::ConstNodeTransferParams>&
