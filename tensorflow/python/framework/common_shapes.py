@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 import six.moves
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import errors
@@ -583,6 +584,16 @@ def call_cpp_shape_fn(op,
     shapes of the inputs are of the wrong rank or otherwise incompatible
     according to the shape function).
   """
+  if op.type == "Const":
+    # To avoid serializing large constants, we special-case constant
+    # here, even though it has a C++ shape function.  When Python
+    # calls the C / C-API directly, we should be able to remove this.
+    return {
+        "shapes": [tensor_shape.TensorShape(op.get_attr("value").tensor_shape)],
+        "handle_shapes": [tensor_shape.TensorShape(None).as_proto()],
+        "handle_dtypes": [types_pb2.DT_INVALID]
+    }
+
   node_def_str = op.node_def.SerializeToString()
 
   def tensor_to_inference_result(t):

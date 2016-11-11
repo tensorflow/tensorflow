@@ -108,6 +108,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -168,10 +169,7 @@ def constant(value, dtype=None, shape=None, name="Const"):
   return const_tensor
 
 
-@ops.RegisterShape("Const")
-def _ConstantShape(op):
-  return [tensor_shape.TensorShape(
-      [d.size for d in op.get_attr("value").tensor_shape.dim])]
+ops.RegisterShape("Const")(common_shapes.call_cpp_shape_fn)
 
 
 def _constant_tensor_conversion_function(v, dtype=None, name=None,
