@@ -122,6 +122,7 @@ export class DataSet {
   dim: [number, number] = [0, 0];
   hasTSNERun: boolean = false;
   spriteAndMetadataInfo: SpriteAndMetadataInfo;
+  fracVariancesExplained: number[];
 
   private tsne: TSNE;
 
@@ -268,8 +269,19 @@ export class DataSet {
       }
       let sigma = numeric.div(
           numeric.dot(numeric.transpose(vectors), vectors), vectors.length);
-      let U: any;
-      U = numeric.svd(sigma).U;
+      let svd = numeric.svd(sigma);
+
+      let variances: number[] = svd.S;
+      let totalVariance = 0;
+      for (let i = 0; i < variances.length; ++i) {
+        totalVariance += variances[i];
+      }
+      for (let i = 0; i < variances.length; ++i) {
+        variances[i] /= totalVariance;
+      }
+      this.fracVariancesExplained = variances;
+
+      let U: number[][] = svd.U;
       let pcaVectors = vectors.map(vector => {
         let newV: number[] = [];
         for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
