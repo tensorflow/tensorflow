@@ -16,7 +16,7 @@ cc_binary(
     srcs = glob([
         "jni/**/*.cc",
         "jni/**/*.h",
-    ]) + [],
+    ]),
     copts = tf_copts(),
     linkopts = [
         "-landroid",
