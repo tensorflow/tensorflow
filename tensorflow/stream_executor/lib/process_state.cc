@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/process_state.h"
 
+#if defined(PLATFORM_WINDOWS)
+#include <direct.h>
+#include <stdlib.h>
+#include <WinSock2.h>
+#else
 #include <unistd.h>
-
+#endif
 #include <memory>
 
 namespace perftools {
@@ -27,7 +32,7 @@ string Hostname() {
   char hostname[1024];
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
-  return hostname;
+  return std::string(hostname);
 }
 
 bool GetCurrentDirectory(string* dir) {

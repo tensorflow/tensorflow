@@ -35,13 +35,12 @@ from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.losses.python.losses import loss_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
@@ -61,11 +60,6 @@ _PROBABILITIES = "probabilities"
 _LEARNING_RATE = 0.05
 
 
-def _as_iterable(preds, output):
-  for pred in preds:
-    yield pred[output]
-
-
 def _get_feature_dict(features):
   if isinstance(features, dict):
     return features
@@ -80,29 +74,27 @@ def _get_optimizer(optimizer):
 
 
 def _add_hidden_layer_summary(value, tag):
-  logging_ops.scalar_summary("%s:fraction_of_zero_values" % tag,
-                             nn.zero_fraction(value))
-  logging_ops.histogram_summary("%s:activation" % tag, value)
+  summary.scalar("%s:fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s:activation" % tag, value)
 
 
 def _centered_bias(num_label_columns):
   centered_bias = variables.Variable(
       array_ops.zeros([num_label_columns]),
-      collections=[_CENTERED_BIAS, ops.GraphKeys.VARIABLES],
+      collections=[_CENTERED_BIAS, ops.GraphKeys.GLOBAL_VARIABLES],
       name=_CENTERED_BIAS_WEIGHT)
-  logging_ops.scalar_summary(
-      ["centered_bias %d" % cb for cb in range(num_label_columns)],
-      array_ops.reshape(centered_bias, [-1]))
+  for i in range(num_label_columns):
+    summary.scalar("centered_bias %d" % i, centered_bias[i])
   return centered_bias
 
 
-def _centered_bias_step(targets, loss_fn, num_label_columns):
+def _centered_bias_step(labels, loss_fn, num_label_columns):
   centered_bias = ops.get_collection(_CENTERED_BIAS)
-  batch_size = array_ops.shape(targets)[0]
+  batch_size = array_ops.shape(labels)[0]
   logits = array_ops.reshape(
       array_ops.tile(centered_bias[0], [batch_size]),
       [batch_size, num_label_columns])
-  loss = loss_fn(logits, targets)
+  loss = loss_fn(logits, labels)
   return train.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
 
 
@@ -116,16 +108,16 @@ def _get_weight_tensor(features, weight_column_name):
         shape=(-1,))
 
 
-def _reshape_targets(targets):
-  """"Reshapes targets into [batch_size, 1] to be compatible with logits."""
+def _reshape_labels(labels):
+  """"Reshapes labels into [batch_size, 1] to be compatible with logits."""
   check_shape_op = control_flow_ops.Assert(
-      math_ops.less_equal(array_ops.rank(targets), 2),
-      ["targets shape should be either [batch_size, 1] or [batch_size]"])
+      math_ops.less_equal(array_ops.rank(labels), 2),
+      ["labels shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
-    targets = array_ops.reshape(targets,
-                                shape=[array_ops.shape(targets)[0], 1])
+    labels = array_ops.reshape(labels,
+                               shape=[array_ops.shape(labels)[0], 1])
 
-  return targets
+  return labels
 
 
 def _rescale_eval_loss(loss, weights):
@@ -162,12 +154,12 @@ def _predictions(logits, n_classes):
   return predictions
 
 
-def _dnn_classifier_model_fn(features, targets, mode, params):
+def _dnn_classifier_model_fn(features, labels, mode, params):
   """Deep Neural Net model_fn.
 
   Args:
     features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
-    targets: `Tensor` of shape [batch_size, 1] or [batch_size] target labels of
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -176,7 +168,7 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
       * hidden_units: List of hidden units per layer.
       * feature_columns: An iterable containing all the feature columns used by
           the model.
-      * n_classes: number of target classes.
+      * n_classes: number of label classes.
       * weight_column_name: A string defining the weight feature column, or
           None if there are no weights.
       * optimizer: string, `Optimizer` object, or callable that defines the
@@ -266,10 +258,10 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
 
   if mode == estimator.ModeKeys.TRAIN:
-    targets = _reshape_targets(targets)
-    weight = _get_weight_tensor(features, weight_column_name)
-    training_loss = loss_fn(logits, targets, weight=weight)
-    loss = _rescale_eval_loss(training_loss, weight)
+    labels = _reshape_labels(labels)
+    weights = _get_weight_tensor(features, weight_column_name)
+    training_loss = loss_fn(logits, labels, weights=weights)
+    loss = _rescale_eval_loss(training_loss, weights)
 
     train_ops = [optimizers.optimize_loss(
         loss=training_loss,
@@ -281,19 +273,19 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
         # Empty summaries to prevent optimizers from logging the training_loss.
         summaries=[])]
     if enable_centered_bias:
-      train_ops.append(_centered_bias_step(targets, loss_fn, num_label_columns))
+      train_ops.append(_centered_bias_step(labels, loss_fn, num_label_columns))
 
-    logging_ops.scalar_summary("loss", loss)
+    summary.scalar("loss", loss)
 
     return None, loss, control_flow_ops.group(*train_ops)
 
   elif mode == estimator.ModeKeys.EVAL:
     predictions = _predictions(logits=logits, n_classes=n_classes)
 
-    targets = _reshape_targets(targets)
-    weight = _get_weight_tensor(features, weight_column_name)
-    training_loss = loss_fn(logits, targets, weight=weight)
-    loss = _rescale_eval_loss(training_loss, weight)
+    labels = _reshape_labels(labels)
+    weights = _get_weight_tensor(features, weight_column_name)
+    training_loss = loss_fn(logits, labels, weights=weights)
+    loss = _rescale_eval_loss(training_loss, weights)
 
     return predictions, loss, []
 
@@ -369,7 +361,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                config=None,
                feature_engineering_fn=None):
     """Initializes a DNNClassifier instance.
@@ -381,10 +373,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
-      n_classes: number of target classes. Default is binary classification.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+      n_classes: number of label classes. Default is binary classification.
         It must be greater than 1.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
@@ -403,8 +395,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Returns:
@@ -413,9 +405,6 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     Raises:
       ValueError: If `n_classes` < 2.
     """
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     self._hidden_units = hidden_units
     self._feature_columns = feature_columns
     self._model_dir = model_dir or tempfile.mkdtemp()
@@ -491,7 +480,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
 
     Args:
@@ -511,14 +500,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     batch_size=batch_size, outputs=[_CLASSES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_CLASSES)
+      return (pred[_CLASSES][0] for pred in preds)
     return preds[_CLASSES].reshape(-1)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns prediction probabilities for given features.
 
     Args:
@@ -539,7 +528,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                                     outputs=[_PROBABILITIES],
                                     as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=_PROBABILITIES)
+      return (pred[_PROBABILITIES] for pred in preds)
     return preds[_PROBABILITIES]
 
   def get_variable_names(self):
@@ -594,11 +583,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def weights_(self):
-    hiddenlayer_weights = [checkpoints.load_variable(
+    hiddenlayer_weights = [load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/weights" % i))
                            for i, _ in enumerate(self._hidden_units)]
-    logits_weights = [checkpoints.load_variable(
-        self._model_dir, name="dnn/logits/weights")]
+    logits_weights = [load_variable(self._model_dir, name="dnn/logits/weights")]
     return hiddenlayer_weights + logits_weights
 
   @property
@@ -607,13 +595,15 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
               "To inspect variables, use get_variable_names() and "
               "get_variable_value().")
   def bias_(self):
-    hiddenlayer_bias = [checkpoints.load_variable(
+    hiddenlayer_bias = [load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/biases" % i))
                         for i, _ in enumerate(self._hidden_units)]
-    logits_bias = [checkpoints.load_variable(
-        self._model_dir, name="dnn/logits/biases")]
-    centered_bias = [checkpoints.load_variable(
-        self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
+    logits_bias = [load_variable(self._model_dir, name="dnn/logits/biases")]
+    if self._estimator.params["enable_centered_bias"]:
+      centered_bias = [
+          load_variable(self._model_dir, name=_CENTERED_BIAS_WEIGHT)]
+    else:
+      centered_bias = []
     return hiddenlayer_bias + logits_bias + centered_bias
 
   @property
@@ -686,9 +676,10 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=None,
+               enable_centered_bias=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               label_dimension=1):
     """Initializes a `DNNRegressor` instance.
 
     Args:
@@ -698,9 +689,9 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -718,16 +709,14 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
+      label_dimension: Dimension of the label for multilabels. Defaults to 1.
 
     Returns:
       A `DNNRegressor` estimator.
     """
-    if enable_centered_bias is None:
-      enable_centered_bias = True
-      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -739,7 +728,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         config=config,
-        feature_engineering_fn=feature_engineering_fn)
+        feature_engineering_fn=feature_engineering_fn,
+        label_dimension=label_dimension)
     self.feature_columns = feature_columns
     self.optimizer = optimizer
     self.activation_fn = activation_fn

@@ -45,6 +45,12 @@ void FilterGraphDef(const GraphDef& input_graph_def,
                     std::function<bool(const NodeDef&)> selector,
                     GraphDef* output_graph_def);
 
+// Creates a copy of the input graph, with all occurences of the attributes with
+// the names in the argument removed from the node defs.
+void RemoveAttributes(const GraphDef& input_graph_def,
+                      const std::vector<string>& attributes,
+                      GraphDef* output_graph_def);
+
 }  // namespace graph_transforms
 }  // namespace tensorflow
 

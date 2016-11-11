@@ -393,7 +393,7 @@ Safe_PyObjectPtr make_safe(PyObject* o) {
   return Safe_PyObjectPtr(o, Py_DECREF_wrapper);
 }
 
-void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
+void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
                            const TF_Buffer* run_options, PyObject* feed_dict,
                            const NameVector& output_names,
                            const NameVector& target_nodes,
@@ -547,7 +547,7 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
 // Wrapper for TF_Run that converts the arguments to appropriate types.
 // If *out_status is OK, the caller becomes the owner of the PyObjects
 // in *out_values.
-void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
+void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
                     PyObject* feed_dict, const NameVector& output_names,
                     const NameVector& target_nodes, TF_Status* out_status,
                     PyObjectVector* out_values, TF_Buffer* run_outputs) {
@@ -557,7 +557,8 @@ void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
 
 // Wrapper for TF_PRunSetup that converts the arguments to appropriate types.
 // If *out_status is OK, the caller becomes the owner of *out_handle.
-void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
+void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
+                          const NameVector& input_names,
                           const NameVector& output_names,
                           const NameVector& target_nodes, TF_Status* out_status,
                           const char** out_handle) {
@@ -573,7 +574,7 @@ void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
 // Wrapper for TF_PRun that converts the arguments to appropriate types.
 // If *out_status is OK, the caller becomes the owner of the PyObjects
 // in *out_values.
-void TF_PRun_wrapper(TF_Session* session, const char* handle,
+void TF_PRun_wrapper(TF_DeprecatedSession* session, const char* handle,
                      PyObject* feed_dict, const NameVector& output_names,
                      TF_Status* out_status, PyObjectVector* out_values) {
   TF_Run_wrapper_helper(session, handle, nullptr, feed_dict, output_names,

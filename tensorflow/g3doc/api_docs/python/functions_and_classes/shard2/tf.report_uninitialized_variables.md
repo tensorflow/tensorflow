@@ -9,7 +9,7 @@ variables if there are any, or an empty array if there are none.
 
 
 *  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
-    value of `all_variables() + local_variables()`
+    value of `global_variables() + local_variables()`
 *  <b>`name`</b>: Optional name of the `Operation`.
 
 ##### Returns:

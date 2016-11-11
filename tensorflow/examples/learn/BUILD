@@ -19,6 +19,13 @@ py_binary(
 )
 
 py_binary(
+    name = "hdf5_classification",
+    srcs = ["hdf5_classification.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
     name = "iris",
     srcs = ["iris.py"],
     srcs_version = "PY2AND3",
@@ -143,6 +150,25 @@ py_binary(
     srcs = [
         "wide_n_deep_tutorial.py",
     ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "mnist",
+    srcs = ["mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:input_data",
+    ],
+)
+
+py_binary(
+    name = "multiple_gpu",
+    srcs = ["multiple_gpu.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

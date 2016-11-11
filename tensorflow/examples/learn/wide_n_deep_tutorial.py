@@ -51,7 +51,7 @@ CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
 
 
 def maybe_download():
-  """May be downloads training data and returns train and test file names."""
+  """Maybe downloads training data and returns train and test file names."""
   if FLAGS.train_data:
     train_file_name = FLAGS.train_data
   else:
@@ -179,6 +179,10 @@ def train_and_eval():
       skipinitialspace=True,
       skiprows=1,
       engine="python")
+
+  # remove NaN elements
+  df_train = df_train.dropna(how='any', axis=0)
+  df_test = df_test.dropna(how='any', axis=0)
 
   df_train[LABEL_COLUMN] = (
       df_train["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)

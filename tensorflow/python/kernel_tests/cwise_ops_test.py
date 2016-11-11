@@ -194,6 +194,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(z, np.log, tf.log)
+    self._compareBoth(z, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(y, np.sign, tf.sign)
@@ -236,6 +237,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(x, np.log, tf.log)
+    self._compareBoth(x, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(x, np.sign, tf.sign)
@@ -273,6 +275,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(z, np.log, tf.log)
+    self._compareBoth(z, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(y, np.sign, tf.sign)
@@ -311,6 +314,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(z, np.log, tf.log)
+    self._compareBoth(z, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(y, np.sign, tf.sign)
@@ -374,6 +378,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
     self._compareCpu(x, np.exp, tf.exp)
     self._compareCpu(y, np.log, tf.log)
+    self._compareCpu(y, np.log1p, tf.log1p)
     self._compareCpu(x, np.tanh, tf.tanh)
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
@@ -405,6 +410,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
     self._compareCpu(x, np.exp, tf.exp)
     self._compareCpu(y, np.log, tf.log)
+    self._compareCpu(y, np.log1p, tf.log1p)
     self._compareCpu(x, np.tanh, tf.tanh)
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
@@ -473,7 +479,7 @@ class BinaryOpTest(tf.test.TestCase):
       if also_compare_variables:
         var_x = tf.Variable(x)
         var_y = tf.Variable(y)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         print(type(x), type(y), type(var_x), type(var_y))
         print(type(tf_func(x, var_y)), type(tf_func(var_x, y)))
         np_var_left = tf_func(x, var_y).eval()
@@ -1356,6 +1362,18 @@ class SelectOpTest(tf.test.TestCase):
     elif x.dtype == np.float64:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
+  def testScalar(self):
+    c = True
+    x = np.random.rand(1, 3, 2) * 100
+    y = np.random.rand(1, 3, 2) * 100
+    for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
+              np.complex64, np.complex128]:
+      xt = x.astype(t)
+      yt = y.astype(t)
+      self._compare(c, xt, yt, use_gpu=False)
+      if t in [np.float16, np.float32, np.float64]:
+        self._compare(c, xt, yt, use_gpu=True)
+
   def testBasic(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100
@@ -1737,6 +1755,25 @@ class IsFiniteInfNanTest(tf.test.TestCase):
 
   def testDouble(self):
     self._testDtype(np.float64)
+
+  def testSqrt(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      fi = np.finfo(dtype)
+      for size in [1, 3, 4, 7, 8, 63, 64, 65]:
+        # For float32 Eigen uses Carmack's fast vectorized sqrt algorithm.
+        # It is not accurate for very large arguments, so we test for
+        # fi.max/100 instead of fi.max here.
+        for value in [fi.min, -2, -1, 0, fi.tiny, 1, 2, 1000, fi.max/100]:
+          x = np.full((size,), value, dtype=dtype)
+          np_y = np.sqrt(x)
+          np_nan = np.isnan(np_y)
+          with self.test_session(use_gpu=True):
+            tf_y = tf.sqrt(x)
+            tf_nan = tf.is_nan(tf_y)
+            if value < 0:
+              self.assertAllEqual(np_nan, tf_nan.eval())
+            else:
+              self.assertAllCloseAccordingToType(np_y, tf_y.eval())
 
 
 class RoundingTest(tf.test.TestCase):

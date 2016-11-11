@@ -33,7 +33,6 @@ from logging import WARN
 
 import six
 
-
 # Controls which methods from pyglib.logging are available within the project
 # Do not add methods here without also adding to platform/google/_logging.py
 __all__ = ['log', 'debug', 'error', 'fatal', 'info', 'warn', 'warning',
@@ -41,9 +40,27 @@ __all__ = ['log', 'debug', 'error', 'fatal', 'info', 'warn', 'warning',
            'flush', 'log_every_n', 'log_first_n', 'vlog',
            'TaskLevelStatusMessage', 'get_verbosity', 'set_verbosity']
 
+# Determine whether we are in an interactive environment
+try:
+  # This is only defined in interactive shells
+  if sys.ps1: _interactive = True
+except AttributeError:
+  # Even now, we may be in an interactive shell with `python -i`.
+  _interactive = sys.flags.interactive
+
 # Scope the tensorflow logger to not conflict with users' loggers
 _logger = logging.getLogger('tensorflow')
-_handler = logging.StreamHandler()
+
+# If we are in an interactive environment (like jupyter), set loglevel to info
+# and pipe the output to stdout
+if _interactive:
+  _logger.setLevel(INFO)
+  _logging_target = sys.stdout
+else:
+  _logging_target = sys.stderr
+
+# Add the output handler
+_handler = logging.StreamHandler(_logging_target)
 _handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
 _logger.addHandler(_handler)
 

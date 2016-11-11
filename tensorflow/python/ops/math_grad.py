@@ -126,7 +126,7 @@ def _ProdGrad(op, grad):
   with ops.device("/cpu:0"):
     reduced = math_ops.cast(reduction_indices, dtypes.int32)
     idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
-    other, _ = array_ops.listdiff(idx, reduced)
+    other, _ = array_ops.setdiff1d(idx, reduced)
     perm = array_ops.concat(0, [reduced, other])
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
     other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
@@ -324,6 +324,15 @@ def _LogGrad(op, grad):
   with ops.control_dependencies([grad.op]):
     x = math_ops.conj(x)
     return grad * math_ops.inv(x)
+
+
+@ops.RegisterGradient("Log1p")
+def _Log1pGrad(op, grad):
+  """Returns grad * (1/(1 + x))."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.inv(1 + x)
 
 
 @ops.RegisterGradient("Tanh")

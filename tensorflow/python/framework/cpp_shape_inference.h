@@ -36,7 +36,7 @@ namespace swig {
 // inference was successful.
 //
 // On success, <*output_shapes> is populated with the inferred output shapes (as
-// serialized TensorShapeProtos).
+// serialized CppShapeInferenceResult protos).
 // <*output_shapes> must be empty when this function is called.
 //
 // This is temporary code to be used during the migration
@@ -44,7 +44,9 @@ namespace swig {
 std::vector<string> RunCppShapeInference(
     const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
-    PyObject* input_constant_tensor_values, TF_Status* out_status);
+    PyObject* input_constant_tensor_values,
+    const std::vector<string>& input_constant_tensor_as_shape_values,
+    TF_Status* out_status);
 
 }  // namespace swig
 }  // namespace tensorflow

@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # To be exported to tensorflow/core:android_srcs.
@@ -26,7 +24,7 @@ cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-Wno-sign-compare"],
     deps = [
         ":naming",
         "//tensorflow/core:core_cpu_internal",

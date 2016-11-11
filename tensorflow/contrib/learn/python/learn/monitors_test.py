@@ -249,7 +249,7 @@ class MonitorsTest(tf.test.TestCase):
       var = tf.Variable(0.0)
       var.initializer.run()
       tensor = tf.assign_add(var, 1.0)
-      summary_op = tf.scalar_summary('my_summary', tensor)
+      summary_op = tf.summary.scalar('my_summary', tensor)
       self._run_monitor(
           learn.monitors.SummarySaver(
               summary_op=summary_op, save_steps=8,
@@ -421,7 +421,7 @@ class MonitorsTest(tf.test.TestCase):
       const_var = tf.Variable(42.0, name='my_const')
       counter_var = tf.Variable(0.0, name='my_counter')
       assign_add = tf.assign_add(counter_var, 1.0, name='my_assign_add')
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self._run_monitor(monitor0, num_epochs=3, num_steps_per_epoch=10)
       self.assertEqual({
@@ -542,7 +542,8 @@ class CheckpointSaverTest(tf.test.TestCase):
         self.assertEqual(1, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
 
-  def test_save_secs_saves_periodically(self):
+  # TODO(gunan): Reenable this test after b/32446874 is fixed.
+  def disabled_test_save_secs_saves_periodically(self):
     with self.graph.as_default():
       monitor = learn.monitors.CheckpointSaver(
           self.model_dir, save_secs=2, scaffold=self.scaffold)
@@ -672,7 +673,7 @@ class RunHookAdapterForMonitorsTest(tf.test.TestCase):
       for mon in [mock_mon, mock_mon2]:
         self.assertEqual(mon.call_counter['begin'], 1)
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(global_step_tensor.assign(10))
 
       mon_sess = monitored_session._HookedSession(sess=sess, hooks=[hook])
@@ -717,7 +718,7 @@ class RunHookAdapterForMonitorsTest(tf.test.TestCase):
       tf.constant([10], name='third_tensor')
       mock_mon.requested_tensors = ['another_tensor']
       mock_mon2.requested_tensors = ['third_tensor']
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       output = mon_sess.run(a_tensor)
       self.assertEqual(output, [0])

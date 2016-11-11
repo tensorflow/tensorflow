@@ -154,7 +154,7 @@ zeros) that have already been specified, and assigns them to each
 `Variable`. This can be done for all `Variables` at once:
 
 ```python
-sess.run(tf.initialize_all_variables())
+sess.run(tf.global_variables_initializer())
 ```
 
 ### Predicted Class and Loss Function
@@ -292,7 +292,7 @@ def max_pool_2x2(x):
 ### First Convolutional Layer
 
 We can now implement our first layer. It will consist of convolution, followed
-by max pooling. The convolutional will compute 32 features for each 5x5 patch.
+by max pooling. The convolution will compute 32 features for each 5x5 patch.
 Its weight tensor will have a shape of `[5, 5, 1, 32]`. The first two
 dimensions are the patch size, the next is the number of input channels, and
 the last is the number of output channels. We will also have a bias vector with
@@ -312,7 +312,8 @@ x_image = tf.reshape(x, [-1,28,28,1])
 ```
 
 We then convolve `x_image` with the weight tensor, add the
-bias, apply the ReLU function, and finally max pool.
+bias, apply the ReLU function, and finally max pool. The `max_pool_2x2` method will
+reduce the image size to 14x14.
 
 ```python
 h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
@@ -397,7 +398,7 @@ cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_conv, y
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-sess.run(tf.initialize_all_variables())
+sess.run(tf.global_variables_initializer())
 for i in range(20000):
   batch = mnist.train.next_batch(50)
   if i%100 == 0:

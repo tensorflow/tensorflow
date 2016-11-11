@@ -141,11 +141,11 @@ def _cuda_toolkit_path(repository_ctx, cuda_version):
     # <basedir>/cuda-<version> and the provided path is <basedir>/cuda.
     version_suffixed = "%s-%s" % (cuda_toolkit_path, cuda_version)
     if repository_ctx.path(version_suffixed).exists:
-      return version_suffixed
+      cuda_toolkit_path = version_suffixed
   # Returns the non-versioned path if cuda version is not provided or if the
   # installation does not use a cuda- directory, such as on ArchLinux where
   # CUDA installs directly to /opt/cuda.
-  return cuda_toolkit_path
+  return str(repository_ctx.path(cuda_toolkit_path).realpath)
 
 
 def _cudnn_install_basedir(repository_ctx):

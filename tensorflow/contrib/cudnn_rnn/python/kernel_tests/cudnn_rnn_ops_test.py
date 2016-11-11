@@ -108,7 +108,7 @@ class CudnnRNNTest(TensorFlowTestCase):
       output_c_sum = tf.reduce_sum(output_c)
       total_sum += output_c_sum
     with self.test_session(use_gpu=True) as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       total_sum_v = sess.run([total_sum])
       self.assertAllClose(
           total_sum_v[0], expected, atol=tolerance, rtol=tolerance)
@@ -214,7 +214,7 @@ class CudnnRNNTest(TensorFlowTestCase):
       if has_input_c:
         inputs_and_shapes.append(
             (input_c, [num_layers * dir_count, batch_size, num_units]),)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       all_inputs = [entry[0] for entry in inputs_and_shapes]
       all_shapes = [entry[1] for entry in inputs_and_shapes]
       err = tf.test.compute_gradient_error(all_inputs, all_shapes, total_sum,

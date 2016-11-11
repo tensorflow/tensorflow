@@ -19,8 +19,8 @@ limitations under the License.
 #ifdef SNAPPY
 #include <snappy.h>
 #endif
-#include <WinSock2.h>
-#pragma comment(lib, "Ws2_32.lib")
+
+#include <Windows.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -37,10 +37,13 @@ namespace port {
 void InitMain(const char* usage, int* argc, char*** argv) {}
 
 string Hostname() {
-  char hostname[1024];
-  gethostname(hostname, sizeof hostname);
-  hostname[sizeof hostname - 1] = 0;
-  return string(hostname);
+  char name[1024];
+  DWORD name_size = sizeof(name);
+  name[0] = 0;
+  if (::GetComputerNameA(name, &name_size)) {
+    name[name_size] = 0;
+  }
+  return name;
 }
 
 int NumSchedulableCPUs() {

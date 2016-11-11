@@ -32,22 +32,27 @@ Typical usage example:
 
   ```python
   # Define features and transformations
-  country = sparse_column_with_keys(column_name="native_country",
-                                    keys=["US", "BRA", ...])
-  country_emb = embedding_column(sparse_id_column=country, dimension=3,
-                                 combiner="sum")
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
-  occupation_x_country = crossed_column(columns=[occupation, country],
-                                        hash_bucket_size=10000)
-  age = real_valued_column("age")
-  age_buckets = bucketized_column(
-      source_column=age,
+  sparse_feature_a = sparse_column_with_keys(
+      column_name="sparse_feature_a", keys=["AB", "CD", ...])
+
+  embedding_feature_a = embedding_column(
+      sparse_id_column=sparse_feature_a, dimension=3, combiner="sum")
+
+  sparse_feature_b = sparse_column_with_hash_bucket(
+      column_name="sparse_feature_b", hash_bucket_size=1000)
+
+  embedding_feature_b = embedding_column(
+      sparse_id_column=sparse_feature_b, dimension=16, combiner="sum")
+
+  crossed_feature_a_x_b = crossed_column(
+      columns=[sparse_feature_a, sparse_feature_b], hash_bucket_size=10000)
+
+  real_feature = real_valued_column("real_feature")
+  real_feature_buckets = bucketized_column(
+      source_column=real_feature,
       boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
 
-  my_features = [occupation_emb, age_buckets, country_emb]
+  my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
   # Building model via layers
   columns_to_tensor = parse_feature_columns_from_examples(
       serialized=my_data,
@@ -74,14 +79,14 @@ from __future__ import print_function
 import abc
 import collections
 import math
+import six
 
-from tensorflow.contrib.framework.python.framework import deprecation
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 from tensorflow.contrib.lookup import lookup_ops as contrib_lookup_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -89,6 +94,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 
 
 class _LinearEmbeddingLookupArguments(
@@ -245,7 +251,7 @@ class _SparseColumn(_FeatureColumn,
     column_name: A string defining sparse column name.
     is_integerized: A bool if True means type of feature is an integer.
       Integerized means we can use the feature itself as id.
-    bucket_size: An int that is > 1. The number of buckets.
+    bucket_size: An int that is > 0. The number of buckets.
     lookup_config: A _SparseIdLookupConfig defining feature-to-id lookup
       configuration
     combiner: A string specifying how to reduce if the sparse column is
@@ -285,8 +291,8 @@ class _SparseColumn(_FeatureColumn,
       raise ValueError("one and only one of bucket_size or lookup_config "
                        "must be set. column_name: {}".format(column_name))
 
-    if bucket_size is not None and bucket_size < 2:
-      raise ValueError("bucket_size must be at least 2. "
+    if bucket_size is not None and bucket_size < 1:
+      raise ValueError("bucket_size must be at least 1. "
                        "bucket_size: {}, column_name: {}".format(bucket_size,
                                                                  column_name))
 
@@ -389,7 +395,7 @@ class _SparseColumnIntegerized(_SparseColumn):
     sparse_id_values = math_ops.mod(columns_to_tensors[self.name].values,
                                     self.bucket_size,
                                     name="mod")
-    columns_to_tensors[self] = ops.SparseTensor(
+    columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
         columns_to_tensors[self.name].indices, sparse_id_values,
         columns_to_tensors[self.name].shape)
 
@@ -463,7 +469,7 @@ class _SparseColumnHashed(_SparseColumn):
 
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         sparse_values, self.bucket_size, name="lookup")
-    columns_to_tensors[self] = ops.SparseTensor(
+    columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
         sparse_tensor.indices, sparse_id_values, sparse_tensor.shape)
 
 
@@ -957,13 +963,18 @@ def shared_embedding_columns(sparse_id_columns,
   Raises:
     ValueError: if sparse_id_columns is empty, or its elements are not
       compatible with each other.
-    TypeError: if at least one element of sparse_id_columns is not a
-      `SparseTensor`.
+    TypeError: if `sparse_id_columns` is not a sequence or is a string. If at
+      least one element of `sparse_id_columns` is not a `SparseTensor`.
   """
   if combiner is None:
     logging.warn("The default value of combiner will change from \"mean\" "
                  "to \"sqrtn\" after 2016/11/01.")
     combiner = "mean"
+  if (not isinstance(sparse_id_columns, collections.Sequence) or
+      isinstance(sparse_id_columns, six.string_types)):
+    raise TypeError(
+        "sparse_id_columns must be a non-string sequence (ex: list or tuple) "
+        "instead of type {}.".format(type(sparse_id_columns)))
   if len(sparse_id_columns) < 1:
     raise ValueError("The input sparse_id_columns should have at least one "
                      "element.")
@@ -972,8 +983,6 @@ def shared_embedding_columns(sparse_id_columns,
       raise TypeError("Elements of sparse_id_columns must be _SparseColumn, but"
                       "{} is not.".format(sparse_id_column))
 
-  if not isinstance(sparse_id_columns, list):
-    sparse_id_columns = list(sparse_id_columns)
   if len(sparse_id_columns) == 1:
     return [
         _EmbeddingColumn(sparse_id_columns[0], dimension, combiner, initializer,
@@ -988,14 +997,17 @@ def shared_embedding_columns(sparse_id_columns,
       raise ValueError("The input sparse id columns are not compatible.")
     # Construct the shared name and size for shared embedding space.
     if not shared_embedding_name:
-      if len(sparse_id_columns) <= 3:
+      # Sort the columns so that shared_embedding_name will be deterministic
+      # even if users pass in unsorted columns from a dict or something.
+      sorted_columns = sorted(sparse_id_columns)
+      if len(sorted_columns) <= 3:
         shared_embedding_name = "_".join([column.name
-                                          for column in sparse_id_columns])
+                                          for column in sorted_columns])
       else:
         shared_embedding_name = "_".join([column.name
-                                          for column in sparse_id_columns[0:3]])
+                                          for column in sorted_columns[0:3]])
         shared_embedding_name += (
-            "_plus_{}_others".format(len(sparse_id_columns)-3))
+            "_plus_{}_others".format(len(sorted_columns)-3))
       shared_embedding_name += "_shared_embedding"
     shared_vocab_size = sparse_id_columns[0].length
 
@@ -1241,7 +1253,8 @@ def real_valued_column(column_name,
       value will be applied as the default value for every dimension. If a
       list of values is provided, the length of the list should be equal to the
       value of `dimension`.
-    dtype: defines the type of values. Default value is tf.float32.
+    dtype: defines the type of values. Default value is tf.float32. Must be a
+      non-quantized, real integer or floating point type.
     normalizer: If not None, a function that can be used to normalize the value
       of the real valued column after default_value is applied for parsing.
       Normalizer function takes the input tensor as its argument, and returns
@@ -1444,7 +1457,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
     indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
     shape = math_ops.to_int64(array_ops.pack([batch_size, dimension]))
-    sparse_id_values = ops.SparseTensor(indices, bucket_indices, shape)
+    sparse_id_values = sparse_tensor_py.SparseTensor(
+        indices, bucket_indices, shape)
 
     return sparse_id_values
 
@@ -1530,9 +1544,13 @@ class _CrossedColumn(_FeatureColumn,
   """
 
   @staticmethod
-  def _is_crossable(column):
-    return isinstance(column,
-                      (_SparseColumn, _CrossedColumn, _BucketizedColumn))
+  def _assert_is_crossable(column):
+    if isinstance(column, (_SparseColumn, _CrossedColumn, _BucketizedColumn)):
+      return
+    raise TypeError("columns must be a set of _SparseColumn, "
+                    "_CrossedColumn, or _BucketizedColumn instances. "
+                    "(column {} is a {})".format(column,
+                                                 column.__class__.__name__))
 
   def __new__(cls,
               columns,
@@ -1542,10 +1560,7 @@ class _CrossedColumn(_FeatureColumn,
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None):
     for column in columns:
-      if not _CrossedColumn._is_crossable(column):
-        raise TypeError("columns must be a set of _SparseColumn, "
-                        "_CrossedColumn, or _BucketizedColumn instances. "
-                        "column: {}".format(column))
+      _CrossedColumn._assert_is_crossable(column)
 
     if len(columns) < 2:
       raise ValueError("columns must contain at least 2 elements. "

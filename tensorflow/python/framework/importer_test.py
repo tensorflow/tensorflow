@@ -628,7 +628,7 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testWithExtensionAndAttr(self):
     with tf.Graph().as_default() as g:
       c = tf.constant(5.0, dtype=tf.float32, name="c")
-      tf.pack([c, c], name="pack")
+      tf.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
     with self.test_session():

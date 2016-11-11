@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
@@ -107,10 +107,12 @@ string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
   const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
-  if (Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesFilename)) ||
-      Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesIndexFilename))) {
+  if (Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesFilename))
+          .ok() ||
+      Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesIndexFilename))
+          .ok()) {
     return io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return io::JoinPath(export_dir, kVariablesFilenamePattern);
@@ -248,7 +250,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
 bool IsPossibleExportDirectory(const StringPiece directory) {
   const string meta_graph_def_path =
       io::JoinPath(directory, kMetaGraphDefFilename);
-  return Env::Default()->FileExists(meta_graph_def_path);
+  return Env::Default()->FileExists(meta_graph_def_path).ok();
 }
 
 }  // namespace serving

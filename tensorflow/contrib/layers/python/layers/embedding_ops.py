@@ -22,6 +22,7 @@ from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
@@ -31,7 +32,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
-           "hashed_embedding_lookup_sparse"]
+           "hashed_embedding_lookup_sparse", "embedding_lookup_unique"]
 
 
 def safe_embedding_lookup_sparse(embedding_weights,
@@ -114,8 +115,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
             array_ops.slice(original_shape, [0], [original_rank - 1])),
         array_ops.gather(original_shape, original_rank - 1)])
     if sparse_weights is not None:
-      sparse_weights = ops.SparseTensor(sparse_ids.indices,
-                                        sparse_weights.values, sparse_ids.shape)
+      sparse_weights = sparse_tensor.SparseTensor(
+          sparse_ids.indices,
+          sparse_weights.values, sparse_ids.shape)
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
@@ -302,7 +304,7 @@ def hashed_embedding_lookup_sparse(params,
     params = list(params)
   if not isinstance(params, list):
     params = [params]
-  if not isinstance(sparse_values, ops.SparseTensor):
+  if not isinstance(sparse_values, sparse_tensor.SparseTensor):
     raise TypeError("sparse_values must be SparseTensor")
 
   with ops.name_scope(name, "hashed_sparse_embedding_lookup",
@@ -340,3 +342,40 @@ def hashed_embedding_lookup_sparse(params,
       raise ValueError("Combiner must be one of 'mean', 'sqrtn' or 'sum'.")
 
     return embeddings
+
+
+def embedding_lookup_unique(params, ids, name=None):
+  """Version of embedding_lookup that avoids duplicate lookups.
+
+  This can save communication in the case of repeated ids.
+  Same interface as embedding_lookup. Except it supports multi-dimensional `ids`
+  which allows to not reshape input/output to fit gather.
+
+  Args:
+    params: A list of tensors with the same shape and type, or a
+      `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
+    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
+      the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as the tensors in `params` and dimension of
+    `[ids1, ids2, d1, d2, ...]`.
+
+  Raises:
+    ValueError: If `params` is empty.
+  """
+  with ops.name_scope(name, "EmbeddingLookupUnique", [params, ids]):
+    ids = ops.convert_to_tensor(ids)
+    shape = array_ops.shape(ids)
+    ids_flat = array_ops.reshape(
+        ids, math_ops.reduce_prod(shape, keep_dims=True))
+    unique_ids, idx = array_ops.unique(ids_flat)
+    unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
+    embeds_flat = array_ops.gather(unique_embeddings, idx)
+    embed_shape = array_ops.concat(
+        0, [shape, array_ops.shape(unique_embeddings)[1:]])
+    embeds = array_ops.reshape(embeds_flat, embed_shape)
+    embeds.set_shape(ids.get_shape().concatenate(
+        unique_embeddings.get_shape()[1:]))
+    return embeds

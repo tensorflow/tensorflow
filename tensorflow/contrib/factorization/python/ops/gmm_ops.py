@@ -124,7 +124,7 @@ class GmmAlgorithm(object):
     self._dimensions = tf.shape(first_shard)[1]
     self._num_classes = num_classes
     # Small value to guarantee that covariances are invertible.
-    self._min_var = tf.diag(tf.ones(tf.pack([self._dimensions]))) * 1e-3
+    self._min_var = tf.diag(tf.ones(tf.stack([self._dimensions]))) * 1e-3
     self._create_variables(data, initial_means)
     # Operations of partial statistics for the computation of the means.
     self._w_mul_x = []
@@ -302,7 +302,7 @@ class GmmAlgorithm(object):
     # These are defined for each shard.
     self._w[shard_id] = tf.reshape(
         tf.exp(probs - self._prior_probs[shard_id]),
-        tf.pack([self._num_examples, self._num_classes]))
+        tf.stack([self._num_examples, self._num_classes]))
 
   def _define_partial_maximization_operation(self, shard_id, shard):
     """Computes the partial statistics of the means and covariances.
@@ -388,16 +388,16 @@ class GmmAlgorithm(object):
           cov = tf.diag(self._covs[c, :])
         inverse = tf.matrix_inverse(cov + self._min_var)
         inv_cov = tf.tile(
-            tf.expand_dims(inverse, 0),
-            tf.pack([self._num_examples, 1, 1]))
+            tf.expand_dims(inverse, 0), tf.stack([self._num_examples, 1, 1]))
         diff = tf.transpose(shard - self._means[c, :, :], perm=[1, 0, 2])
         m_left = tf.batch_matmul(diff, inv_cov)
         all_scores.append(tf.sqrt(tf.batch_matmul(
             m_left, tf.transpose(diff, perm=[0, 2, 1])
         )))
-      self._all_scores.append(tf.reshape(
-          tf.concat(1, all_scores),
-          tf.pack([self._num_examples, self._num_classes])))
+      self._all_scores.append(
+          tf.reshape(
+              tf.concat(1, all_scores),
+              tf.stack([self._num_examples, self._num_classes])))
 
     # Distance to the associated class.
     self._all_scores = tf.concat(0, self._all_scores)
@@ -412,7 +412,7 @@ class GmmAlgorithm(object):
     self._ll_op = []
     for prior_probs in self._prior_probs:
       self._ll_op.append(tf.reduce_sum(tf.log(prior_probs)))
-    tf.scalar_summary('ll', tf.reduce_sum(self._ll_op))
+    tf.summary.scalar('ll', tf.reduce_sum(self._ll_op))
 
 
 def gmm(inp, initial_clusters, num_clusters, random_seed,

@@ -87,6 +87,30 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     self._testBasic(np.complex64)
     self._testBasic(np.complex128)
 
+  def testShapeInference(self):
+    x = np.random.rand(10, 10)
+    x[np.abs(x) < 0.5] = 0  # Make it sparse
+    y = np.random.randn(10, 20)
+    x_indices = np.vstack(np.where(x)).astype(np.int64).T
+    x_values = x[np.where(x)]
+    x_shape = x.shape
+    x_st = tf.SparseTensor(x_indices, x_values, x_shape)
+    result = tf.sparse_tensor_dense_matmul(x_st, y)
+    self.assertEqual(result.get_shape(), (10, 20))
+
+    x_shape_unknown = tf.placeholder(dtype=tf.int64, shape=None)
+    x_st_shape_unknown = tf.SparseTensor(x_indices, x_values, x_shape_unknown)
+    result_left_shape_unknown = tf.sparse_tensor_dense_matmul(
+        x_st_shape_unknown, y)
+    self.assertEqual(
+        result_left_shape_unknown.get_shape().as_list(), [None, 20])
+
+    x_shape_inconsistent = [10, 15]
+    x_st_shape_inconsistent = tf.SparseTensor(
+        x_indices, x_values, x_shape_inconsistent)
+    with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
+      tf.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
+
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
     r1 = np.random.randint(6000, 20000)

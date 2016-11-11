@@ -629,6 +629,10 @@ REGISTER_OP("SparseConditionalAccumulator")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    })
     .Doc(R"doc(
 A conditional accumulator for aggregating sparse gradients. The accumulator
 accepts gradients marked with local_step greater or equal to the most recent
@@ -654,6 +658,11 @@ REGISTER_OP("SparseAccumulatorApplyGradient")
     .Input("gradient_shape: int64")
     .Attr("dtype: numbertype")
     .Attr("has_known_shape: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies a sparse gradient to a given accumulator. Does not add if local_step is
 lesser than the accumulator's global_step.
@@ -679,6 +688,14 @@ REGISTER_OP("SparseAccumulatorTakeGradient")
     .Output("values: dtype")
     .Output("shape: int64")
     .Attr("dtype: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // Shape of output is the shape of the accumulator referenced
+      // by 'handle', but which is not available here, so we lose
+      // shape information.
+      return shape_inference::UnknownShape(c);
+    })
     .Doc(R"doc(
 Extracts the average sparse gradient in the given SparseConditionalAccumulator,
 provided that sufficient (i.e., more than num_required) gradients have been
@@ -1518,6 +1535,7 @@ REGISTER_OP("MutableDenseHashTable")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")
     .Attr("initial_num_buckets: int = 131072")  // 2^17
+    .Attr("max_load_factor: float = 0.8")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
@@ -1528,7 +1546,7 @@ This op creates a mutable hash table, specifying the type of its keys and
 values. Each value must be a scalar. Data can be inserted into the table using
 the insert operations. It does not support the initialization operation.
 
-empty_key: The key to use to represent empty buckets internally. Must not
+empty_key: The key used to represent empty key buckets internally. Must not
   be used in insert or lookup operations.
 table_handle: Handle to a table.
 container: If non-empty, this table is placed in the given container.
@@ -1540,6 +1558,8 @@ value_dtype: Type of the table values.
 value_shape: The shape of each value.
 initial_num_buckets: The initial number of hash table buckets. Must be a power
   to 2.
+max_load_factor: The maximum ratio between number of entries and number of
+  buckets before growing the table. Must be between 0 and 1.
 )doc");
 
 REGISTER_OP("InitializeTable")

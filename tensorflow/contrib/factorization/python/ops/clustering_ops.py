@@ -26,14 +26,13 @@ from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
 # pylint: disable=wildcard-import
 from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 from tensorflow.python.platform import resource_loader
 
-_clustering_ops = load_op_library(resource_loader.get_path_to_datafile(
-    '_clustering_ops.so'))
-assert _clustering_ops, 'Could not load _clustering_ops.so'
+_clustering_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile('_clustering_ops.so'))
 
 # Euclidean distance between vectors U and V is defined as ||U - V||_F which is
 # the square root of the sum of the absolute squares of the elements difference.

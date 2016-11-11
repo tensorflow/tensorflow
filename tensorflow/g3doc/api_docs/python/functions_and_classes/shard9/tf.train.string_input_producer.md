@@ -1,4 +1,4 @@
-### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#string_input_producer}
+### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None, cancel_op=None)` {#string_input_producer}
 
 Output strings (e.g. filenames) to a queue for an input pipeline.
 
@@ -18,6 +18,7 @@ Output strings (e.g. filenames) to a queue for an input pipeline.
 *  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: A name for the operations (optional).
+*  <b>`cancel_op`</b>: Cancel op for the queue (optional).
 
 ##### Returns:
 

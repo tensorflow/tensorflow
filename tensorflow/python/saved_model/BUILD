@@ -22,10 +22,17 @@ py_library(
 )
 
 py_library(
+    name = "tag_constants",
+    srcs = ["tag_constants.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "builder",
     srcs = ["builder.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -59,6 +66,7 @@ py_test(
     deps = [
         ":builder",
         ":loader",
+        ":tag_constants",
         ":utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",

@@ -21,7 +21,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
+#if !defined(_MSC_VER)
 #define UNROLL _Pragma("unroll")
+#else
+#define UNROLL 
+#endif
 
 namespace tensorflow {
 

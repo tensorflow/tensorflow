@@ -105,6 +105,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
+from tensorflow.python.util import deprecation
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -117,6 +118,9 @@ class BaseMonitor(object):
   to run exclusively on the elected chief worker.
   """
 
+  @deprecation.deprecated(
+      "2016-12-05",
+      "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
     self._begun = False
     self._current_epoch = None
@@ -565,8 +569,8 @@ class SummarySaver(EveryN):
 
     Args:
       summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `scalar_summary` or
-          `merge_all_summaries`.
+          buffer, as output by TF summary methods like `summary.scalar` or
+          `summary.merge_all`.
       save_steps: `int`, save summaries every N steps. See `EveryN`.
       output_dir: `string`, the directory to save the summaries to. Only used
           if no `summary_writer` is supplied.
@@ -926,8 +930,8 @@ class ExportMonitor(EveryN):
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
       input_fn: A function that takes no argument and returns a tuple of
-        (features, targets), where features is a dict of string key to `Tensor`
-        and targets is a `Tensor` that's currently not used (and so can be
+        (features, labels), where features is a dict of string key to `Tensor`
+        and labels is a `Tensor` that's currently not used (and so can be
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that

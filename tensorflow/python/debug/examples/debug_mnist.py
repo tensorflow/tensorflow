@@ -27,8 +27,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.python.debug import debug_data
-from tensorflow.python.debug import local_cli
+from tensorflow.python import debug as tf_debug
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -120,11 +119,11 @@ def main(_):
     with tf.name_scope("accuracy"):
       accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
 
   if FLAGS.debug:
-    sess = local_cli.LocalCLIDebugWrapperSession(sess)
-    sess.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
   # Add this point, sess is a debug wrapper around the actual Session if
   # FLAGS.debug is true. In that case, calling run() will launch the CLI.

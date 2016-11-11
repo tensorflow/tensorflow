@@ -27,7 +27,7 @@ import abc
 
 from tensorflow.contrib.slim.python.slim.data import data_decoder
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_ops
@@ -189,11 +189,11 @@ class Tensor(ItemHandler):
       shape_dims = []
       for k in self._shape_keys:
         shape_dim = keys_to_tensors[k]
-        if isinstance(shape_dim, ops.SparseTensor):
+        if isinstance(shape_dim, sparse_tensor.SparseTensor):
           shape_dim = sparse_ops.sparse_tensor_to_dense(shape_dim)
         shape_dims.append(shape_dim)
-      shape = array_ops.squeeze(array_ops.pack(shape_dims))
-    if isinstance(tensor, ops.SparseTensor):
+      shape = array_ops.reshape(array_ops.pack(shape_dims), [-1])
+    if isinstance(tensor, sparse_tensor.SparseTensor):
       if shape is not None:
         tensor = sparse_ops.sparse_reshape(tensor, shape)
       tensor = sparse_ops.sparse_tensor_to_dense(tensor, self._default_value)
@@ -241,7 +241,7 @@ class SparseTensor(ItemHandler):
     values = keys_to_tensors[self._values_key]
     if self._shape_key:
       shape = keys_to_tensors[self._shape_key]
-      if isinstance(shape, ops.SparseTensor):
+      if isinstance(shape, sparse_tensor.SparseTensor):
         shape = sparse_ops.sparse_tensor_to_dense(shape)
     elif self._shape:
       shape = self._shape
@@ -255,7 +255,7 @@ class SparseTensor(ItemHandler):
     new_indices = array_ops.concat(1, [indices_columns_to_preserve,
                                        array_ops.reshape(ids, [-1, 1])])
 
-    tensor = ops.SparseTensor(new_indices, values.values, shape)
+    tensor = sparse_tensor.SparseTensor(new_indices, values.values, shape)
     if self._densify:
       tensor = sparse_ops.sparse_tensor_to_dense(tensor, self._default_value)
     return tensor

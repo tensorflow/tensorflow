@@ -30,7 +30,7 @@ tf_gen_op_libs(
 
 tf_gen_op_wrapper_py(
     name = "bucketization_op",
-    deps = ["//tensorflow/contrib/layers:bucketization_op_op_lib"],
+    deps = [":bucketization_op_op_lib"],
 )
 
 tf_kernel_library(
@@ -59,7 +59,7 @@ tf_gen_op_libs(
 
 tf_gen_op_wrapper_py(
     name = "sparse_feature_cross_op",
-    deps = ["//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib"],
+    deps = [":sparse_feature_cross_op_op_lib"],
 )
 
 tf_kernel_library(
@@ -230,6 +230,32 @@ py_test(
     name = "utils_test",
     size = "small",
     srcs = ["python/layers/utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "sparse_ops_test",
+    size = "small",
+    srcs = ["python/ops/sparse_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "encoders_test",
+    size = "small",
+    srcs = ["python/layers/encoders_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",

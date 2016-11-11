@@ -31,7 +31,7 @@ class BlockingCounter {
     DCHECK_EQ((initial_count << 1) >> 1, initial_count);
   }
 
-  ~BlockingCounter() { DCHECK_EQ(state_ >> 1, 0); }
+  ~BlockingCounter() {}
 
   inline void DecrementCount() {
     unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
@@ -52,6 +52,20 @@ class BlockingCounter {
     while (!notified_) {
       cond_var_.wait(l);
     }
+  }
+  // Wait for the specified time, return false iff the count has not dropped to
+  // zero before the timeout expired.
+  inline bool WaitFor(std::chrono::milliseconds ms) {
+    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
+    if ((v >> 1) == 0) return true;
+    mutex_lock l(mu_);
+    while (!notified_) {
+      const std::cv_status status = cond_var_.wait_for(l, ms);
+      if (status == std::cv_status::timeout) {
+        return false;
+      }
+    }
+    return true;
   }
 
  private:

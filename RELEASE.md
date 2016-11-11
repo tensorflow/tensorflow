@@ -1,7 +1,24 @@
+# Changes since the last release
+
+## Breaking Changes to the API
+
+* `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
+indexing now starts from 1 instead of 0, and bus_id==0 is used where previously
+BUS_ANY was used.
+* `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
+  intead of a bool. Any callers to this function can be converted to a bool
+  by adding .ok() to the call.
+* The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
+  indicating its preferred use in language bindings for TensorFlow.
+  What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
+* Renamed Tensor to Output in the Python API. Tensor will be an alias for Output
+  until TensorFlow 2.0 is released.
+
 # Release 0.11.0
 
 ## Major Features and Improvements
 
+* CUDA 8 support.
 * cuDNN 5 support.
 * HDFS Support.
 * Adds Fused LSTM support via cuDNN 5 in `tensorflow/contrib/cudnn_rnn`.

@@ -51,6 +51,24 @@ ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
+#if TENSORFLOW_USE_SYCL
+<<<<<<< HEAD
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Const")                               \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("dtype"),             \
+			  ConstantOp);
+=======
+#define REGISTER_SYCL_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+>>>>>>> 463fd9166576248c405e25d505514b703ad6515e
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 #if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                                      \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -155,6 +173,9 @@ class FillOp : public OpKernel {
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
+// TODO(b/28917570): Add a test for this. Currently python 3 is not happy about
+// the conversion from uint8 to quint8.
+REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
@@ -206,11 +227,13 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
+REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
@@ -246,10 +269,14 @@ class PlaceholderOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
+                        PlaceholderOp);
 // The following GPU kernel registration is used to address the situation that
 // a placeholder is added in a GPU device context and soft placement is false.
 // Since a placeholder should never be executed, adding these GPU kernels has
 // no effect on graph execution.
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
+                        PlaceholderOp);
 
 }  // namespace tensorflow

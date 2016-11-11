@@ -36,7 +36,6 @@ def global_step(sess, global_step_tensor):
   # Creates a session.
   sess = tf.Session()
   # Initializes the variable.
-  sess.run(global_step_tensor.initializer)
   print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
   global_step: 10
@@ -95,7 +94,9 @@ def assert_global_step(global_step_tensor):
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor)):
-    raise TypeError('Existing "global_step" must be a Variable or Tensor.')
+    raise TypeError(
+        'Existing "global_step" must be a Variable or Tensor: %s.' %
+        global_step_tensor)
 
   if not global_step_tensor.dtype.base_dtype.is_integer:
     raise TypeError('Existing "global_step" does not have integer type: %s' %
@@ -142,6 +143,6 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
     file_io.recursive_create_dir(logdir)
   path = os.path.join(logdir, name)
   if as_text:
-    file_io.write_string_to_file(path, str(graph_def))
+    file_io.atomic_write_string_to_file(path, str(graph_def))
   else:
-    file_io.write_string_to_file(path, graph_def.SerializeToString())
+    file_io.atomic_write_string_to_file(path, graph_def.SerializeToString())

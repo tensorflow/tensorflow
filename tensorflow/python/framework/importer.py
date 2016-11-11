@@ -400,18 +400,26 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             # would cause graphs to fail if imported after correcting.
             #
             # This can be removed after 2017/03/08.
-            if op.type not in ['RandomShuffleQueue', 'PaddingFIFOQueue',
-                               'FIFOQueue', 'PriorityQueue', 'QueueSize',
-                               'Stack', 'Barrier', 'BarrierReadySize',
-                               'BarrierIncompleteSize', 'HashTable',
-                               'MutableHashTable',
-                               'MutableHashTableOfTensors', 'Mutex',
-                               'CuckooTable', 'IndexTable',
-                               'WholeFileReader', 'TextLineReader',
-                               'FixedLengthRecordReader',
-                               'TFRecordReader', 'IdentityReader',
-                               'RefSwitch', 'RefEnter', 'RefNextIteration',
-                               'RefMerge', 'RefIdentity']:
+            if op.type in ['RandomShuffleQueue', 'PaddingFIFOQueue',
+                           'FIFOQueue', 'PriorityQueue', 'QueueSize',
+                           'Stack', 'Barrier', 'BarrierReadySize',
+                           'BarrierIncompleteSize', 'HashTable',
+                           'MutableHashTable',
+                           'MutableHashTableOfTensors', 'Mutex',
+                           'CuckooTable', 'IndexTable',
+                           'WholeFileReader', 'TextLineReader',
+                           'FixedLengthRecordReader',
+                           'TFRecordReader', 'IdentityReader',
+                           'RefSwitch', 'RefEnter', 'RefNextIteration',
+                           'RefMerge', 'RefIdentity']:
+              pass
+            elif op.type in [
+                'ConditionalAccumulator', 'SparseConditionalAccumulator',
+                'Table'
+            ]:
+              # This can be removed after 2017/04/24.
+              pass
+            else:
               raise e
 
         del op.node_def.attr['_output_shapes']

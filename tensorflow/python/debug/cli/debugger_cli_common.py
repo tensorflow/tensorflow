@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import copy
 import re
+import sre_constants
 import traceback
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -26,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 HELP_INDENT = "  "
 
 EXPLICIT_USER_EXIT = "explicit_user_exit"
+REGEX_MATCH_LINES_KEY = "regex_match_lines"
 
 
 class CommandLineExit(Exception):
@@ -92,10 +94,12 @@ class RichTextLines(object):
     self._font_attr_segs = font_attr_segs
     if not self._font_attr_segs:
       self._font_attr_segs = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
     self._annotations = annotations
     if not self._annotations:
       self._annotations = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
   @property
   def lines(self):
@@ -171,14 +175,21 @@ def regex_find(orig_screen_output, regex, font_attr):
 
   Returns:
     A modified copy of orig_screen_output.
+
+  Raises:
+    ValueError: If input str regex is not a valid regular expression.
   """
   new_screen_output = RichTextLines(
       orig_screen_output.lines,
       font_attr_segs=copy.deepcopy(orig_screen_output.font_attr_segs),
       annotations=orig_screen_output.annotations)
 
-  re_prog = re.compile(regex)
+  try:
+    re_prog = re.compile(regex)
+  except sre_constants.error:
+    raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
+  regex_match_lines = []
   for i in xrange(len(new_screen_output.lines)):
     line = new_screen_output.lines[i]
     find_it = re_prog.finditer(line)
@@ -194,7 +205,9 @@ def regex_find(orig_screen_output, regex, font_attr):
         new_screen_output.font_attr_segs[i].extend(match_segs)
         new_screen_output.font_attr_segs[i] = sorted(
             new_screen_output.font_attr_segs[i], key=lambda x: x[0])
+      regex_match_lines.append(i)
 
+  new_screen_output.annotations[REGEX_MATCH_LINES_KEY] = regex_match_lines
   return new_screen_output
 
 
@@ -212,11 +225,15 @@ def wrap_rich_text_lines(inp, cols):
     cols: Number of columns, as an int.
 
   Returns:
-    A new instance of RichTextLines, with line lengths limited to cols.
-
+    1) A new instance of RichTextLines, with line lengths limited to cols.
+    2) A list of new (wrapped) line index. For example, if the original input
+      consists of three lines and only the second line is wrapped, and it's
+      wrapped into two lines, this return value will be: [0, 1, 3].
   Raises:
     ValueError: If inputs have invalid types.
   """
+
+  new_line_indices = []
 
   if not isinstance(inp, RichTextLines):
     raise ValueError("Invalid type of input screen_output")
@@ -228,6 +245,8 @@ def wrap_rich_text_lines(inp, cols):
 
   row_counter = 0  # Counter for new row index
   for i in xrange(len(inp.lines)):
+    new_line_indices.append(out.num_lines())
+
     line = inp.lines[i]
 
     if i in inp.annotations:
@@ -282,7 +301,12 @@ def wrap_rich_text_lines(inp, cols):
 
       out.lines.extend(wlines)
 
-  return out
+  # Copy over keys of annotation that are not row indices.
+  for key in inp.annotations:
+    if not isinstance(key, int):
+      out.annotations[key] = inp.annotations[key]
+
+  return out, new_line_indices
 
 
 class CommandHandlerRegistry(object):

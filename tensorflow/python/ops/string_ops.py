@@ -33,6 +33,7 @@ string tensor.
 ## Splitting
 
 @@string_split
+@@substr
 
 ## Conversion
 
@@ -50,6 +51,7 @@ import six
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 
 # pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
@@ -68,7 +70,8 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   containing the splitted tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
-  into individual 1 character strings.
+  into individual strings, each containing one byte. (This includes splitting
+  multibyte sequences of UTF-8.)
 
   For example:
   N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -93,10 +96,11 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     second column corresponds to the index of the split component in this row.
 
   Raises:
-    ValueError: If delimiter is not a character.
+    ValueError: If delimiter is not a single-byte character.
   """
   if isinstance(delimiter, six.string_types) and len(delimiter) > 1:
-    raise ValueError("delimiter must be a character, got %s" % delimiter)
+    raise ValueError("delimiter must be a single byte-character, got %s" %
+                     delimiter)
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -107,7 +111,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
-  return ops.SparseTensor(indices, values, shape)
+  return sparse_tensor.SparseTensor(indices, values, shape)
 
 
 ops.NotDifferentiable("StringToHashBucket")
@@ -135,3 +139,4 @@ def _ReduceJoinShape(op):
 
 ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("StringSplit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Substr")(common_shapes.call_cpp_shape_fn)

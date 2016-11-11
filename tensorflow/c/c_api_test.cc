@@ -154,10 +154,10 @@ TEST(CAPI, SessionOptions) {
   TF_DeleteSessionOptions(opt);
 }
 
-TEST(CAPI, SessionWithRunMetadata) {
+TEST(CAPI, DeprecatedSession) {
   TF_Status* s = TF_NewStatus();
   TF_SessionOptions* opt = TF_NewSessionOptions();
-  TF_Session* session = TF_NewSession(opt, s);
+  TF_DeprecatedSession* session = TF_NewDeprecatedSession(opt, s);
   TF_DeleteSessionOptions(opt);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
@@ -171,7 +171,7 @@ TEST(CAPI, SessionWithRunMetadata) {
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
-  TF_DeleteSession(session, s);
+  TF_DeleteDeprecatedSession(session, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_DeleteStatus(s);
@@ -687,15 +687,15 @@ TEST(CAPI, ImportGraphDef) {
   TF_DeleteStatus(s);
 }
 
-class CSessionWithGraph {
+class CSession {
  public:
-  CSessionWithGraph(TF_Graph* graph, TF_Status* s) {
+  CSession(TF_Graph* graph, TF_Status* s) {
     TF_SessionOptions* opts = TF_NewSessionOptions();
-    session_ = TF_NewSessionWithGraph(graph, opts, s);
+    session_ = TF_NewSession(graph, opts, s);
     TF_DeleteSessionOptions(opts);
   }
 
-  ~CSessionWithGraph() {
+  ~CSession() {
     TF_Status* s = TF_NewStatus();
     CloseAndDelete(s);
     EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -758,9 +758,9 @@ class CSessionWithGraph {
     DeleteInputValues();
     ResetOutputValues();
     if (session_ != nullptr) {
-      TF_CloseSessionWithGraph(session_, s);
+      TF_CloseSession(session_, s);
       EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-      TF_DeleteSessionWithGraph(session_, s);
+      TF_DeleteSession(session_, s);
       session_ = nullptr;
     }
   }
@@ -782,7 +782,7 @@ class CSessionWithGraph {
     output_values_.clear();
   }
 
-  TF_SessionWithGraph* session_;
+  TF_Session* session_;
   std::vector<TF_Port> inputs_;
   std::vector<TF_Tensor*> input_values_;
   std::vector<TF_Port> outputs_;
@@ -790,7 +790,7 @@ class CSessionWithGraph {
   std::vector<TF_Operation*> targets_;
 };
 
-TEST(CAPI, SessionWithGraph) {
+TEST(CAPI, Session) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
@@ -807,7 +807,7 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a session for this graph.
-  CSessionWithGraph csession(graph, s);
+  CSession csession(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Run the graph.
@@ -1346,6 +1346,6 @@ TEST_F(CApiAttributesTest, Errors) {
 // * TF_SetDevice(desc, "/job:worker");
 // * control inputs / outputs
 // * targets
-// * TF_DeleteGraph() before TF_DeleteSessionWithGraph()
+// * TF_DeleteGraph() before TF_DeleteSession()
 
 }  // namespace

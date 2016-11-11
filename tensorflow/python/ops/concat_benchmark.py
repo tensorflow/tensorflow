@@ -96,7 +96,7 @@ class ConcatBenchmark(tf.test.Benchmark):
         optimizer_options=tf.OptimizerOptions(
             opt_level=tf.OptimizerOptions.L0)))
     with tf.Session(graph=graph, config=config) as session:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       _ = session.run(outputs)  # warm up.
       start_time = time.time()
       for _ in range(num_iters):

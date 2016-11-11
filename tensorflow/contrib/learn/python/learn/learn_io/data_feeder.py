@@ -29,6 +29,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -267,12 +268,12 @@ class DataFeeder(object):
 
     Args:
       x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]` or dictionary of aforementioned.
-      y: Target vector, either floats for regression or class id for
+      y: label vector, either floats for regression or class id for
         classification. If matrix, will consider as a sequence
-        of targets. Can be `None` for unsupervised setting. Also supports dictionary of targets.
+        of labels. Can be `None` for unsupervised setting. Also supports dictionary of labels.
       n_classes: Number of classes, 0 and 1 are considered regression, `None`
         will pass through the input labels without one-hot conversion. Also, if y is dict, then
-        n_classes must be dict such that n_classes[key] = n_classes for target y[key], None otherwise.
+        n_classes must be dict such that n_classes[key] = n_classes for label y[key], None otherwise.
       batch_size: Mini-batch size to accumulate.
       shuffle: Whether to shuffle `x`.
       random_state: Numpy `RandomState` object to reproduce sampling.
@@ -281,7 +282,7 @@ class DataFeeder(object):
 
     Attributes:
       x: Input features (ndarray or dictionary of ndarrays).
-      y: Input target (ndarray or dictionary of ndarrays).
+      y: Input label (ndarray or dictionary of ndarrays).
       n_classes: Number of classes (if `None`, pass through indices without
         one-hot conversion).
       batch_size: Mini-batch size to accumulate.
@@ -526,7 +527,7 @@ class StreamingDataFeeder(DataFeeder):
 
     Attributes:
       x: input features ( or dictionary of input features).
-      y: input target ( or dictionary of output features).
+      y: input label ( or dictionary of output features).
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
       input_shape: shape of the input ( can be dictionary depending on x).
@@ -687,7 +688,7 @@ class DaskDataFeeder(object):
       x: iterator that returns for each element, returns features.
       y: iterator that returns for each element, returns 1 or many classes /
         regression values.
-      n_classes: indicator of how many classes the target has.
+      n_classes: indicator of how many classes the label has.
       batch_size: Mini batch size to accumulate.
       shuffle: Whether to shuffle the inputs.
       random_state: random state for RNG. Note that it will mutate so use a
@@ -696,7 +697,7 @@ class DaskDataFeeder(object):
 
     Attributes:
       x: input features.
-      y: input target.
+      y: input label.
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
       input_shape: shape of the input.
@@ -756,7 +757,7 @@ class DaskDataFeeder(object):
 
     Args:
       input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output targets.
+      output_placeholder: tf.Placeholder for output labels.
 
     Returns:
       A function that when called samples a random subset of batch size

@@ -90,9 +90,13 @@ Monitors can either be run on all workers or, more commonly, restricted
 to run exclusively on the elected chief worker.
 - - -
 
-#### `tf.contrib.learn.monitors.BaseMonitor.__init__()` {#BaseMonitor.__init__}
+#### `tf.contrib.learn.monitors.BaseMonitor.__init__(*args, **kwargs)` {#BaseMonitor.__init__}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-05.
+Instructions for updating:
+Monitors are deprecated. Please use tf.train.SessionRunHook.
 
 
 - - -
@@ -878,8 +882,8 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
       input_fn: A function that takes no argument and returns a tuple of
-        (features, targets), where features is a dict of string key to `Tensor`
-        and targets is a `Tensor` that's currently not used (and so can be
+        (features, labels), where features is a dict of string key to `Tensor`
+        and labels is a `Tensor` that's currently not used (and so can be
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
@@ -2196,8 +2200,8 @@ Initializes a `SummarySaver` monitor.
 
 
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `scalar_summary` or
-      `merge_all_summaries`.
+      buffer, as output by TF summary methods like `summary.scalar` or
+      `summary.merge_all`.
 *  <b>`save_steps`</b>: `int`, save summaries every N steps. See `EveryN`.
 *  <b>`output_dir`</b>: `string`, the directory to save the summaries to. Only used
       if no `summary_writer` is supplied.
@@ -2646,37 +2650,6 @@ Wraps monitors into a SessionRunHook.
 #### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.end(session)` {#RunHookAdapterForMonitors.end}
 
 
-
-
-
-- - -
-
-### `class tf.contrib.learn.monitors.SummaryWriterCache` {#SummaryWriterCache}
-
-Cache for summary writers.
-
-This class caches summary writers, one per directory.
-- - -
-
-#### `tf.contrib.learn.monitors.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
-
-Clear cached summary writers. Currently only used for unit tests.
-
-
-- - -
-
-#### `tf.contrib.learn.monitors.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
-
-Returns the SummaryWriter for the specified directory.
-
-##### Args:
-
-
-*  <b>`logdir`</b>: str, name of the directory.
-
-##### Returns:
-
-  A `SummaryWriter`.
 
 
 

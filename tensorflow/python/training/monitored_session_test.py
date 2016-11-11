@@ -161,12 +161,12 @@ class MonitoredTrainingSessionTest(tf.test.TestCase):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      do_step = tf.assign_add(gstep, 1)
-      tf.scalar_summary('my_summary_tag', gstep * 2)
+      new_gstep = tf.assign_add(gstep, 1)
+      tf.summary.scalar('my_summary_tag', new_gstep * 2)
       with tf.train.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         for _ in range(101):  # 100 is default summary writing steps
-          session.run(do_step)
+          session.run(new_gstep)
     summaries = testing.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
@@ -468,7 +468,7 @@ class HookedSessionTest(tf.test.TestCase):
       mock_run = FakeSession(sess)
       mon_sess = monitored_session._HookedSession(sess=mock_run, hooks=[])
       a_tensor = tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = mon_sess.run(fetches=a_tensor,
                             feed_dict='a_feed',
                             options='an_option',
@@ -487,7 +487,7 @@ class HookedSessionTest(tf.test.TestCase):
       mon_sess = monitored_session._HookedSession(
           sess=sess, hooks=[mock_hook, mock_hook2])
       a_tensor = tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       mon_sess.run(a_tensor)
 
       for hook in [mock_hook, mock_hook2]:
@@ -506,7 +506,7 @@ class HookedSessionTest(tf.test.TestCase):
       mon_sess = monitored_session._HookedSession(
           sess=sess, hooks=[mock_hook, mock_hook2])
       tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       mon_sess.run(fetches='a_tensor')
       self.assertFalse(mon_sess.should_stop())
@@ -526,7 +526,7 @@ class HookedSessionTest(tf.test.TestCase):
       third_tensor = tf.constant([10], name='third_tensor')
       mock_hook.request = tf.train.SessionRunArgs([another_tensor])
       mock_hook2.request = tf.train.SessionRunArgs([third_tensor])
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       output = mon_sess.run(fetches=a_tensor)
       self.assertEqual(output, [0])
@@ -550,7 +550,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               b_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       self.assertEqual(mon_sess.run(fetches=add_tensor), [15])
 
@@ -572,7 +572,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               b_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       feed_dict = {c_tensor: [20]}
       self.assertEqual(
@@ -597,7 +597,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               a_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor)
@@ -619,7 +619,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               b_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor, feed_dict={b_tensor: [10]})

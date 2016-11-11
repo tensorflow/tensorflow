@@ -23,7 +23,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import gen_state_ops
 
 
 class TensorUtilTest(tf.test.TestCase):
@@ -552,7 +552,8 @@ class ConstantValueTest(tf.test.TestCase):
     self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
   def testUnknown(self):
-    tf_val = state_ops.variable_op(shape=[3, 4, 7], dtype=tf.float32)
+    tf_val = gen_state_ops._variable(shape=[3, 4, 7], dtype=tf.float32, 
+        name="tf_val", container="", shared_name="")
     self.assertIs(None, tf.contrib.util.constant_value(tf_val))
 
   def testShape(self):
@@ -612,11 +613,11 @@ class ConstantValueTest(tf.test.TestCase):
   def testPack(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
-    tf_val = tf.pack(inputs)
+    tf_val = tf.stack(inputs)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = tf.pack([inputs[0], tf.placeholder(tf.float32), inputs[2]])
+    tf_val = tf.stack([inputs[0], tf.placeholder(tf.float32), inputs[2]])
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
@@ -639,7 +640,7 @@ class ConstantValueAsShapeTest(tf.test.TestCase):
     self.assertEqual(tf.TensorShape([1, 2, 3]), c_val)
 
   def testPack(self):
-    tf_val = tf.pack([tf.constant(16), 37, tf.placeholder(tf.int32)])
+    tf_val = tf.stack([tf.constant(16), 37, tf.placeholder(tf.int32)])
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None], c_val.as_list())
 

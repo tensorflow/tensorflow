@@ -1,4 +1,4 @@
-### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None)` {#input_producer}
+### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None, cancel_op=None)` {#input_producer}
 
 Output the rows of `input_tensor` to a queue for an input pipeline.
 
@@ -24,6 +24,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 *  <b>`summary_name`</b>: (Optional.) If set, a scalar summary for the current queue
     size will be generated, using this name as part of the tag.
 *  <b>`name`</b>: (Optional.) A name for queue.
+*  <b>`cancel_op`</b>: (Optional.) Cancel op for the queue
 
 ##### Returns:
 

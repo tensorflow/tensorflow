@@ -135,7 +135,7 @@ class UniformTest(tf.test.TestCase):
       n = tf.constant(100000)
       uniform = tf.contrib.distributions.Uniform(a=a, b=b)
 
-      samples = uniform.sample_n(n, seed=137)
+      samples = uniform.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertAllClose(sample_values[::, 0].mean(), (b_v + a1_v) / 2,
@@ -160,7 +160,7 @@ class UniformTest(tf.test.TestCase):
 
       n_v = 100000
       n = tf.constant(n_v)
-      samples = uniform.sample_n(n)
+      samples = uniform.sample(n)
       self.assertEqual(samples.get_shape(), (n_v, batch_size, 2))
 
       sample_values = samples.eval()
@@ -208,7 +208,7 @@ class UniformTest(tf.test.TestCase):
       no_nans = tf.constant(1.0)
       nans = tf.constant(0.0) / tf.constant(0.0)
       self.assertTrue(tf.is_nan(nans).eval())
-      with_nans = tf.pack([no_nans, nans])
+      with_nans = tf.stack([no_nans, nans])
 
       pdf = uniform.pdf(with_nans)
 
@@ -221,7 +221,7 @@ class UniformTest(tf.test.TestCase):
       a = 10.0
       b = [11.0, 100.0]
       uniform = tf.contrib.distributions.Uniform(a, b)
-      self.assertTrue(tf.reduce_all(uniform.pdf(uniform.sample_n(10)) > 0).eval(
+      self.assertTrue(tf.reduce_all(uniform.pdf(uniform.sample(10)) > 0).eval(
       ))
 
   def testUniformBroadcasting(self):

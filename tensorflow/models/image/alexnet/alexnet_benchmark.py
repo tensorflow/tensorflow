@@ -36,6 +36,7 @@ from __future__ import print_function
 import argparse
 from datetime import datetime
 import math
+import sys
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -204,7 +205,7 @@ def run_benchmark():
     pool5, parameters = inference(images)
 
     # Build an initialization operation.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Start running operations on the Graph.
     config = tf.ConfigProto()
@@ -241,6 +242,5 @@ if __name__ == '__main__':
       default=100,
       help='Number of batches to run.'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

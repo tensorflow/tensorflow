@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -127,6 +129,79 @@ class ValidateSlicingStringTest(test_util.TensorFlowTestCase):
     self.assertFalse(command_parser.validate_slicing_string("2,3]"))
     self.assertFalse(command_parser.validate_slicing_string("[4, foo()]"))
     self.assertFalse(command_parser.validate_slicing_string("[5, bar]"))
+
+
+class ParseIndicesTest(test_util.TensorFlowTestCase):
+
+  def testParseValidIndicesStringsWithBrackets(self):
+    self.assertEqual([0], command_parser.parse_indices("[0]"))
+    self.assertEqual([0], command_parser.parse_indices(" [0] "))
+    self.assertEqual([-1, 2], command_parser.parse_indices("[-1, 2]"))
+    self.assertEqual([3, 4, -5],
+                     command_parser.parse_indices("[3,4,-5]"))
+
+  def testParseValidIndicesStringsWithoutBrackets(self):
+    self.assertEqual([0], command_parser.parse_indices("0"))
+    self.assertEqual([0], command_parser.parse_indices(" 0 "))
+    self.assertEqual([-1, 2], command_parser.parse_indices("-1, 2"))
+    self.assertEqual([3, 4, -5], command_parser.parse_indices("3,4,-5"))
+
+  def testParseInvalidIndicesStringsWithoutBrackets(self):
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: 'a'"):
+      self.assertEqual([0], command_parser.parse_indices("0,a"))
+
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: '2\]'"):
+      self.assertEqual([0], command_parser.parse_indices("1, 2]"))
+
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: ''"):
+      self.assertEqual([0], command_parser.parse_indices("3, 4,"))
+
+
+class ParseRangesTest(test_util.TensorFlowTestCase):
+
+  INF_VALUE = sys.float_info.max
+
+  def testParseEmptyRangeString(self):
+    self.assertEqual([], command_parser.parse_ranges(""))
+    self.assertEqual([], command_parser.parse_ranges("  "))
+
+  def testParseSingleRange(self):
+    self.assertAllClose([[-0.1, 0.2]],
+                        command_parser.parse_ranges("[-0.1, 0.2]"))
+    self.assertAllClose([[-0.1, self.INF_VALUE]],
+                        command_parser.parse_ranges("[-0.1, inf]"))
+    self.assertAllClose([[-self.INF_VALUE, self.INF_VALUE]],
+                        command_parser.parse_ranges("[-inf, inf]"))
+
+  def testParseSingleListOfRanges(self):
+    self.assertAllClose([[-0.1, 0.2], [10.0, 12.0]],
+                        command_parser.parse_ranges("[[-0.1, 0.2], [10,  12]]"))
+    self.assertAllClose(
+        [[-self.INF_VALUE, -1.0], [1.0, self.INF_VALUE]],
+        command_parser.parse_ranges("[[-inf, -1.0],[1.0, inf]]"))
+
+  def testParseInvalidRangeString(self):
+    with self.assertRaises(SyntaxError):
+      command_parser.parse_ranges("[[1,2]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect number of elements in range"):
+      command_parser.parse_ranges("[1,2,3]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect number of elements in range"):
+      command_parser.parse_ranges("[inf]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect type in the 1st element of range"):
+      command_parser.parse_ranges("[1j, 1]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect type in the 2nd element of range"):
+      command_parser.parse_ranges("[1, 1j]")
 
 
 if __name__ == "__main__":

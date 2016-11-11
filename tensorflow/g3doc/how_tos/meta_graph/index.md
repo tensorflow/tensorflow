@@ -32,26 +32,39 @@ to and from `MetaGraphDef`, the Python class must implement `to_proto()` and
   For example,
 
   ```Python
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
+
     """Converts a `Variable` to a `VariableDef` protocol buffer.
 
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
+
     Returns:
-      A `VariableDef` protocol buffer.
+      A `VariableDef` protocol buffer, or `None` if the `Variable` is not
+      in the specified name scope.
     """
-    var_def = variable_pb2.VariableDef()
-    var_def.variable_name = self._variable.name
-    var_def.initializer_name = self.initializer.name
-    var_def.snapshot_name = self._snapshot.name
-    if self._save_slice_info:
-      var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto())
-    return var_def
+    if (export_scope is None or
+        self._variable.name.startswith(export_scope)):
+      var_def = variable_pb2.VariableDef()
+      var_def.variable_name = ops.strip_name_scope(
+          self._variable.name, export_scope)
+      var_def.initializer_name = ops.strip_name_scope(
+          self.initializer.name, export_scope)
+      var_def.snapshot_name = ops.strip_name_scope(
+          self._snapshot.name, export_scope)
+      if self._save_slice_info:
+        var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto(
+            export_scope=export_scope))
+      return var_def
+    else:
+      return None
 
   @staticmethod
-  def from_proto(variable_def):
+  def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return Variable(variable_def=variable_def)
+    return Variable(variable_def=variable_def, import_scope=import_scope)
 
-  ops.register_proto_function(ops.GraphKeys.VARIABLES,
+  ops.register_proto_function(ops.GraphKeys.GLOBAL_VARIABLES,
                               proto_type=variable_pb2.VariableDef,
                               to_proto=Variable.to_proto,
                               from_proto=Variable.from_proto)
@@ -185,7 +198,7 @@ Here are some of the typical usage models:
     logits = tf.matmul(hidden2, weights) + biases
     tf.add_to_collection("logits", logits)
 
-  init_all_op = tf.initialize_all_variables()
+  init_all_op = tf.global_variables_initializer()
 
   with tf.Session() as sess:
     # Initializes all the variables.
@@ -194,7 +207,7 @@ Here are some of the typical usage models:
     sess.run(logits)
     # Creates a saver.
     saver0 = tf.train.Saver()
-    saver0.save(sess, saver0_ckpt)
+    saver0.save(sess, 'my-save-dir/my-model-10000')
     # Generates MetaGraphDef.
     saver0.export_meta_graph('my-save-dir/my-model-10000.meta')
   ```
@@ -219,13 +232,47 @@ Here are some of the typical usage models:
                                                             name="xentropy")
     loss = tf.reduce_mean(cross_entropy, name="xentropy_mean")
 
-    tf.scalar_summary(loss.op.name, loss)
+    tf.summary.scalar('loss', loss)
     # Creates the gradient descent optimizer with the given learning rate.
     optimizer = tf.train.GradientDescentOptimizer(0.01)
 
     # Runs train_op.
     train_op = optimizer.minimize(loss)
     sess.run(train_op)
+  ```
+
+* Import a graph with preset devices.
+
+  Sometimes an exported meta graph is from a training environment that the
+  importer doesn't have. For example, the model might have been trained
+  on GPUs, or in a distributed environment with replicas. When importing
+  such models, it's useful to be able to clear the device settings in
+  the graph so that we can run it on locally available devices. This can
+  be achieved by calling `import_meta_graph` with the `clear_devices`
+  option set to `True`.
+
+  ```Python
+  with tf.Session() as sess:
+    new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta',
+        clear_devices=True)
+    new_saver.restore(sess, 'my-save-dir/my-model-10000')
+    ...
+  ```
+
+* Import within the default graph.
+
+  Sometimes you might want to run `export_meta_graph` and `import_meta_graph`
+  in codelab using the default graph. In that case, you need to reset
+  the default graph by calling `tf.reset_default_graph()` first before
+  running import.
+
+  ```Python
+  meta_graph_def = tf.train.export_meta_graph()
+  ...
+  tf.reset_default_graph()
+  ...
+  tf.train.import_meta_graph(meta_graph_def)
+  ...
   ```
 
 * Retrieve Hyper Parameters

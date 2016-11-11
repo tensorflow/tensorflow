@@ -122,6 +122,10 @@ message RunStepRequest {
 
   // Options for the run call.
   RunOptions options = 5;
+
+  // Partial run handle (optional). If specified, this will be a partial run
+  // execution, run up to the specified fetches.
+  string partial_run_handle = 6;
 }
 
 message RunStepResponse {
@@ -131,6 +135,42 @@ message RunStepResponse {
 
   // Returned metadata if requested in the options.
   RunMetadata metadata = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// PartialRunSetup method request/response protos.
+//
+// The caller should provide the future partial run feeds, fetches, and targets.
+// Then the caller can use RunStepRequest with is_partial set to make partial
+// run calls.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message PartialRunSetupRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+
+  // Tensors to be fed in future steps.
+  repeated string feed = 2;
+
+  // Fetches. A list of tensor names. The caller expects a tensor to be returned
+  // for each fetch[i] (see RunStepResponse.tensor), for corresponding partial
+  // RunStepRequests. The order of specified fetches does not change the
+  // execution order.
+  repeated string fetch = 3;
+
+  // Target Nodes. A list of node names. The named nodes will be run in future
+  // steps, but their outputs will not be fetched.
+  repeated string target = 4;
+}
+
+message PartialRunSetupResponse {
+  // The unique handle corresponding to the ongoing partial run call setup by
+  // the invocation to PartialRunSetup. This handle may be passed to
+  // RunStepRequest to send and receive tensors for this partial run.
+  string partial_run_handle = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

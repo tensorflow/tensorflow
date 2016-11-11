@@ -27,14 +27,14 @@ import tensorflow as tf
 
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
+# pylint: enable=wildcard-import
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.platform import resource_loader
 
-_factorization_ops = load_op_library(resource_loader.get_path_to_datafile(
-    "_factorization_ops.so"))
-assert _factorization_ops, "Could not load _factorization_ops.so"
+_factorization_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile("_factorization_ops.so"))
 
 
 class WALSModel(object):
@@ -572,9 +572,8 @@ class WALSModel(object):
         extras = size % num_shards
         assignments = tf.maximum(ids // (ids_per_shard + 1),
                                  (ids - extras) // ids_per_shard)
-        new_ids = tf.select(assignments < extras,
-                            ids % (ids_per_shard + 1),
-                            (ids - extras) % ids_per_shard)
+        new_ids = tf.where(assignments < extras, ids % (ids_per_shard + 1),
+                           (ids - extras) % ids_per_shard)
         return assignments, new_ids
     return func
 
@@ -656,7 +655,7 @@ class WALSModel(object):
       update_op: An op that assigns the newly computed values to the row/column
         factors.
     """
-    assert isinstance(sp_input, ops.SparseTensor)
+    assert isinstance(sp_input, tf.SparseTensor)
 
     if update_row_factors:
       left = self._row_factors

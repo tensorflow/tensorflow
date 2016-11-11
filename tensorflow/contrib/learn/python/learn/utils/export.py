@@ -24,6 +24,7 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -52,8 +53,8 @@ def _get_saver():
       saver = saver[0]
     else:
       saver = None
-  if saver is None and variables.all_variables():
-    saver = tf_saver.Saver()
+  if saver is None and variables.global_variables():
+    saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
 
@@ -64,13 +65,13 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   """Exports graph via session_bundle, by creating a Session."""
   with graph.as_default():
     with tf_session.Session('') as session:
-      variables.initialize_local_variables()
+      variables.local_variables_initializer()
       data_flow_ops.initialize_all_tables()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
       export.init(init_op=control_flow_ops.group(
-          variables.initialize_local_variables(),
+          variables.local_variables_initializer(),
           data_flow_ops.initialize_all_tables()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures,

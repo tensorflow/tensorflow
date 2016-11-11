@@ -22,15 +22,15 @@
 TensorFlow provides a set of functions to help manage the set of variables
 collected in the graph.
 
-@@all_variables
-@@trainable_variables
+@@global_variables
 @@local_variables
 @@model_variables
+@@trainable_variables
 @@moving_average_variables
 
-@@initialize_all_variables
-@@initialize_variables
-@@initialize_local_variables
+@@global_variables_initializer
+@@local_variables_initializer
+@@variables_initializer
 @@is_variable_initialized
 @@report_uninitialized_variables
 @@assert_variables_initialized
@@ -95,6 +95,9 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@scatter_mul
 @@scatter_div
+@@scatter_nd_update
+@@scatter_nd_add
+@@scatter_nd_sub
 @@sparse_mask
 @@IndexedSlices
 
@@ -108,6 +111,13 @@ automatically by the optimizers in most cases.
 @@export_meta_graph
 @@import_meta_graph
 
+# Deprecated functions (removed after 2017-03-02). Please don't use them.
+
+@@all_variables
+@@initialize_all_variables
+@@initialize_local_variables
+@@initialize_variables
+
 """
 
 from __future__ import absolute_import
@@ -116,6 +126,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -146,6 +157,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   Returns:
     A variable tensor.
   """
+  if not set_shape:
+    shape = tensor_shape.unknown_shape()
   ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
                                 container=container, shared_name=shared_name)
   # TODO(mrry): Move this to where it is used, so we can get rid of this op
@@ -206,3 +219,34 @@ ops.RegisterShape("ScatterDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScatterMul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScatterSub")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ScatterUpdate")(common_shapes.call_cpp_shape_fn)
+
+
+@ops.RegisterShape("ScatterNdAdd")
+@ops.RegisterShape("ScatterNdSub")
+@ops.RegisterShape("ScatterNdMul")
+@ops.RegisterShape("ScatterNdDiv")
+@ops.RegisterShape("ScatterNdUpdate")
+def scatter_nd_update_shape(op):
+  """Shape function for the ScatterNd update ops."""
+  ref_shape = op.inputs[0].get_shape()
+  indices_shape = op.inputs[1].get_shape()
+  updates_shape = op.inputs[2].get_shape()
+
+  if indices_shape.ndims is not None and ref_shape.ndims is not None:
+    outer_dims = len(indices_shape) - 1
+    ixdim = indices_shape[-1].value or 0
+
+    if not indices_shape[:outer_dims].is_compatible_with(
+        updates_shape[:outer_dims]):
+      raise ValueError("The outer %d dimensions of indices.shape=%s must "
+                       "match the outer %d dimensions of updates.shape=%s" % (
+                           outer_dims, indices_shape, outer_dims,
+                           updates_shape))
+
+    if not ref_shape[ixdim:].is_compatible_with(updates_shape[outer_dims:]):
+      raise ValueError("The inner %d dimensions of ref.shape=%s must match "
+                       "the inner %d dimensions of updates.shape=%s" % (
+                           len(ref_shape)-ixdim, ref_shape,
+                           len(updates_shape)-outer_dims, updates_shape))
+
+  return [ref_shape]

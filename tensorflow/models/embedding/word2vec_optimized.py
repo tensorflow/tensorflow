@@ -296,7 +296,7 @@ class Word2Vec(object):
     self._nearby_idx = nearby_idx
 
     # Properly initialize all variables.
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
 
     self.saver = tf.train.Saver()
 

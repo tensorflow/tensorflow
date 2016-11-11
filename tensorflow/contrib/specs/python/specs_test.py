@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.specs.python import specs
 from tensorflow.contrib.specs.python import summaries
+specs = tf.contrib.specs
 
 
 def _rand(*size):
@@ -36,7 +36,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 18, 19, 64])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -50,7 +50,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Do(0.5) | Bn | Unit(1) | Relu | Sig | Tanh | Smax"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [17, 55])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (17, 55))
 
@@ -60,7 +60,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Fs(10) + Fr(10)"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [17, 10])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (17, 10))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -73,7 +73,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "M2 = Mp([2, 2]); net = M2**3"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 8, 8, 5])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -85,7 +85,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "C3 = Cr([3, 3]); M2 = Mp([2, 2]); net = (C3(5) | M2)**3"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 8, 8, 5])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -100,7 +100,7 @@ class SpecsTest(tf.test.TestCase):
       spec += "net = (C3(_0=5) | M2)**3"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 8, 8, 5])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -114,7 +114,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Conc(1, Fs(20), Fs(10))"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [10, 30])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (10, 30))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -128,7 +128,7 @@ class SpecsTest(tf.test.TestCase):
       spec += "; net = S | S"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [10, 20])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (10, 20))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
@@ -140,7 +140,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Lstm2(15)"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 64, 64, 15])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 64, 64, 15))
 
@@ -150,7 +150,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Lstm2to1(15)"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 64, 15])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 64, 15))
 
@@ -160,7 +160,7 @@ class SpecsTest(tf.test.TestCase):
       spec = "net = Lstm2to0(15)"
       outputs = specs.create_net(spec, inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 15])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 15))
 
@@ -221,7 +221,7 @@ class SpecsTest(tf.test.TestCase):
         net = SL.conv2d(64, 5)
       outputs = net.funcall(inputs)
       self.assertEqual(outputs.get_shape().as_list(), [1, 18, 19, 64])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure("net = Cr(64, 5)", inputs),
