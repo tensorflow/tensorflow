@@ -72,6 +72,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private scatterPlot: ScatterPlot;
   private dim: number;
 
+  private dataSetFilterIndices: number[];
   private selectedPointIndices: number[];
   private neighborsOfFirstPoint: knn.NearestEntry[];
   private hoverPointIndex: number;
@@ -103,7 +104,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     logging.setDomContainer(this);
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
-    this.inspectorPanel.initialize(this);
+    this.inspectorPanel.initialize(
+        this, this as SelectionContext, this as HoverContext);
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
@@ -139,8 +141,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   updateDataSet(
       ds: DataSet, spriteAndMetadata?: SpriteAndMetadataInfo,
       metadataFile?: string) {
+    this.dataSetFilterIndices = null;
     this.originalDataSet = ds;
-    if (this.scatterPlot == null || this.originalDataSet == null) {
+    if (this.scatterPlot == null || ds == null) {
       // We are not ready yet.
       return;
     }
@@ -178,11 +181,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.selectionChangedListeners.push(listener);
   }
 
-  filterDataset() {
-    let indices = this.selectedPointIndices.concat(
-        this.neighborsOfFirstPoint.map(n => n.index));
-    let selectionSize = this.selectedPointIndices.length;
-    this.setCurrentDataSet(this.dataSet.getSubset(indices));
+  filterDataset(pointIndices: number[]) {
+    const selectionSize = this.selectedPointIndices.length;
+    this.setCurrentDataSet(this.dataSet.getSubset(pointIndices));
+    this.dataSetFilterIndices = pointIndices;
     this.adjustSelectionAndHover(d3.range(selectionSize));
   }
 
@@ -192,6 +194,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     });
     this.setCurrentDataSet(this.originalDataSet.getSubset());
     this.updateScatterPlotPositions();
+    this.dataSetFilterIndices = [];
     this.adjustSelectionAndHover(originalPointIndices);
   }
 
@@ -306,14 +309,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.scatterPlot.setMode(Mode.HOVER);
   }
 
-  private unsetCurrentDataSet() {
-    this.dataSet.stopTSNE();
-  }
-
   private setCurrentDataSet(ds: DataSet) {
     this.adjustSelectionAndHover([]);
     if (this.dataSet != null) {
-      this.unsetCurrentDataSet();
+      this.dataSet.stopTSNE();
     }
     this.dataSet = ds;
     if (this.normalizeData) {
@@ -471,8 +470,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         this.selectedPointIndices.length + neighborsOfFirstPoint.length;
     this.statusBar.text(`Selected ${totalNumPoints} points`)
         .style('display', totalNumPoints > 0 ? null : 'none');
-    this.inspectorPanel.updateInspectorPane(
-        selectedPointIndices, neighborsOfFirstPoint);
     this.updateScatterPlotAttributes();
     this.scatterPlot.render();
   }
@@ -518,6 +515,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     state.dataSetDimensions = this.dataSet.dim;
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
+    state.filteredPoints = this.dataSetFilterIndices;
     state.cameraDef = this.scatterPlot.getCameraDef();
     state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
     state.selectedLabelOption = this.selectedLabelOption;
@@ -527,6 +525,14 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   /** Loads a State object into the world. */
   loadState(state: State) {
+    {
+      this.projectionsPanel.disablePolymerChangesTriggerReprojection();
+      this.resetFilterDataset();
+      if (state.filteredPoints != null) {
+        this.filterDataset(state.filteredPoints);
+      }
+      this.projectionsPanel.enablePolymerChangesTriggerReprojection();
+    }
     for (let i = 0; i < state.projections.length; i++) {
       const point = this.dataSet.points[i];
       const projection = state.projections[i];
@@ -538,6 +544,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dataSet.hasTSNERun = (state.selectedProjection === 'tsne');
     this.dataSet.tSNEIteration = state.tSNEIteration;
     this.projectionsPanel.restoreUIFromBookmark(state);
+    this.inspectorPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
     this.selectedLabelOption = state.selectedLabelOption;
     this.scatterPlot.setCameraParametersForNextCameraCreation(

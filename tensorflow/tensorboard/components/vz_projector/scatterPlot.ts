@@ -190,7 +190,7 @@ export class ScatterPlot {
   }
 
   private makeOrbitControls(
-      camera: THREE.Camera, cameraDef: CameraDef, enableRotate: boolean) {
+      camera: THREE.Camera, cameraDef: CameraDef, cameraIs3D: boolean) {
     if (this.orbitCameraControls != null) {
       this.orbitCameraControls.dispose();
     }
@@ -200,11 +200,16 @@ export class ScatterPlot {
         cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
     occ.position0 = new THREE.Vector3().copy(camera.position);
     occ.zoom0 = cameraDef.zoom;
-    occ.enableRotate = enableRotate;
+    occ.enableRotate = cameraIs3D;
     occ.autoRotate = false;
     occ.rotateSpeed = ORBIT_MOUSE_ROTATION_SPEED;
-    occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
+    if (cameraIs3D) {
+      occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+      occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
+    } else {
+      occ.mouseButtons.ORBIT = null;
+      occ.mouseButtons.PAN = THREE.MOUSE.LEFT;
+    }
     occ.reset();
 
     this.camera = camera;

@@ -454,6 +454,9 @@ export class State {
   /** The computed projections of the tensors. */
   projections: Array<{[key: string]: number}> = [];
 
+  /** Filtered dataset indices. */
+  filteredPoints: number[];
+
   /** The indices of selected points. */
   selectedPoints: number[] = [];
 
