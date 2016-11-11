@@ -28,6 +28,7 @@ import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLa
 import {ScatterPlotVisualizerSprites} from './scatterPlotVisualizerSprites';
 import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
 import {SelectionChangedListener, SelectionContext} from './selectionContext';
+import * as util from './util';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
 import {InspectorPanel} from './vz-projector-inspector-panel';
@@ -259,7 +260,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private initializeDataProvider(dataProto?: DataProto) {
     if (this.servingMode === 'demo') {
-      this.dataProvider = new DemoDataProvider(this.projectorConfigJsonPath);
+      let projectorConfigUrl: string;
+
+      // Only in demo mode do we allow the config being passed via URL.
+      let urlParams = util.getURLParams(window.location.search);
+      if ('config' in urlParams) {
+        projectorConfigUrl = urlParams['config'];
+      } else {
+        projectorConfigUrl = this.projectorConfigJsonPath;
+      }
+      this.dataProvider = new DemoDataProvider(projectorConfigUrl);
     } else if (this.servingMode === 'server') {
       if (!this.routePrefix) {
         throw 'route-prefix is a required parameter';

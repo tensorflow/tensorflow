@@ -16,11 +16,15 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../paper-input/paper-input.html">
+<link rel="import" href="../paper-input/paper-textarea.html">
 <link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="vz-projector-legend.html">
 <link rel="import" href="styles.html">
@@ -98,6 +102,26 @@ paper-dropdown-menu paper-item {
 #normalize-data-checkbox {
   margin: 10px 0;
 }
+
+#projector-config-template {
+  --paper-input-container-input: {
+    font-family: monospace;
+  };
+}
+
+#generate-demo-url {
+  padding: 16px;
+  margin-left: 24px;
+}
+
+#projector-demo-button-container {
+  margin-bottom: 10px;
+}
+
+.config-checkbox {
+  display: inline-block;
+  margin-left: 10px;
+}
 </style>
 <div class="title">DATA</div>
 <div class="container">
@@ -168,18 +192,55 @@ paper-dropdown-menu paper-item {
   <div id="upload-buttons">
     <!-- Upload data -->
     <div>
-      <button id="upload" title="Upload a TSV file" class="ink-button">Upload data</button>
+      <paper-button id="upload" title="Upload a TSV file" class="ink-button">Upload data</paper-button>
       <input type="file" id="file" name="file"/>
     </div>
     <!-- Upload metadata -->
     <div>
-      <button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload Metadata</button>
+      <paper-button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload Metadata</paper-button>
       <input type="file" id="file-metadata" name="file-metadata"/>
     </div>
+    <br>
   </div>
-    <div class="dirs">
+  <div class="dirs">
     <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
     <div class="dir">Metadata: <span id="metadata-file"></span></div>
+  </div>
+  <div>
+    <paper-button id="host-embedding" title="Host your own" class="ink-button">Host a demo</paper-button>
+    <paper-dialog id="projector-config-dialog" with-backdrop>
+      <h2>Generate an Embedding Projector demo page</h2>
+      <div id="projector-config-label">
+        Fill out the projector config and host it on the web. One option is using a
+        <a target=_blank href="https://gist.github.com/">github gist</a>, where you can also host the tensors, metadata (optional), and sprite image (optional) files as well.
+        <br>
+        See <a target=_blank href="https://www.tensorflow.org/versions/master/how_tos/embedding_viz/index.md">this tutorial</a> for more.
+      </div>
+      <div>
+        <b>Optional:</b>
+        <div class="config-checkbox">
+          <paper-checkbox id="config-metadata-checkbox" checked>Metadata</paper-checkbox>
+        </div>
+        <div class="config-checkbox">
+          <paper-checkbox id="config-sprite-checkbox">Sprite</paper-checkbox>
+        </div>
+        <div class="config-checkbox">
+          <paper-checkbox id="config-bookmarks-checkbox">Bookmarks</paper-checkbox>
+        </div>
+      </div>
+      <paper-textarea id="projector-config-template" label="template_projector_config.json"></paper-textarea>
+      <div id="projector-config-config-host-label">
+        After you have hosted the projector config JSON file you build above, paste the URL to the config below.
+      </div>
+      <paper-input id="projector-config-url" label="Path to projector config"></paper-input>
+      <paper-input id="projector-demo-url" label="Your demo URL" readonly></paper-input>
+
+      <div id="projector-demo-button-container">
+        <a target=_blank id="projector-demo-url-link">
+          <paper-button title="Test your demo URL" class="ink-button">Test your demo URL</paper-button>
+        </a>
+      </div>
+    </paper-dialog>
   </div>
 </div>
 <!-- Closing global template -->
