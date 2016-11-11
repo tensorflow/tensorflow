@@ -43,7 +43,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
 
 
