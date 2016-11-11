@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {DistanceFunction, SpriteAndMetadataInfo, State} from './data';
-import {HoverContext} from './hoverContext';
 import * as knn from './knn';
-import {SelectionContext} from './selectionContext';
+import {ProjectorEventContext} from './projectorEventContext';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -43,8 +42,7 @@ export class InspectorPanel extends PolymerClass {
   distFunc: DistanceFunction;
   numNN: number;
 
-  private selectionContext: SelectionContext;
-  private hoverContext: HoverContext;
+  private projectorEventContext: ProjectorEventContext;
 
   private selectedMetadataField: string;
   private metadataFields: string[];
@@ -71,13 +69,11 @@ export class InspectorPanel extends PolymerClass {
   }
 
   initialize(
-      projector: Projector, selectionContext: SelectionContext,
-      hoverContext: HoverContext) {
+      projector: Projector, projectorEventContext: ProjectorEventContext) {
     this.projector = projector;
-    this.selectionContext = selectionContext;
-    this.hoverContext = hoverContext;
+    this.projectorEventContext = projectorEventContext;
     this.setupUI(projector);
-    selectionContext.registerSelectionChangedListener(
+    projectorEventContext.registerSelectionChangedListener(
         (selection, neighbors) =>
             this.updateInspectorPane(selection, neighbors));
   }
@@ -143,13 +139,13 @@ export class InspectorPanel extends PolymerClass {
         .attr('title', index => this.getLabelFromIndex(index))
         .text(index => this.getLabelFromIndex(index));
     rows.on('mouseenter', index => {
-      this.hoverContext.notifyHoverOverPoint(index);
+      this.projectorEventContext.notifyHoverOverPoint(index);
     });
     rows.on('mouseleave', () => {
-      this.hoverContext.notifyHoverOverPoint(null);
+      this.projectorEventContext.notifyHoverOverPoint(null);
     });
     rows.on('click', index => {
-      this.selectionContext.notifySelectionChanged([index]);
+      this.projectorEventContext.notifySelectionChanged([index]);
     });
   }
 
@@ -209,13 +205,13 @@ export class InspectorPanel extends PolymerClass {
         .attr('class', 'tick')
         .style('left', d => d * 100 / 4 + '%');
     n.on('mouseenter', d => {
-      this.hoverContext.notifyHoverOverPoint(d.index);
+      this.projectorEventContext.notifyHoverOverPoint(d.index);
     });
     n.on('mouseleave', () => {
-      this.hoverContext.notifyHoverOverPoint(null);
+      this.projectorEventContext.notifyHoverOverPoint(null);
     });
     n.on('click', d => {
-      this.selectionContext.notifySelectionChanged([d.index]);
+      this.projectorEventContext.notifySelectionChanged([d.index]);
     });
   }
 
@@ -256,7 +252,7 @@ export class InspectorPanel extends PolymerClass {
     let updateInput = (value: string, inRegexMode: boolean) => {
       if (value == null || value.trim() === '') {
         this.searchBox.message = '';
-        this.selectionContext.notifySelectionChanged([]);
+        this.projectorEventContext.notifySelectionChanged([]);
         return;
       }
       let indices = projector.dataSet.query(
@@ -266,7 +262,7 @@ export class InspectorPanel extends PolymerClass {
       } else {
         this.searchBox.message = `${indices.length} matches.`;
       }
-      this.selectionContext.notifySelectionChanged(indices);
+      this.projectorEventContext.notifySelectionChanged(indices);
     };
     this.searchBox.registerInputChangedListener((value, inRegexMode) => {
       updateInput(value, inRegexMode);
@@ -278,7 +274,7 @@ export class InspectorPanel extends PolymerClass {
       this.numNN = +numNNInput.value;
       this.dom.select('.num-nn .nn-count').text(this.numNN);
       if (this.selectedPointIndices != null) {
-        this.selectionContext.notifySelectionChanged(
+        this.projectorEventContext.notifySelectionChanged(
             [this.selectedPointIndices[0]]);
       }
     };

@@ -18,16 +18,15 @@ import {DataProvider, EmbeddingInfo, ServingMode} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
 import {ProtoDataProvider} from './data-provider-proto';
 import {ServerDataProvider} from './data-provider-server';
-import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import * as logging from './logging';
+import {HoverListener, ProjectionChangedListener, ProjectorEventContext, SelectionChangedListener} from './projectorEventContext';
 import {ProjectorScatterPlotAdapter} from './projectorScatterPlotAdapter';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
 import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLabels';
 import {ScatterPlotVisualizerSprites} from './scatterPlotVisualizerSprites';
 import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
-import {SelectionChangedListener, SelectionContext} from './selectionContext';
 import * as util from './util';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
@@ -56,8 +55,8 @@ export let ProjectorPolymer = PolymerElement({
 
 const INDEX_METADATA_FIELD = '__index__';
 
-export class Projector extends ProjectorPolymer implements SelectionContext,
-                                                           HoverContext {
+export class Projector extends ProjectorPolymer implements
+    ProjectorEventContext {
   // The working subset of the data source's original data set.
   dataSet: DataSet;
   servingMode: ServingMode;
@@ -66,6 +65,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
+  private projectionChangedListeners: ProjectionChangedListener[];
 
   private originalDataSet: DataSet;
   private dom: d3.Selection<any>;
@@ -99,19 +99,20 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   ready() {
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
+    this.projectionChangedListeners = [];
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
     this.dom = d3.select(this);
     logging.setDomContainer(this);
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
-    this.inspectorPanel.initialize(
-        this, this as SelectionContext, this as HoverContext);
+    this.inspectorPanel.initialize(this, this as ProjectorEventContext);
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
+    this.bookmarkPanel.initialize(this, this as ProjectorEventContext);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
-    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
     this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
     this.setupUIControls();
     this.initializeDataProvider();
@@ -172,7 +173,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
-    this.bookmarkPanel.setSelectedTensor(run, tensorInfo);
+    this.bookmarkPanel.setSelectedTensor(run, tensorInfo, this.dataProvider);
   }
 
   /**
@@ -234,6 +235,14 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.hoverListeners.forEach(l => l(pointIndex));
   }
 
+  registerProjectionChangedListener(listener: ProjectionChangedListener) {
+    this.projectionChangedListeners.push(listener);
+  }
+
+  notifyProjectionChanged(dataSet: DataSet) {
+    this.projectionChangedListeners.forEach(l => l(dataSet));
+  }
+
   _dataProtoChanged(dataProtoString: string) {
     let dataProto =
         dataProtoString ? JSON.parse(dataProtoString) as DataProto : null;
@@ -280,7 +289,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     this.dataPanel.initialize(this, this.dataProvider);
-    this.bookmarkPanel.initialize(this, this.dataProvider);
   }
 
   private getLegendPointColorer(colorOption: ColorOption):
@@ -377,7 +385,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.scatterPlot = new ScatterPlot(
         this.getScatterContainer(),
         i => '' + this.dataSet.points[i].metadata[this.selectedLabelOption],
-        this, this);
+        this as ProjectorEventContext);
     this.createVisualizers(false);
 
     this.scatterPlot.onCameraMove(
@@ -497,6 +505,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
+    this.notifyProjectionChanged(this.dataSet);
   }
 
   notifyProjectionsUpdated() {
