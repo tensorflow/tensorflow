@@ -500,7 +500,7 @@ class DataFeeder(object):
       else:
         shape, dtype, n_classes = self.output_shape, self._output_dtype, self.n_classes
         feed_dict.update({self._output_placeholder.name: assign_label(self._y, shape, dtype, n_classes, batch_indices)})
-          
+
       return feed_dict
 
     return _feed_dict_fn
@@ -668,7 +668,6 @@ class StreamingDataFeeder(DataFeeder):
             if isinstance(out, dict) else {self._output_placeholder.name: out})
 
       return feed_dict
-
 
     return _feed_dict_fn
 
