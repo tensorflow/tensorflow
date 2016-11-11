@@ -145,7 +145,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
-                             const OptimizerOptions& optimizer_options);
+                             const OptimizerOptions& optimizer_options,
+                             CustomKernelCreator custom_kernel_creator);
 
   ~FunctionLibraryRuntimeImpl() override;
 
@@ -182,6 +183,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
+  const CustomKernelCreator custom_kernel_creator_;
+
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel_;
 
@@ -219,13 +222,15 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options)
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator)
     : device_mgr_(dmgr),
       device_(device),
       env_(env),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
-      optimizer_(optimizer_options) {
+      optimizer_(optimizer_options),
+      custom_kernel_creator_(std::move(custom_kernel_creator)) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return lib_def_->LookUpOpDef(op, sig);
   };
@@ -292,34 +297,6 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   return func_graphs_[h];
 }
 
-namespace {
-
-struct CustomCreatorSingleton {
-  mutex mu;
-  CustomKernelCreator custom_creator = nullptr;
-
-  void Set(CustomKernelCreator cb) {
-    mutex_lock l(mu);
-    custom_creator = cb;
-  }
-
-  CustomKernelCreator Get() {
-    mutex_lock l(mu);
-    return custom_creator;
-  }
-};
-
-CustomCreatorSingleton* GetCustomCreatorSingleton() {
-  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
-  return ccs;
-}
-
-}  // end namespace
-
-void RegisterCustomKernelCreator(CustomKernelCreator cb) {
-  GetCustomCreatorSingleton()->Set(cb);
-}
-
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
   if (lib_def_->Find(ndef.op()) == nullptr) {
@@ -349,11 +326,10 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   }
 
   // If a custom kernel creator is given, try that.
-  CustomKernelCreator custom_creator = GetCustomCreatorSingleton()->Get();
   Status s;
-  if (custom_creator) {
+  if (custom_kernel_creator_) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_creator(this, ndef, &ret);
+    s = custom_kernel_creator_(this, ndef, &ret);
     if (s.ok()) {
       *kernel = ret.release();
       return s;
@@ -621,12 +597,51 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
   }
 }
 
+namespace {
+
+struct CustomCreatorSingleton {
+  mutex mu;
+  CustomKernelCreator custom_creator = nullptr;
+
+  void Set(CustomKernelCreator cb) {
+    mutex_lock l(mu);
+    custom_creator = cb;
+  }
+
+  CustomKernelCreator Get() {
+    mutex_lock l(mu);
+    return custom_creator;
+  }
+};
+
+CustomCreatorSingleton* GetCustomCreatorSingleton() {
+  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
+  return ccs;
+}
+
+}  // end namespace
+
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
+  GetCustomCreatorSingleton()->Set(cb);
+}
+
+FunctionLibraryRuntime* NewFunctionLibraryRuntime(
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator) {
+  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
+                                        lib_def, optimizer_options,
+                                        custom_kernel_creator);
+}
+
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
-                                        lib_def, optimizer_options);
+  return NewFunctionLibraryRuntime(dmgr, env, device, graph_def_version,
+                                   lib_def, optimizer_options,
+                                   GetCustomCreatorSingleton()->Get());
 }
 
 bool RemoveDeadNodes(Graph* g) {
