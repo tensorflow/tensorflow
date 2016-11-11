@@ -67,7 +67,11 @@ tensorflow/core/kernels/reduction_ops_min.cc
 tensorflow/core/kernels/reduction_ops_mean.cc
 tensorflow/core/kernels/reduction_ops_max.cc
 tensorflow/core/kernels/reduction_ops_common.cc
+tensorflow/core/kernels/queue_ops.cc
+tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
+tensorflow/core/kernels/padding_fifo_queue_op.cc
+tensorflow/core/kernels/padding_fifo_queue.cc
 tensorflow/core/kernels/pad_op.cc
 tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/ops_util.cc
@@ -81,6 +85,7 @@ tensorflow/core/kernels/mirror_pad_op_cpu_impl_5.cc
 tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/matmul_op.cc
 tensorflow/core/kernels/lrn_op.cc
+tensorflow/core/kernels/logging_ops.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc
@@ -88,6 +93,7 @@ tensorflow/core/kernels/gather_op.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/fill_functor.cc
+tensorflow/core/kernels/fifo_queue.cc
 tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
@@ -109,9 +115,11 @@ tensorflow/core/kernels/cwise_op_mul_2.cc
 tensorflow/core/kernels/cwise_op_mul_1.cc
 tensorflow/core/kernels/cwise_op_minimum.cc
 tensorflow/core/kernels/cwise_op_maximum.cc
+tensorflow/core/kernels/cwise_op_logical_and.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
+tensorflow/core/kernels/cwise_op_greater_equal.cc
 tensorflow/core/kernels/cwise_op_greater.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
