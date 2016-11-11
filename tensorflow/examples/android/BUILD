@@ -25,7 +25,6 @@ cc_binary(
         "-lm",
         "-z defs",
         "-s",
-        "-Wl,--icf=all",  # Identical Code Folding
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
         LINKER_SCRIPT,
     ],
