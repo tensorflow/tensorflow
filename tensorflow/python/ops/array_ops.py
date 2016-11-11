@@ -2451,26 +2451,7 @@ def _OneHotShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-@ops.RegisterShape("PlaceholderWithDefault")
-def _PlaceholderWithDefaultShape(op):
-  """Shape function for the PlaceholderWithDefault op.
-
-  This op acts as an identity when it is not fed (passing through a
-  default value), but allows the user to feed it with tensors of a
-  possibly less precise shape than its default value.
-
-  Args:
-    op: A PlaceholderWithDefault `Operation`.
-
-  Returns:
-    A single-element list containing the shape of the output.
-  """
-  input_shape = op.inputs[0].get_shape()
-  output_shape = tensor_shape.TensorShape(op.get_attr("shape"))
-  # NOTE(mrry): We don't merge these shapes, because `output_shape`
-  # may be *less* precise than `input_shape`.
-  input_shape.assert_is_compatible_with(output_shape)
-  return [output_shape]
+ops.RegisterShape("PlaceholderWithDefault")(common_shapes.call_cpp_shape_fn)
 
 
 def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
