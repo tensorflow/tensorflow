@@ -2341,3 +2341,15 @@ cuda_py_test(
     ],
     main = "ops/concat_benchmark.py",
 )
+
+cuda_py_test(
+    name = "split_benchmark",
+    srcs = [
+        "ops/split_benchmark.py",
+    ],
+    additional_deps = [
+        ":nn_ops",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "ops/split_benchmark.py",
+)

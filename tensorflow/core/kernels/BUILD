@@ -428,6 +428,7 @@ tf_kernel_libraries(
         ":depth_space_ops",
         ":extract_image_patches_op",
         ":split_op",
+        ":split_v_op",
         ":unpack_op",
     ],
     prefixes = [
@@ -466,6 +467,13 @@ tf_kernel_library(
     name = "split_op",
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "split_op",
+    deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "split_v_op",
+    gpu_srcs = ["cuda_device_array.h"],
+    prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
 )
 
@@ -2365,6 +2373,7 @@ filegroup(
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
+        "split_v_op.cc",
         "strided_slice_op.cc",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",

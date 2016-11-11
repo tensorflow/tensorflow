@@ -405,6 +405,51 @@ output: They are identically shaped tensors, whose shape matches that of `value`
   `values.shape[split_dim] / num_split`.
 )doc");
 
+REGISTER_OP("SplitV")
+    .Input("value: T")
+    .Input("size_splits: Tlen")
+    .Input("split_dim: int32")
+    .Output("output: num_split * T")
+    .Attr("num_split: int >= 1")
+    .Attr("T: type")
+    .Attr("Tlen: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      int32 num_outputs = c->num_outputs();
+      // Return unknown shapes with the same rank as the input
+      // or unknown rank if input's rank isn't known
+      // can't determine exact shapes until runtime because
+      // we don't know where the tensor containing the split sizes
+      // is located
+      int32 rank = c->Rank(c->input(0));
+      ShapeHandle output_shape;
+      if (rank == InferenceContext::kUnknownRank) {
+        output_shape = c->UnknownShape();
+      } else if (rank == 0) {
+        return errors::InvalidArgument("Can't split scalars");
+      } else {
+        output_shape = c->UnknownShapeOfRank(rank);
+      }
+      for (int i = 0; i < num_outputs; ++i) {
+        c->set_output(i, output_shape);
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Splits a tensor into `num_split` tensors along one dimension.
+
+value: The tensor to split.
+size_splits: list containing the sizes of each output tensor along the split
+             dimension. Must sum to the dimension of value along split_dim.
+             Can contain one -1 indicating that dimension is to be inferred.
+split_dim: 0-D.  The dimension along which to split.  Must be in the range
+  `[0, rank(value))`.
+output: Tensors whose shape matches that of `value`
+  except along `split_dim`, where their sizes are
+  `size_splits[i]`.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Const")
     .Output("output: dtype")

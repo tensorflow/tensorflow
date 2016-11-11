@@ -16,6 +16,7 @@ Placeholder
 RefIdentity
 SpaceToBatch
 Split
+SplitV
 Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
