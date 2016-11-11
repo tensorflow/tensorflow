@@ -56,7 +56,7 @@ export interface EmbeddingInfo {
  */
 export interface ProjectorConfig {
   embeddings: EmbeddingInfo[];
-  modelCheckpointPath: string;
+  modelCheckpointPath?: string;
 }
 
 export type ServingMode = 'demo' | 'server' | 'proto';

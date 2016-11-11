@@ -336,7 +336,6 @@ export class DataPanel extends DataPanelPolymer {
         tensorPath: 'https://gist.github.com/.../tensors.tsv',
         metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
       }],
-      modelCheckpointPath: 'My demo dataset'
     };
     this.setProjectorConfigTemplateJson(
         projectorConfigTemplate, projectorConfigTemplateJson);
@@ -378,10 +377,10 @@ export class DataPanel extends DataPanelPolymer {
           projectorConfigTemplate, projectorConfigTemplateJson);
     });
 
-    // Update the link and the readonly demo URL.
+    // Update the link and the readonly shareable URL.
     let projectorConfigUrlInput = this.$$('#projector-config-url');
-    let projectorConfigDemoUrlInput = this.$$('#projector-demo-url');
-    let projectorConfigDemoUrlLink = this.$$('#projector-demo-url-link');
+    let projectorConfigDemoUrlInput = this.$$('#projector-share-url');
+    let projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
     projectorConfigUrlInput.addEventListener('input', () => {
       let projectorDemoUrl = location.protocol + '//' + location.host +
           location.pathname + '?config=' +
