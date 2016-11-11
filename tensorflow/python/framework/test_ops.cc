@@ -45,6 +45,12 @@ REGISTER_OP("ResourceUsingOp")
     .Input("resource: resource")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("TestStringOutput")
+    .Input("input: float")
+    .Output("output1: float")
+    .Output("output2: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };
 }  // namespace

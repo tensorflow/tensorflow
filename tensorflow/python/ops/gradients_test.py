@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
@@ -264,17 +265,16 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testNoGradientForStringOutputs(self):
-    with ops.Graph().as_default() as g:
-      @ops.RegisterGradient("TestOp")
+    with ops.Graph().as_default():
+      @ops.RegisterGradient("TestStringOutput")
       def _TestOpGrad(op, float_grad, string_grad):
-        """Gradient function for TestOp."""
+        """Gradient function for TestStringOutput."""
         self.assertEquals(float_grad.dtype, dtypes.float32)
         self.assertFalse(string_grad)
         return float_grad
-      ops.RegisterShape("TestOp")(None)
 
       c = constant(1.0)
-      x, y = g.create_op("TestOp", [c], [dtypes.float32, dtypes.string]).outputs
+      x, y = test_ops.test_string_output(c)
       z = x * 2.0
       w = z * 3.0
       grads = gradients.gradients(z, [c])
@@ -450,7 +450,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       mats = [constant_op.constant(mat_value) for mat_value in mat_values]
       xs = [constant_op.constant(x_value) for x_value in x_values]
-      xs_mats_xs = [math_ops.reduce_sum(x[:, None] * mat * x[None, :]) 
+      xs_mats_xs = [math_ops.reduce_sum(x[:, None] * mat * x[None, :])
                     for x, mat in zip(xs, mats)]
       hessians = gradients.hessians(xs_mats_xs, xs)
       hessians_actual = [hess.eval() for hess in hessians]
