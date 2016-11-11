@@ -166,17 +166,17 @@ def _zero_debias(unbiased_var, value, decay):
     tensor will also update the shadow variables appropriately.
   """
   with variable_scope.variable_scope(
-      "ZeroDebias", values=[unbiased_var, value, decay]) as scope:
+      unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
       biased_var = variable_scope.get_variable(
-          unbiased_var.op.name + "_biased",
+          "biased",
           initializer=init_ops.zeros_initializer(
               unbiased_var.get_shape(), dtype=unbiased_var.dtype),
           trainable=False)
       # Initializing the local_step to `0` would cause problems with the
       # debiasing equation, so we instead initialize to `1`.
       local_step = variable_scope.get_variable(
-          name=unbiased_var.op.name + "_local_step",
+          "local_step",
           shape=[], dtype=unbiased_var.dtype,
           initializer=init_ops.ones_initializer(),
           trainable=False)
@@ -344,6 +344,7 @@ class ExponentialMovingAverage(object):
     # TODO(touts): op_scope
     if var_list is None:
       var_list = variables.trainable_variables()
+    zero_debias_true = set()  # set of vars to set `zero_debias=True`
     for var in var_list:
       if var.dtype.base_dtype not in [dtypes.float16, dtypes.float32,
                                       dtypes.float64]:
@@ -369,6 +370,7 @@ class ExponentialMovingAverage(object):
               var,
               self._name,
               colocate_with_primary=(var.op.type == "Variable"))
+          zero_debias_true.add(avg)
       self._averages[var] = avg
 
     with ops.name_scope(self._name) as scope:
@@ -381,7 +383,9 @@ class ExponentialMovingAverage(object):
                                  (1.0 + num_updates) / (10.0 + num_updates))
       updates = []
       for var in var_list:
-        updates.append(assign_moving_average(self._averages[var], var, decay))
+        zero_debias = self._averages[var] in zero_debias_true
+        updates.append(assign_moving_average(
+            self._averages[var], var, decay, zero_debias=zero_debias))
       return control_flow_ops.group(*updates, name=scope)
 
   def average(self, var):
