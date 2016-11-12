@@ -25,7 +25,7 @@ and the same dtype (either `float16`, `float32`, or `float64`).
 ##### Args:
 
 
-*  <b>`logits`</b>: Unscaled log probabilities.
+*  <b>`logits`</b>: A non-empty Tensor. Must be one of the following types: half, float32, float64.
 *  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution.
 *  <b>`dim`</b>: The class dimension. Defaulted to -1 which is the last dimension.
 *  <b>`name`</b>: A name for the operation (optional).
