@@ -54,9 +54,7 @@ android_binary(
     name = "tensorflow_demo",
     srcs = glob([
         "src/**/*.java",
-    ]) + [
-        "//tensorflow/contrib/android:android_tensorflow_inference_java_srcs",
-    ],
+    ]),
     # Package assets from assets dir as well as all model targets. Remove undesired models
     # (and corresponding Activities in source) to reduce APK size.
     assets = [
@@ -74,6 +72,7 @@ android_binary(
     ],
     deps = [
         ":tensorflow_native_libs",
+        "//tensorflow/contrib/android:android_tensorflow_inference_java",
     ],
 )
 
