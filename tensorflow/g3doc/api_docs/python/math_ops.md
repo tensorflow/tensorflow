@@ -2317,16 +2317,16 @@ common math computations that reduce various dimensions of a tensor.
 
 - - -
 
-### `tf.reduce_sum(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_sum}
+### `tf.reduce_sum(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_sum}
 
 Computes the sum of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2345,10 +2345,11 @@ tf.reduce_sum(x, [0, 1]) ==> 6
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2357,26 +2358,27 @@ tf.reduce_sum(x, [0, 1]) ==> 6
 
 - - -
 
-### `tf.reduce_prod(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_prod}
+### `tf.reduce_prod(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_prod}
 
 Computes the product of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 ##### Args:
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2385,26 +2387,27 @@ tensor with a single element is returned.
 
 - - -
 
-### `tf.reduce_min(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_min}
+### `tf.reduce_min(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_min}
 
 Computes the minimum of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 ##### Args:
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2413,26 +2416,27 @@ tensor with a single element is returned.
 
 - - -
 
-### `tf.reduce_max(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_max}
+### `tf.reduce_max(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_max}
 
 Computes the maximum of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 ##### Args:
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2441,16 +2445,16 @@ tensor with a single element is returned.
 
 - - -
 
-### `tf.reduce_mean(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_mean}
+### `tf.reduce_mean(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_mean}
 
 Computes the mean of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2467,10 +2471,11 @@ tf.reduce_mean(x, 1) ==> [1.,  2.]
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2479,16 +2484,16 @@ tf.reduce_mean(x, 1) ==> [1.,  2.]
 
 - - -
 
-### `tf.reduce_all(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_all}
+### `tf.reduce_all(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_all}
 
 Computes the "logical and" of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2505,10 +2510,11 @@ tf.reduce_all(x, 1) ==> [True, False]
 
 
 *  <b>`input_tensor`</b>: The boolean tensor to reduce.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2517,16 +2523,16 @@ tf.reduce_all(x, 1) ==> [True, False]
 
 - - -
 
-### `tf.reduce_any(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_any}
+### `tf.reduce_any(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_any}
 
 Computes the "logical or" of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2543,10 +2549,11 @@ tf.reduce_any(x, 1) ==> [True, False]
 
 
 *  <b>`input_tensor`</b>: The boolean tensor to reduce.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2555,16 +2562,16 @@ tf.reduce_any(x, 1) ==> [True, False]
 
 - - -
 
-### `tf.reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_logsumexp}
+### `tf.reduce_logsumexp(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_logsumexp}
 
 Computes log(sum(exp(elements across dimensions of a tensor))).
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 This function is more numerically stable than log(sum(exp(input))). It avoids
@@ -2587,10 +2594,11 @@ tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -2599,16 +2607,16 @@ tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
 
 - - -
 
-### `tf.count_nonzero(input_tensor, reduction_indices=None, keep_dims=False, dtype=tf.int64, name=None)` {#count_nonzero}
+### `tf.count_nonzero(input_tensor, axis=None, keep_dims=False, dtype=tf.int64, name=None, reduction_indices=None)` {#count_nonzero}
 
 Computes number of nonzero elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 **NOTE** Floating point comparison to zero is done by exact floating point
@@ -2631,11 +2639,12 @@ tf.count_nonzero(x, [0, 1]) ==> 3
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should be of numeric type, or `bool`.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`dtype`</b>: The output dtype; defaults to `tf.int64`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -3217,17 +3226,17 @@ a tensor.
 
 - - -
 
-### `tf.argmin(input, dimension, name=None)` {#argmin}
+### `tf.argmin(input, axis=None, name=None, dimension=None)` {#argmin}
 
-Returns the index with the smallest value across dimensions of a tensor.
+Returns the index with the smallest value across axiss of a tensor.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    int32, 0 <= dimension < rank(input).  Describes which dimension
-    of the input Tensor to reduce across. For vectors, use dimension = 0.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    int32, 0 <= axis < rank(input).  Describes which axis
+    of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3237,17 +3246,17 @@ Returns the index with the smallest value across dimensions of a tensor.
 
 - - -
 
-### `tf.argmax(input, dimension, name=None)` {#argmax}
+### `tf.argmax(input, axis=None, name=None, dimension=None)` {#argmax}
 
-Returns the index with the largest value across dimensions of a tensor.
+Returns the index with the largest value across axiss of a tensor.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    int32, 0 <= dimension < rank(input).  Describes which dimension
-    of the input Tensor to reduce across. For vectors, use dimension = 0.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    int32, 0 <= axis < rank(input).  Describes which axis
+    of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

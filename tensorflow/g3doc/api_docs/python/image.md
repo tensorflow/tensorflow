@@ -23,6 +23,30 @@ to be stripped from the image and re-attached using slicing ops.
 
 - - -
 
+### `tf.image.decode_gif(contents, name=None)` {#decode_gif}
+
+Decode the first frame of a GIF-encoded image to a uint8 tensor.
+
+GIF with frame or transparency compression are not supported
+convert animated GIF from compressed to uncompressed by:
+
+convert $src.gif -coalesce $dst.gif
+
+##### Args:
+
+
+*  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The GIF-encoded image.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `uint8`.
+  4-D with shape `[num_frames, height, width, 3]`. RGB order
+
+
+
+- - -
+
 ### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, name=None)` {#decode_jpeg}
 
 Decode a JPEG-encoded image to a uint8 tensor.
@@ -356,7 +380,6 @@ Resize `images` to `size` using nearest neighbor interpolation.
 
   A `Tensor`. Has the same type as `images`. 4-D with shape
   `[batch, new_height, new_width, channels]`.
-
 
 
 

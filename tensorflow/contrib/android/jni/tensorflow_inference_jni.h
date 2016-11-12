@@ -40,6 +40,8 @@ extern "C" {
       JNIEnv * env, jobject thiz, jstring node_name_jstring, \
       j##JAVA_DTYPE##Array arr)
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(testLoaded)(JNIEnv* env, jobject thiz);
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model);
 

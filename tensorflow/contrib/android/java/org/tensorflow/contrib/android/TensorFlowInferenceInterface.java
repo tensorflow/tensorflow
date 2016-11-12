@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
+import android.util.Log;
 import java.util.Random;
 
 /**
@@ -25,6 +26,8 @@ import java.util.Random;
  * for an example usage.
  * */
 public class TensorFlowInferenceInterface {
+  private static final String TAG = "TensorFlowInferenceInterface";
+
   /**
    * A unique identifier used to associate the Java TensorFlowInferenceInterface
    * with its associated native variables.
@@ -35,6 +38,23 @@ public class TensorFlowInferenceInterface {
 
   public TensorFlowInferenceInterface() {
     id = new Random().nextLong();
+
+    // Fallback to loading from the default libtensorflow_inference.so
+    // only if the app hasn't already loaded a library containing the
+    // native TF bindings.
+    try {
+      testLoaded();
+      Log.i(TAG, "Native methods already loaded.");
+    } catch (UnsatisfiedLinkError e1) {
+      Log.i(TAG, "Loading tensorflow_inference.");
+      try {
+        System.loadLibrary("tensorflow_inference");
+      } catch (UnsatisfiedLinkError e2) {
+        throw new RuntimeException(
+            "Native TF methods not found; check that the correct native"
+                + " libraries are present and loaded.");
+      }
+    }
   }
 
   /**
@@ -73,4 +93,11 @@ public class TensorFlowInferenceInterface {
   public native void readNodeFloat(String outputName, float[] values);
   public native void readNodeInt(String outputName, int[] values);
   public native void readNodeDouble(String outputName, double[] values);
+
+  /**
+   * Canary method solely for determining if the tensorflow_inference native library should be
+   * loaded. If the method is already present, assume that another library is providing the
+   * implementations for this class.
+   */
+  private native void testLoaded();
 }

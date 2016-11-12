@@ -190,7 +190,11 @@ Status ReductionShape(shape_inference::InferenceContext* c);
 Status ReductionShapeForReduceJoin(shape_inference::InferenceContext* c);
 
 // Shape function for concat operations.
-Status ConcatShape(shape_inference::InferenceContext* c);
+// <num_inputs_to_concat> is the number of inputs to concatenate and are taken
+// from inputs
+// [1,num_inputs_to_concat] of the op.  Input 0 is the concat_dim input.
+Status ConcatShape(shape_inference::InferenceContext* c,
+                   int num_inputs_to_concat);
 
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
