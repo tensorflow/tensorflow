@@ -679,3 +679,117 @@ def copy_scoped_meta_graph(from_scope, to_scope,
                                       graph=to_graph,
                                       import_scope=to_scope)
   return var_list
+
+
+def export_op_meta_graph(op,
+                         graph=None,
+                         export_scope=None,
+                         as_text=False,
+                         unbound_inputs_col_name="unbound_inputs",
+                         clear_devices=False,
+                         **kwargs):
+  """This function exports an `Operation` object into `MetaGraphDef` protocol
+  buffer with the intention of it being imported at a later time or location.
+
+  Args:
+    op: An `Operation` object to export.
+    graph: The `Graph` to import into. If `None`, use the default graph.
+    export_scope: Optional `string`. Name scope under which to extract the op.
+      The scope name will be striped from the node definitions for easy import
+      later into new name scopes.
+    as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+    unbound_inputs_col_name: Optional `string`. If provided, a string collection
+      with the given name will be added to the returned `MetaGraphDef`,
+      containing the names of tensors that must be remapped when importing the
+      `MetaGraphDef`.
+    clear_devices: Boolean which controls whether to clear device information
+      before exporting the graph.
+    **kwargs: Optional keyed arguments, including meta_info_def,
+      saver_def, collection_list.
+
+  Returns:
+    A `MetaGraphDef` proto and dictionary of `Variables` in the exported
+    name scope.
+  """
+  if not op.name.startswith(export_scope):
+    raise ValueError("The Operation to export is not under 'export_scope'.")
+
+  graph = graph or ops.get_default_graph()
+  unbound_inputs = []
+  graph_def = graph_pb2.GraphDef()
+  # pylint: disable=protected-access
+  graph_def.versions.CopyFrom(graph.graph_def_versions)
+  node_def = _node_def(op.node_def, export_scope, unbound_inputs,
+                       clear_devices=clear_devices)
+  graph_def.node.extend([node_def])
+  if op.outputs:
+    assert "_output_shapes" not in graph_def.node[-1].attr
+    graph_def.node[-1].attr["_output_shapes"].list.shape.extend([
+      output.get_shape().as_proto() for output in op.outputs])
+  bytesize = op.node_def.ByteSize()
+  if bytesize >= (1 << 31) or bytesize < 0:
+    raise ValueError("GraphDef cannot be larger than 2GB.")
+  # It's possible that not all the inputs are in the export_scope.
+  # If we would like such information included in the exported meta_graph,
+  # add them to a special unbound_inputs collection.
+  if unbound_inputs_col_name:
+    # Clears the unbound_inputs collections.
+    graph.clear_collection(unbound_inputs_col_name)
+    for k in unbound_inputs:
+      graph.add_to_collection(unbound_inputs_col_name, k)
+
+  var_list = {}
+  variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                   scope=export_scope)
+  for v in variables:
+    if op is v.op:
+      var_list[ops.strip_name_scope(v.name, export_scope)] = v
+
+  scoped_meta_graph_def = create_meta_graph_def(
+    graph_def=graph_def,
+    graph=graph,
+    export_scope=export_scope,
+    **kwargs)
+
+  return scoped_meta_graph_def, var_list
+
+
+def copy_op_meta_graph(op, from_scope, to_scope,
+                       from_graph=None, to_graph=None):
+  """Copies an `Operation` from one scope to another.
+
+  Args:
+    op: An `Operation` object to be copied.
+    from_scope: `String` name scope containing the op to be copied.
+    to_scope: `String` name scope under which the copied op will reside.
+    from_graph: Optional `Graph` from which to copy the op. If `None`, the
+      default graph is use.
+    to_graph: Optional `Graph` to which to copy the op. If `None`, the
+      default graph is used.
+
+  Returns:
+    The `Operation` and dictionary of `Variables` that have been copied into
+    `to_scope`.
+
+  Raises:
+    ValueError: If `from_scope` and `to_scope` are the same while
+      `from_graph` and `to_graph` are also the same.
+  """
+  from_graph = from_graph or ops.get_default_graph()
+  to_graph = to_graph or ops.get_default_graph()
+
+  if from_graph == to_graph and from_scope == to_scope:
+    raise ValueError("'from_scope' and 'to_scope' need to be different "
+                     "when performing copy in the same graph.")
+  if not op.name.startswith(from_scope):
+    raise ValueError("The Operation to copy is not under 'from_scope'.")
+
+  orig_meta_graph, var_list = export_op_meta_graph(
+    op, export_scope=from_scope, graph=from_graph)
+  var_list = import_scoped_meta_graph(orig_meta_graph,
+                                      graph=to_graph,
+                                      import_scope=to_scope)
+  new_op_name = ops.prepend_name_scope(
+    ops.strip_name_scope(op.name, from_scope), to_scope)
+  new_op = to_graph.as_graph_element(new_op_name, allow_tensor=False)
+  return new_op, var_list
