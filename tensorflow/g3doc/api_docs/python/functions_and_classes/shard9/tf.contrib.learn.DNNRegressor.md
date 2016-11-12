@@ -28,11 +28,11 @@ estimator = DNNRegressor(
     ))
 
 # Input builders
-def input_fn_train: # returns x, Y
+def input_fn_train: # returns x, y
   pass
 estimator.fit(input_fn=input_fn_train)
 
-def input_fn_eval: # returns x, Y
+def input_fn_eval: # returns x, y
   pass
 estimator.evaluate(input_fn=input_fn_eval)
 estimator.predict(x=x)
