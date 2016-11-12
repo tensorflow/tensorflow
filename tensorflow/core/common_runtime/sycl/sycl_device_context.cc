@@ -81,7 +81,7 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor *cpu_tensor,
       break;
     case DT_UINT8:
       device->eigen_sycl_device()->memcpyHostToDevice(
-          static_cast<uint8 *>(dst_ptr), static_cast<uint8 *>(src_ptr),
+          static_cast<uint8 *>(dst_ptr), static_cast<const uint8 *>(src_ptr),
           total_bytes);
       break;
     case DT_UINT16:
