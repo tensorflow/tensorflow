@@ -1925,6 +1925,7 @@ tf_py_wrap_cc(
         "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
+        "util/stat_summarizer.i",
     ],
     deps = [
         ":cpp_shape_inference",
