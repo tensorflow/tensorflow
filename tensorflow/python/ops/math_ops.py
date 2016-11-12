@@ -22,8 +22,7 @@ TensorFlow provides several operations that you can use to add basic arithmetic
 operators to your graph.
 
 @@add
-@@sub
-@@mul
+@@subtract
 @@multiply
 @@scalar_mul
 @@div
@@ -45,7 +44,6 @@ mathematical functions to your graph.
 
 @@add_n
 @@abs
-@@neg
 @@negative
 @@sign
 @@inv
