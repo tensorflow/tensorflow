@@ -6,6 +6,7 @@ Concat
 ConcatV2
 Const
 EditDistance
+ExpandDims
 ListDiff
 MirrorPad
 MirrorPadGrad
@@ -16,6 +17,7 @@ Placeholder
 RefIdentity
 SpaceToBatch
 Split
+SplitV
 Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.

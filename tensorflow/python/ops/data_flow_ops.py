@@ -1097,45 +1097,8 @@ ops.RegisterShape("BarrierInsertMany")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("GetSessionHandle")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("GetSessionTensor")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("DeleteSessionTensor")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("DynamicPartition")
-def _DynamicPartitionShape(op):
-  """Shape function for data_flow_ops.dynamic_partition."""
-  data_shape = op.inputs[0].get_shape()
-  partitions_shape = op.inputs[1].get_shape()
-  # If we don't know the rank of partitions, we don't know anything
-  mid = partitions_shape.ndims
-  if mid is None:
-    result_shape = tensor_shape.unknown_shape()
-  else:
-    # data_shape must start with partitions_shape
-    partitions_shape.assert_is_compatible_with(data_shape[:mid])
-    # The partition shape is dynamic in the 0th dimension, and matches
-    # data_shape in the remaining dimensions.
-    result_shape = tensor_shape.TensorShape([None]).concatenate(
-        data_shape[mid:])
-  return [result_shape] * op.get_attr("num_partitions")
-
-
-@ops.RegisterShape("DynamicStitch")
-def _DynamicStitchShape(op):
-  """Shape function for data_flow_ops.dynamic_stitch."""
-  num_partitions = op.get_attr("N")
-  indices_shapes = [t.get_shape() for t in op.inputs[0:num_partitions]]
-  data_shapes = [t.get_shape() for t in op.inputs[num_partitions:]]
-  output_shape = tensor_shape.unknown_shape()
-  extra_shape = tensor_shape.TensorShape(None)
-  for indices_shape, data_shape in zip(indices_shapes, data_shapes):
-    indices_ndims = indices_shape.ndims
-    if indices_ndims is not None:
-      # Assert that data_shape starts with indices_shape
-      indices_shape.merge_with(data_shape[:indices_ndims])
-      # The rest belongs to output
-      extra_shape = extra_shape.merge_with(data_shape[indices_ndims:])
-  return [tensor_shape.TensorShape([None]).concatenate(extra_shape)]
-
-
+ops.RegisterShape("DynamicPartition")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DynamicStitch")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("LookupTableFind")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("LookupTableInsert")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("LookupTableImport")(common_shapes.call_cpp_shape_fn)

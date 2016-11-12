@@ -42,41 +42,41 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
 
-class SessionDebugTest(test_util.TensorFlowTestCase):
+class SessionDebugTestBase(test_util.TensorFlowTestCase):
+  """Base class for unit tests of tfdbg running with tf.Session."""
+
+  @classmethod
+  def setUpClass(cls):
+    if test.is_gpu_available():
+      cls._expected_partition_graph_count = 2
+      cls._expected_num_devices = 2
+      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+    else:
+      cls._expected_partition_graph_count = 1
+      cls._expected_num_devices = 1
+      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+
+  @classmethod
+  def tearDownClass(cls):
+    pass
 
   def setUp(self):
     self._dump_root = tempfile.mkdtemp()
 
-    if test.is_gpu_available():
-      self._expected_partition_graph_count = 2
-      self._expected_num_devices = 2
-      self._main_device = "/job:localhost/replica:0/task:0/gpu:0"
-    else:
-      self._expected_partition_graph_count = 1
-      self._expected_num_devices = 1
-      self._main_device = "/job:localhost/replica:0/task:0/cpu:0"
-
   def tearDown(self):
+    tf.reset_default_graph()
+
     # Tear down temporary dump directory.
-    shutil.rmtree(self._dump_root)
+    if os.path.isdir(self._dump_root):
+      shutil.rmtree(self._dump_root)
 
-  def _addDebugTensorWatch(self,
-                           run_opts,
-                           node_name,
-                           output_slot,
-                           debug_op="DebugIdentity",
-                           debug_urls=None):
-    watch_opts = run_opts.debug_tensor_watch_opts
+  def _debug_urls(self, run_number=None):
+    raise NotImplementedError(
+        "_debug_urls() method is not implemented in the base test class.")
 
-    # Add debug tensor watch for u.
-    watch = watch_opts.add()
-    watch.node_name = node_name
-    watch.output_slot = 0
-    watch.debug_ops.append(debug_op)
-
-    if debug_urls:
-      for debug_url in debug_urls:
-        watch.debug_urls.append(debug_url)
+  def _debug_dump_dir(self, run_number=None):
+    raise NotImplementedError(
+        "_debug_dump_dir() method is not implemented in the base test class.")
 
   def testDumpToFileOverlappingParentDir(self):
     with session.Session() as sess:
@@ -99,14 +99,14 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       v.initializer.run()
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_url = "file://%s" % self._dump_root
+      debug_urls = "file://%s" % self._dump_root
 
       # Add debug tensor watch for u.
-      self._addDebugTensorWatch(
-          run_options, "%s/read" % u_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s/read" % u_name, 0, debug_urls=debug_urls)
       # Add debug tensor watch for v.
-      self._addDebugTensorWatch(
-          run_options, "%s/read" % v_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s/read" % v_name, 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
 
@@ -158,17 +158,17 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       for i in xrange(2):
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
 
-        run_dump_root = os.path.join(self._dump_root, "run_%d" % i)
-        debug_url = "file://%s" % run_dump_root
+        run_dump_root = self._debug_dump_dir(run_number=i)
+        debug_urls = self._debug_urls(run_number=i)
 
         if i == 0:
           # First debug run: Add debug tensor watch for u.
-          self._addDebugTensorWatch(
-              run_options, "%s/read" % u_name, 0, debug_urls=[debug_url])
+          debug_utils.add_debug_tensor_watch(
+              run_options, "%s/read" % u_name, 0, debug_urls=debug_urls)
         else:
           # Second debug run: Add debug tensor watch for v.
-          self._addDebugTensorWatch(
-              run_options, "%s/read" % v_name, 0, debug_urls=[debug_url])
+          debug_utils.add_debug_tensor_watch(
+              run_options, "%s/read" % v_name, 0, debug_urls=debug_urls)
 
         run_metadata = config_pb2.RunMetadata()
 
@@ -219,14 +219,14 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       str2.initializer.run()
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_url = "file://%s" % self._dump_root
+      debug_urls = self._debug_urls()
 
       # Add debug tensor watch for u.
-      self._addDebugTensorWatch(
-          run_options, "%s/read" % str1_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s/read" % str1_name, 0, debug_urls=debug_urls)
       # Add debug tensor watch for v.
-      self._addDebugTensorWatch(
-          run_options, "%s/read" % str2_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s/read" % str2_name, 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(str_concat, options=run_options, run_metadata=run_metadata)
@@ -269,13 +269,13 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       s = variables.Variable(s_init, name=s_name)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_url = "file://%s" % self._dump_root
+      debug_urls = self._debug_urls()
 
       # Add debug tensor watch for u.
-      self._addDebugTensorWatch(
-          run_options, "%s" % u_name, 0, debug_urls=[debug_url])
-      self._addDebugTensorWatch(
-          run_options, "%s" % s_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s" % u_name, 0, debug_urls=debug_urls)
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s" % s_name, 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
 
@@ -343,19 +343,20 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
 
       # Create RunOptions for debug-watching tensors
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_url = "file://%s" % self._dump_root
+      debug_urls = self._debug_urls()
 
       # Add debug tensor watch for u.
-      self._addDebugTensorWatch(run_options, u_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, u_name, 0, debug_urls=debug_urls)
       # Add debug tensor watch for v.
-      self._addDebugTensorWatch(
-          run_options, "%s/read" % v_name, 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "%s/read" % v_name, 0, debug_urls=debug_urls)
       # Add debug tensor watch for while/Identity.
-      self._addDebugTensorWatch(
-          run_options, "while/Identity", 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "while/Identity", 0, debug_urls=debug_urls)
       # Add debug tensor watch for while/Add/y.
-      self._addDebugTensorWatch(
-          run_options, "while/Add/y", 0, debug_urls=[debug_url])
+      debug_utils.add_debug_tensor_watch(
+          run_options, "while/Add/y", 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
       r = sess.run(loop, options=run_options, run_metadata=run_metadata)
@@ -443,7 +444,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(z, options=run_options, run_metadata=run_metadata)
@@ -493,7 +494,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(w, options=run_options, run_metadata=run_metadata)
@@ -664,7 +665,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(w, options=run_options, run_metadata=run_metadata)
@@ -735,7 +736,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(z, options=run_options, run_metadata=run_metadata)
@@ -774,7 +775,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(train_op, options=run_options, run_metadata=run_metadata)
@@ -840,7 +841,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       run_metadata = config_pb2.RunMetadata()
       result = sess.run(y, options=run_options, run_metadata=run_metadata)
@@ -884,7 +885,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
           run_options,
           sess.graph,
           debug_ops=["DebugIdentity"],
-          debug_urls="file://%s" % self._dump_root)
+          debug_urls=self._debug_urls())
 
       with self.assertRaises(errors.OpError):
         sess.run(y,

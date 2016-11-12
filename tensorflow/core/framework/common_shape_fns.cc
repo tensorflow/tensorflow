@@ -715,12 +715,8 @@ Status ReductionShapeForReduceJoin(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ConcatShapeHelper(InferenceContext* c, bool dim_is_last_argument) {
-  const int dim_index = dim_is_last_argument ? c->num_inputs() - 1 : 0;
-  const int start_value_index = dim_is_last_argument ? 0 : 1;
-  const int end_value_index =
-      dim_is_last_argument ? c->num_inputs() - 1 : c->num_inputs();
-
+Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
+                         int end_value_index, int dim_index) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(dim_index), 0, &unused));
   const Tensor* concat_dim_t = c->input_tensor(dim_index);
@@ -788,12 +784,16 @@ Status ConcatShapeHelper(InferenceContext* c, bool dim_is_last_argument) {
   return Status::OK();
 }
 
-Status ConcatShape(InferenceContext* c) {
-  return ConcatShapeHelper(c, /* dim_is_last_argument */ false);
+Status ConcatShape(InferenceContext* c, int num_inputs_to_concat) {
+  return ConcatShapeHelper(c, 1 /* start_value_index */,
+                           1 + num_inputs_to_concat /* end_value_index */,
+                           0 /* dim_index */);
 }
 
 Status ConcatV2Shape(InferenceContext* c) {
-  return ConcatShapeHelper(c, /* dim_is_last_argument */ true);
+  return ConcatShapeHelper(c, 0 /* start_value_index */,
+                           c->num_inputs() - 1 /* end_value_index */,
+                           c->num_inputs() - 1 /* dim_index */);
 }
 
 Status BroadcastBinaryOpShapeFn(InferenceContext* c) {

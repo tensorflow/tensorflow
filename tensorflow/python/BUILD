@@ -920,7 +920,10 @@ py_library(
 
 py_library(
     name = "image_ops",
-    srcs = ["ops/image_ops.py"],
+    srcs = [
+        "ops/image_ops.py",
+        "ops/image_ops_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
@@ -1925,6 +1928,7 @@ tf_py_wrap_cc(
         "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
+        "util/stat_summarizer.i",
     ],
     deps = [
         ":cpp_shape_inference",
@@ -2340,4 +2344,16 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     main = "ops/concat_benchmark.py",
+)
+
+cuda_py_test(
+    name = "split_benchmark",
+    srcs = [
+        "ops/split_benchmark.py",
+    ],
+    additional_deps = [
+        ":nn_ops",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "ops/split_benchmark.py",
 )

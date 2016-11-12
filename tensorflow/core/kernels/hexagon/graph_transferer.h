@@ -77,10 +77,22 @@ class GraphTransferer {
   GraphTransferer() = default;
 
   // Load graph structure into GraphTransferer
-  void LoadGraphFromProto(const IGraphTransferOpsDefinitions& ops_definitions,
-                          const GraphDef& graph_def,
-                          const std::vector<string>& input_node_names,
-                          const std::vector<string>& output_node_names);
+  Status LoadGraphFromProto(const IGraphTransferOpsDefinitions& ops_definitions,
+                            const GraphDef& graph_def,
+                            const std::vector<string>& input_node_names,
+                            const std::vector<string>& output_node_names);
+
+  // Load graph structure into GraphTransferer from protobuf file
+  Status LoadGraphFromProtoFile(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const string& graph_def_path, const std::vector<string>& input_node_names,
+      const std::vector<string>& output_node_names, const bool is_text_proto);
+
+  // Load graph structure into GraphTransferer from protobuf file
+  Status LoadGraphFromProtoFile(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const string& graph_def_path, const std::vector<string>& input_node_names,
+      const std::vector<string>& output_node_names);
 
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
@@ -136,7 +148,10 @@ class GraphTransferer {
       const string& padding_str, const int inputs_size,
       const std::vector<int>& extra_inputs, const int outputs_size,
       const bool append_input_params, const bool append_output_params);
+  // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
+  // Dump verification string of parameters to verify with offline tools
+  void DumpVerificationStringOfNodeTransferParams() const;
 
   std::vector<NodeTransferParams> node_transfer_params_list_;
   std::vector<ConstNodeTransferParams> const_node_transfer_params_list_;
