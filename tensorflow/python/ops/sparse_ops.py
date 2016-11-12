@@ -558,7 +558,8 @@ def sparse_to_dense(sparse_indices,
       name=name)
 
 
-def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
+def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
+                      reduction_axes=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -589,23 +590,25 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
-    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+    axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis.
 
   Returns:
     The reduced Tensor.
   """
   return gen_sparse_ops.sparse_reduce_sum(
       sp_input.indices, sp_input.values,
-      sp_input.shape, math_ops._ReductionDims(sp_input, reduction_axes),
+      sp_input.shape, math_ops._ReductionDims(sp_input, axis, reduction_axes),
       keep_dims)
 
 
 ops.RegisterShape("SparseReduceSum")(common_shapes.call_cpp_shape_fn)
 
 
-def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
+def sparse_reduce_sum_sparse(sp_input, axis=None, keep_dims=False,
+                             reduction_axes=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -623,9 +626,10 @@ def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
-    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+    axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis
 
   Returns:
     The reduced SparseTensor.
@@ -633,7 +637,8 @@ def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_reduce_sum_sparse(
           sp_input.indices, sp_input.values,
-          sp_input.shape, math_ops._ReductionDims(sp_input, reduction_axes),
+          sp_input.shape, math_ops._ReductionDims(sp_input, axis,
+                                                  reduction_axes),
           keep_dims))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)

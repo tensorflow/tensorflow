@@ -127,6 +127,18 @@ newaxis = None
 _baseslice = slice
 
 
+# pylint: disable=redefined-builtin,protected-access
+def expand_dims(input, axis=None, name=None, dim=None):
+  # TODO(aselle): Remove argument dim
+  if dim is not None:
+    if axis is not None:
+      raise ValueError("can't specify both 'dim' and 'axis'")
+    axis = dim
+  return gen_array_ops._expand_dims(input, axis, name)
+expand_dims.__doc__ = gen_array_ops._expand_dims.__doc__.replace("dim", "axis")
+# pylint: enable=redefined-builtin,protected-access
+
+
 # Aliases for some automatically-generated names.
 # pylint: disable=protected-access
 @deprecated(
@@ -2459,14 +2471,14 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return gen_math_ops.cast(result, dtype)
 
 
-def squeeze(input, squeeze_dims=None, name=None):
+def squeeze(input, axis=None, name=None, squeeze_dims=None):
   # pylint: disable=redefined-builtin
   """Removes dimensions of size 1 from the shape of a tensor.
 
   Given a tensor `input`, this operation returns a tensor of the same type with
   all dimensions of size 1 removed. If you don't want to remove all size 1
   dimensions, you can remove specific size 1 dimensions by specifying
-  `squeeze_dims`.
+  `axis`.
 
   For example:
 
@@ -2484,19 +2496,27 @@ def squeeze(input, squeeze_dims=None, name=None):
 
   Args:
     input: A `Tensor`. The `input` to squeeze.
-    squeeze_dims: An optional list of `ints`. Defaults to `[]`.
+    axis: An optional list of `ints`. Defaults to `[]`.
       If specified, only squeezes the dimensions listed. The dimension
       index starts at 0. It is an error to squeeze a dimension that is not 1.
     name: A name for the operation (optional).
+    squeeze_dims: Deprecated keyword argument that is now axis.
 
   Returns:
     A `Tensor`. Has the same type as `input`.
     Contains the same data as `input`, but has one or more dimensions of
     size 1 removed.
+
+  Raises:
+    ValueError: When both `squeeze_dims` and `axis` are specified.
   """
-  if np.isscalar(squeeze_dims):
-    squeeze_dims = [squeeze_dims]
-  return gen_array_ops._squeeze(input, squeeze_dims, name)
+  if squeeze_dims is not None:
+    if axis is not None:
+      raise ValueError("Cannot specify both 'squeeze_dims' and 'axis'")
+    axis = squeeze_dims
+  if np.isscalar(axis):
+    axis = [axis]
+  return gen_array_ops._squeeze(input, axis, name)
 
 
 def where(condition, x=None, y=None, name=None):
