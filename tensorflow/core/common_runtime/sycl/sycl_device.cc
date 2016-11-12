@@ -42,7 +42,6 @@ SYCLDevice::SYCLDevice(const SessionOptions &options, const string &name,
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
   delete sycl_allocator_;
-  delete cpu_allocator_;
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
@@ -79,10 +78,11 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
   if (alloc_attrs.on_host()) {
     *tensor = parsed;
   } else {
-    Notification n;
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
     device_context_->CopyCPUTensorToDevice(&parsed, this, &copy,
-                                           [&n, &status](const Status &s) {});
+                                           [&status](const Status &s) {
+					       status = s;
+					   });
     *tensor = copy;
   }
   return status;
