@@ -1861,49 +1861,6 @@ def _DelegateReshapeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
 
 
-def _ReshapeShape(op):
-  """Shape function for Reshape op."""
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is not None:
-    num_elements = tensor_shape.Dimension(1)
-    for dim in input_shape.dims:
-      num_elements *= dim
-  else:
-    num_elements = tensor_shape.Dimension(None)
-  new_shape = tensor_util.constant_value_as_shape(op.inputs[1])
-  if new_shape.ndims is None:
-    # We have no information about the shape of the output.
-    return [new_shape]
-  if None not in new_shape.as_list():
-    # The new shape is fully defined.
-    if (num_elements.value is not None
-        and num_elements.value != np.prod(new_shape)):
-      raise ValueError(
-          "Cannot reshape a tensor with %d elements to shape %s (%d elements)"
-          % (num_elements.value, new_shape, np.prod(new_shape)))
-  elif num_elements.value is not None:
-    # We know the number of elements, so we can calculate the missing
-    # dimension in the new_shape.
-    known_elements = 1
-    unknown_indices = []
-    for i, dim in enumerate(new_shape):
-      if dim.value is None:
-        unknown_indices.append(i)
-      else:
-        known_elements *= dim.value
-    if known_elements != 0:
-      if num_elements % known_elements != 0:
-        raise ValueError("input has %s elements, which isn't divisible by %d" %
-                         (num_elements, known_elements))
-      if len(unknown_indices) == 1:
-        unknown_index = unknown_indices[0]
-        new_shape = new_shape.merge_with(
-            new_shape[:unknown_index].concatenate(
-                [num_elements // known_elements]).concatenate(
-                    new_shape[unknown_index+1:]))
-  return [new_shape]
-
-
 ops.RegisterShape("BroadcastGradientArgs")(common_shapes.call_cpp_shape_fn)
 
 
@@ -2592,12 +2549,13 @@ def where(condition, x=None, y=None, name=None):
 
 
 @ops.RegisterShape("QuantizedReshape")
-def _QuantizedReshapeShape(op):
-  return _ReshapeShape(op) + [tensor_shape.scalar(), tensor_shape.scalar()]
+def _DelegateQuantizedReshapeShape(op):
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_as_shapes_needed=[1])
 
-# TODO(cwhipkey): Verify and enable shape functions for these.
-ops.RegisterShape("QuantizeV2")(None)
-ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
+ops.RegisterShape("QuantizeV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(
+    common_shapes.call_cpp_shape_fn)
 
 ops.RegisterShape("QuantizedConcat")(common_shapes.call_cpp_shape_fn)
 
