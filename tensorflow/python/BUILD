@@ -920,7 +920,10 @@ py_library(
 
 py_library(
     name = "image_ops",
-    srcs = ["ops/image_ops.py"],
+    srcs = [
+        "ops/image_ops.py",
+        "ops/image_ops_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
