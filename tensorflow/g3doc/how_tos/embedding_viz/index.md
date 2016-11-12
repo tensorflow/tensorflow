@@ -81,7 +81,7 @@ summary_writer = tf.train.SummaryWriter(LOG_DIR)
 config = projector.ProjectorConfig()
 
 # You can add multiple embeddings. Here we add only one.
-embedding = config.embedding.add()
+embedding = config.embeddings.add()
 embedding.tensor_name = embedding_var.name
 # Link this tensor to its metadata file (e.g. labels).
 embedding.metadata_path = os.path.join(LOG_DIR, 'metadata.tsv')
