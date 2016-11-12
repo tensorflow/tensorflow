@@ -100,14 +100,6 @@ file(GLOB_RECURSE tf_core_gpu_kernels_srcs
    "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
 )
 
-if(WIN32)
-  file(GLOB_RECURSE tf_core_gpu_kernels_exclude_srcs
-      # not working on windows yet
-      "${tensorflow_source_dir}/tensorflow/core/kernels/avgpooling_op_gpu.cu.cc"
-  )
-  list(REMOVE_ITEM tf_core_gpu_kernels_srcs ${tf_core_gpu_kernels_exclude_srcs})
-endif(WIN32)
-
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)
 
