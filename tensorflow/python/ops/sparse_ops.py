@@ -1690,7 +1690,8 @@ def _take_many_sparse_from_tensors_map(
   if sparse_map_op.type not in ("AddSparseToTensorsMap",
                                 "AddManySparseToTensorsMap"):
     raise TypeError("sparse_map_op must be one of AddSparseToTensorsMap or "
-                    "AddSparseToTensorsMap")
+                    "AddSparseToTensorsMap. Instead, found `%s`." %
+                    sparse_map_op.type)
   with ops.colocate_with(sparse_map_op):
     shared_name = sparse_map_op.get_attr("shared_name") or sparse_map_op.name
     output_indices, output_values, output_shape = (
