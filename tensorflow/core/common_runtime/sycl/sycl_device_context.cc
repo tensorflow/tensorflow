@@ -69,6 +69,26 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor *cpu_tensor,
           static_cast<std::complex<double> *>(dst_ptr),
           static_cast<const std::complex<double> *>(src_ptr), total_bytes);
       break;
+    case DT_INT8:
+      device->eigen_sycl_device()->memcpyHostToDevice(
+          static_cast<int8 *>(dst_ptr), static_cast<const int8 *>(src_ptr),
+          total_bytes);
+      break;
+    case DT_INT16:
+      device->eigen_sycl_device()->memcpyHostToDevice(
+          static_cast<int16 *>(dst_ptr), static_cast<const int16 *>(src_ptr),
+          total_bytes);
+      break;
+    case DT_UINT8:
+      device->eigen_sycl_device()->memcpyHostToDevice(
+          static_cast<uint8 *>(dst_ptr), static_cast<uint8 *>(src_ptr),
+          total_bytes);
+      break;
+    case DT_UINT16:
+      device->eigen_sycl_device()->memcpyHostToDevice(
+          static_cast<uint16 *>(dst_ptr), static_cast<const uint16 *>(src_ptr),
+          total_bytes);
+      break;
     default:
       assert(false && "unsupported type");
     }
@@ -121,6 +141,26 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
       device->eigen_sycl_device()->memcpyDeviceToHost(
           static_cast<std::complex<double> *>(dst_ptr),
           static_cast<const std::complex<double> *>(src_ptr), total_bytes);
+      break;
+    case DT_INT8:
+      device->eigen_sycl_device()->memcpyDeviceToHost(
+          static_cast<int8 *>(dst_ptr), static_cast<const in8 *>(src_ptr),
+          total_bytes);
+      break;
+    case DT_INT16:
+      device->eigen_sycl_device()->memcpyDeviceToHost(
+          static_cast<int16 *>(dst_ptr), static_cast<const int16 *>(src_ptr),
+          total_bytes);
+      break;
+    case DT_UINT8:
+      device->eigen_sycl_device()->memcpyDeviceToHost(
+          static_cast<uint8 *>(dst_ptr), static_cast<const uint8 *>(src_ptr),
+          total_bytes);
+      break;
+    case DT_UINT16:
+      device->eigen_sycl_device()->memcpyDeviceToHost(
+          static_cast<uint16 *>(dst_ptr), static_cast<const uint16 *>(src_ptr),
+          total_bytes);
       break;
 
     default:
