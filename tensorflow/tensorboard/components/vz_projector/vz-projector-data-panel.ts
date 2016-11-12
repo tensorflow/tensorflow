@@ -296,7 +296,7 @@ export class DataPanel extends DataPanelPolymer {
       fileReader.readAsText(file);
     });
 
-    let uploadButton = this.dom.select('#upload');
+    let uploadButton = this.dom.select('#upload-tensors');
     uploadButton.on(
         'click', () => { (fileInput.node() as HTMLInputElement).click(); });
 
@@ -318,12 +318,6 @@ export class DataPanel extends DataPanelPolymer {
     let uploadMetadataButton = this.dom.select('#upload-metadata');
     uploadMetadataButton.on('click', () => {
       (fileMetadataInput.node() as HTMLInputElement).click();
-    });
-
-    let hostEmbeddingButton = this.dom.select('#host-embedding');
-    hostEmbeddingButton.on('click', () => {
-      let projectorConfigDialog = this.$$('#projector-config-dialog') as any;
-      projectorConfigDialog.open();
     });
 
     // Fill out the projector config.

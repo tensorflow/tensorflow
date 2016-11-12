@@ -95,11 +95,6 @@ paper-dropdown-menu paper-item {
   padding-left: 20px;
 }
 
-#upload-buttons {
-  display: flex;
-  justify-content: space-between;
-}
-
 #normalize-data-checkbox {
   margin: 10px 0;
 }
@@ -132,6 +127,27 @@ paper-dropdown-menu paper-item {
 
 .projector-config-dialog-container {
   padding: 24px;
+}
+
+.code {
+  background-color: #f7f7f7;
+  display: table;
+  font-family: monospace;
+  margin-top: 7px;
+  padding: 15px;
+}
+
+.delimiter {
+  color: #B71C1C;
+}
+
+.upload-step {
+  display: flex;
+  justify-content: space-between;
+}
+
+.upload-step paper-button {
+  margin-left: 30px;
 }
 
 </style>
@@ -200,33 +216,69 @@ paper-dropdown-menu paper-item {
       it unit norm.
     </paper-tooltip>
   </paper-checkbox>
-  <!-- Upload buttons -->
-  <div id="upload-buttons">
-    <!-- Upload data -->
-    <div>
-      <paper-button id="upload" title="Upload a TSV file" class="ink-button">Upload data</paper-button>
-      <input type="file" id="file" name="file"/>
-    </div>
-    <!-- Upload metadata -->
-    <div>
-      <paper-button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload Metadata</paper-button>
-      <input type="file" id="file-metadata" name="file-metadata"/>
-    </div>
-    <br>
+  <div>
+    <span>
+      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
+        Upload data from your computer
+      </paper-tooltip>
+      <paper-button id="upload" title="Upload data" class="ink-button" onclick="dataDialog.open()">Upload data</paper-button>
+    </span>
+    <span>
+      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
+        Publish your embedding visualization and data
+      </paper-tooltip>
+      <paper-button id="host-embedding" class="ink-button" onclick="projectorConfigDialog.open()">Publish</paper-button>
+    </span>
   </div>
   <div class="dirs">
     <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
     <div class="dir">Metadata: <span id="metadata-file"></span></div>
   </div>
   <div>
-    <div>
-      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
-        Publish your embedding visualization and data
-      </paper-tooltip>
-      <paper-button id="host-embedding" class="ink-button">Publish</paper-button>
-    </div>
-    <paper-dialog id="projector-config-dialog" with-backdrop>
-      <h2>Publish your embedding visualization and data.</h2>
+    <paper-dialog id="dataDialog" with-backdrop>
+      <h2>Upload data from your computer</h2>
+      <paper-dialog-scrollable>
+        <div class="data-step">
+          <div class="upload-step">
+            <div><b>Step 1: Upload a TSV file of vectors.</b></div>
+            <div>
+              <paper-button id="upload-tensors" title="Upload a TSV tensor file">Upload</paper-button>
+              <input type="file" id="file" name="file"/>
+            </div>
+          </div>
+          Example of 3 vectors with dimension 4:
+          <div class="code">
+            0.1<span class="delimiter">\t</span>0.2<span class="delimiter">\t</span>0.5<span class="delimiter">\t</span>0.9<br/>
+            0.2<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>5.0<span class="delimiter">\t</span>0.2<br/>
+            0.4<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>7.0<span class="delimiter">\t</span>0.8
+          </div>
+          <p>
+
+          </p>
+        </div>
+        <div style="height: 60px;"></div>
+        <div class="data-step">
+          <div class="upload-step">
+            <div><b>Step 2 (optional): Upload a TSV file of metadata.</b></div>
+            <div>
+              <paper-button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload</paper-button>
+              <input type="file" id="file-metadata" name="file-metadata"/>
+            </div>
+          </div>
+          Example of 3 data points and 2 columns.<br/>
+          Note that the first row is a header.
+          <div class="code">
+            <b>Pokémon<span class="delimiter">\t</span>Species</b><br/>
+            Wartortle<span class="delimiter">\t</span>Turtle<br/>
+            Venusaur<span class="delimiter">\t</span>Seed<br/>
+            Charmeleon<span class="delimiter">\t</span>Flame
+          </div>
+        </div>
+      </paper-dialog-scrollable>
+      <div class="dismiss-dialog-note">Click outside to dismiss.</div>
+    </paper-dialog>
+    <paper-dialog id="projectorConfigDialog" with-backdrop>
+      <h2>Publish your embedding visualization and data</h2>
       <paper-dialog-scrollable>
         <div>
           <p>
