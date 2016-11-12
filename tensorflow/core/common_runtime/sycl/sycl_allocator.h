@@ -17,29 +17,32 @@ limitations under the License.
 #error This file must only be included when building TensorFlow with SYCL support
 #endif
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_
-#define TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_
+#ifndef TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
+#define TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/platform/types.h"
+#define EIGEN_USE_SYCL
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
-class SYCLDeviceContext : public DeviceContext {
+class SYCLAllocator : public Allocator {
 public:
-  SYCLDeviceContext() {}
+  SYCLAllocator();
 
-  ~SYCLDeviceContext() override {}
+  virtual ~SYCLAllocator() override;
+  string Name() override;
+  void *AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void DeallocateRaw(void *ptr) override;
 
-  void CopyCPUTensorToDevice(const Tensor *cpu_tensor, Device *device,
-                             Tensor *device_tensor,
-                             StatusCallback done) const override;
+  Eigen::SyclDevice *get_device();
 
-  void CopyDeviceTensorToCPU(const Tensor *device_tensor, StringPiece edge_name,
-                             Device *device, Tensor *cpu_tensor,
-                             StatusCallback done) override;
+private:
+  Eigen::SyclDevice *device_;
+  TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);
 };
 
 } // namespace tensorflow
 
-#endif // TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_
+#endif // TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
