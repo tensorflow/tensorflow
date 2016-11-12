@@ -326,14 +326,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       ))
 
   # Input builders
-  def input_fn_train: # returns x, Y
+  def input_fn_train: # returns x, y (where y represents label's class index).
     pass
   estimator.fit(input_fn=input_fn_train)
 
-  def input_fn_eval: # returns x, Y
+  def input_fn_eval: # returns x, y (where y represents label's class index).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -377,7 +377,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model.
       n_classes: number of label classes. Default is binary classification.
-        It must be greater than 1.
+        It must be greater than 1. Note: Class labels are integers representing
+        the class index (i.e. values from 0 to n_classes-1). For arbitrary
+        label values (e.g. string labels), convert to class indices first.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -436,7 +438,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
-    """See trainable.Trainable."""
+    """See trainable.Trainable. Note: Labels must be integer class indices."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
     hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
     self._estimator.fit(x=x,
@@ -450,7 +452,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
-    """See evaluable.Evaluable."""
+    """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     if metrics is None:
       metrics = {}
     metrics.update({
@@ -485,7 +487,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
+      as_iterable is True). Each predicted class is represented by its class
+      index (i.e. integer from 0 to n_classes-1).
     """
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size, outputs=[_CLASSES],
@@ -512,7 +515,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
+      probabilities if as_iterable is True). Each predicted class is represented
+      by its class index (i.e. integer from 0 to n_classes-1).
     """
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
@@ -633,11 +637,11 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       ))
 
   # Input builders
-  def input_fn_train: # returns x, Y
+  def input_fn_train: # returns x, y
     pass
   estimator.fit(input_fn=input_fn_train)
 
-  def input_fn_eval: # returns x, Y
+  def input_fn_eval: # returns x, y
     pass
   estimator.evaluate(input_fn=input_fn_eval)
   estimator.predict(x=x)

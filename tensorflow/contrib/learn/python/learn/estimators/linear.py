@@ -296,13 +296,13 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
      ))
 
   # Input builders
-  def input_fn_train: # returns x, y
+  def input_fn_train: # returns x, y (where y represents label's class index).
     ...
-  def input_fn_eval: # returns x, y
+  def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -341,6 +341,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
       n_classes: number of label classes. Default is binary classification.
+        Note that class labels are integers representing the class index (i.e.
+        values from 0 to n_classes-1). For arbitrary label values (e.g. string
+        labels), convert to class indices first.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -429,7 +432,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
-    """See trainable.Trainable."""
+    """See trainable.Trainable. Note: Labels must be integer class indices."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
     hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
     if self._additional_run_hook:
@@ -445,7 +448,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
-    """See evaluable.Evaluable."""
+    """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)
@@ -454,7 +457,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Runs inference to determine the predicted class."""
+    """Runs inference to determine the predicted class (i.e. class index)."""
     key = prediction_key.PredictionKey.CLASSES
     preds = self._estimator.predict(
         x=x,

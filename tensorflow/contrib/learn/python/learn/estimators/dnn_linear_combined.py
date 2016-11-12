@@ -576,13 +576,13 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
       dnn_optimizer=tf.train.AdagradOptimizer(...))
 
   # Input builders
-  def input_fn_train: # returns x, y
+  def input_fn_train: # returns x, y (where y represents label's class index).
     ...
-  def input_fn_eval: # returns x, y
+  def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -622,6 +622,9 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
       n_classes: number of label classes. Default is binary classification.
+        Note that class labels are integers representing the class index (i.e.
+        values from 0 to n_classes-1). For arbitrary label values (e.g. string
+        labels), convert to class indices first.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training.
         It will be multiplied by the loss of the example.
@@ -734,7 +737,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
+      as_iterable is True). Each predicted class is represented by its class
+      index (i.e. integer from 0 to n_classes-1).
     """
     key = prediction_key.PredictionKey.CLASSES
     preds = self._estimator.predict(
@@ -765,7 +769,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
+      probabilities if as_iterable is True). Each predicted class is represented
+      by its class index (i.e. integer from 0 to n_classes-1).
     """
     key = prediction_key.PredictionKey.PROBABILITIES
     preds = self._estimator.predict(
