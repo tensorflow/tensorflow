@@ -219,8 +219,11 @@ class Scaffold(object):
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
-                             hooks=None,
                              scaffold=None,
+                             hooks=None,
+                             chief_only_hooks=None,
+                             save_checkpoint_secs=600,
+                             save_summaries_steps=100,
                              config=None):
   """Creates a `MonitoredSession` for training.
 
@@ -237,10 +240,20 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       initialize or recover the TensorFlow session.
     checkpoint_dir: A string.  Optional path to a directory where to restore
       variables.
-    hooks: Optional list of `SessionRunHook` objects.
     scaffold: A `Scaffold` used for gathering or building supportive ops. If
       not specified, a default one is created. It's used to finalize the graph.
-    config: `ConfigProto` proto used to configure the session.
+    hooks: Optional list of `SessionRunHook` objects.
+    chief_only_hooks: list of `SessionRunHook` objects. Activate these hooks if
+      `is_chief==True`, ignore otherwise.
+    save_checkpoint_secs: The frequency, in seconds, that a checkpoint is saved
+      using a default checkpoint saver. If `save_checkpoint_secs` is set to
+      `None`, then the default checkpoint saver isn't used.
+    save_summaries_steps: The frequency, in number of global steps, that the
+      summaries are written to disk using a default summary saver. If
+      `save_summaries_steps` is set to `None`, then the default summary saver
+      isn't used.
+    config: an instance of `tf.ConfigProto` proto used to configure the session.
+      It's the `config` argument of constructor of `tf.Session`.
 
   Returns:
     A `MonitoredSession` object.
@@ -250,19 +263,28 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold, master=master, config=config)
-  else:
-    session_creator = ChiefSessionCreator(
-        scaffold=scaffold,
-        checkpoint_dir=checkpoint_dir,
-        master=master,
-        config=config)
-    hooks.extend([
-        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir),
-        basic_session_run_hooks.SummarySaverHook(
-            scaffold=scaffold, save_steps=100, output_dir=checkpoint_dir),
-        basic_session_run_hooks.CheckpointSaverHook(
-            checkpoint_dir, save_secs=600, scaffold=scaffold),
-    ])
+    return MonitoredSession(session_creator=session_creator, hooks=hooks)
+
+  if chief_only_hooks:
+    hooks.extend(chief_only_hooks)
+  session_creator = ChiefSessionCreator(
+      scaffold=scaffold,
+      checkpoint_dir=checkpoint_dir,
+      master=master,
+      config=config)
+
+  if checkpoint_dir:
+    hooks.append(
+        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
+
+    if save_summaries_steps > 0:
+      hooks.append(basic_session_run_hooks.SummarySaverHook(
+          scaffold=scaffold,
+          save_steps=save_summaries_steps,
+          output_dir=checkpoint_dir))
+    if save_checkpoint_secs > 0:
+      hooks.append(basic_session_run_hooks.CheckpointSaverHook(
+          checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
 
   return MonitoredSession(session_creator=session_creator, hooks=hooks)
 
