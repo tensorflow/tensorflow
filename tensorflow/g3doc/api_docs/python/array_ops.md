@@ -423,14 +423,14 @@ reshape(t, []) ==> 7
 
 - - -
 
-### `tf.squeeze(input, squeeze_dims=None, name=None)` {#squeeze}
+### `tf.squeeze(input, axis=None, name=None, squeeze_dims=None)` {#squeeze}
 
 Removes dimensions of size 1 from the shape of a tensor.
 
 Given a tensor `input`, this operation returns a tensor of the same type with
 all dimensions of size 1 removed. If you don't want to remove all size 1
 dimensions, you can remove specific size 1 dimensions by specifying
-`squeeze_dims`.
+`axis`.
 
 For example:
 
@@ -450,10 +450,11 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
 
 *  <b>`input`</b>: A `Tensor`. The `input` to squeeze.
-*  <b>`squeeze_dims`</b>: An optional list of `ints`. Defaults to `[]`.
+*  <b>`axis`</b>: An optional list of `ints`. Defaults to `[]`.
     If specified, only squeezes the dimensions listed. The dimension
     index starts at 0. It is an error to squeeze a dimension that is not 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`squeeze_dims`</b>: Deprecated keyword argument that is now axis.
 
 ##### Returns:
 
@@ -461,50 +462,55 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
   Contains the same data as `input`, but has one or more dimensions of
   size 1 removed.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: When both `squeeze_dims` and `axis` are specified.
+
 
 - - -
 
-### `tf.expand_dims(input, dim, name=None)` {#expand_dims}
+### `tf.expand_dims(input, axis=None, name=None, dim=None)` {#expand_dims}
 
-Inserts a dimension of 1 into a tensor's shape.
+Inserts a axisension of 1 into a tensor's shape.
 
-Given a tensor `input`, this operation inserts a dimension of 1 at the
-dimension index `dim` of `input`'s shape. The dimension index `dim` starts at
-zero; if you specify a negative number for `dim` it is counted backward from
+Given a tensor `input`, this operation inserts a axisension of 1 at the
+axisension index `axis` of `input`'s shape. The axisension index `axis` starts at
+zero; if you specify a negative number for `axis` it is counted backward from
 the end.
 
-This operation is useful if you want to add a batch dimension to a single
+This operation is useful if you want to add a batch axisension to a single
 element. For example, if you have a single image of shape `[height, width,
-channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
+channels]`, you can make it a batch of 1 image with `expand_axiss(image, 0)`,
 which will make the shape `[1, height, width, channels]`.
 
 Other examples:
 
 ```prettyprint
 # 't' is a tensor of shape [2]
-shape(expand_dims(t, 0)) ==> [1, 2]
-shape(expand_dims(t, 1)) ==> [2, 1]
-shape(expand_dims(t, -1)) ==> [2, 1]
+shape(expand_axiss(t, 0)) ==> [1, 2]
+shape(expand_axiss(t, 1)) ==> [2, 1]
+shape(expand_axiss(t, -1)) ==> [2, 1]
 
 # 't2' is a tensor of shape [2, 3, 5]
-shape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]
-shape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]
-shape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]
+shape(expand_axiss(t2, 0)) ==> [1, 2, 3, 5]
+shape(expand_axiss(t2, 2)) ==> [2, 3, 1, 5]
+shape(expand_axiss(t2, 3)) ==> [2, 3, 5, 1]
 ```
 
 This operation requires that:
 
-`-1-input.dims() <= dim <= input.dims()`
+`-1-input.axiss() <= axis <= input.axiss()`
 
-This operation is related to `squeeze()`, which removes dimensions of
+This operation is related to `squeeze()`, which removes axisensions of
 size 1.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`.
-*  <b>`dim`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    0-D (scalar). Specifies the dimension index at which to
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    0-D (scalar). Specifies the axisension index at which to
     expand the shape of `input`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -512,7 +518,7 @@ size 1.
 
   A `Tensor`. Has the same type as `input`.
   Contains the same data as `input`, but its shape has an additional
-  dimension of size 1 added.
+  axisension of size 1 added.
 
 
 - - -

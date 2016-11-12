@@ -379,6 +379,7 @@
   * [`convert_image_dtype`](../../api_docs/python/image.md#convert_image_dtype)
   * [`crop_and_resize`](../../api_docs/python/image.md#crop_and_resize)
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
+  * [`decode_gif`](../../api_docs/python/image.md#decode_gif)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
   * [`draw_bounding_boxes`](../../api_docs/python/image.md#draw_bounding_boxes)
