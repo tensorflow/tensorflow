@@ -150,7 +150,6 @@
   * [`fake_quant_with_min_max_vars_per_channel_gradient`](../../api_docs/python/array_ops.md#fake_quant_with_min_max_vars_per_channel_gradient)
   * [`gather`](../../api_docs/python/array_ops.md#gather)
   * [`gather_nd`](../../api_docs/python/array_ops.md#gather_nd)
-  * [`listdiff`](../../api_docs/python/array_ops.md#listdiff)
   * [`meshgrid`](../../api_docs/python/array_ops.md#meshgrid)
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
