@@ -38,7 +38,7 @@ Returns x + y element-wise.
 
 - - -
 
-### `tf.sub(x, y, name=None)` {#sub}
+### `tf.subtract(x, y, name=None)` {#subtract}
 
 Returns x - y element-wise.
 
@@ -49,27 +49,6 @@ Returns x - y element-wise.
 
 
 *  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
-
-
-- - -
-
-### `tf.mul(x, y, name=None)` {#mul}
-
-Returns x * y element-wise.
-
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -440,26 +419,6 @@ number.
 
   A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
     values.
-
-
-- - -
-
-### `tf.neg(x, name=None)` {#neg}
-
-Computes numerical negative value element-wise.
-
-I.e., \(y = -x\).
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -3497,5 +3456,69 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`. 1-D.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.mul(x, y, name=None)` {#mul}
+
+Returns x * y element-wise.
+
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.neg(x, name=None)` {#neg}
+
+Computes numerical negative value element-wise.
+
+I.e., \(y = -x\).
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+
+- - -
+
+### `tf.sub(x, y, name=None)` {#sub}
+
+Returns x - y element-wise.
+
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
 
 

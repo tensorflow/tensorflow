@@ -293,6 +293,7 @@
   * [`square`](../../api_docs/python/math_ops.md#square)
   * [`squared_difference`](../../api_docs/python/math_ops.md#squared_difference)
   * [`sub`](../../api_docs/python/math_ops.md#sub)
+  * [`subtract`](../../api_docs/python/math_ops.md#subtract)
   * [`svd`](../../api_docs/python/math_ops.md#svd)
   * [`tan`](../../api_docs/python/math_ops.md#tan)
   * [`trace`](../../api_docs/python/math_ops.md#trace)
