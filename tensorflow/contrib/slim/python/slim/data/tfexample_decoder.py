@@ -311,16 +311,25 @@ class Image(ItemHandler):
     def decode_raw():
       return parsing_ops.decode_raw(image_buffer, dtypes.uint8)
     def decode_jpg():
-      # JPEG decoder cannot support channels >3.
-      channels = min(self._channels, 3)
-      return image_ops.decode_jpeg(image_buffer, channels)
+      return image_ops.decode_jpeg(image_buffer, self._channels)
 
-    image = control_flow_ops.case({
+    # For RGBA images JPEG is not a valid decoder option.
+    if self._channels > 3:
+      pred_fn_pairs = {
+        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
+                            math_ops.equal(image_format, 'RAW')): decode_raw,
+      }
+      default_decoder = decode_png
+    else:
+      pred_fn_pairs = {
         math_ops.logical_or(math_ops.equal(image_format, 'png'),
                             math_ops.equal(image_format, 'PNG')): decode_png,
         math_ops.logical_or(math_ops.equal(image_format, 'raw'),
                             math_ops.equal(image_format, 'RAW')): decode_raw,
-    }, default=decode_jpg, exclusive=True)
+      }
+      default_decoder = decode_jpg
+
+    image = control_flow_ops.case(pred_fn_pairs, default=default_decoder, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:
