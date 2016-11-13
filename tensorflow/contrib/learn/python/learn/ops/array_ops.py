@@ -22,8 +22,12 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated("2016-12-01",
+            "one_hot_matrix is deprecated, "
+            "please use tf.one_hot instead")
 def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
   """Encodes indices from given tensor as one-hot tensor.
 

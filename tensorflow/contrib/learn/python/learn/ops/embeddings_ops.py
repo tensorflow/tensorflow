@@ -28,8 +28,12 @@ from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated("2016-12-01",
+            "embedding_lookup is deprecated, "
+            "please use tf.contrib.layers.embed_sequence instead")
 def embedding_lookup(params, ids, name="embedding_lookup"):
   """Provides a N dimensional version of tf.embedding_lookup.
 
@@ -63,6 +67,9 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
     return embeds
 
 
+@deprecation.deprecated("2016-12-01",
+            "categorical_variable is deprecated, "
+            "please use tf.contrib.layers.embed_sequence instead")
 def categorical_variable(tensor_in, n_classes, embedding_size, name):
   """Creates an embedding for categorical variable with given number of classes.
 
