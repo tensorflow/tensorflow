@@ -463,14 +463,5 @@ class ScopedMetaGraphTest(tf.test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
 
 
-class OpMetaGraphTest(tf.test.TestCase):
-
-    def testOpExport(self):
-        pass
-
-    def testOpCopy(self):
-        pass
-
-
 if __name__ == "__main__":
   tf.test.main()
