@@ -314,7 +314,9 @@ class Image(ItemHandler):
     def decode_raw():
       return parsing_ops.decode_raw(image_buffer, dtypes.uint8)
     def decode_jpg():
-      return image_ops.decode_jpeg(image_buffer, self._channels)
+      # JPEG decoder cannot support channels >3.
+      channels = min(self._channels, 3)
+      return image_ops.decode_jpeg(image_buffer, channels)
 
     image = control_flow_ops.case({
         math_ops.logical_or(math_ops.equal(image_format, 'png'),
