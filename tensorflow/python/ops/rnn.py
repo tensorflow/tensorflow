@@ -785,8 +785,19 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   if not time_major:
     # (B,T,D) => (T,B,D)
-    flat_input = tuple(array_ops.transpose(input_, [1, 0]+range(2,input_.get_shape().ndims))
-                       for input_ in flat_input)
+    def _get_transpose_indices(x):
+      x_rank = x.get_shape().ndims
+      if x_rank is None:
+        print('ARRAY RANK is NONE')
+        x_rank = array_ops.rank(x)
+        indices = array_ops.concat(0,([1,0],array_ops.range(2,x_rank)))
+      else:
+        print('ARRAY RANK is NOT NONE, found = %d'%x_rank)
+        indices = [1,0] + range(2,x_rank)
+      return indices
+
+    flat_input = tuple(array_ops.transpose(input_,
+                       _get_transpose_indices(input_)) for input_ in flat_input)
 
   parallel_iterations = parallel_iterations or 32
   if sequence_length is not None:
@@ -850,8 +861,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = nest.flatten(outputs)
-      flat_output = [array_ops.transpose(output, [1, 0]+range(2,output.get_shape().ndims))
-                     for output in flat_output]
+      flat_output = [array_ops.transpose(output,
+                     _get_transpose_indices(output)) for output in flat_output]
       outputs = nest.pack_sequence_as(
           structure=outputs, flat_sequence=flat_output)
 
