@@ -89,6 +89,11 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor *cpu_tensor,
           static_cast<uint16 *>(dst_ptr), static_cast<const uint16 *>(src_ptr),
           total_bytes);
       break;
+    case DT_BOOL:
+      device->eigen_sycl_device()->memcpyHostToDevice(
+          static_cast<bool *>(dst_ptr), static_cast<const bool *>(src_ptr),
+          total_bytes);
+      break;
     default:
       assert(false && "unsupported type");
     }
@@ -162,7 +167,11 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
           static_cast<uint16 *>(dst_ptr), static_cast<const uint16 *>(src_ptr),
           total_bytes);
       break;
-
+    case DT_BOOL:
+      device->eigen_sycl_device()->memcpyDeviceToHost(
+          static_cast<bool *>(dst_ptr), static_cast<const bool *>(src_ptr),
+          total_bytes);
+      break;
     default:
       assert(false && "unsupported type");
     }
