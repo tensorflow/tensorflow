@@ -294,10 +294,7 @@ class Image(ItemHandler):
     image_buffer = keys_to_tensors[self._image_key]
     image_format = keys_to_tensors[self._format_key]
 
-    image = self._decode(image_buffer, image_format)
-    if self._shape is not None:
-      image = array_ops.reshape(image, self._shape)
-    return image
+    return self._decode(image_buffer, image_format)
 
   def _decode(self, image_buffer, image_format):
     """Decodes the image buffer.
