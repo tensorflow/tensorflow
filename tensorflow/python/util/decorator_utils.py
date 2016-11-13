@@ -39,6 +39,7 @@ def add_notice_to_docstring(
     lines = doc.splitlines()
     lines[0] += ' ' + suffix_str
 
+  notice = [item for item in notice if item is not None]
   notice = [''] + notice + [instructions]
 
   if len(lines) > 1:

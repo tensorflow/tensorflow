@@ -33,7 +33,7 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions, owner=
       'DEPRECATED FUNCTION',
       '(deprecated)', [
           'THIS FUNCTION IS DEPRECATED. It will be removed after %s.' % date,
-          'Contact %s if you have any questions.' % owner if owner is not None else '',
+          'Contact %s if you have any questions.' % owner if owner is not None else None,
           'Instructions for updating:'])
 
 
@@ -49,7 +49,7 @@ def _add_deprecated_arg_notice_to_docstring(doc, date, instructions, owner=None)
           'Instructions for updating:'])
 
 
-def _validate_deprecation_args(date, instructions, owner=None):
+def _validate_deprecation_args(date, instructions, owner):
   if not date:
     raise ValueError('Tell us what date this will be deprecated!')
   if not re.match(r'20\d\d-[01]\d-[0123]\d', date):
@@ -100,7 +100,7 @@ def deprecated(date, instructions, owner=None):
   Raises:
     ValueError: If date is not in ISO 8601 format, or instructions are empty.
   """
-  _validate_deprecation_args(date, instructions, owner=owner)
+  _validate_deprecation_args(date, instructions, owner)
 
   def deprecated_wrapper(func):
     """Deprecation wrapper."""
@@ -152,7 +152,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names, owner=None):
     ValueError: If date is not in ISO 8601 format, instructions are empty, or
       the deprecated arguments are not present in the function signature.
   """
-  _validate_deprecation_args(date, instructions, owner=owner)
+  _validate_deprecation_args(date, instructions, owner)
   if not deprecated_arg_names:
     raise ValueError('Specify which argument is deprecated.')
 
@@ -234,7 +234,7 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs, owner=None):
   Raises:
     ValueError: If date is not in ISO 8601 format, or instructions are empty.
   """
-  _validate_deprecation_args(date, instructions, owner=owner)
+  _validate_deprecation_args(date, instructions, owner)
   if not deprecated_kwargs:
     raise ValueError('Specify which argument values are deprecated.')
 
