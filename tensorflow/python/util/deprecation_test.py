@@ -44,6 +44,9 @@ class DeprecationTest(tf.test.TestCase):
       deprecation.deprecated(date, None)
     with self.assertRaisesRegexp(ValueError, "instructions"):
       deprecation.deprecated(date, "")
+    with self.assertRaisesRegexp(ValueError, "Owner"):
+      deprecation.deprecated(date, instructions, owner=123)
+
 
   @tf.test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_doc(self, mock_warning):
@@ -184,6 +187,36 @@ class DeprecationTest(tf.test.TestCase):
     (args, _) = mock_warning.call_args
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
+
+    @deprecation.deprecated(date, instructions, owner="Owner")
+      def _fn(self, arg0, arg1):
+        """fn doc.
+
+        Args:
+          arg0: Arg 0.
+          arg1: Arg 1.
+
+        Returns:
+          Sum of args.
+        """
+        return arg0 + arg1
+
+    # Assert owner is properly printed.
+    self.assertEqual(
+        "fn doc. (deprecated)"
+        "\n"
+        "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nContact Owner if you have any questions."
+        "\nInstructions for updating:\n%s"
+        "\n"
+        "\n        Args:"
+        "\n          arg0: Arg 0."
+        "\n          arg1: Arg 1."
+        "\n"
+        "\n        Returns:"
+        "\n          Sum of args."
+        "\n        " % (date, instructions),
+        getattr(_Object, "_fn").__doc__)
 
   @tf.test.mock.patch.object(logging, "warning", autospec=True)
   def test_instance_fn_with_one_line_doc(self, mock_warning):
@@ -475,6 +508,20 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
+    @deprecation.deprecated_args(date, instructions, "deprecated", owner='Owner')
+    def _fn(arg0, arg1, deprecated=True):
+      return arg0 + arg1 if deprecated else arg1 + arg0
+
+    # Assert owner is properly printed.
+    self.assertEqual(
+        "DEPRECATED FUNCTION ARGUMENTS"
+        "\n"
+        "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
+        "\nContact Owner if you have any questions."
+        "\nInstructions for updating:"
+        "\n%s" % (date, instructions),
+        _fn.__doc__)
+
   @tf.test.mock.patch.object(logging, "warning", autospec=True)
   def test_varargs(self, mock_warning):
     date = "2016-07-04"
@@ -687,6 +734,21 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
     # Assert calling new fn with default deprecated value issues log warning.
     self.assertEqual(3, _fn(1, 2))
     self.assertEqual(2, mock_warning.call_count)
+
+    @deprecation.deprecated_arg_values(date, instructions,
+      deprecated=True, owner='Owner')
+    def _fn(arg0, arg1, deprecated=True):
+      return arg0 + arg1 if deprecated else arg1 + arg0
+
+    # Assert owner is properly printed.
+    self.assertEqual(
+        "DEPRECATED FUNCTION ARGUMENTS"
+        "\n"
+        "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
+        "\nContact Owner if you have any questions."
+        "\nInstructions for updating:"
+        "\n%s" % (date, instructions),
+        _fn.__doc__)
 
 
 if __name__ == "__main__":
