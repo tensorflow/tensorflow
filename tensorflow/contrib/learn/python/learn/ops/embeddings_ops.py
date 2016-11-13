@@ -33,7 +33,7 @@ from tensorflow.python.util import deprecation
 
 @deprecation.deprecated("2016-12-01",
             "embedding_lookup is deprecated, "
-            "please use tf.contrib.layers.embed_sequence instead")
+            "please use embedding_lookup ops in tf.contrib.layers instead")
 def embedding_lookup(params, ids, name="embedding_lookup"):
   """Provides a N dimensional version of tf.embedding_lookup.
 
