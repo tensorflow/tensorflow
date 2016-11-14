@@ -1107,7 +1107,7 @@ Feature columns provide a mechanism to map data to a model.
 
 ### `tf.contrib.layers.bucketized_column(source_column, boundaries)` {#bucketized_column}
 
-Creates a _BucketizedColumn.
+Creates a _BucketizedColumn for discretizing dense input.
 
 ##### Args:
 
@@ -1191,7 +1191,7 @@ For the above example, create_feature_spec_for_parsing would return the dict:
 
 ### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
 
-Creates a _CrossedColumn.
+Creates a _CrossedColumn for performing feature crosses.
 
 ##### Args:
 
@@ -1228,7 +1228,7 @@ Creates a _CrossedColumn.
 
 ### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
 
-Creates an `_EmbeddingColumn`.
+Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 ##### Args:
 
@@ -1418,7 +1418,7 @@ Returns placeholder tensors for inference.
 
 ### `tf.contrib.layers.one_hot_column(sparse_id_column)` {#one_hot_column}
 
-Creates a _OneHotColumn.
+Creates an `_OneHotColumn` for a one-hot or multi-hot repr in a DNN.
 
 ##### Args:
 
@@ -1523,7 +1523,7 @@ Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
 
 ### `tf.contrib.layers.real_valued_column(column_name, dimension=1, default_value=None, dtype=tf.float32, normalizer=None)` {#real_valued_column}
 
-Creates a _RealValuedColumn.
+Creates a `_RealValuedColumn` for dense numeric data.
 
 ##### Args:
 
