@@ -14,63 +14,102 @@
 # ==============================================================================
 """This API defines FeatureColumn abstraction.
 
-To distinguish the concept of a feature family and a specific binary feature
-within a family, we refer to a feature family like "country" as a feature
-column. For example "country:US" is a feature which is in "country" feature
-column and has a feature value ("US").
+FeatureColumns provide a high level abstraction for ingesting and representing
+features in tf.learn Estimator models.
 
-Supported feature types are:
- * _SparseColumn: also known as categorical features.
- * _RealValuedColumn: also known as continuous features.
+FeatureColumns are the primary way of encoding features for pre-canned
+tf.learn Estimators.
 
-Supported transformations on above features are:
- * Bucketization: also known as binning.
- * Crossing: also known as conjunction or combination.
- * Embedding.
+When using FeatureColumns with tf.learn models, the type of feature column you
+should choose depends on (1) the feature type and (2) the model type.
 
-Typical usage example:
+(1) Feature type:
+ * Continuous features can be represented by `real_valued_column`.
+ * Categorical features can be represented by any `sparse_column_with_*`
+ column (`sparse_column_with_keys`, `sparse_column_with_hash_bucket`,
+ `sparse_column_with_integerized_feature`).
 
-  ```python
-  # Define features and transformations
-  sparse_feature_a = sparse_column_with_keys(
-      column_name="sparse_feature_a", keys=["AB", "CD", ...])
+(2) Model type:
+ * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
 
-  embedding_feature_a = embedding_column(
-      sparse_id_column=sparse_feature_a, dimension=3, combiner="sum")
+   Continuous features can be directly fed into deep neural network models.
 
-  sparse_feature_b = sparse_column_with_hash_bucket(
-      column_name="sparse_feature_b", hash_bucket_size=1000)
+     age_column = real_valued_column("age")
 
-  embedding_feature_b = embedding_column(
-      sparse_id_column=sparse_feature_b, dimension=16, combiner="sum")
+   To feed sparse features into DNN models, wrap the column with
+   `embedding_column` or `one_hot_column`. `one_hot_column` is recommended for
+   features with only a few possible values. For features with many possible
+   values, `embedding_column` is recommended.
 
-  crossed_feature_a_x_b = crossed_column(
-      columns=[sparse_feature_a, sparse_feature_b], hash_bucket_size=10000)
+     embedded_dept_column = embedding_column(
+       sparse_column_with_keys("department", ["math", "philosphy", ...]),
+       dimension=10)
 
-  real_feature = real_valued_column("real_feature")
-  real_feature_buckets = bucketized_column(
-      source_column=real_feature,
+* Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
+
+   Sparse features can be fed directly into linear models.
+
+     dept_column = sparse_column_with_keys("department",
+       ["math", "philosphy", "english"])
+
+   It is recommended that continuous features be bucketized before being
+   fed into linear models.
+
+     bucketized_age_column = bucketized_column(
+      source_column=age_column,
       boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
 
-  my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
-  # Building model via layers
-  columns_to_tensor = parse_feature_columns_from_examples(
-      serialized=my_data,
-      feature_columns=my_features)
-  first_layer = input_from_feature_columns(
-      columns_to_tensors=columns_to_tensor,
-      feature_columns=my_features)
-  second_layer = fully_connected(first_layer, ...)
+   Sparse features can be crossed (also known as conjuncted or combined) in
+   order to form non-linearities, and then fed into linear models.
 
-  # Building model via tf.learn.estimators
+    cross_dept_age_column = crossed_column(
+      columns=[department_column, bucketized_age_column],
+      hash_bucket_size=1000)
+
+Example of building tf.learn model using FeatureColumns:
+
+  # Define features and transformations
+  deep_feature_columns = [age_column, embedded_dept_column]
+  wide_feature_columns = [dept_column, bucketized_age_column,
+      cross_dept_age_column]
+
+  # Build deep model
+  estimator = DNNClassifier(
+      feature_columns=deep_feature_columns,
+      hidden_units=[500, 250, 50])
+  estimator.train(...)
+
+  # Or build a wide model
+  estimator = LinearClassifier(
+      feature_columns=wide_feature_columns)
+  estimator.train(...)
+
+  # Or build a wide and deep model!
   estimator = DNNLinearCombinedClassifier(
-      linear_feature_columns=my_wide_features,
-      dnn_feature_columns=my_deep_features,
+      linear_feature_columns=wide_feature_columns,
+      dnn_feature_columns=deep_feature_columns,
       dnn_hidden_units=[500, 250, 50])
   estimator.train(...)
-  ```
 
-  See feature_column_ops_test for more examples.
+
+FeatureColumns can also be transformed into a generic input layer for
+custom models using `input_from_feature_columns` within
+`feature_column_ops.py`.
+
+Example of building non-tf.learn model using FeatureColumns:
+
+  # Building model via layers
+
+  deep_feature_columns = [age_column, embedded_dept_column]
+  columns_to_tensor = parse_feature_columns_from_examples(
+      serialized=my_data,
+      feature_columns=deep_feature_columns)
+  first_layer = input_from_feature_columns(
+      columns_to_tensors=columns_to_tensor,
+      feature_columns=deep_feature_columns)
+  second_layer = fully_connected(first_layer, ...)
+
+See feature_column_ops_test for more examples.
 """
 
 from __future__ import absolute_import
@@ -871,7 +910,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
 
 
 def one_hot_column(sparse_id_column):
-  """Creates a _OneHotColumn.
+  """Creates an `_OneHotColumn` for a one-hot or multi-hot repr in a DNN.
 
   Args:
       sparse_id_column: A _SparseColumn which is created by
@@ -891,7 +930,7 @@ def embedding_column(sparse_id_column,
                      initializer=None,
                      ckpt_to_load_from=None,
                      tensor_name_in_ckpt=None):
-  """Creates an `_EmbeddingColumn`.
+  """Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
   Args:
     sparse_id_column: A `_SparseColumn` which is created by for example
@@ -1244,7 +1283,7 @@ def real_valued_column(column_name,
                        default_value=None,
                        dtype=dtypes.float32,
                        normalizer=None):
-  """Creates a _RealValuedColumn.
+  """Creates a `_RealValuedColumn` for dense numeric data.
 
   Args:
     column_name: A string defining real valued column name.
@@ -1477,7 +1516,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
 
 def bucketized_column(source_column, boundaries):
-  """Creates a _BucketizedColumn.
+  """Creates a _BucketizedColumn for discretizing dense input.
 
   Args:
     source_column: A _RealValuedColumn defining dense column.
@@ -1676,7 +1715,7 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
                    ckpt_to_load_from=None,
                    tensor_name_in_ckpt=None,
                    hash_key=None):
-  """Creates a _CrossedColumn.
+  """Creates a _CrossedColumn for performing feature crosses.
 
   Args:
     columns: An iterable of _FeatureColumn. Items can be an instance of
