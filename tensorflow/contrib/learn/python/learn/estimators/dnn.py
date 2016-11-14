@@ -31,10 +31,11 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
-from tensorflow.contrib.learn.python.learn import session_run_hook
+from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python import summary
@@ -236,7 +237,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
           activation_fn=activation_fn,
           variables_collections=[parent_scope],
           scope=scope)
-      if dropout is not None and mode == estimator.ModeKeys.TRAIN:
+      if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
         net = layers.dropout(
             net,
             keep_prob=(1.0 - dropout))
@@ -257,7 +258,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
   if enable_centered_bias:
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
 
-  if mode == estimator.ModeKeys.TRAIN:
+  if mode == model_fn.ModeKeys.TRAIN:
     labels = _reshape_labels(labels)
     weights = _get_weight_tensor(features, weight_column_name)
     training_loss = loss_fn(logits, labels, weights=weights)
@@ -279,7 +280,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
 
     return None, loss, control_flow_ops.group(*train_ops)
 
-  elif mode == estimator.ModeKeys.EVAL:
+  elif mode == model_fn.ModeKeys.EVAL:
     predictions = _predictions(logits=logits, n_classes=n_classes)
 
     labels = _reshape_labels(labels)
@@ -301,24 +302,22 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
   Example:
 
   ```python
-  education = sparse_column_with_hash_bucket(column_name="education",
-                                             hash_bucket_size=1000)
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
+  sparse_feature_a = sparse_column_with_hash_bucket(...)
+  sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-  education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                   combiner="sum")
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
+  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                          ...)
+  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                          ...)
 
   estimator = DNNClassifier(
-      feature_columns=[education_emb, occupation_emb],
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNClassifier(
-      feature_columns=[education_emb, occupation_emb],
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
@@ -326,14 +325,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       ))
 
   # Input builders
-  def input_fn_train: # returns x, Y
+  def input_fn_train: # returns x, y (where y represents label's class index).
     pass
   estimator.fit(input_fn=input_fn_train)
 
-  def input_fn_eval: # returns x, Y
+  def input_fn_eval: # returns x, y (where y represents label's class index).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -377,7 +376,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model.
       n_classes: number of label classes. Default is binary classification.
-        It must be greater than 1.
+        It must be greater than 1. Note: Class labels are integers representing
+        the class index (i.e. values from 0 to n_classes-1). For arbitrary
+        label values (e.g. string labels), convert to class indices first.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -436,30 +437,21 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
-    """See trainable.Trainable."""
+    """See trainable.Trainable. Note: Labels must be integer class indices."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is not None:
-      deprecated_monitors = [
-          m for m in monitors
-          if not isinstance(m, session_run_hook.SessionRunHook)
-      ]
-      for monitor in deprecated_monitors:
-        monitor.set_estimator(self)
-        monitor._lock_estimator()  # pylint: disable=protected-access
-
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
-
-    if monitors is not None:
-      for monitor in deprecated_monitors:
-        monitor._unlock_estimator()  # pylint: disable=protected-access
-
-    return result
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+    self._estimator.fit(x=x,
+                        y=y,
+                        input_fn=input_fn,
+                        steps=steps,
+                        batch_size=batch_size,
+                        monitors=hooks,
+                        max_steps=max_steps)
+    return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
-    """See evaluable.Evaluable."""
+    """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     if metrics is None:
       metrics = {}
     metrics.update({
@@ -494,7 +486,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
+      as_iterable is True). Each predicted class is represented by its class
+      index (i.e. integer from 0 to n_classes-1).
     """
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size, outputs=[_CLASSES],
@@ -521,7 +514,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
+      probabilities if as_iterable is True). Each predicted class is represented
+      by its class index (i.e. integer from 0 to n_classes-1).
     """
     preds = self._estimator.predict(x=x, input_fn=input_fn,
                                     batch_size=batch_size,
@@ -530,6 +524,12 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     if as_iterable:
       return (pred[_PROBABILITIES] for pred in preds)
     return preds[_PROBABILITIES]
+
+  def _get_predict_ops(self, features):
+    """See `Estimator` class."""
+    # This method exists to support some models that use the legacy interface.
+    # pylint: disable=protected-access
+    return self._estimator._get_predict_ops(features)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -617,24 +617,22 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   Example:
 
   ```python
-  education = sparse_column_with_hash_bucket(column_name="education",
-                                             hash_bucket_size=1000)
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                              hash_bucket_size=1000)
+  sparse_feature_a = sparse_column_with_hash_bucket(...)
+  sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-  education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                   combiner="sum")
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
+  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                          ...)
+  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                          ...)
 
   estimator = DNNRegressor(
-      feature_columns=[education_emb, occupation_emb],
+      feature_columns=[sparse_feature_a, sparse_feature_b],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNRegressor(
-      feature_columns=[education_emb, occupation_emb],
+      feature_columns=[sparse_feature_a, sparse_feature_b],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
@@ -642,11 +640,11 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       ))
 
   # Input builders
-  def input_fn_train: # returns x, Y
+  def input_fn_train: # returns x, y
     pass
   estimator.fit(input_fn=input_fn_train)
 
-  def input_fn_eval: # returns x, Y
+  def input_fn_eval: # returns x, y
     pass
   estimator.evaluate(input_fn=input_fn_eval)
   estimator.predict(x=x)

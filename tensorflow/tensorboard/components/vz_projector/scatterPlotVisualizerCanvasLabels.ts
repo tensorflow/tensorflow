@@ -20,6 +20,8 @@ import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import * as util from './util';
 
 const MAX_LABELS_ON_SCREEN = 10000;
+const LABEL_STROKE_WIDTH = 3;
+const LABEL_FILL_WIDTH = 6;
 
 /**
  * Creates and maintains a 2d canvas on top of the GL canvas. All labels, when
@@ -81,7 +83,6 @@ export class ScatterPlotVisualizerCanvasLabels implements
     const camToTarget = camPos.clone().sub(rc.cameraTarget);
     let camToPoint = new THREE.Vector3();
 
-    this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
     this.gc.miterLimit = 2;
 
@@ -129,9 +130,11 @@ export class ScatterPlotVisualizerCanvasLabels implements
           if (sceneIs3D && (rc.labels.useSceneOpacityFlags[i] === 1)) {
             opacity = opacityMap(camToPoint.length());
           }
-          this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
           this.gc.fillStyle = fillStylePrefix + opacity + ')';
+          this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
+          this.gc.lineWidth = LABEL_STROKE_WIDTH;
           this.gc.strokeText(text, x, y);
+          this.gc.lineWidth = LABEL_FILL_WIDTH;
           this.gc.fillText(text, x, y);
         }
       }

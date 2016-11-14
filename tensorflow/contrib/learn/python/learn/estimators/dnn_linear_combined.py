@@ -30,11 +30,12 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import session_run_hook
+from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python.framework import ops
@@ -228,11 +229,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         with ops.get_default_graph().colocate_with(global_step):
           return state_ops.assign_add(global_step, 1).op
 
-    model_fn_ops = self._head.head_ops(features, labels,
-                                       estimator.ModeKeys.TRAIN,
-                                       _make_training_op,
-                                       logits=logits)
-    return model_fn_ops.training_op, model_fn_ops.loss
+    return self._head.head_ops(features, labels,
+                               model_fn.ModeKeys.TRAIN,
+                               _make_training_op,
+                               logits=logits)
 
   def _get_eval_ops(self, features, labels, metrics=None):
     """See base class."""
@@ -240,32 +240,30 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     features, labels = self._feature_engineering_fn(features, labels)
     logits = self._logits(features)
 
-    model_fn_ops = self._head.head_ops(features, labels,
-                                       estimator.ModeKeys.EVAL, None,
-                                       logits=logits)
-    all_metrics = model_fn_ops.default_metrics
+    eval_ops = self._head.head_ops(features, labels,
+                                   model_fn.ModeKeys.EVAL, None,
+                                   logits=logits)
+    custom_metrics = {}
     if metrics:
       for name, metric in six.iteritems(metrics):
         if not isinstance(name, tuple):
           # TODO(zakaria): remove once deprecation is finished (b/31229024)
-          all_metrics[(name, self._default_prediction_key)] = metric
+          custom_metrics[(name, self._default_prediction_key)] = metric
         else:
-          all_metrics[name] = metric
+          custom_metrics[name] = metric
     # TODO(zakaria): Remove this once we refactor this class to delegate
     #   to estimator.
-    # pylint: disable=protected-access
-    result = estimator._make_metrics_ops(all_metrics, features, labels,
-                                         model_fn_ops.predictions)
-    return result
+    eval_ops.eval_metric_ops.update(estimator._make_metrics_ops(  # pylint: disable=protected-access
+        custom_metrics, features, labels, eval_ops.predictions))
+    return eval_ops
 
   def _get_predict_ops(self, features):
     """See base class."""
     features = self._get_feature_dict(features)
     features, _ = self._feature_engineering_fn(features, None)
     logits = self._logits(features)
-    model_fn_ops = self._head.head_ops(features, None, estimator.ModeKeys.INFER,
-                                       None, logits=logits)
-    return model_fn_ops.predictions
+    return self._head.head_ops(features, None, model_fn.ModeKeys.INFER,
+                               None, logits=logits)
 
   @deprecated(
       "2016-09-23",
@@ -458,7 +456,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
             activation_fn=dnn_activation_fn,
             variables_collections=[dnn_parent_scope],
             scope=scope)
-        if dnn_dropout is not None and mode == estimator.ModeKeys.TRAIN:
+        if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
           net = layers.dropout(
               net,
               keep_prob=(1.0 - dnn_dropout))
@@ -576,13 +574,13 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
       dnn_optimizer=tf.train.AdagradOptimizer(...))
 
   # Input builders
-  def input_fn_train: # returns x, y
+  def input_fn_train: # returns x, y (where y represents label's class index).
     ...
-  def input_fn_eval: # returns x, y
+  def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -622,6 +620,9 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
       n_classes: number of label classes. Default is binary classification.
+        Note that class labels are integers representing the class index (i.e.
+        values from 0 to n_classes-1). For arbitrary label values (e.g. string
+        labels), convert to class indices first.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training.
         It will be multiplied by the loss of the example.
@@ -700,25 +701,15 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
-    # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is not None:
-      deprecated_monitors = [
-          m for m in monitors
-          if not isinstance(m, session_run_hook.SessionRunHook)
-      ]
-      for monitor in deprecated_monitors:
-        monitor.set_estimator(self)
-        monitor._lock_estimator()  # pylint: disable=protected-access
-
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
-
-    if monitors is not None:
-      for monitor in deprecated_monitors:
-        monitor._unlock_estimator()  # pylint: disable=protected-access
-
-    return result
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+    self._estimator.fit(x=x,
+                        y=y,
+                        input_fn=input_fn,
+                        steps=steps,
+                        batch_size=batch_size,
+                        monitors=hooks,
+                        max_steps=max_steps)
+    return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
@@ -744,7 +735,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
+      as_iterable is True). Each predicted class is represented by its class
+      index (i.e. integer from 0 to n_classes-1).
     """
     key = prediction_key.PredictionKey.CLASSES
     preds = self._estimator.predict(
@@ -775,7 +767,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
 
     Returns:
       Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
+      probabilities if as_iterable is True). Each predicted class is represented
+      by its class index (i.e. integer from 0 to n_classes-1).
     """
     key = prediction_key.PredictionKey.PROBABILITIES
     preds = self._estimator.predict(
@@ -790,9 +783,9 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def _get_predict_ops(self, features):
     """See `Estimator` class."""
+    # This method exists to support some models that use the legacy interface.
     # pylint: disable=protected-access
-    return self._estimator._get_predict_ops(features)[
-        prediction_key.PredictionKey.PROBABILITIES]
+    return self._estimator._get_predict_ops(features)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -1046,8 +1039,36 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         default_prediction_key=prediction_key.PredictionKey.SCORES,
         enable_centered_bias=enable_centered_bias)
 
-  def _get_predict_ops(self, features):
-    """See base class."""
-    return super(
-        DNNLinearCombinedRegressor,
-        self)._get_predict_ops(features)[prediction_key.PredictionKey.SCORES]
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
+    """Runs inference to determine the predicted class."""
+    key = prediction_key.PredictionKey.SCORES
+    preds = super(DNNLinearCombinedRegressor, self).predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=key)
+    return preds[key]
+
+  def export(self,
+             export_dir,
+             input_fn=None,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=None,
+             exports_to_keep=None):
+    return super(DNNLinearCombinedRegressor, self).export(
+        export_dir=export_dir,
+        input_fn=input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        signature_fn=signature_fn,
+        prediction_key=prediction_key.PredictionKey.SCORES,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)

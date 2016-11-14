@@ -68,7 +68,7 @@ See superclass Estimator for more details.
 
 
 *  <b>`x`</b>: features.
-*  <b>`y`</b>: labels.
+*  <b>`y`</b>: labels (must be 0 or 1).
 *  <b>`input_fn`</b>: Input function.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called.
 *  <b>`batch_size`</b>: minibatch size to use on the input.

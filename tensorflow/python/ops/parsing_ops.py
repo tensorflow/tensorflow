@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import re
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -541,9 +540,6 @@ def _parse_single_example_raw(serialized,
     return outputs
 
 
-ops.RegisterShape("ParseExample")(common_shapes.call_cpp_shape_fn)
-
-
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
@@ -862,11 +858,3 @@ def _parse_single_sequence_example_raw(serialized,
             feature_list_sparse_tensors + feature_list_dense_values))
 
     return (context_output, feature_list_output)
-
-
-ops.RegisterShape("ParseSingleSequenceExample")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ParseTensor")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeJSONExample")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringToNumber")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeRaw")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeCSV")(common_shapes.call_cpp_shape_fn)

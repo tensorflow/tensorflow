@@ -1,6 +1,6 @@
 ### `tf.contrib.layers.real_valued_column(column_name, dimension=1, default_value=None, dtype=tf.float32, normalizer=None)` {#real_valued_column}
 
-Creates a _RealValuedColumn.
+Creates a `_RealValuedColumn` for dense numeric data.
 
 ##### Args:
 

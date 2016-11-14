@@ -50,6 +50,7 @@ or join multiple tensors together.
 @@slice
 @@strided_slice
 @@split
+@@split_v
 @@tile
 @@pad
 @@concat
@@ -98,6 +99,7 @@ from __future__ import print_function
 
 import sys
 import numpy as np
+import six
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -123,6 +125,18 @@ newaxis = None
 # We override the 'slice' for the "slice" op, so we keep python's
 # existing 'slice' for later use in this module.
 _baseslice = slice
+
+
+# pylint: disable=redefined-builtin,protected-access
+def expand_dims(input, axis=None, name=None, dim=None):
+  # TODO(aselle): Remove argument dim
+  if dim is not None:
+    if axis is not None:
+      raise ValueError("can't specify both 'dim' and 'axis'")
+    axis = dim
+  return gen_array_ops._expand_dims(input, axis, name)
+expand_dims.__doc__ = gen_array_ops._expand_dims.__doc__.replace("dim", "axis")
+# pylint: enable=redefined-builtin,protected-access
 
 
 # Aliases for some automatically-generated names.
@@ -986,9 +1000,6 @@ def concat(concat_dim, values, name="concat"):
                                values=values,
                                name=name)
 
-ops.RegisterShape("Pack")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Unpack")(common_shapes.call_cpp_shape_fn)
-
 
 @ops.RegisterShape("Concat")
 def _ConcatShape(op):
@@ -999,9 +1010,6 @@ def _ConcatShape(op):
 def _ConcatV2Shape(op):  # pylint: disable=invalid-name
   return common_shapes.call_cpp_shape_fn(
       op, input_tensors_needed=[len(op.inputs)-1])
-
-
-ops.RegisterShape("ConcatOffset")(common_shapes.call_cpp_shape_fn)
 
 
 def boolean_mask(tensor, mask, name="boolean_mask"):
@@ -1158,8 +1166,66 @@ def split(split_dim, num_split, value, name="split"):
                               name=name)
 
 
-ops.RegisterShape("Reverse")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReverseV2")(common_shapes.call_cpp_shape_fn)
+def split_v(value, size_splits, split_dim=0, num=None, name="split_v"):
+  """Splits a tensor into sub tensors.
+
+  If size_splits is a scalar, `num_split`, then
+  splits `value` along dimension `split_dim` into `num_split` smaller tensors.
+  Requires that `num_split` evenly divide `value.shape[split_dim]`.
+
+  If size_splits is a tensor, then
+  splits `value` into len(size_splits) pieces each the same size as the input
+  except along dimension split_dim where the size is size_splits[i].
+
+  For example:
+
+  ```python
+  # 'value' is a tensor with shape [5, 30]
+  # Split 'value' into 3 tensors with sizes [4, 15, 11] along dimension 1
+  split0, split1, split2 = tf.split_v(1, [4, 15, 11], value)
+  tf.shape(split0) ==> [5, 4]
+  tf.shape(split1) ==> [5, 15]
+  tf.shape(split2) ==> [5, 11]
+  # Split 'value' into 3 tensors along dimension 1
+  split0, split1, split2 = tf.split(value, 3, 1)
+  tf.shape(split0) ==> [5, 10]
+  ```
+
+  Args:
+    value: The `Tensor` to split.
+    size_splits: Either an integer indicating the number of splits along
+      split_dim or a 1-D Tensor containing the sizes of each output tensor
+      along split_dim. If an integer then it must evenly divide
+      value.shape[split_dim]; otherwise the sum of sizes along the split
+      dimension must match that of the input.
+    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+      Must be in the range `[0, rank(value))`. Defaults to 0.
+    num: Optional, used to specify the number of outputs when it cannot be
+         inferred from the shape of size_splits.
+    name: A name for the operation (optional).
+
+  Returns:
+    `len(size_splits)` `Tensor` objects resulting from splitting `value`.
+
+  Raises:
+    ValueError: If `num` is unspecified and cannot be inferred.
+  """
+  if isinstance(size_splits, six.integer_types):
+    return gen_array_ops._split(
+        split_dim=split_dim, num_split=size_splits, value=value, name=name)
+  else:
+    if num is None:
+      size_splits = ops.convert_to_tensor(size_splits)
+      size_splits_shape = size_splits.get_shape()
+      num = size_splits_shape.dims
+    if num is None:
+      raise ValueError("Cannot infer num from shape %s" % value_shape)
+    return gen_array_ops._split_v(
+        value=value,
+        size_splits=size_splits,
+        split_dim=split_dim,
+        num_split=num[0],
+        name=name)
 
 
 def transpose(a, perm=None, name="transpose"):
@@ -1665,18 +1731,6 @@ def meshgrid(*args, **kwargs):
     return [x * mult_fact for x in output]
 
 
-ops.RegisterShape("Placeholder")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PlaceholderV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StopGradient")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixBandPart")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizeAndDequantize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Rank")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Size")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Slice")
 def _SliceShape(op):
   """Shape function for array_ops.slice."""
@@ -1763,23 +1817,9 @@ def _StridedSliceGradShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-ops.RegisterShape("StridedSliceAssign")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("StridedSlice")
 def _DelegateStridedSliceShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2, 3])
-
-
-ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("GatherNd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Unique")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("UniqueWithCounts")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDiag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSetDiag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDiagPart")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Diag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DiagPart")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ExpandDims")
@@ -1788,59 +1828,9 @@ def _ExpandDims(op):
       op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("Squeeze")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Reshape")
 def _DelegateReshapeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
-
-
-def _ReshapeShape(op):
-  """Shape function for Reshape op."""
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is not None:
-    num_elements = tensor_shape.Dimension(1)
-    for dim in input_shape.dims:
-      num_elements *= dim
-  else:
-    num_elements = tensor_shape.Dimension(None)
-  new_shape = tensor_util.constant_value_as_shape(op.inputs[1])
-  if new_shape.ndims is None:
-    # We have no information about the shape of the output.
-    return [new_shape]
-  if None not in new_shape.as_list():
-    # The new shape is fully defined.
-    if (num_elements.value is not None
-        and num_elements.value != np.prod(new_shape)):
-      raise ValueError(
-          "Cannot reshape a tensor with %d elements to shape %s (%d elements)"
-          % (num_elements.value, new_shape, np.prod(new_shape)))
-  elif num_elements.value is not None:
-    # We know the number of elements, so we can calculate the missing
-    # dimension in the new_shape.
-    known_elements = 1
-    unknown_indices = []
-    for i, dim in enumerate(new_shape):
-      if dim.value is None:
-        unknown_indices.append(i)
-      else:
-        known_elements *= dim.value
-    if known_elements != 0:
-      if num_elements % known_elements != 0:
-        raise ValueError("input has %s elements, which isn't divisible by %d" %
-                         (num_elements, known_elements))
-      if len(unknown_indices) == 1:
-        unknown_index = unknown_indices[0]
-        new_shape = new_shape.merge_with(
-            new_shape[:unknown_index].concatenate(
-                [num_elements // known_elements]).concatenate(
-                    new_shape[unknown_index+1:]))
-  return [new_shape]
-
-
-ops.RegisterShape("BroadcastGradientArgs")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Fill")
@@ -1867,10 +1857,6 @@ def _FillShape(op):
   return [tensor_util.constant_value_as_shape(op.inputs[0])]
 
 
-ops.RegisterShape("InvertPermutation")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ListDiff")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Pad")
 @ops.RegisterShape("MirrorPad")
 def _PadShape(op):
@@ -1882,11 +1868,6 @@ def _MirrorPadGradShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("ReverseSequence")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Shape")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ShapeN")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Transpose")
 def _TransposeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
@@ -1895,6 +1876,9 @@ def _TransposeShape(op):
 @ops.RegisterShape("Split")
 def _SplitShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
+
+
+ops.RegisterShape("SplitV")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Tile")
@@ -1951,10 +1935,6 @@ def _TileGradShape(op):
     for dim, multiple in zip(input_shape.dims, multiples.dims):
       output_dims.append(dim // multiple)
     return [tensor_shape.TensorShape(output_dims)]
-
-
-ops.RegisterShape("Where")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ZerosLike")(common_shapes.call_cpp_shape_fn)
 
 
 def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
@@ -2075,9 +2055,6 @@ def _FakeQuantWithMinMaxVarsPerChannelGradient(op, grad):
   return fake_quant_with_min_max_vars_per_channel_gradient(grad, op.inputs[0],
                                                            op.inputs[1],
                                                            op.inputs[2])
-
-
-ops.RegisterShape("ExtractImagePatches")(common_shapes.call_cpp_shape_fn)
 
 
 def required_space_to_batch_paddings(input_shape,
@@ -2205,10 +2182,6 @@ def _BatchToSpaceShape(op):
 @ops.RegisterShape("BatchToSpaceND")
 def _BatchToSpaceNDShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
-
-
-ops.RegisterShape("SpaceToDepth")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DepthToSpace")(common_shapes.call_cpp_shape_fn)
 
 
 def one_hot(indices, depth, on_value=None, off_value=None,
@@ -2384,26 +2357,7 @@ def _OneHotShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-@ops.RegisterShape("PlaceholderWithDefault")
-def _PlaceholderWithDefaultShape(op):
-  """Shape function for the PlaceholderWithDefault op.
-
-  This op acts as an identity when it is not fed (passing through a
-  default value), but allows the user to feed it with tensors of a
-  possibly less precise shape than its default value.
-
-  Args:
-    op: A PlaceholderWithDefault `Operation`.
-
-  Returns:
-    A single-element list containing the shape of the output.
-  """
-  input_shape = op.inputs[0].get_shape()
-  output_shape = tensor_shape.TensorShape(op.get_attr("shape"))
-  # NOTE(mrry): We don't merge these shapes, because `output_shape`
-  # may be *less* precise than `input_shape`.
-  input_shape.assert_is_compatible_with(output_shape)
-  return [output_shape]
+ops.RegisterShape("PlaceholderWithDefault")(common_shapes.call_cpp_shape_fn)
 
 
 def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
@@ -2454,14 +2408,14 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return gen_math_ops.cast(result, dtype)
 
 
-def squeeze(input, squeeze_dims=None, name=None):
+def squeeze(input, axis=None, name=None, squeeze_dims=None):
   # pylint: disable=redefined-builtin
   """Removes dimensions of size 1 from the shape of a tensor.
 
   Given a tensor `input`, this operation returns a tensor of the same type with
   all dimensions of size 1 removed. If you don't want to remove all size 1
   dimensions, you can remove specific size 1 dimensions by specifying
-  `squeeze_dims`.
+  `axis`.
 
   For example:
 
@@ -2479,19 +2433,27 @@ def squeeze(input, squeeze_dims=None, name=None):
 
   Args:
     input: A `Tensor`. The `input` to squeeze.
-    squeeze_dims: An optional list of `ints`. Defaults to `[]`.
+    axis: An optional list of `ints`. Defaults to `[]`.
       If specified, only squeezes the dimensions listed. The dimension
       index starts at 0. It is an error to squeeze a dimension that is not 1.
     name: A name for the operation (optional).
+    squeeze_dims: Deprecated keyword argument that is now axis.
 
   Returns:
     A `Tensor`. Has the same type as `input`.
     Contains the same data as `input`, but has one or more dimensions of
     size 1 removed.
+
+  Raises:
+    ValueError: When both `squeeze_dims` and `axis` are specified.
   """
-  if np.isscalar(squeeze_dims):
-    squeeze_dims = [squeeze_dims]
-  return gen_array_ops._squeeze(input, squeeze_dims, name)
+  if squeeze_dims is not None:
+    if axis is not None:
+      raise ValueError("Cannot specify both 'squeeze_dims' and 'axis'")
+    axis = squeeze_dims
+  if np.isscalar(axis):
+    axis = [axis]
+  return gen_array_ops._squeeze(input, axis, name)
 
 
 def where(condition, x=None, y=None, name=None):
@@ -2544,56 +2506,17 @@ def where(condition, x=None, y=None, name=None):
 
 
 @ops.RegisterShape("QuantizedReshape")
-def _QuantizedReshapeShape(op):
-  return _ReshapeShape(op) + [tensor_shape.scalar(), tensor_shape.scalar()]
+def _DelegateQuantizedReshapeShape(op):
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_as_shapes_needed=[1])
 
-# TODO(cwhipkey): Verify and enable shape functions for these.
-ops.RegisterShape("QuantizeV2")(None)
-ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
-ops.RegisterShape("QuantizedConcat")(None)
+ops.RegisterShape("QuantizeV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(
+    common_shapes.call_cpp_shape_fn)
+
+ops.RegisterShape("QuantizedConcat")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ScatterNd")
-def _ScatterNdShape(op):
-  """Shape function for the ScatterNd op.
-
-  The shape of the ouput is defined as a parameter on the Operation.
-
-  Args:
-    op: A ScatterNd Operation.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: if the arguments have invalid rank
-  """
-  indices_shape = op.inputs[0].get_shape()
-  updates_shape = op.inputs[1].get_shape()
-  output_shape = tensor_util.constant_value_as_shape(op.inputs[2])
-
-  if output_shape.num_elements() == 0 and not (
-      indices_shape.num_elements() in
-      (None, 0) and updates_shape.num_elements() in (None, 0)):
-    raise ValueError("Indices and updates specified for empty output shape")
-
-  if indices_shape.ndims is not None and output_shape is not None:
-    outer_dims = len(indices_shape) - 1
-    ixdim = indices_shape[-1].value or 0
-
-    if not indices_shape[:outer_dims].is_compatible_with(
-        updates_shape[:outer_dims]):
-      raise ValueError("The outer %d dimensions of indices.shape=%s must "
-                       "match the outer %d dimensions of updates.shape=%s" % (
-                           outer_dims, indices_shape, outer_dims,
-                           updates_shape))
-    if output_shape.ndims is not None:
-      if not output_shape[ixdim:].is_compatible_with(updates_shape[
-          outer_dims:]):
-        raise ValueError("The inner %d dimensions of output.shape=%s must "
-                         "match the inner %d dimensions of updates.shape=%s" % (
-                             len(output_shape)-ixdim, output_shape,
-                             len(updates_shape)-outer_dims, updates_shape))
-
-    return [output_shape]
-  return [None]
+def _DelegateScatterNdShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[2])
