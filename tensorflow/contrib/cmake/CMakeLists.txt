@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.1)
 # Project
 project(tensorflow C CXX)
 
+# Set C++14 as standard for the whole project
+set(CMAKE_CXX_STANDARD 14)
+
 # Actual source is the ../../.. directory
 get_filename_component(tf_contrib_source_dir ${tensorflow_SOURCE_DIR} PATH)
 get_filename_component(tf_tf_source_dir ${tf_contrib_source_dir} PATH)
