@@ -889,25 +889,12 @@ def adjust_gamma(image, gamma=1, gain=1):
     return adjusted_img
 
 
-ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('AdjustContrastv2')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('AdjustHue')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('DrawBoundingBoxes')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape('ResizeBilinear')
 @ops.RegisterShape('ResizeNearestNeighbor')
 @ops.RegisterShape('ResizeBicubic')
 @ops.RegisterShape('ResizeArea')
 def _ResizeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-ops.RegisterShape('DecodeGif')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('DecodeJpeg')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('DecodePng')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('EncodeJpeg')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('EncodePng')(common_shapes.call_cpp_shape_fn)
 
 
 def convert_image_dtype(image, dtype, saturate=False, name=None):
@@ -1046,10 +1033,6 @@ def grayscale_to_rgb(images, name=None):
 
 
 # pylint: disable=invalid-name
-ops.RegisterShape('HSVToRGB')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('RGBToHSV')(common_shapes.call_cpp_shape_fn)
-
-
 def random_hue(image, max_delta, seed=None):
   """Adjust the hue of an RGB image by a random factor.
 
@@ -1225,6 +1208,3 @@ def _extract_glimpse_shape(op):
 def _crop_and_resize_shape(op):
   return common_shapes.call_cpp_shape_fn(
       op, input_tensors_needed=[3])
-
-
-ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)

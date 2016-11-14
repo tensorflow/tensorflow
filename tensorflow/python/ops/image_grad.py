@@ -73,15 +73,9 @@ def _ResizeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("ResizeBilinearGrad")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("CropAndResizeGradImage")
 def _CropAndResizeGradImageShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
-
-
-ops.RegisterShape("CropAndResizeGradBoxes")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("CropAndResize")

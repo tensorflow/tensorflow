@@ -76,7 +76,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import control_flow_pb2
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -3007,23 +3006,6 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       case_seq = _build_case()
 
     return case_seq
-
-
-ops.RegisterShape("Enter")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Exit")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("NextIteration")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefEnter")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefExit")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefNextIteration")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ControlTrigger")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("NoOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Abort")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LoopCond")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Merge")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefMerge")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,

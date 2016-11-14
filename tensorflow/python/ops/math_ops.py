@@ -627,9 +627,6 @@ def round(x, name=None):
     return gen_math_ops.floor(x + 0.5, name=name)
 
 
-ops.RegisterShape("Round")(common_shapes.call_cpp_shape_fn)
-
-
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
@@ -1583,9 +1580,6 @@ def matmul(a, b,
 sparse_matmul = gen_math_ops._sparse_mat_mul
 batch_matmul = gen_math_ops._batch_mat_mul
 
-ops.RegisterShape("MatMul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseMatMul")(common_shapes.call_cpp_shape_fn)
-
 
 @ops.RegisterStatistics("MatMul", "flops")
 def _calc_mat_mul_flops(graph, node):
@@ -1759,9 +1753,6 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
             ref, var_name=var.op.name, name=name)
 
 
-ops.RegisterShape("BatchMatMul")(common_shapes.call_cpp_shape_fn)
-
-
 def sigmoid(x, name=None):
   """Computes sigmoid of `x` element-wise.
 
@@ -1929,95 +1920,11 @@ def conj(x, name=None):
       raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
 
 
-ops.RegisterShape("Abs")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Acos")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Asin")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Atan")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Ceil")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conj")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Cos")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Cross")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Exp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Floor")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Imag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Inv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IsFinite")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IsInf")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IsNan")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Log")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Log1p")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LogicalNot")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Neg")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Real")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Rsqrt")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Sign")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Sin")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Sqrt")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Square")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Sigmoid")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Tanh")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Tan")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Lgamma")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Digamma")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Erf")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Erfc")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Cast")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ComplexAbs")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FFT")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IFFT")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FFT2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IFFT2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FFT3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IFFT3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TanhGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SigmoidGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InvGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SqrtGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RsqrtGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Cumsum")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Cumprod")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Add")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Complex")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Div")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Equal")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Greater")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("GreaterEqual")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Igamma")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Igammac")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Zeta")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Polygamma")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Less")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LessEqual")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LogicalAnd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LogicalOr")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Maximum")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Minimum")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Mod")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FloorMod")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FloorDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TruncateMod")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TruncateDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RealDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Mul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("NotEqual")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Pow")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Sub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SquaredDifference")(common_shapes.call_cpp_shape_fn)
-
-
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
   return [common_shapes.broadcast_shape(
       op.inputs[0].get_shape(),
       op.inputs[1].get_shape())]
-
-
-ops.RegisterShape("Betainc")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AddN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Select")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ArgMax")
@@ -2035,16 +1942,6 @@ def _ArgOpShape(op):
 @ops.RegisterShape("Sum")
 def _ReductionShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("SegmentMax")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SegmentMean")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SegmentMin")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SegmentProd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SegmentSum")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseSegmentMean")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseSegmentSqrtN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseSegmentSum")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
@@ -2087,8 +1984,3 @@ def reduced_shape(input_shape, axes):
        axes],                               # [1, 2]
       [input_shape,                         # [2, 3, 5, 7]
        array_ops.fill(axes_shape, 1)])      # [1, 1]
-
-
-ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Requantize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RequantizationRange")(common_shapes.call_cpp_shape_fn)

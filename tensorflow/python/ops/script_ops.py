@@ -31,7 +31,6 @@ import threading
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
 
@@ -198,9 +197,6 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     # pylint: enable=protected-access
   return result if is_list_or_tuple else result[0]
 
-
-ops.RegisterShape("PyFunc")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PyFuncStateless")(common_shapes.call_cpp_shape_fn)
 
 ops.NotDifferentiable("PyFunc")
 ops.NotDifferentiable("PyFuncStateless")

@@ -27,6 +27,33 @@ from google.protobuf import text_format
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import device
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+
+
+def _unknown_shape(op):
+  return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+# NOTE(cwhipkey): Dummy shape registration for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape("If")(_unknown_shape)
+ops.RegisterShape("Iff")(_unknown_shape)
+ops.RegisterShape("Ii")(_unknown_shape)
+ops.RegisterShape("Iif")(_unknown_shape)
+ops.RegisterShape("Iii")(_unknown_shape)
+ops.RegisterShape("In")(_unknown_shape)
+ops.RegisterShape("Iri")(_unknown_shape)
+ops.RegisterShape("None")(_unknown_shape)
+ops.RegisterShape("Of")(_unknown_shape)
+ops.RegisterShape("Oi")(_unknown_shape)
+ops.RegisterShape("Oif")(_unknown_shape)
+ops.RegisterShape("Oii")(_unknown_shape)
+ops.RegisterShape("OpWithDefaultAttr")(_unknown_shape)
+ops.RegisterShape("OpWithFutureDefaultAttr")(_unknown_shape)
+ops.RegisterShape("Or")(_unknown_shape)
+ops.RegisterShape("Otl")(_unknown_shape)
+ops.RegisterShape("Unary")(_unknown_shape)
 
 
 _op_list = op_def_pb2.OpList()

@@ -473,6 +473,21 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_gen_op_wrapper_py(
+    name = "test_ops_2",
+    out = "framework/test_ops_2.py",
+    require_shape_functions = True,
+    deps = [":test_ops_2_kernels"],
+)
+
+cc_library(
+    name = "test_ops_2_kernels",
+    srcs = ["framework/test_ops_2.cc"],
+    linkstatic = 1,
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = 1,
+)
+
 py_test(
     name = "framework_common_shapes_test",
     size = "small",
@@ -502,6 +517,7 @@ py_test(
         ":session",
         ":sparse_ops",
         ":test_ops",
+        ":test_ops_2",
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",

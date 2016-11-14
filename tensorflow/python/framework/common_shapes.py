@@ -24,6 +24,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 
@@ -556,7 +557,8 @@ def broadcast_shape(shape_x, shape_y):
 def call_cpp_shape_fn(op,
                       input_tensors_needed=None,
                       input_tensors_as_shapes_needed=None,
-                      debug_python_shape_fn=None):
+                      debug_python_shape_fn=None,
+                      require_shape_fn=True):
   """A shape function that delegates to the registered C++ shape function.
 
   Args:
@@ -570,6 +572,9 @@ def call_cpp_shape_fn(op,
       as the comparison is slow. If non-None, the python shape function;
       this function will be called and its output compared to that of
       the C++ shape function.
+    require_shape_fn: If true, and the C++ shape function is not registered
+      in the current binary then an exception is raised; otherwise, if the
+      C++ shape function is not registered then unknown_shape is used.
 
   Returns:
     A dictionary with the following keys:
@@ -581,8 +586,10 @@ def call_cpp_shape_fn(op,
 
   Raises:
     ValueError: If the C++ shape function returned an error (e.g. because the
-    shapes of the inputs are of the wrong rank or otherwise incompatible
-    according to the shape function).
+      shapes of the inputs are of the wrong rank or otherwise incompatible
+      according to the shape function).
+    RuntimeError: If the C++ shape function is not registered and
+      <require_shape_fn> is True.
   """
   if op.type == "Const":
     # To avoid serializing large constants, we special-case constant
@@ -623,13 +630,23 @@ def call_cpp_shape_fn(op,
         arr[idx] = s.as_proto().SerializeToString()
   input_tensors_as_shapes = arr
 
+  missing_shape_fn = False
   try:
     with errors.raise_exception_on_not_ok_status() as status:
       output_shapes = pywrap_tensorflow.RunCppShapeInference(
           node_def_str, input_shapes, input_tensors, input_tensors_as_shapes,
           status)
   except errors.InvalidArgumentError as err:
-    raise ValueError(err.message)
+    if err.message.startswith("No shape inference function exists for op"):
+      missing_shape_fn = True
+    else:
+      raise ValueError(err.message)
+
+  if missing_shape_fn:
+    if require_shape_fn:
+      raise RuntimeError(
+          "No C++ shape function registered for standard op: %s" % op.type)
+    return unknown_shape(op)
 
   # Convert TensorShapeProto values in output_shapes.
   result_protos = [
@@ -659,3 +676,7 @@ def call_cpp_shape_fn(op,
   return {"shapes": result,
           "handle_shapes": result_handle_shapes,
           "handle_dtypes": result_handle_dtypes}
+
+# pylint: disable=protected-access
+ops._set_call_cpp_shape_fn(call_cpp_shape_fn)
+# pylint: enable=protected-access

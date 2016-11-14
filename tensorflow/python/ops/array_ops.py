@@ -1000,9 +1000,6 @@ def concat(concat_dim, values, name="concat"):
                                values=values,
                                name=name)
 
-ops.RegisterShape("Pack")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Unpack")(common_shapes.call_cpp_shape_fn)
-
 
 @ops.RegisterShape("Concat")
 def _ConcatShape(op):
@@ -1013,9 +1010,6 @@ def _ConcatShape(op):
 def _ConcatV2Shape(op):  # pylint: disable=invalid-name
   return common_shapes.call_cpp_shape_fn(
       op, input_tensors_needed=[len(op.inputs)-1])
-
-
-ops.RegisterShape("ConcatOffset")(common_shapes.call_cpp_shape_fn)
 
 
 def boolean_mask(tensor, mask, name="boolean_mask"):
@@ -1232,10 +1226,6 @@ def split_v(value, size_splits, split_dim=0, num=None, name="split_v"):
         split_dim=split_dim,
         num_split=num[0],
         name=name)
-
-
-ops.RegisterShape("Reverse")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReverseV2")(common_shapes.call_cpp_shape_fn)
 
 
 def transpose(a, perm=None, name="transpose"):
@@ -1741,18 +1731,6 @@ def meshgrid(*args, **kwargs):
     return [x * mult_fact for x in output]
 
 
-ops.RegisterShape("Placeholder")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PlaceholderV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StopGradient")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixBandPart")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizeAndDequantize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Rank")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Size")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Slice")
 def _SliceShape(op):
   """Shape function for array_ops.slice."""
@@ -1839,23 +1817,9 @@ def _StridedSliceGradShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-ops.RegisterShape("StridedSliceAssign")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("StridedSlice")
 def _DelegateStridedSliceShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2, 3])
-
-
-ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("GatherNd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Unique")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("UniqueWithCounts")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDiag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSetDiag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDiagPart")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Diag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DiagPart")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ExpandDims")
@@ -1864,16 +1828,9 @@ def _ExpandDims(op):
       op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("Squeeze")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Reshape")
 def _DelegateReshapeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
-
-
-ops.RegisterShape("BroadcastGradientArgs")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Fill")
@@ -1900,10 +1857,6 @@ def _FillShape(op):
   return [tensor_util.constant_value_as_shape(op.inputs[0])]
 
 
-ops.RegisterShape("InvertPermutation")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ListDiff")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Pad")
 @ops.RegisterShape("MirrorPad")
 def _PadShape(op):
@@ -1913,11 +1866,6 @@ def _PadShape(op):
 @ops.RegisterShape("MirrorPadGrad")
 def _MirrorPadGradShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("ReverseSequence")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Shape")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ShapeN")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Transpose")
@@ -1987,10 +1935,6 @@ def _TileGradShape(op):
     for dim, multiple in zip(input_shape.dims, multiples.dims):
       output_dims.append(dim // multiple)
     return [tensor_shape.TensorShape(output_dims)]
-
-
-ops.RegisterShape("Where")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ZerosLike")(common_shapes.call_cpp_shape_fn)
 
 
 def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
@@ -2111,9 +2055,6 @@ def _FakeQuantWithMinMaxVarsPerChannelGradient(op, grad):
   return fake_quant_with_min_max_vars_per_channel_gradient(grad, op.inputs[0],
                                                            op.inputs[1],
                                                            op.inputs[2])
-
-
-ops.RegisterShape("ExtractImagePatches")(common_shapes.call_cpp_shape_fn)
 
 
 def required_space_to_batch_paddings(input_shape,
@@ -2241,10 +2182,6 @@ def _BatchToSpaceShape(op):
 @ops.RegisterShape("BatchToSpaceND")
 def _BatchToSpaceNDShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
-
-
-ops.RegisterShape("SpaceToDepth")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DepthToSpace")(common_shapes.call_cpp_shape_fn)
 
 
 def one_hot(indices, depth, on_value=None, off_value=None,

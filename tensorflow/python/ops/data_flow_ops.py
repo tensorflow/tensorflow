@@ -25,7 +25,6 @@ import re
 
 import six
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -1063,56 +1062,6 @@ ops.NotDifferentiable("MutableHashTable")
 ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
-ops.RegisterShape("QueueSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Queue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FIFOQueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PaddingFIFOQueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RandomShuffleQueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PriorityQueue")(common_shapes.call_cpp_shape_fn)
-
-
-# NOTE(mrry): The following ops use higher-level information in the
-# Queue class to provide shape information.
-ops.RegisterShape("QueueDequeue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueDequeueMany")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueDequeueUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueEnqueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueEnqueueMany")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueClose")(common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("Stack")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StackPush")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StackPop")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StackClose")(common_shapes.call_cpp_shape_fn)
-
-# NOTE(mrry): Uses higher-level information in the Barrier class to
-# provide shape information.
-ops.RegisterShape("BarrierReadySize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierIncompleteSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Barrier")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierTakeMany")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierClose")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierInsertMany")(common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("GetSessionHandle")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("GetSessionTensor")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DeleteSessionTensor")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DynamicPartition")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DynamicStitch")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableFind")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableInsert")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableImport")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableExport")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("HashTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MutableDenseHashTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MutableHashTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MutableHashTableOfTensors")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InitializeTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InitializeTableFromTextFile")(
-    common_shapes.call_cpp_shape_fn)
-
-
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1416,16 +1365,3 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)
-
-
-ops.RegisterShape("AccumulatorNumAccumulated")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AccumulatorSetGlobalStep")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ConditionalAccumulator")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AccumulatorApplyGradient")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AccumulatorTakeGradient")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseConditionalAccumulator")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseAccumulatorApplyGradient")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseAccumulatorTakeGradient")(
-    common_shapes.call_cpp_shape_fn)

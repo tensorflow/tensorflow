@@ -1173,12 +1173,6 @@ def bias_add(value, bias, data_format=None, name=None):
     return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
 
 
-ops.RegisterShape("BiasAddV1")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BiasAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BiasAddGradV1")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BiasAddGrad")(common_shapes.call_cpp_shape_fn)
-
-
 # pylint: disable=protected-access
 def bias_add_v1(value, bias, name=None):
   """Adds `bias` to `value`.
@@ -1630,40 +1624,9 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
-ops.RegisterShape("Relu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Relu6")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Elu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Softplus")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Softsign")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReluGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Relu6Grad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("EluGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SoftplusGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SoftsignGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("L2Loss")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LRN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LRNGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Softmax")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LogSoftmax")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InTopK")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TopK")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("TopKV2")
 def _TopKV2Shape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("BatchNormWithGlobalNormalization")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FusedBatchNorm")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FusedBatchNormGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DepthwiseConv2dNative")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPool")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("FusedResizeAndPadConv2D")
@@ -1676,17 +1639,9 @@ def _FusedPadConv2DShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("MaxPoolWithArgmax")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-ops.RegisterShape("FractionalMaxPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FractionalAvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FractionalMaxPoolGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("FractionalAvgPoolGrad")
@@ -1712,10 +1667,6 @@ def _DepthwiseConv2dNativeBackpropFilterShape(op):
 @ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-ops.RegisterShape("MaxPoolGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPoolGradWithArgmax")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -1750,17 +1701,6 @@ def _calc_depthwise_conv_flops(graph, node):
   filter_width = int(filter_shape[1])
   output_count = np.prod(output_shape.as_list())
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
-
-
-ops.RegisterShape("Conv3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPool3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AvgPool3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropFilter")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropInput")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropFilterV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropInputV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AvgPool3DGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPool3DGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("BiasAdd", "flops")
@@ -1972,11 +1912,6 @@ def conv1d(value, filters, stride, padding,
     return array_ops.squeeze(result, [spatial_start_dim])
 
 
-ops.RegisterShape("Dilation2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Dilation2DBackpropInput")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Dilation2DBackpropFilter")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterStatistics("Dilation2D", "flops")
 def _calc_dilation2d_flops(graph, node):
   """Calculates the compute resources needed for Dilation2D."""
@@ -2048,15 +1983,5 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                                               rates=rates,
                                               padding=padding,
                                               name=name))
-
-
-ops.RegisterShape("QuantizedAvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedBiasAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedConv2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedMaxPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedRelu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedRelu6")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedReluX")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizeDownAndShrinkRange")(common_shapes.call_cpp_shape_fn)
 
 # pylint: enable=invalid-name

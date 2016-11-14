@@ -124,7 +124,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_state_ops
@@ -168,13 +167,6 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   return ret
 
 
-# NOTE(mrry): Shapes are conditionally set in the Python wrapper.
-ops.RegisterShape("Variable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IsVariableInitialized")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TemporaryVariable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DestroyTemporaryVariable")(common_shapes.call_cpp_shape_fn)
-
-
 def init_variable(v, init, name="init"):
   """Initializes variable with "init".
 
@@ -208,17 +200,3 @@ def init_variable(v, init, name="init"):
         else:
           init = ops.convert_to_tensor(init, name="init")
           return gen_state_ops.assign(v, init, name=scope)
-
-
-ops.RegisterShape("Assign")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CountUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterMul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterUpdate")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterNdAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterNdSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterNdUpdate")(common_shapes.call_cpp_shape_fn)
