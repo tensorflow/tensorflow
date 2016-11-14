@@ -48,23 +48,6 @@ const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
 const ORBIT_MOUSE_ROTATION_SPEED = 1;
 const ORBIT_ANIMATION_ROTATION_CYCLE_IN_SECONDS = 7;
 
-/**
- * Points in 3D space that will be used in the projector. If the projector is
- * in 2D mode, the Z coordinate of the point will be 0.
- */
-export interface DataPoint {
-  /** index of the trace, used for highlighting on click */
-  traceIndex?: number;
-  /** index in the original data source */
-  index: number;
-}
-
-/** A single collection of points which make up a trace through space. */
-export interface DataTrace {
-  /** Indices into the DataPoints array in the Data object. */
-  pointIndices: number[];
-}
-
 export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 

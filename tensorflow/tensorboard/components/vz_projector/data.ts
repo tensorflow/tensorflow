@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 import {TSNE} from './bh_tsne';
-import * as knn from './knn';
-import * as scatterPlot from './scatterPlot';
-import {shuffle, getSearchPredicate, runAsyncTask} from './util';
-import * as logging from './logging';
-import * as vector from './vector';
 import {SpriteMetadata} from './data-provider';
+import * as knn from './knn';
+import * as logging from './logging';
+import * as scatterPlot from './scatterPlot';
+import {getSearchPredicate, runAsyncTask, shuffle} from './util';
+import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
 export type PointAccessor = (index: number) => number;
@@ -58,7 +58,13 @@ export interface SpriteAndMetadataInfo {
   spriteMetadata?: SpriteMetadata;
 }
 
-export interface DataPoint extends scatterPlot.DataPoint {
+/** A single collection of points which make up a trace through space. */
+export interface DataTrace {
+  /** Indices into the DataPoints array in the Data object. */
+  pointIndices: number[];
+}
+
+export interface DataPoint {
   /** The point in the original space. */
   vector: Float32Array;
 
@@ -67,6 +73,12 @@ export interface DataPoint extends scatterPlot.DataPoint {
    * where the value can be a string or a number.
    */
   metadata: PointMetadata;
+
+  /** index of the trace, used for highlighting on click */
+  traceIndex?: number;
+
+  /** index in the original data source */
+  index: number;
 
   /** This is where the calculated projections space are cached */
   projections: {[key: string]: number};
@@ -106,7 +118,7 @@ const TRACE_METADATA_ATTR = '__next__';
  */
 export class DataSet {
   points: DataPoint[];
-  traces: scatterPlot.DataTrace[];
+  traces: DataTrace[];
 
   sampledDataIndices: number[] = [];
 
@@ -142,8 +154,8 @@ export class DataSet {
     // point twice.
     let indicesSeen = new Int8Array(points.length);
     // Compute traces.
-    let indexToTrace: {[index: number]: scatterPlot.DataTrace} = {};
-    let traces: scatterPlot.DataTrace[] = [];
+    let indexToTrace: {[index: number]: DataTrace} = {};
+    let traces: DataTrace[] = [];
     for (let i = 0; i < points.length; i++) {
       if (indicesSeen[i]) {
         continue;
@@ -163,7 +175,7 @@ export class DataSet {
         continue;
       }
       // The current point is pointing to a new/unseen trace.
-      let newTrace: scatterPlot.DataTrace = {pointIndices: []};
+      let newTrace: DataTrace = {pointIndices: []};
       indexToTrace[i] = newTrace;
       traces.push(newTrace);
       let currentIndex = i;
