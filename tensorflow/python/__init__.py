@@ -158,6 +158,9 @@ _allowed_symbols = [
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
+    'mul',  # use tf.multiply instead.
+    'neg',  # use tf.negative instead.
+    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',

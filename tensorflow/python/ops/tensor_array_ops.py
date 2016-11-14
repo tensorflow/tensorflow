@@ -25,7 +25,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
@@ -483,19 +482,5 @@ class TensorArray(object):
     with ops.colocate_with(self._handle):
       return gen_data_flow_ops._tensor_array_close(
           handle=self._handle, name=name)
-
-
-ops.RegisterShape("TensorArray")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayRead")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayWrite")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArraySize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayClose")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayPack")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayGather")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayConcat")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArraySplit")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayUnpack")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TensorArrayScatter")(common_shapes.call_cpp_shape_fn)
 
 # pylint: enable=protected-access

@@ -29,6 +29,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -47,8 +48,9 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
 
-# NOTE(mrry): Dummy shape registration for op used in the tests.
-ops.RegisterShape('ConstructionFails')(None)
+# NOTE(mrry): Dummy shape registration for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
 class SessionTest(test_util.TensorFlowTestCase):

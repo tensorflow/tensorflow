@@ -18,6 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -445,6 +446,63 @@ use_locking: If True, the operation will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+namespace {
+
+Status ScatterNdUpdateShape(InferenceContext* c) {
+  ShapeHandle ref_shape = c->input(0);
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
+
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+    const int64 outer_dims = c->Rank(indices_shape) - 1;
+    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
+
+    // We can only do more validation if the last dimension of indices
+    // is a known value.
+    if (c->ValueKnown(ixdim)) {
+      int64 ix = c->Value(ixdim);
+      ShapeHandle unused;
+      ShapeHandle prefix_indices;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
+      ShapeHandle prefix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
+
+      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), "must match the outer ", outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+
+      ShapeHandle suffix_ref;
+      TF_RETURN_IF_ERROR(c->Subshape(ref_shape, ix, &suffix_ref));
+      ShapeHandle suffix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, outer_dims, &suffix_updates));
+      s = c->Merge(suffix_ref, suffix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The inner ", c->Rank(ref_shape) - ix, " dimensions of ref.shape=",
+            c->DebugString(ref_shape), "must match the inner ",
+            c->Rank(updates_shape) - outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+    }
+  }
+
+  c->set_output(0, ref_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ScatterNdUpdate")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
@@ -453,6 +511,7 @@ REGISTER_OP("ScatterNdUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .SetShapeFn(ScatterNdUpdateShape)
     .Doc(R"doc(
 Applies sparse `updates` to individual values or slices within a given
 variable according to `indices`.
@@ -509,6 +568,7 @@ REGISTER_OP("ScatterNdAdd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterNdUpdateShape)
     .Doc(R"doc(
 Applies sparse addition between `updates` and individual values or slices
 within a given variable according to `indices`.
@@ -565,6 +625,7 @@ REGISTER_OP("ScatterNdSub")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterNdUpdateShape)
     .Doc(R"doc(
 Applies sparse subtraction between `updates` and individual values or slices
 within a given variable according to `indices`.
@@ -624,6 +685,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 //     .Attr("T: numbertype")
 //     .Attr("Tindices: {int32, int64}")
 //     .Attr("use_locking: bool = false")
+//     .SetShapeFn(ScatterNdUpdateShape)
 //     .Doc(
 //         R"doc(Applies sparse subtraction between `updates` and individual
 //         values or slices within a given variable according to `indices`.
@@ -679,6 +741,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 //     .Attr("T: numbertype")
 //     .Attr("Tindices: {int32, int64}")
 //     .Attr("use_locking: bool = false")
+//     .SetShapeFn(ScatterNdUpdateShape)
 //     .Doc(
 //         R"doc(Applies sparse subtraction between `updates` and individual
 //         values or slices within a given variable according to `indices`.

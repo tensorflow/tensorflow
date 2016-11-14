@@ -91,6 +91,16 @@ export class DemoDataProvider implements DataProvider {
 
   getBookmarks(
       run: string, tensorName: string, callback: (r: State[]) => void) {
-    callback([]);
+    let embedding = this.getEmbeddingInfo(tensorName);
+    let msgId = logging.setModalMessage('Fetching bookmarks...');
+    d3.json(embedding.bookmarksPath, (err, bookmarks: State[]) => {
+      if (err) {
+        logging.setModalMessage('Error: ' + err.responseText);
+        return;
+      }
+
+      logging.setModalMessage(null, msgId);
+      callback(bookmarks);
+    });
   }
 }

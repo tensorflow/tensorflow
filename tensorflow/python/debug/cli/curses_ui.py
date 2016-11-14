@@ -937,10 +937,19 @@ class CursesUI(object):
 
     if self._output_pad_height > self._output_pad_screen_height + 1:
       # Display information about the scrolling of tall screen output.
-      self._scroll_info = "--- Scroll: %.2f%% " % (100.0 * (min(
+      scroll_percentage = 100.0 * (min(
           1.0,
           float(self._output_pad_row) /
-          (self._output_pad_height - self._output_pad_screen_height - 1))))
+          (self._output_pad_height - self._output_pad_screen_height - 1)))
+      if self._output_pad_row == 0:
+        scroll_directions = " (PgDn)"
+      elif self._output_pad_row >= (
+          self._output_pad_height - self._output_pad_screen_height - 1):
+        scroll_directions = " (PgUp)"
+      else:
+        scroll_directions = " (PgDn/PgUp)"
+      self._scroll_info = "--- Scroll%s: %.2f%% " % (scroll_directions,
+                                                     scroll_percentage)
 
       self._output_array_pointer_indices = self._show_array_indices()
 

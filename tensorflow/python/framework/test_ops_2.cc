@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-export type HoverListener = (index: number) => void;
+#include "tensorflow/core/framework/op.h"
 
-/**
- * Interface that encapsulates "hover" events, where the mouse is over some
- * representation of a point. Clients can subscribe to hover events, and also
- * report hover events to the system.
- */
-export interface HoverContext {
-  registerHoverListener(listener: HoverListener);
-  notifyHoverOverPoint(pointIndex: number);
-}
+// Unlike test_ops.cc, these are built with the "require_shapes" option in the
+// BUILD file.
+
+namespace tensorflow {
+
+REGISTER_OP("ShapelessOp");
+
+}  // end namespace tensorflow
