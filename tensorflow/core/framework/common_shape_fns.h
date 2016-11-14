@@ -203,6 +203,11 @@ Status ConcatV2Shape(shape_inference::InferenceContext* c);
 // Tested by ops/math_ops_test.cc.
 Status BroadcastBinaryOpShapeFn(InferenceContext* c);
 
+// Validates the 3 component tensors of a sparse tensor have the proper
+// shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
+Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle values_shape, ShapeHandle shape_shape);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow
