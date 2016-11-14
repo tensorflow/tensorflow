@@ -4435,6 +4435,71 @@ output_min: This value is copied from input_min.
 output_max: This value is copied from input_max.
 )Doc");
 
+namespace {
+
+Status ScatterNdShape(InferenceContext* c) {
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
+
+  if (c->Value(c->NumElements(output_shape)) == 0 &&
+      (c->Value(c->NumElements(indices_shape)) > 0 ||
+       c->Value(c->NumElements(updates_shape)) > 0)) {
+    return errors::InvalidArgument(
+        "Indices and updates specified for empty output shape");
+  }
+
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+    const int64 outer_dims = c->Rank(indices_shape) - 1;
+    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
+
+    // We can only do more validation if the last dimension of indices
+    // is a known value.
+    if (c->ValueKnown(ixdim)) {
+      int64 ix = c->Value(ixdim);
+      ShapeHandle unused;
+      ShapeHandle prefix_indices;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
+      ShapeHandle prefix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
+
+      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+
+      ShapeHandle suffix_output;
+      TF_RETURN_IF_ERROR(c->Subshape(output_shape, ix, &suffix_output));
+      ShapeHandle suffix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, outer_dims, &suffix_updates));
+      s = c->Merge(suffix_output, suffix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The inner ", c->Rank(output_shape) - ix,
+            " dimensions of output.shape=", c->DebugString(output_shape),
+            " must match the inner ", c->Rank(updates_shape) - outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+    }
+  }
+
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ScatterNd")
     .Input("indices: Tindices")
     .Input("updates: T")
@@ -4442,6 +4507,7 @@ REGISTER_OP("ScatterNd")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdShape)
     .Doc(
         R"doc(Creates a new tensor by applying sparse `updates` to individual
 values or slices within a zero tensor of the given `shape` tensor according to
