@@ -60,7 +60,7 @@ class TestCluster {
  private:
   TestCluster() = default;
 
-  std::vector<std::unique_ptr<testing::SubProcess>> subprocesses_;
+  std::vector<std::unique_ptr<SubProcess>> subprocesses_;
   std::vector<string> targets_;
   std::vector<DeviceAttributes> devices_;
 
