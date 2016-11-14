@@ -1713,6 +1713,25 @@ lookup_id = index_of_feature_in_keys if feature in keys else default_value
 
 Creates a _SparseColumn by combining sparse_id_column with a weight column.
 
+Example:
+
+  ```python
+  sparse_feature = sparse_column_with_hash_bucket(column_name="sparse_col",
+                                                  hash_bucket_size=1000)
+  weighted_feature = weighted_sparse_column(sparse_id_column=sparse_feature,
+                                            weight_column_name="weights_col")
+  ```
+
+  This configuration assumes that input dictionary of model contains the
+  following two items:
+    * (key="sparse_col", value=sparse_tensor) where sparse_tensor is
+      a SparseTensor.
+    * (key="weights_col", value=weights_tensor) where weights_tensor
+      is a SparseTensor.
+   Following are assumed to be true:
+     * sparse_tensor.indices = weights_tensor.indices
+     * sparse_tensor.shape = weights_tensor.shape
+
 ##### Args:
 
 
@@ -1731,22 +1750,6 @@ Creates a _SparseColumn by combining sparse_id_column with a weight column.
 
 
 *  <b>`ValueError`</b>: if dtype is not convertible to float.
-
-##### An example usage:
-
-  ```python
-  words = sparse_column_with_hash_bucket("words", 1000)
-  tfidf_weighted_words = weighted_sparse_column(words, "tfidf_score")
-  ```
-
-  This configuration assumes that input dictionary of model contains the
-  following two items:
-    * (key="words", value=word_tensor) where word_tensor is a SparseTensor.
-    * (key="tfidf_score", value=tfidf_score_tensor) where tfidf_score_tensor
-      is a SparseTensor.
-   Following are assumed to be true:
-     * word_tensor.indices = tfidf_score_tensor.indices
-     * word_tensor.shape = tfidf_score_tensor.shape
 
 
 - - -
