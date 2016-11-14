@@ -45,6 +45,8 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
 
 namespace {
 
+TEST(CAPI, Version) { EXPECT_NE("", string(TF_Version())); }
+
 TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));

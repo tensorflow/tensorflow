@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/version.h"
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
@@ -75,6 +76,9 @@ using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
 
 extern "C" {
+
+// --------------------------------------------------------------------------
+const char* TF_Version() { return TF_VERSION_STRING; }
 
 // --------------------------------------------------------------------------
 struct TF_Status {

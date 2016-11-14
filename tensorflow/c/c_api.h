@@ -69,6 +69,11 @@ extern "C" {
 #endif
 
 // --------------------------------------------------------------------------
+// TF_Version returns a string describing version information of the
+// TensorFlow library. TensorFlow using semantic versioning.
+const char* TF_Version();
+
+// --------------------------------------------------------------------------
 // TF_DataType holds the type for a scalar value.  E.g., one slot in a tensor.
 // The enum values here are identical to corresponding values in types.proto.
 typedef enum {
