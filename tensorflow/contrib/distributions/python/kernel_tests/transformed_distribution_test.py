@@ -71,7 +71,9 @@ class TransformedDistributionTest(tf.test.TestCase):
 
       # sample
       sample = log_normal.sample(100000, seed=235)
+      self.assertAllEqual([], log_normal.get_event_shape())
       with self.test_session(graph=g):
+        self.assertAllEqual([], log_normal.event_shape().eval())
         self.assertAllClose(sp_dist.mean(), np.mean(sample.eval()),
                             atol=0.0, rtol=0.05)
 
@@ -132,6 +134,8 @@ class TransformedDistributionTest(tf.test.TestCase):
                           multi_logit_normal.log_prob(y).eval())
       self.assertAllClose([1, 2, 3, 2],
                           tf.shape(multi_logit_normal.sample([1, 2, 3])).eval())
+      self.assertAllEqual([2], multi_logit_normal.get_event_shape())
+      self.assertAllEqual([2], multi_logit_normal.event_shape().eval())
 
 
 if __name__ == "__main__":

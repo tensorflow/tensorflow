@@ -1,4 +1,4 @@
-#### `tf.train.SessionRunValues.__new__(_cls, results)` {#SessionRunValues.__new__}
+#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
 
-Create new instance of SessionRunValues(results,)
+Create new instance of SessionRunValues(results, options, run_metadata)
 

@@ -13,25 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {DataSet} from './data';
 import {NearestEntry} from './knn';
 
+export type HoverListener = (index: number) => void;
 export type SelectionChangedListener =
     (selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[]) =>
         void;
+export type ProjectionChangedListener = (dataSet: DataSet) => void;
 
-/**
- * Interface that encapsulates selection. Used to register selection handlers,
- * and also to notify the system that a visualizer or web control has
- * changed the currently selected point set.
- */
-export interface SelectionContext {
-  /**
-   * Registers a callback to be invoked when the selection changes.
-   */
+export interface ProjectorEventContext {
+  /** Register a callback to be invoked when the mouse hovers over a point. */
+  registerHoverListener(listener: HoverListener);
+  /** Notify the hover system that a point is under the mouse. */
+  notifyHoverOverPoint(pointIndex: number);
+  /** Registers a callback to be invoked when the selection changes. */
   registerSelectionChangedListener(listener: SelectionChangedListener);
   /**
    * Notify the selection system that a client has changed the selected point
    * set.
    */
   notifySelectionChanged(newSelectedPointIndices: number[]);
+  /** Registers a callback to be invoked when the projection changes. */
+  registerProjectionChangedListener(listener: ProjectionChangedListener);
+  /** Notify listeners that a reprojection occurred. */
+  notifyProjectionChanged(dataSet: DataSet);
 }

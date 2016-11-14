@@ -2,11 +2,13 @@
 
 **(Under development, subject to change)**
 
-This tutorial showcases how to use the TensorFlow Debugger (**tfdbg**) to debug
-a frequently encountered problem in TensorFlow model development: bad numerical
-values (`nan`s and `inf`s) causing training to fail.
+This tutorial showcases the features of TensorFlow Debugger (**tfdbg**)
+command-line interface.
+It contains an example of how to debug a frequently encountered problem in
+TensorFlow model development: bad numerical values (`nan`s and `inf`s) causing
+training to fail.
 
-To observe the issue, run the following code without the debugger:
+To **observe** such an issue, run the following code without the debugger:
 
 ```none
 bazel build -c opt tensorflow/python/debug:debug_mnist && \
@@ -345,11 +347,43 @@ stuck. Success!
        [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
        and other profiling tools for TensorFlow.
 
-**Q**: _How do I link tfdbg against my Session in Bazel?_
+**Q**: _How do I link tfdbg against my `Session` in Bazel?_
 
 **A**: In your BUILD rule, declare the dependency: `"//tensorflow:tensorflow_py"`.
        In your Python file, add:
-         `from tensorflow.python import debug as tf_debug`
+
+```python
+from tensorflow.python import debug as tf_debug
+
+# Then wrap your TensorFlow Session with the local-CLI wrapper.
+sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+```
+
+**Q**: _Can I use `tfdbg` if I am using tf-learn Estimators, instead of
+managing my own `Session` objects?_
+
+**A**: Currently, `tfdbg` can only debug the `fit()` method of tf-learn
+Estimators. Support for debugging `evaluate()` will come soon. To debug
+`Estimator.fit()`, create a monitor and supply it as an argument. For example:
+
+```python
+from tensorflow.python import debug as tf_debug
+
+# Create a local CLI debug hook and use it as a monitor when calling fit().
+classifier.fit(x=training_set.data,
+               y=training_set.target,
+               steps=1000,
+               monitors=[tf_debug.LocalCLIDebugHook()])
+```
+
+For a detailed [example](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py) based on
+[tf-learn's iris tutorial](../../../g3doc/tutorials/tflearn/index.md),
+run:
+
+```none
+bazel build -c opt tensorflow/python/debug:debug_tflearn_iris && \
+    bazel-bin/tensorflow/python/debug/debug_tflearn_iris
+```
 
 **Q**: _Does tfdbg help debugging runtime errors such as shape mismatches?_
 

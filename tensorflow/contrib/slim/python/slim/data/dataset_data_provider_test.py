@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 import tensorflow as tf
 
 import tensorflow.contrib.slim as slim
@@ -31,9 +34,10 @@ def _resize_image(image, height, width):
 
 
 def _create_tfrecord_dataset(tmpdir):
-  data_sources = test_utils.create_tfrecord_files(
-      tmpdir,
-      num_files=1)
+  if not tf.gfile.Exists(tmpdir):
+    tf.gfile.MakeDirs(tmpdir)
+
+  data_sources = test_utils.create_tfrecord_files(tmpdir, num_files=1)
 
   keys_to_features = {
       'image/encoded': tf.FixedLenFeature(
@@ -64,12 +68,15 @@ def _create_tfrecord_dataset(tmpdir):
 class DatasetDataProviderTest(tf.test.TestCase):
 
   def testTFRecordDataset(self):
+    dataset_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'tfrecord_dataset'))
+
     height = 300
     width = 280
 
     with self.test_session():
       provider = slim.dataset_data_provider.DatasetDataProvider(
-          _create_tfrecord_dataset(self.get_temp_dir()))
+          _create_tfrecord_dataset(dataset_dir))
       image, label = provider.get(['image', 'label'])
       image = _resize_image(image, height, width)
 
@@ -80,12 +87,15 @@ class DatasetDataProviderTest(tf.test.TestCase):
       self.assertListEqual([1], list(label.shape))
 
   def testTFRecordSeparateGetDataset(self):
+    dataset_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'tfrecord_separate_get'))
+
     height = 300
     width = 280
 
     with self.test_session():
       provider = slim.dataset_data_provider.DatasetDataProvider(
-          _create_tfrecord_dataset(self.get_temp_dir()))
+          _create_tfrecord_dataset(dataset_dir))
     [image] = provider.get(['image'])
     [label] = provider.get(['label'])
     image = _resize_image(image, height, width)
