@@ -174,9 +174,9 @@ class LibCurlProxy : public LibCurl {
 
 HttpRequest::HttpRequest() : HttpRequest(LibCurlProxy::Load()) {}
 
-HttpRequest::HttpRequest(LibCurl* libcurl)
-    : libcurl_(libcurl),
-      default_response_buffer_(new char[CURL_MAX_WRITE_SIZE]) {}
+HttpRequest::HttpRequest(LibCurl* libcurl) : libcurl_(libcurl) {
+  default_response_buffer_.reserve(CURL_MAX_WRITE_SIZE);
+}
 
 HttpRequest::~HttpRequest() {
   if (curl_headers_) {
@@ -221,8 +221,7 @@ Status HttpRequest::Init() {
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
   is_initialized_ = true;
-  auto s = SetResultBuffer(default_response_buffer_.get(), CURL_MAX_WRITE_SIZE,
-                           &default_response_string_piece_);
+  auto s = SetResultBuffer(&default_response_buffer_);
   if (!s.ok()) {
     is_initialized_ = false;
     return s;
@@ -346,24 +345,15 @@ Status HttpRequest::SetPostEmptyBody() {
   return Status::OK();
 }
 
-Status HttpRequest::SetResultBuffer(char* scratch, size_t size,
-                                    StringPiece* result) {
+Status HttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
-  if (!scratch) {
-    return errors::InvalidArgument("scratch cannot be null");
-  }
-  if (!result) {
-    return errors::InvalidArgument("result cannot be null");
-  }
-  if (size <= 0) {
-    return errors::InvalidArgument("buffer size should be positive");
+  if (!out_buffer) {
+    return errors::InvalidArgument("out_buffer cannot be null");
   }
 
-  response_buffer_ = scratch;
-  response_buffer_size_ = size;
-  response_string_piece_ = result;
-  response_buffer_written_ = 0;
+  out_buffer->clear();
+  response_buffer_ = out_buffer;
 
   libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                              reinterpret_cast<void*>(this));
@@ -377,13 +367,11 @@ size_t HttpRequest::WriteCallback(const void* ptr, size_t size, size_t nmemb,
   CHECK(ptr);
   auto that = reinterpret_cast<HttpRequest*>(this_object);
   CHECK(that->response_buffer_);
-  CHECK(that->response_buffer_size_ >= that->response_buffer_written_);
-  const size_t bytes_to_copy =
-      std::min(size * nmemb,
-               that->response_buffer_size_ - that->response_buffer_written_);
-  memcpy(that->response_buffer_ + that->response_buffer_written_, ptr,
-         bytes_to_copy);
-  that->response_buffer_written_ += bytes_to_copy;
+  const size_t bytes_to_copy = size * nmemb;
+  that->response_buffer_->insert(
+      that->response_buffer_->end(), reinterpret_cast<const char*>(ptr),
+      reinterpret_cast<const char*>(ptr) + bytes_to_copy);
+
   return bytes_to_copy;
 }
 
@@ -455,9 +443,6 @@ Status HttpRequest::Send() {
             strings::StrCat("libcurl failed with error code ", curl_result,
                             ": ", error_buffer));
       }
-      if (response_buffer_ && response_string_piece_) {
-        *response_string_piece_ = StringPiece(response_buffer_, written_size);
-      }
       return Status::OK();
     case 401:
     case 403:
@@ -465,9 +450,7 @@ Status HttpRequest::Send() {
     case 404:
       return errors::NotFound("The requested resource was not found.");
     case 416:  // Requested Range Not Satisfiable
-      if (response_string_piece_) {
-        *response_string_piece_ = StringPiece();
-      }
+      response_buffer_->clear();
       return Status::OK();
     default:
       // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.

@@ -72,7 +72,7 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
     ckpt_path = latest_checkpoint(logdir)
     if not ckpt_path:
       # See if you can find a checkpoint in the parent of logdir.
-      ckpt_path = latest_checkpoint(os.path.join('../', logdir))
+      ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
       if not ckpt_path:
         continue
     if config.model_checkpoint_path != ckpt_path:
@@ -154,8 +154,11 @@ class ProjectorPlugin(TBPlugin):
 
   def _augment_configs_with_checkpoint_info(self):
     for run, config in self._configs.items():
-      # Find the size of the embeddings that are associated with a tensor file.
       for embedding in config.embeddings:
+        # Normalize the name of the embeddings.
+        if embedding.tensor_name.endswith(':0'):
+          embedding.tensor_name = embedding.tensor_name[:-2]
+        # Find the size of embeddings associated with a tensors file.
         if embedding.tensor_path and not embedding.tensor_shape:
           tensor = _read_tensor_file(embedding.tensor_path)
           embedding.tensor_shape.extend([len(tensor), len(tensor[0])])

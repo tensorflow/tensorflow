@@ -8,28 +8,30 @@ to a single tensor. Each feature column needs a different kind of operation
 during this conversion. For example sparse features need a totally different
 handling than continuous features.
 
-An example usage of input_from_feature_columns is as follows:
+Example:
 
+```python
   # Building model for training
   columns_to_tensor = tf.parse_example(...)
   first_layer = input_from_feature_columns(
       columns_to_tensors=columns_to_tensor,
       feature_columns=feature_columns)
-  second_layer = fully_connected(first_layer, ...)
+  second_layer = fully_connected(inputs=first_layer, ...)
   ...
+```
 
-  where feature_columns can be defined as follows:
+where feature_columns can be defined as follows:
 
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
-  age = real_valued_column("age")
-  age_buckets = bucketized_column(
-      source_column=age,
-      boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
+```python
+  sparse_feature = sparse_column_with_hash_bucket(
+      column_name="sparse_col", ...)
+  sparse_feature_emb = embedding_column(sparse_id_column=sparse_feature, ...)
+  real_valued_feature = real_valued_column(...)
+  real_valued_buckets = bucketized_column(
+      source_column=real_valued_feature, ...)
 
-  feature_columns=[occupation_emb, age_buckets]
+  feature_columns=[sparse_feature_emb, real_valued_buckets]
+```
 
 ##### Args:
 

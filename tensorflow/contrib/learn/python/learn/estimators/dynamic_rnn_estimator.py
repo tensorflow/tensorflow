@@ -572,10 +572,13 @@ def _get_dynamic_rnn_model_fn(cell,
             predict_probabilities)
         loss = _single_value_loss(
             rnn_activations, labels, sequence_length, target_column, features)
+      # TODO(roumposg): Return eval_metric_ops here, instead of default_metrics.
       default_metrics = _get_default_metrics(
           problem_type, prediction_type, sequence_length)
       prediction_dict[RNNKeys.FINAL_STATE_KEY] = final_state
-      training_op = optimizers.optimize_loss(
+      eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
+          default_metrics, features, labels, prediction_dict)
+      train_op = optimizers.optimize_loss(
           loss=loss,
           global_step=None,
           learning_rate=learning_rate,
@@ -585,8 +588,8 @@ def _get_dynamic_rnn_model_fn(cell,
     return estimator.ModelFnOps(mode=mode,
                                 predictions=prediction_dict,
                                 loss=loss,
-                                training_op=training_op,
-                                default_metrics=default_metrics)
+                                train_op=train_op,
+                                eval_metric_ops=eval_metric_ops)
   return _dynamic_rnn_model_fn
 
 

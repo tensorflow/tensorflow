@@ -182,6 +182,14 @@ class TransformedDistribution(distributions.Distribution):
     """Function transforming x => y."""
     return self._bijector
 
+  def _event_shape(self):
+    return self.bijector.forward_event_shape(
+        self.distribution.event_shape())
+
+  def _get_event_shape(self):
+    return self.bijector.get_forward_event_shape(
+        self.distribution.get_event_shape())
+
   def _batch_shape(self):
     return self.distribution.batch_shape()
 

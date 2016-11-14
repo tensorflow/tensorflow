@@ -38,6 +38,7 @@ py_library(
         "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/specs",
+        "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",
         "//tensorflow/contrib/tensorboard",

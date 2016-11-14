@@ -192,15 +192,15 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 	switch value := value.(type) {
 	case string:
 		cstr := C.CString(value)
-		C.TF_SetAttrString(cdesc, cAttrName, unsafe.Pointer(cstr), C.int(len(value)))
+		C.TF_SetAttrString(cdesc, cAttrName, unsafe.Pointer(cstr), C.size_t(len(value)))
 		C.free(unsafe.Pointer(cstr))
 	case []string:
 		size := len(value)
 		list := make([]unsafe.Pointer, size)
-		lens := make([]C.int, size)
+		lens := make([]C.size_t, size)
 		for i, s := range value {
 			list[i] = unsafe.Pointer(C.CString(s))
-			lens[i] = C.int(len(s))
+			lens[i] = C.size_t(len(s))
 		}
 		C.TF_SetAttrStringList(cdesc, cAttrName, &list[0], &lens[0], C.int(size))
 		for _, s := range list {

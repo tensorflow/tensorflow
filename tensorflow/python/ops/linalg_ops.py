@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -28,17 +27,6 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
-
-ops.RegisterShape("Cholesky")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CholeskyGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixInverse")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDeterminant")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SelfAdjointEig")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SelfAdjointEigV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Svd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSolve")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixTriangularSolve")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSolveLs")(common_shapes.call_cpp_shape_fn)
 
 # Names below are lower_case.
 # pylint: disable=invalid-name

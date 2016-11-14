@@ -127,7 +127,6 @@ class BaseMonitor(object):
     self._current_step = None
     self._max_steps = None
     self._estimator = None
-    self._estimator_locked = False
 
   @property
   def run_on_all_workers(self):
@@ -144,20 +143,10 @@ class BaseMonitor(object):
     Raises:
       ValueError: if the estimator is None.
     """
-    if self._estimator_locked:
-      return
     if estimator is None:
       raise ValueError("Missing estimator.")
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
-
-  def _lock_estimator(self):
-    """Locks the estimator until _unlock_estimator is called."""
-    self._estimator_locked = True
-
-  def _unlock_estimator(self):
-    """Unlocks the estimator."""
-    self._estimator_locked = False
 
   def begin(self, max_steps=None):
     """Called at the beginning of training.
@@ -1234,6 +1223,48 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
         m.end(session=session)
       else:
         m.end()
+
+
+def replace_monitors_with_hooks(monitors_or_hooks, estimator):
+  """Wraps monitors with a hook.
+
+  `Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+  monitor, you can wrap it with a hook using function. It is recommended to
+  implement hook version of your monitor.
+
+  Args:
+    monitors_or_hooks: A `list` may contain both monitors and hooks.
+    estimator: An `Estimator` that monitor will be used with.
+
+  Returns:
+    Returns a list of hooks. If there is any monitor in the given list, it is
+    replaced by a hook.
+  """
+  monitors_or_hooks = monitors_or_hooks or []
+  hooks = [
+      m for m in monitors_or_hooks
+      if isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  deprecated_monitors = [
+      m for m in monitors_or_hooks
+      if not isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  if not estimator.config.is_chief:
+    # Prune list of monitor to the ones runnable on all workers.
+    deprecated_monitors = [
+        m for m in deprecated_monitors if m.run_on_all_workers
+    ]
+
+  # Setup monitors.
+  for monitor in deprecated_monitors:
+    monitor.set_estimator(estimator)
+
+  if deprecated_monitors:
+    hooks.append(RunHookAdapterForMonitors(deprecated_monitors))
+
+  return hooks
 
 
 def _as_graph_element(obj):

@@ -3,28 +3,13 @@ Estimator class is the basic TensorFlow model trainer/evaluator.
 
 #### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, feature_engineering_fn=None)` {#Estimator.__init__}
 
-Constructs an Estimator instance.
+Constructs an `Estimator` instance.
 
 ##### Args:
 
 
-*  <b>`model_fn`</b>: Model function, takes features and labels tensors or dicts of
-            tensors and returns tuple of:
-
-      * predictions: `Tensor`, `SparseTensor` or dictionary of same.
-          Can also be any type that is convertible to a `Tensor` or
-          `SparseTensor`, or dictionary of same.
-      * loss: Scalar loss `Tensor`.
-      * train_op: Training update `Tensor` or `Operation`.
-
-     Supports next three signatures for the function:
-
-      * `(features, labels) -> (predictions, loss, train_op)`
-      * `(features, labels, mode) -> (predictions, loss, train_op)`
-      * `(features, labels, mode, params) -> (predictions, loss, train_op)`
-
-    Where
-
+*  <b>`model_fn`</b>: Model function. Follows the signature:
+    * Args:
       * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
       * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
@@ -32,11 +17,28 @@ Constructs an Estimator instance.
              passed. If the `model_fn`'s signature does not accept
              `mode`, the `model_fn` must still be able to handle
              `labels=None`.
-      * `mode` represents if this training, evaluation or
+      * `mode` specifies if this training, evaluation or
              prediction. See `ModeKeys`.
       * `params` is a `dict` of hyperparameters. Will receive what
              is passed to Estimator in `params` parameter. This allows
-             to configure Estimators from hyper parameter tunning.
+             to configure Estimators from hyper parameter tuning.
+
+    * Returns:
+      `ModelFnOps`
+
+    Also supports a legacy signature which returns tuple of:
+
+      * predictions: `Tensor`, `SparseTensor` or dictionary of same.
+          Can also be any type that is convertible to a `Tensor` or
+          `SparseTensor`, or dictionary of same.
+      * loss: Scalar loss `Tensor`.
+      * train_op: Training update `Tensor` or `Operation`.
+
+    Supports next three signatures for the function:
+
+      * `(features, labels) -> (predictions, loss, train_op)`
+      * `(features, labels, mode) -> (predictions, loss, train_op)`
+      * `(features, labels, mode, params) -> (predictions, loss, train_op)`
 
 
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can

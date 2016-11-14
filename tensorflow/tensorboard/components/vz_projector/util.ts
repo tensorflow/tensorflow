@@ -168,3 +168,30 @@ export function runAsyncTask<T>(
     }, TASK_DELAY_MS);
   });
 }
+
+
+/**
+ * Parses the URL for query parameters, e.g. ?foo=1&bar=2 will return
+ *   {'foo': '1', 'bar': '2'}.
+ * @param url The URL to parse.
+ * @return A map of queryParam key to its value.
+ */
+export function getURLParams(url: string): {[key: string]: string} {
+  if (!url) {
+    return {};
+  }
+
+  let queryString = url.indexOf('?') !== -1 ? url.split('?')[1] : url;
+  if (queryString.indexOf('#')) {
+    queryString = queryString.split('#')[0];
+  }
+
+  const queryEntries = queryString.split('&');
+  let queryParams: {[key: string]: string} = {};
+  for (let i = 0; i < queryEntries.length; i++) {
+    let queryEntryComponents = queryEntries[i].split('=');
+    queryParams[queryEntryComponents[0].toLowerCase()] =
+        decodeURIComponent(queryEntryComponents[1]);
+  }
+  return queryParams;
+}

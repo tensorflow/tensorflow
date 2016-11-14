@@ -31,6 +31,7 @@ import tensorflow as tf
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 
 
 _BOSTON_INPUT_DIM = 13
@@ -99,6 +100,24 @@ def linear_model_fn(features, labels, mode):
   return prediction, loss, train_op
 
 
+def linear_model_fn_with_model_fn_ops(features, labels, mode):
+  """Same as linear_model_fn, but returns `ModelFnOps`."""
+  assert mode in (
+      tf.contrib.learn.ModeKeys.TRAIN,
+      tf.contrib.learn.ModeKeys.EVAL,
+      tf.contrib.learn.ModeKeys.INFER)
+  prediction, loss = (
+      tf.contrib.learn.models.linear_regression_zero_init(features, labels)
+  )
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=0.1)
+  return model_fn.ModelFnOps(mode=mode,
+                             predictions=prediction,
+                             loss=loss,
+                             train_op=train_op)
+
+
 def logistic_model_no_mode_fn(features, labels):
   if isinstance(labels, dict):
     labels = labels['labels']
@@ -142,8 +161,9 @@ class EstimatorTest(tf.test.TestCase):
   def testInvalidModelFn_no_train_op(self):
     def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
-      tf.Variable(42.0, 'weight')
-      return None, None, None
+      w = tf.Variable(42.0, 'weight')
+      loss = 100.0 - w
+      return None, loss, None
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
     with self.assertRaisesRegexp(ValueError, 'Missing training_op'):
       est.fit(input_fn=boston_input_fn, steps=1)
@@ -154,9 +174,10 @@ class EstimatorTest(tf.test.TestCase):
       w = tf.Variable(42.0, 'weight')
       loss = 100.0 - w
       train_op = w.assign_add(loss / 100.0)
+      predictions = loss
       if mode == tf.contrib.learn.ModeKeys.EVAL:
         loss = None
-      return None, loss, train_op
+      return predictions, loss, train_op
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
     est.fit(input_fn=boston_input_fn, steps=1)
     with self.assertRaisesRegexp(ValueError, 'Missing loss'):
@@ -423,6 +444,17 @@ class EstimatorTest(tf.test.TestCase):
     boston = tf.contrib.learn.datasets.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
     input_fn = functools.partial(boston_input_fn, num_epochs=1)
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0])
+
+  def testWithModelFnOps(self):
+    """Test for model_fn that returns `ModelFnOps`."""
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn_with_model_fn_ops)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn, num_epochs=1)
+    scores = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertIn('loss', scores.keys())
     output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 

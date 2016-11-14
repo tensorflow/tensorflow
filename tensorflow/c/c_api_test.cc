@@ -871,7 +871,7 @@ TEST(CAPI, ColocateWith) {
   EXPECT_EQ(1, m.list_size);
   EXPECT_EQ(TF_ATTR_STRING, m.type);
   void* values[1];
-  int lens[1];
+  size_t lens[1];
   std::unique_ptr<char[]> storage(new char[m.total_size]);
   TF_OperationGetAttrStringList(add, tensorflow::kColocationAttrName, values,
                                 lens, 1, storage.get(), m.total_size, s);
@@ -896,9 +896,9 @@ TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
 
 void StringVectorToArrays(const std::vector<string>& v,
                           std::unique_ptr<const void* []>* ptrs,
-                          std::unique_ptr<int[]>* lens) {
+                          std::unique_ptr<size_t[]>* lens) {
   ptrs->reset(new const void*[v.size()]);
-  lens->reset(new int[v.size()]);
+  lens->reset(new size_t[v.size()]);
   for (size_t i = 0; i < v.size(); ++i) {
     (*ptrs)[i] = v[i].data();
     (*lens)[i] = v[i].size();
@@ -986,7 +986,7 @@ TEST_F(CApiAttributesTest, String) {
 TEST_F(CApiAttributesTest, StringList) {
   std::vector<string> list = {"bugs", "bunny", "duck"};
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   StringVectorToArrays(list, &list_ptrs, &list_lens);
   int list_total_size = 0;
   for (const auto& s : list) {
@@ -1002,7 +1002,7 @@ TEST_F(CApiAttributesTest, StringList) {
 
   EXPECT_TF_META("v", list.size(), TF_ATTR_STRING, list_total_size);
   std::unique_ptr<void* []> values(new void*[list.size()]);
-  std::unique_ptr<int[]> lens(new int[list.size()]);
+  std::unique_ptr<size_t[]> lens(new size_t[list.size()]);
   std::unique_ptr<char[]> storage(new char[list_total_size]);
   TF_OperationGetAttrStringList(oper, "v", values.get(), lens.get(),
                                 list.size(), storage.get(), list_total_size,
@@ -1227,7 +1227,7 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
   proto.SerializeToString(&bytes2);
 
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   const std::vector<string> list = {bytes1, bytes2};
   StringVectorToArrays(list, &list_ptrs, &list_lens);
 
