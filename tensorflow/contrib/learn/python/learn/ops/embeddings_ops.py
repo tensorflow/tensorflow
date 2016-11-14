@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
@@ -30,7 +31,8 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
 
-def embedding_lookup(params, ids, name="embedding_lookup"):
+@deprecated('2016-12-01', 'Use `tf.embedding_lookup` instead.')
+def embedding_lookup(params, ids, name='embedding_lookup'):
   """Provides a N dimensional version of tf.embedding_lookup.
 
   Ids are flattened to a 1d tensor before being passed to embedding_lookup
@@ -50,7 +52,7 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
   Raises:
     ValueError: if some parameters are invalid.
   """
-  with ops.name_scope(name, "embedding_lookup", [params, ids]):
+  with ops.name_scope(name, 'embedding_lookup', [params, ids]):
     params = ops.convert_to_tensor(params)
     ids = ops.convert_to_tensor(ids)
     shape = array_ops_.shape(ids)
@@ -63,6 +65,7 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
     return embeds
 
 
+@deprecated('2016-12-01', 'Use `tf.contrib.layers.embed_sequence` instead.')
 def categorical_variable(tensor_in, n_classes, embedding_size, name):
   """Creates an embedding for categorical variable with given number of classes.
 
@@ -80,6 +83,6 @@ def categorical_variable(tensor_in, n_classes, embedding_size, name):
     tensor, where each row is representation of the class.
   """
   with vs.variable_scope(name):
-    embeddings = vs.get_variable(name + "_embeddings",
+    embeddings = vs.get_variable(name + '_embeddings',
                                  [n_classes, embedding_size])
     return embedding_lookup(embeddings, tensor_in)
