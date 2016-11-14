@@ -154,8 +154,11 @@ class ProjectorPlugin(TBPlugin):
 
   def _augment_configs_with_checkpoint_info(self):
     for run, config in self._configs.items():
-      # Find the size of the embeddings that are associated with a tensor file.
       for embedding in config.embeddings:
+        # Normalize the name of the embeddings.
+        if embedding.tensor_name.endswith(':0'):
+          embedding.tensor_name = embedding.tensor_name[:-2]
+        # Find the size of embeddings associated with a tensors file.
         if embedding.tensor_path and not embedding.tensor_shape:
           tensor = _read_tensor_file(embedding.tensor_path)
           embedding.tensor_shape.extend([len(tensor), len(tensor[0])])
