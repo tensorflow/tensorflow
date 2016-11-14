@@ -187,7 +187,7 @@ export function getURLParams(url: string): {[key: string]: string} {
   }
 
   const queryEntries = queryString.split('&');
-  let queryParams = {};
+  let queryParams: {[key: string]: string} = {};
   for (let i = 0; i < queryEntries.length; i++) {
     let queryEntryComponents = queryEntries[i].split('=');
     queryParams[queryEntryComponents[0].toLowerCase()] =
