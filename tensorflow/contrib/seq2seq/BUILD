@@ -16,9 +16,9 @@ py_library(
 )
 
 cuda_py_test(
-    name = "layers_test",
+    name = "decoder_fn_test",
     size = "medium",
-    srcs = ["python/kernel_tests/layers_test.py"],
+    srcs = ["python/kernel_tests/decoder_fn_test.py"],
     additional_deps = [
         ":seq2seq_py",
         "//tensorflow:tensorflow_py",
@@ -28,9 +28,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "loss_test",
+    name = "seq2seq_test",
     size = "medium",
-    srcs = ["python/kernel_tests/loss_test.py"],
+    srcs = ["python/kernel_tests/seq2seq_test.py"],
     additional_deps = [
         ":seq2seq_py",
         "//tensorflow:tensorflow_py",
