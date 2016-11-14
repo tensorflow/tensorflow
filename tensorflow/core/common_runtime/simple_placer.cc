@@ -515,9 +515,15 @@ class ColocationGraph {
 
       // If no kernels are registered for this op type, fail with an error.
       if (member->supported_device_types.empty()) {
+        std::set<string> registered_device_types;
+        for (Device* d : device_set_->devices()) {
+          registered_device_types.insert(d->device_type());
+        }
         return errors::InvalidArgument(
             "No OpKernel was registered to support Op '", node.def().op(),
-            "' with these attrs.  Registered kernels:\n",
+            "' with these attrs.  Registered devices: [",
+            str_util::Join(registered_device_types, ","),
+            "], Registered kernels:\n",
             KernelsRegisteredForOp(node.def().op()));
       }
 
