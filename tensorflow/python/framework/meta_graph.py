@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import os.path
 import re
+from collections import OrderedDict, deque
 
 import six
 from google.protobuf.any_pb2 import Any
@@ -701,7 +702,7 @@ def export_ops_meta_graph(op_list,
   Args:
     op_list: A list of `Operation` objects to export.
     graph: The `Graph` to import into. If `None`, use the default graph.
-    export_scope: Optional `string`. Name scope under which to extract the op.
+    export_scope: Optional `string`. Name scope under which to extract the ops.
       The scope name will be striped from the node definitions for easy import
       later into new name scopes.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
@@ -774,11 +775,11 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
 
   Args:
     op_list: A list of `Operation` objects to be copied.
-    from_scope: `String` name scope containing the op to be copied.
-    to_scope: `String` name scope under which the copied op will reside.
-    from_graph: Optional `Graph` from which to copy the op. If `None`, the
+    from_scope: `String` name scope containing the ops to be copied.
+    to_scope: `String` name scope under which the copied ops will reside.
+    from_graph: Optional `Graph` from which to copy the ops. If `None`, the
       default graph is use.
-    to_graph: Optional `Graph` to which to copy the op. If `None`, the
+    to_graph: Optional `Graph` to which to copy the ops. If `None`, the
       default graph is used.
 
   Returns:
@@ -815,18 +816,97 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
   return copied_ops, var_list
 
 
+def _get_backward_ops(seed_tensors, as_inputs=None):
+  """Get backward ops from inputs to `seed_tensors` by topological order.
+
+  Args:
+    seed_tensors:  A list of `Tensor`s, for which to get all preceding ops.
+    as_inputs: A list of `Tensor`s that are treated as inputs during the
+      search (where to stop searching the backward graph).
+
+  Returns:
+    A list of `Operation`s in topological order.
+  """
+  as_inputs = set(as_inputs or [])
+  seed_tensors = [t for t in seed_tensors if t not in as_inputs]
+  seed_ops = list(OrderedDict.fromkeys(t.op for t in seed_tensors))
+  q = deque(seed_ops)
+  seen = set()
+  done = set()
+  ret = []
+  while q:
+    op = q[0]
+    if op not in seen:
+      seen.add(op)
+      for tensor in reversed(op.inputs):
+        if tensor not in as_inputs:
+          q.appendleft(tensor.op)
+      q.extendleft(reversed(op.control_inputs))
+    else:
+      # have seen this op before
+      q.popleft()
+      if op not in done:
+        done.add(op)
+        ret.append(op)
+  return ret
+
+
 def clone(outputs, to_scope, from_scope="", replace=None,
           share_variables=True):
   """Copy the subgraph that generates `outputs` from one scope to another,
   with Tensors in `replace` being replaced by their corresponding values.
 
   Args:
-    outputs:
-    to_scope:
-    from_scope:
-    replace:
-    share_variables:
+    outputs: A `Tensor` or a list of `Tensor`s.
+    to_scope: `String` name scope under which the copied subgraph will reside.
+    from_scope: `String` name scope containing the subgraph to be copied.
+    replace: A dictionary containing the mapping from Tensors in the subgraph
+      to their replacements.
+    share_variables: Bool. Whether to share variables or copy them into
+      `to_scope`.
 
   Returns:
-
+    A copy or a list of the copies of `outputs` in `to_scope` and
+    a dictionary of `Variables` that have been copied into `to_scope`.
   """
+  if from_scope == to_scope:
+    raise ValueError("'from_scope' and 'to_scope' need to be different "
+                     "when performing copying in the same graph.")
+
+  seed_tensors = outputs
+  if not isinstance(outputs, (list, tuple)):
+    seed_tensors = [outputs]
+
+  for k, v in six.iteritems(replace):
+    if not isinstance(k, ops.Tensor) or not isinstance(v, ops.Tensor):
+      raise TypeError(
+        "The 'replace' argument should consist of Tensor pairs. "
+        "Error type: (%s, %s)" % (type(k), type(v)))
+    else:
+      try:
+        k.get_shape().merge_with(v.get_shape())
+      except ValueError:
+        raise ValueError(
+          "Key-value pairs in 'replace' should have the same "
+          "shape (%s vs %s). Error pair: (%s, %s)" % (
+            k.get_shape(), v.get_shape(), k, v))
+
+  as_inputs = list(replace.keys())
+  backward_ops = _get_backward_ops(seed_tensors, as_inputs)
+  copied_ops = set()
+  copied_tensors = set()
+  for op in backward_ops:
+    if any((t in replace or t in copied_tensors) for t in op.inputs) or \
+        any(dep in copied_ops for dep in op.control_inputs):
+      copied_ops.add(op)
+      copied_tensors.update(set(op.outputs))
+
+  new_ops, var_list = copy_ops_meta_graph(list(copied_ops), from_scope,
+                                          to_scope)
+  new_tensors = []
+  for tensor in seed_tensors:
+    new_tensors.append(new_ops[tensor.op].outputs[tensor.value_index])
+
+  if len(new_tensors) == 1:
+    new_tensors = new_tensors[0]
+  return new_tensors, var_list
