@@ -24,18 +24,10 @@ from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn.datasets import synthetic
 
 class SyntheticTest(tf.test.TestCase):
-  """Test synthetic dataset generation
-  
-  TODO (tests):
-      - Check if ValueError is raised correctly in `make_dataset`
-        - Not including `unittest.mock` as it is not supported by python 2.7
-      - Make sure `SYNTHETIC` actually exists, and all values are callable
-  """
+  """Test synthetic dataset generation"""
 
   def test_make_dataset(self):
-    """Test the synthetic routine, without testing the actual generation.
-    Also tests if a valid name raises any errors
-    """
+    """Test if the synthetic routine wrapper complains about the name"""
     self.assertRaises(ValueError, datasets.make_dataset, name='_non_existing_name')
 
   def test_all_datasets_callable(self):
@@ -47,14 +39,14 @@ class SyntheticTest(tf.test.TestCase):
 
   def test_circles(self):
     """Test if the circles are generated correctly
-    
+
     Tests:
       - return type is `Dataset`
       - returned `data` shape is (n_samples, n_features)
       - returned `target` shape is (n_samples,)
       - set of unique classes range is [0, n_classes)
 
-    TODO (dataset specific):
+    TODO:
       - all points have the same radius, if no `noise` specified
     """
     n_samples = 100
@@ -88,9 +80,9 @@ class SyntheticTest(tf.test.TestCase):
 
   def test_spirals(self):
     """Test if the circles are generated correctly
-    
+
     Tests:
-      - if mode is unkown, ValueError is raised
+      - if mode is unknown, ValueError is raised
       - return type is `Dataset`
       - returned `data` shape is (n_samples, n_features)
       - returned `target` shape is (n_samples,)

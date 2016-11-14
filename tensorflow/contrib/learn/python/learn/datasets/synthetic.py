@@ -13,9 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module includes reference datasets and utilities to load datasets. It also 
-includes methods to generate synthetic data.
-"""
+"""Synthetic dataset generators."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -45,12 +43,12 @@ def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args
     - Generation of unbalanced data
 
   Credit goes to (under BSD 3 clause):
-    B. Thirion, 
-    G. Varoquaux, 
-    A. Gramfort, 
-    V. Michel, 
-    O. Grisel, 
-    G. Louppe, 
+    B. Thirion,
+    G. Varoquaux,
+    A. Gramfort,
+    V. Michel,
+    O. Grisel,
+    G. Louppe,
     J. Nothman
   """
   if seed is not None:
@@ -69,25 +67,26 @@ def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args
     base_cos *= factor
     base_sin *= factor
     y = np.append(y, label*np.ones(n_samples // n_classes, dtype=np.int32))
-  
+
   # Add more points if n_samples is not divisible by n_classes (unbalanced!)
   extras = n_samples % n_classes
   circ_x = np.append(circ_x, np.cos(np.random.rand(extras)*2*np.pi))
   circ_y = np.append(circ_y, np.sin(np.random.rand(extras)*2*np.pi))
   y = np.append(y, np.zeros(extras, dtype=np.int32))
-  
+
   # Reshape the features/labels
   X = np.vstack((circ_x, circ_y)).T
   y = np.hstack(y)
-  
+
   # Shuffle the data
   indices = np.random.permutation(range(n_samples))
   if noise is not None:
     X += np.random.normal(scale=noise, size=X.shape)
   return Dataset(data=X[indices], target=y[indices])
 
-def spirals(n_samples=100, noise=None, seed=None, 
-            mode = 'archimedes', 
+
+def spirals(n_samples=100, noise=None, seed=None,
+            mode = 'archimedes',
             n_loops = 2,
             *args, **kwargs):
   """Create spirals
@@ -132,11 +131,11 @@ def spirals(n_samples=100, noise=None, seed=None,
 
   y = np.empty(0, dtype=np.int32)
   for label in range(n_classes):
-    base_cos, base_sin = _modes[mode](linspace, label*np.pi, *args, **kwargs)  
+    base_cos, base_sin = _modes[mode](linspace, label*np.pi, *args, **kwargs)
     spir_x = np.append(spir_x, base_cos)
     spir_y = np.append(spir_y, base_sin)
     y = np.append(y, label*np.ones(n_samples // n_classes, dtype=np.int32))
-  
+
   # Add more points if n_samples is not divisible by n_classes (unbalanced!)
   extras = n_samples % n_classes
   if extras > 0:
@@ -144,20 +143,21 @@ def spirals(n_samples=100, noise=None, seed=None,
     spir_x = np.append(spir_x, x_extra)
     spir_y = np.append(spir_y, y_extra)
     y = np.append(y, np.zeros(extras, dtype=np.int32))
-  
+
   # Reshape the features/labels
   X = np.vstack((spir_x, spir_y)).T
   y = np.hstack(y)
-  
+
   # Shuffle the data
   indices = np.random.permutation(range(n_samples))
   if noise is not None:
     X += np.random.normal(scale=noise, size=X.shape)
   return Dataset(data=X[indices], target=y[indices])
 
+
 def _archimedes_spiral(theta, theta_offset=0., *args, **kwargs):
   """Return Archimedes spiral
-  
+
   Args:
     theta: array-like, angles from polar coordinates to be converted
     theta_offset: float, angle offset in radians (2*pi = 0)
@@ -171,7 +171,7 @@ def _archimedes_spiral(theta, theta_offset=0., *args, **kwargs):
 
 def _bernoulli_spiral(theta, theta_offset=0., *args, **kwargs):
   """Return Equiangular (Bernoulli's) spiral
-  
+
   Args:
     theta: array-like, angles from polar coordinates to be converted
     theta_offset: float, angle offset in radians (2*pi = 0)
@@ -187,9 +187,10 @@ def _bernoulli_spiral(theta, theta_offset=0., *args, **kwargs):
   x, y = x / x_norm, y / y_norm
   return x, y
 
+
 def _fermat_spiral(theta, theta_offset=0., *args, **kwargs):
   """Return Parabolic (Fermat's) spiral
-  
+
   Args:
     theta: array-like, angles from polar coordinates to be converted
     theta_offset: float, angle offset in radians (2*pi = 0)

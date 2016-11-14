@@ -13,9 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module includes reference datasets and utilities to load datasets. It also 
-includes methods to generate synthetic data
-"""
+"""Dataset utilities and synthetic/reference datasets."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -74,6 +72,7 @@ def load_dataset(name, size='small', test_with_fake_data=False):
   else:
     return DATASETS[name]()
 
+
 def make_dataset(name, n_samples=100, noise=None, seed=42, *args, **kwargs):
   """Creates binary synthetic datasets
 
@@ -89,7 +88,7 @@ def make_dataset(name, n_samples=100, noise=None, seed=42, *args, **kwargs):
   Raises:
     ValueError: Raised if `name` not found
 
-  Note: 
+  Note:
     - This is a generic synthetic data generator - individual generators might have more parameters!
       See documentation for individual parameters
     - Note that the `noise` parameter uses `numpy.random.normal` and depends on `numpy`'s seed
