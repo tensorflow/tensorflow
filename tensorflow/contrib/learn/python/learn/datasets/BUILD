@@ -71,10 +71,7 @@ py_test(
 py_test(
     name = "synthetic_test",
     size = "small",
-    srcs = [
-        "load_csv_test.py",
-        "synthetic_test.py"
-    ],
+    srcs = ["synthetic_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
