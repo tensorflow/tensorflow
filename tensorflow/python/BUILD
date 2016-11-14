@@ -473,6 +473,21 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_gen_op_wrapper_py(
+    name = "test_ops_2",
+    out = "framework/test_ops_2.py",
+    require_shape_functions = True,
+    deps = [":test_ops_2_kernels"],
+)
+
+cc_library(
+    name = "test_ops_2_kernels",
+    srcs = ["framework/test_ops_2.cc"],
+    linkstatic = 1,
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = 1,
+)
+
 py_test(
     name = "framework_common_shapes_test",
     size = "small",
@@ -502,6 +517,7 @@ py_test(
         ":session",
         ":sparse_ops",
         ":test_ops",
+        ":test_ops_2",
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
@@ -920,7 +936,10 @@ py_library(
 
 py_library(
     name = "image_ops",
-    srcs = ["ops/image_ops.py"],
+    srcs = [
+        "ops/image_ops.py",
+        "ops/image_ops_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
@@ -1925,6 +1944,7 @@ tf_py_wrap_cc(
         "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
+        "util/stat_summarizer.i",
     ],
     deps = [
         ":cpp_shape_inference",
@@ -2340,4 +2360,16 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     main = "ops/concat_benchmark.py",
+)
+
+cuda_py_test(
+    name = "split_benchmark",
+    srcs = [
+        "ops/split_benchmark.py",
+    ],
+    additional_deps = [
+        ":nn_ops",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "ops/split_benchmark.py",
 )

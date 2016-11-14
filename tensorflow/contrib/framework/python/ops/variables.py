@@ -292,7 +292,7 @@ def get_model_variables(scope=None, suffix=None):
 
 
 def get_local_variables(scope=None, suffix=None):
-  """Gets the list of model variables, filtered by scope and/or suffix.
+  """Gets the list of local variables, filtered by scope and/or suffix.
 
   Args:
     scope: an optional scope for filtering the variables to return.

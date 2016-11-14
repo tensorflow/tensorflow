@@ -89,6 +89,11 @@ inline static SessionVariables* GetSessionVars(JNIEnv* env, jobject thiz) {
   return sessions[id];
 }
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(testLoaded)(JNIEnv* env,
+                                                     jobject thiz) {
+  LOG(INFO) << "Native TF methods loaded.";
+}
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model) {
   SessionVariables* vars = GetSessionVars(env, thiz);

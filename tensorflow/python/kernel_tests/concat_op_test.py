@@ -406,18 +406,6 @@ class ConcatOpTest(tf.test.TestCase):
           ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
         tf.concat(dim, [scalar, scalar, scalar])
 
-  def testConcatGradNumNodes(self):
-    g = tf.Graph()
-    n = 10
-    with g.as_default():
-      x = tf.constant([1, 1])
-      y = tf.concat(0, [x] * n)
-      before = len(g.get_operations())
-      _ = tf.gradients([y], [x], [y])
-      after = len(g.get_operations())
-      self.assertEqual(2 * n + 2, after - before)
-      print("graph = ", [x.name for x in g.get_operations()])
-
   # important as gpu implementation could fail if
   # shared memory is not large for all the inputs
   def testConcatLargeNumberOfTensors(self):

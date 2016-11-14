@@ -673,24 +673,22 @@ A classifier for TensorFlow DNN models.
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_feature_a = sparse_column_with_hash_bucket(...)
+sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                 combiner="sum")
-occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                 combiner="sum")
+sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                        ...)
+sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                        ...)
 
 estimator = DNNClassifier(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
     hidden_units=[1024, 512, 256])
 
 # Or estimator using the ProximalAdagradOptimizer optimizer with
 # regularization.
 estimator = DNNClassifier(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
     hidden_units=[1024, 512, 256],
     optimizer=tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
@@ -698,14 +696,14 @@ estimator = DNNClassifier(
     ))
 
 # Input builders
-def input_fn_train: # returns x, Y
+def input_fn_train: # returns x, y (where y represents label's class index).
   pass
 estimator.fit(input_fn=input_fn_train)
 
-def input_fn_eval: # returns x, Y
+def input_fn_eval: # returns x, y (where y represents label's class index).
   pass
 estimator.evaluate(input_fn=input_fn_eval)
-estimator.predict(x=x)
+estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
 ```
 
 Input of `fit` and `evaluate` should have following features,
@@ -740,7 +738,9 @@ Initializes a DNNClassifier instance.
     also be used to load checkpoints from the directory into a estimator to
     continue training a previously saved model.
 *  <b>`n_classes`</b>: number of label classes. Default is binary classification.
-    It must be greater than 1.
+    It must be greater than 1. Note: Class labels are integers representing
+    the class index (i.e. values from 0 to n_classes-1). For arbitrary
+    label values (e.g. string labels), convert to class indices first.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -794,7 +794,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 #### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#DNNClassifier.evaluate}
 
-See evaluable.Evaluable.
+See evaluable.Evaluable. Note: Labels must be integer class indices.
 
 
 - - -
@@ -808,7 +808,7 @@ See BaseEstimator.export.
 
 #### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
 
-See trainable.Trainable.
+See trainable.Trainable. Note: Labels must be integer class indices.
 
 
 - - -
@@ -868,7 +868,8 @@ altogether. The behavior of this flag is described below.
 
     Returns:
       Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
+      as_iterable is True). Each predicted class is represented by its class
+      index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
@@ -894,7 +895,8 @@ altogether. The behavior of this flag is described below.
 
     Returns:
       Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
+      probabilities if as_iterable is True). Each predicted class is represented
+      by its class index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
@@ -918,24 +920,22 @@ A regressor for TensorFlow DNN models.
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_feature_a = sparse_column_with_hash_bucket(...)
+sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                 combiner="sum")
-occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                 combiner="sum")
+sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                        ...)
+sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                        ...)
 
 estimator = DNNRegressor(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a, sparse_feature_b],
     hidden_units=[1024, 512, 256])
 
 # Or estimator using the ProximalAdagradOptimizer optimizer with
 # regularization.
 estimator = DNNRegressor(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a, sparse_feature_b],
     hidden_units=[1024, 512, 256],
     optimizer=tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
@@ -943,11 +943,11 @@ estimator = DNNRegressor(
     ))
 
 # Input builders
-def input_fn_train: # returns x, Y
+def input_fn_train: # returns x, y
   pass
 estimator.fit(input_fn=input_fn_train)
 
-def input_fn_eval: # returns x, Y
+def input_fn_eval: # returns x, y
   pass
 estimator.evaluate(input_fn=input_fn_eval)
 estimator.predict(x=x)
@@ -1392,13 +1392,13 @@ estimator = LinearClassifier(
    ))
 
 # Input builders
-def input_fn_train: # returns x, y
+def input_fn_train: # returns x, y (where y represents label's class index).
   ...
-def input_fn_eval: # returns x, y
+def input_fn_eval: # returns x, y (where y represents label's class index).
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
-estimator.predict(x=x)
+estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
 ```
 
 Input of `fit` and `evaluate` should have following features,
@@ -1430,6 +1430,9 @@ Construct a `LinearClassifier` estimator object.
     also be used to load checkpoints from the directory into a estimator
     to continue training a previously saved model.
 *  <b>`n_classes`</b>: number of label classes. Default is binary classification.
+    Note that class labels are integers representing the class index (i.e.
+    values from 0 to n_classes-1). For arbitrary label values (e.g. string
+    labels), convert to class indices first.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -1485,7 +1488,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 #### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
 
-See evaluable.Evaluable.
+See evaluable.Evaluable. Note: Labels must be integer class indices.
 
 
 - - -
@@ -1499,7 +1502,7 @@ See BaseEstimator.export.
 
 #### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
-See trainable.Trainable.
+See trainable.Trainable. Note: Labels must be integer class indices.
 
 
 - - -
@@ -1534,7 +1537,7 @@ See trainable.Trainable.
 
 #### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
 
-Runs inference to determine the predicted class. (deprecated arguments)
+Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -1812,7 +1815,7 @@ See superclass Estimator for more details.
 
 
 *  <b>`x`</b>: features.
-*  <b>`y`</b>: labels.
+*  <b>`y`</b>: labels (must be 0 or 1).
 *  <b>`input_fn`</b>: Input function.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called.
 *  <b>`batch_size`</b>: minibatch size to use on the input.

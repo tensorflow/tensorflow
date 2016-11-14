@@ -62,7 +62,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
-from tensorflow.python.training import session_run_hook
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -771,30 +770,7 @@ class BaseEstimator(
       self._check_inputs(features, labels)
       train_op, loss_op = self._get_train_ops(features, labels)
 
-      # Add default monitors.
-      if monitors is None:
-        monitors = []
-
-      hooks = [m for m in monitors
-               if isinstance(m, session_run_hook.SessionRunHook)]
-
-      deprecated_monitors = [
-          m for m in monitors
-          if not isinstance(m, session_run_hook.SessionRunHook)
-      ]
-
-      supervisor_is_chief = self._config.is_chief
-      if not supervisor_is_chief:
-        # Prune list of monitor to the ones runnable on all workers.
-        deprecated_monitors = [m for m in deprecated_monitors
-                               if m.run_on_all_workers]
-
-      # Setup monitors.
-      for monitor in deprecated_monitors:
-        monitor.set_estimator(self)
-
-      if deprecated_monitors:
-        hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
+      hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
 
       ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
       return graph_actions._monitored_train(  # pylint: disable=protected-access
@@ -807,7 +783,7 @@ class BaseEstimator(
           init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
           init_fn=init_fn,
           log_every_steps=log_every_steps,
-          supervisor_is_chief=supervisor_is_chief,
+          supervisor_is_chief=self.config.is_chief,
           supervisor_master=self._config.master,
           supervisor_save_model_secs=self._config.save_checkpoints_secs,
           supervisor_save_model_steps=self._config.save_checkpoints_steps,

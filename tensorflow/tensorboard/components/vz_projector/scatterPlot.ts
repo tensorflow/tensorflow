@@ -14,10 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 import {DataSet} from './data';
-import {HoverContext} from './hoverContext';
+import {ProjectorEventContext} from './projectorEventContext';
 import {CameraType, LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {SelectionContext} from './selectionContext';
 import * as util from './util';
 import {dist_2D, Point2D, Point3D} from './vector';
 
@@ -49,23 +48,6 @@ const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
 const ORBIT_MOUSE_ROTATION_SPEED = 1;
 const ORBIT_ANIMATION_ROTATION_CYCLE_IN_SECONDS = 7;
 
-/**
- * Points in 3D space that will be used in the projector. If the projector is
- * in 2D mode, the Z coordinate of the point will be 0.
- */
-export interface DataPoint {
-  /** index of the trace, used for highlighting on click */
-  traceIndex?: number;
-  /** index in the original data source */
-  index: number;
-}
-
-/** A single collection of points which make up a trace through space. */
-export interface DataTrace {
-  /** Indices into the DataPoints array in the Data object. */
-  pointIndices: number[];
-}
-
 export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
@@ -91,8 +73,7 @@ export class CameraDef {
  */
 export class ScatterPlot {
   private dataSet: DataSet;
-  private selectionContext: SelectionContext;
-  private hoverContext: HoverContext;
+  private projectorEventContext: ProjectorEventContext;
 
   private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
@@ -136,10 +117,9 @@ export class ScatterPlot {
 
   constructor(
       container: d3.Selection<any>, labelAccessor: (index: number) => string,
-      selectionContext: SelectionContext, hoverContext: HoverContext) {
+      projectorEventContext: ProjectorEventContext) {
     this.containerNode = container.node() as HTMLElement;
-    this.selectionContext = selectionContext;
-    this.hoverContext = hoverContext;
+    this.projectorEventContext = projectorEventContext;
     this.getLayoutValues();
 
     this.labelAccessor = labelAccessor;
@@ -190,7 +170,7 @@ export class ScatterPlot {
   }
 
   private makeOrbitControls(
-      camera: THREE.Camera, cameraDef: CameraDef, enableRotate: boolean) {
+      camera: THREE.Camera, cameraDef: CameraDef, cameraIs3D: boolean) {
     if (this.orbitCameraControls != null) {
       this.orbitCameraControls.dispose();
     }
@@ -200,11 +180,16 @@ export class ScatterPlot {
         cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
     occ.position0 = new THREE.Vector3().copy(camera.position);
     occ.zoom0 = cameraDef.zoom;
-    occ.enableRotate = enableRotate;
+    occ.enableRotate = cameraIs3D;
     occ.autoRotate = false;
     occ.rotateSpeed = ORBIT_MOUSE_ROTATION_SPEED;
-    occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
+    if (cameraIs3D) {
+      occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+      occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
+    } else {
+      occ.mouseButtons.ORBIT = null;
+      occ.mouseButtons.PAN = THREE.MOUSE.LEFT;
+    }
     occ.reset();
 
     this.camera = camera;
@@ -306,7 +291,7 @@ export class ScatterPlot {
     // Only call event handlers if the click originated from the scatter plot.
     if (!this.isDragSequence && notify) {
       const selection = (this.nearestPoint != null) ? [this.nearestPoint] : [];
-      this.selectionContext.notifySelectionChanged(selection);
+      this.projectorEventContext.notifySelectionChanged(selection);
     }
     this.isDragSequence = false;
     this.render();
@@ -368,7 +353,7 @@ export class ScatterPlot {
       this.render();
     } else if (!this.mouseIsDown) {
       this.setNearestPointToMouse(e);
-      this.hoverContext.notifyHoverOverPoint(this.nearestPoint);
+      this.projectorEventContext.notifyHoverOverPoint(this.nearestPoint);
     }
   }
 
@@ -450,7 +435,7 @@ export class ScatterPlot {
         selectedPoints.push(i);
       }
     }
-    this.selectionContext.notifySelectionChanged(selectedPoints);
+    this.projectorEventContext.notifySelectionChanged(selectedPoints);
   }
 
   private createSelectionSphere() {
