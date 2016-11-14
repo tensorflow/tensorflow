@@ -474,7 +474,7 @@ class OrthogonalInitializerTest(tf.test.TestCase):
   def testInvalidShape(self):
     init1 = tf.orthogonal_initializer()
     with self.test_session(graph=tf.Graph(), use_gpu=True):
-        self.assertRaises(ValueError, init1, shape=[5])
+      self.assertRaises(ValueError, init1, shape=[5])
 
   def testGain(self):
     shape = (10, 10)
