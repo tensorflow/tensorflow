@@ -452,7 +452,10 @@
   * [`match_filenames_once`](../../api_docs/python/io_ops.md#match_filenames_once)
   * [`matching_files`](../../api_docs/python/io_ops.md#matching_files)
   * [`PaddingFIFOQueue`](../../api_docs/python/io_ops.md#PaddingFIFOQueue)
-  * [`parse_example`](../../api_docs/python/io_ops.md#parse_example)
+  *
+  [`PaddingRandomShuffleQueue`](../../api_docs/python/io_ops.md#PaddingRandomShuffleQueue)
+  *
+  [`parse_example`](../../api_docs/python/io_ops.md#parse_example)
   * [`parse_single_example`](../../api_docs/python/io_ops.md#parse_single_example)
   * [`parse_tensor`](../../api_docs/python/io_ops.md#parse_tensor)
   * [`placeholder`](../../api_docs/python/io_ops.md#placeholder)
@@ -1086,4 +1089,3 @@
   * [`copy_op_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_op_to_graph)
   * [`copy_variable_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_variable_to_graph)
   * [`get_copied_op`](../../api_docs/python/contrib.copy_graph.md#get_copied_op)
-

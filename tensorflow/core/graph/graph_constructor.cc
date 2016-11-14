@@ -358,7 +358,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
       const string& op = node->def().op();
       const std::vector<string> whitelist = {
           // To be removed after 2017/03/08.
-          "RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
+          "PaddingRandomShuffleQueue","RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
           "PriorityQueue", "QueueSize", "Stack", "Barrier", "BarrierReadySize",
           "BarrierIncompleteSize", "HashTable", "MutableHashTable",
           "MutableHashTableOfTensors", "Mutex", "CuckooTable", "IndexTable",

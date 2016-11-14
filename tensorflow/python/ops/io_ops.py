@@ -80,6 +80,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 @@FIFOQueue
 @@PaddingFIFOQueue
 @@RandomShuffleQueue
+@@PaddingRandomShuffleQueue
 @@PriorityQueue
 
 ## Conditional Accumulators

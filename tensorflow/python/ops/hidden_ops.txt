@@ -67,6 +67,7 @@ Mutex
 MutexAcquire
 MutexRelease
 PaddingFIFOQueue
+PaddingRandomShuffleQueue
 QueueClose
 QueueDequeue
 QueueDequeueMany
