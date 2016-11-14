@@ -184,9 +184,6 @@ _allowed_symbols = [
     # ResizeMethod is not documented, but is documented in functions
     # that use it.
     'ResizeMethod',
-    # TODO(skye): per_image_whitening() will be removed once all callers switch
-    # to per_image_standardization()
-    'per_image_whitening'
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

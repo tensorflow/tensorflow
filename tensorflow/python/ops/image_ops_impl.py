@@ -717,11 +717,6 @@ def per_image_standardization(image):
   return image
 
 
-# TODO(skye): remove once users switch to per_image_standardization()
-def per_image_whitening(image):
-  return per_image_standardization(image)
-
-
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
 
@@ -1233,5 +1228,3 @@ def _crop_and_resize_shape(op):
 
 
 ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)
-
-
