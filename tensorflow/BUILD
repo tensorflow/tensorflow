@@ -116,6 +116,7 @@ filegroup(
         "//tensorflow/contrib/slim:all_files",
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
+        "//tensorflow/contrib/solvers:all_files",
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
