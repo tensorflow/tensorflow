@@ -106,7 +106,7 @@ def _linear_model_fn(features, labels, mode, params):
         sparse and use the 'sum' combiner.
 
   Returns:
-    An `estimator.ModelFnOps` instance.
+    A `ModelFnOps` instance.
 
   Raises:
     ValueError: If mode is not any of the `ModeKeys`.
@@ -179,7 +179,7 @@ def sdca_model_fn(features, labels, mode, params):
           model weights.
 
   Returns:
-    An `estimator.ModelFnOps` instance.
+    A `ModelFnOps` instance.
 
   Raises:
     ValueError: If `optimizer` is not an `SDCAOptimizer` instance.

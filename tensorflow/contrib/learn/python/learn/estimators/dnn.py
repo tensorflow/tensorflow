@@ -35,6 +35,7 @@ from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python import summary
@@ -236,7 +237,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
           activation_fn=activation_fn,
           variables_collections=[parent_scope],
           scope=scope)
-      if dropout is not None and mode == estimator.ModeKeys.TRAIN:
+      if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
         net = layers.dropout(
             net,
             keep_prob=(1.0 - dropout))
@@ -257,7 +258,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
   if enable_centered_bias:
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
 
-  if mode == estimator.ModeKeys.TRAIN:
+  if mode == model_fn.ModeKeys.TRAIN:
     labels = _reshape_labels(labels)
     weights = _get_weight_tensor(features, weight_column_name)
     training_loss = loss_fn(logits, labels, weights=weights)
@@ -279,7 +280,7 @@ def _dnn_classifier_model_fn(features, labels, mode, params):
 
     return None, loss, control_flow_ops.group(*train_ops)
 
-  elif mode == estimator.ModeKeys.EVAL:
+  elif mode == model_fn.ModeKeys.EVAL:
     predictions = _predictions(logits=logits, n_classes=n_classes)
 
     labels = _reshape_labels(labels)
@@ -523,6 +524,12 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     if as_iterable:
       return (pred[_PROBABILITIES] for pred in preds)
     return preds[_PROBABILITIES]
+
+  def _get_predict_ops(self, features):
+    """See `Estimator` class."""
+    # This method exists to support some models that use the legacy interface.
+    # pylint: disable=protected-access
+    return self._estimator._get_predict_ops(features)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.

@@ -35,6 +35,7 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python.framework import ops
@@ -228,11 +229,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         with ops.get_default_graph().colocate_with(global_step):
           return state_ops.assign_add(global_step, 1).op
 
-    model_fn_ops = self._head.head_ops(features, labels,
-                                       estimator.ModeKeys.TRAIN,
-                                       _make_training_op,
-                                       logits=logits)
-    return model_fn_ops.training_op, model_fn_ops.loss
+    return self._head.head_ops(features, labels,
+                               model_fn.ModeKeys.TRAIN,
+                               _make_training_op,
+                               logits=logits)
 
   def _get_eval_ops(self, features, labels, metrics=None):
     """See base class."""
@@ -240,32 +240,30 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     features, labels = self._feature_engineering_fn(features, labels)
     logits = self._logits(features)
 
-    model_fn_ops = self._head.head_ops(features, labels,
-                                       estimator.ModeKeys.EVAL, None,
-                                       logits=logits)
-    all_metrics = model_fn_ops.default_metrics
+    eval_ops = self._head.head_ops(features, labels,
+                                   model_fn.ModeKeys.EVAL, None,
+                                   logits=logits)
+    custom_metrics = {}
     if metrics:
       for name, metric in six.iteritems(metrics):
         if not isinstance(name, tuple):
           # TODO(zakaria): remove once deprecation is finished (b/31229024)
-          all_metrics[(name, self._default_prediction_key)] = metric
+          custom_metrics[(name, self._default_prediction_key)] = metric
         else:
-          all_metrics[name] = metric
+          custom_metrics[name] = metric
     # TODO(zakaria): Remove this once we refactor this class to delegate
     #   to estimator.
-    # pylint: disable=protected-access
-    result = estimator._make_metrics_ops(all_metrics, features, labels,
-                                         model_fn_ops.predictions)
-    return result
+    eval_ops.eval_metric_ops.update(estimator._make_metrics_ops(  # pylint: disable=protected-access
+        custom_metrics, features, labels, eval_ops.predictions))
+    return eval_ops
 
   def _get_predict_ops(self, features):
     """See base class."""
     features = self._get_feature_dict(features)
     features, _ = self._feature_engineering_fn(features, None)
     logits = self._logits(features)
-    model_fn_ops = self._head.head_ops(features, None, estimator.ModeKeys.INFER,
-                                       None, logits=logits)
-    return model_fn_ops.predictions
+    return self._head.head_ops(features, None, model_fn.ModeKeys.INFER,
+                               None, logits=logits)
 
   @deprecated(
       "2016-09-23",
@@ -458,7 +456,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
             activation_fn=dnn_activation_fn,
             variables_collections=[dnn_parent_scope],
             scope=scope)
-        if dnn_dropout is not None and mode == estimator.ModeKeys.TRAIN:
+        if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
           net = layers.dropout(
               net,
               keep_prob=(1.0 - dnn_dropout))
@@ -785,9 +783,9 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def _get_predict_ops(self, features):
     """See `Estimator` class."""
+    # This method exists to support some models that use the legacy interface.
     # pylint: disable=protected-access
-    return self._estimator._get_predict_ops(features)[
-        prediction_key.PredictionKey.PROBABILITIES]
+    return self._estimator._get_predict_ops(features)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -1041,8 +1039,36 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         default_prediction_key=prediction_key.PredictionKey.SCORES,
         enable_centered_bias=enable_centered_bias)
 
-  def _get_predict_ops(self, features):
-    """See base class."""
-    return super(
-        DNNLinearCombinedRegressor,
-        self)._get_predict_ops(features)[prediction_key.PredictionKey.SCORES]
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
+    """Runs inference to determine the predicted class."""
+    key = prediction_key.PredictionKey.SCORES
+    preds = super(DNNLinearCombinedRegressor, self).predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=key)
+    return preds[key]
+
+  def export(self,
+             export_dir,
+             input_fn=None,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=None,
+             exports_to_keep=None):
+    return super(DNNLinearCombinedRegressor, self).export(
+        export_dir=export_dir,
+        input_fn=input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        signature_fn=signature_fn,
+        prediction_key=prediction_key.PredictionKey.SCORES,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
