@@ -72,7 +72,7 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
     ckpt_path = latest_checkpoint(logdir)
     if not ckpt_path:
       # See if you can find a checkpoint in the parent of logdir.
-      ckpt_path = latest_checkpoint(os.path.join('../', logdir))
+      ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
       if not ckpt_path:
         continue
     if config.model_checkpoint_path != ckpt_path:
