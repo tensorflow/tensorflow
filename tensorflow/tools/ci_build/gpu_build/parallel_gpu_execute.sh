@@ -27,7 +27,7 @@
 TF_GPU_COUNT=${TF_GPU_COUNT:-8}
 
 for i in `seq 0 $((TF_GPU_COUNT-1))`; do
-  exec {lock_fd}>/var/lock/gpulock$i || exit 1
+  exec {lock_fd}>/tmp/tensorflow_build_gpu_lock_$i || exit 1
   if flock -n "$lock_fd";
   then
     (
