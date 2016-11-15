@@ -151,7 +151,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # missing kernel      
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/conv_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/depthwise_conv_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/svd_op_test.py"
       # cuda launch failed
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/trace_op_test.py"
