@@ -464,7 +464,7 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 
 - - -
 
-### `tf.inv(x, name=None)` {#inv}
+### `tf.reciprocal(x, name=None)` {#reciprocal}
 
 Computes the reciprocal of x element-wise.
 
