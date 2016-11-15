@@ -149,6 +149,29 @@ def _get_asset_tensors(export_dir, meta_graph_def_to_load):
   return asset_tensor_dict
 
 
+def _get_main_op_tensor(meta_graph_def_to_load):
+  """Gets the main op tensor, if one exists.
+
+  Args:
+    meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+
+  Returns:
+    The main op tensor, if it exists and `None` otherwise.
+
+  Raises:
+    RuntimeError: If the collection def corresponding to the main op key has
+        other than exactly one tensor.
+  """
+  collection_def = meta_graph_def_to_load.collection_def
+  main_op_tensor = None
+  if constants.MAIN_OP_KEY in collection_def:
+    main_ops = collection_def[constants.MAIN_OP_KEY].node_list.value
+    if len(main_ops) != 1:
+      raise RuntimeError("Expected exactly one SavedModel main op.")
+    main_op_tensor = tf.get_collection(constants.MAIN_OP_KEY)[0]
+  return main_op_tensor
+
+
 def _get_legacy_init_op_tensor(meta_graph_def_to_load):
   """Gets the legacy init op tensor, if one exists.
 
@@ -220,12 +243,13 @@ def load(sess, tags, export_dir):
   asset_tensors_dictionary = _get_asset_tensors(export_dir,
                                                 meta_graph_def_to_load)
 
-  # TODO(sukritiramesh): Add support for a single main op to run upon load,
-  # which will supersede the legacy_init_op.
-  legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
-
-  if legacy_init_op_tensor is not None:
-    sess.run(fetches=[legacy_init_op_tensor],
-             feed_dict=asset_tensors_dictionary)
+  main_op_tensor = _get_main_op_tensor(meta_graph_def_to_load)
+  if main_op_tensor is not None:
+    sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
+  else:
+    legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
+    if legacy_init_op_tensor is not None:
+      sess.run(fetches=[legacy_init_op_tensor],
+               feed_dict=asset_tensors_dictionary)
 
   return meta_graph_def_to_load
