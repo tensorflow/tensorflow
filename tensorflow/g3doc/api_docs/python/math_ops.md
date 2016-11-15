@@ -1689,6 +1689,10 @@ garbage result.
 
   A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
 
+  @compatibility(numpy)
+  Equivalent to np.linalg.inv
+  @end_compatibility
+
 
 - - -
 
@@ -1815,7 +1819,12 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
     lower or upper triangular.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
     Boolean indicating whether to solve with `matrix` or its (block-wise)
-    adjoint.
+             adjoint.
+
+    @compatibility(numpy)
+    Equivalent to np.linalg.triangular_solve
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2202,7 +2211,11 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their 2D Fourier Transform.
+    dimensions of `input` are replaced with their 2D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft2
+  @end_compatibility
 
 
 - - -
@@ -2223,7 +2236,11 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+    dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.ifft2
+  @end_compatibility
 
 
 - - -
@@ -2244,7 +2261,11 @@ dimensions of `input`.
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their 3D Fourier Transform.
+    dimensions of `input` are replaced with their 3D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft3
+  @end_compatibility
 
 
 - - -
@@ -2265,7 +2286,11 @@ Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+    dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft3
+  @end_compatibility
 
 
 
@@ -2314,6 +2339,10 @@ tf.reduce_sum(x, [0, 1]) ==> 6
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.sum
+@end_compatibility
+
 
 - - -
 
@@ -2342,6 +2371,10 @@ tensor with a single element is returned.
 ##### Returns:
 
   The reduced tensor.
+
+@compatibility(numpy)
+Equivalent to np.prod
+@end_compatibility
 
 
 - - -
@@ -2372,6 +2405,10 @@ tensor with a single element is returned.
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.min
+@end_compatibility
+
 
 - - -
 
@@ -2400,6 +2437,10 @@ tensor with a single element is returned.
 ##### Returns:
 
   The reduced tensor.
+
+@compatibility(numpy)
+Equivalent to np.max
+@end_compatibility
 
 
 - - -
@@ -2440,6 +2481,10 @@ tf.reduce_mean(x, 1) ==> [1.,  2.]
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.mean
+@end_compatibility
+
 
 - - -
 
@@ -2479,6 +2524,10 @@ tf.reduce_all(x, 1) ==> [True, False]
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.all
+@end_compatibility
+
 
 - - -
 
@@ -2517,6 +2566,10 @@ tf.reduce_any(x, 1) ==> [True, False]
 ##### Returns:
 
   The reduced tensor.
+
+@compatibility(numpy)
+Equivalent to np.any
+@end_compatibility
 
 
 - - -

@@ -344,6 +344,10 @@ element of the tensor. Rank is also known as "order", "degree", or "ndims."
 
   A `Tensor` of type `int32`.
 
+@compatibility(numpy)
+Equivalent to np.ndim
+@end_compatibility
+
 
 - - -
 

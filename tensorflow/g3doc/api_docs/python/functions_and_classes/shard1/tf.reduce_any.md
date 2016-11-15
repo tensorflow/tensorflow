@@ -34,3 +34,7 @@ tf.reduce_any(x, 1) ==> [True, False]
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.any
+@end_compatibility
+
