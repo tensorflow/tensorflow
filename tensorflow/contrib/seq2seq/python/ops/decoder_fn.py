@@ -28,8 +28,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.util import nest
 
-__all__ = ["decoder_fn_train",
-           "decoder_fn_eval_wrapper"]
+__all__ = ["simple_decoder_fn_train",
+           "simple_decoder_fn_inference"]
 
 def simple_decoder_fn_train(encoder_state, name=None):
   with ops.name_scope(name, "simple_decoder_fn_train", [encoder_state]):
