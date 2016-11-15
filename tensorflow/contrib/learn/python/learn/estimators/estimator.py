@@ -242,7 +242,8 @@ def _make_metrics_ops(metrics, features, labels, predictions):
     labels_tensor_or_dict = labels[list(labels.keys())[0]]
 
   result = {}
-  for name, metric in six.iteritems(metrics):
+  # Iterate in lexicographic order, so the graph is identical among runs.
+  for name, metric in sorted(six.iteritems(metrics)):
     if isinstance(metric, metric_spec.MetricSpec):
       result[name] = metric.create_metric_ops(features, labels, predictions)
       continue
@@ -744,7 +745,7 @@ class BaseEstimator(
     """Separate update operations from metric value operations."""
     update_ops = []
     value_ops = {}
-    for name, metric_ops in eval_dict.items():
+    for name, metric_ops in six.iteritems(eval_dict):
       if isinstance(metric_ops, (list, tuple)):
         if len(metric_ops) == 2:
           value_ops[name] = metric_ops[0]
@@ -860,7 +861,8 @@ class BaseEstimator(
       if outputs:
         existing_keys = predictions.keys()
         predictions = {
-            key: value for key, value in predictions.items() if key in outputs
+            key: value
+            for key, value in six.iteritems(predictions) if key in outputs
         }
         if not predictions:
           raise ValueError('Expected to run at least one output from %s, '
@@ -911,7 +913,7 @@ class BaseEstimator(
         if return_dict:
           batch_length = list(output_batch.values())[0].shape[0]
           for i in range(batch_length):
-            yield {key: value[i] for key, value in output_batch.items()}
+            yield {key: value[i] for key, value in six.iteritems(output_batch)}
         else:
           for pred in output_batch['predictions']:
             yield pred
