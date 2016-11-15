@@ -126,6 +126,8 @@ class Options(object):
 
     # Where to write out summaries.
     self.save_path = FLAGS.save_path
+    if not os.path.exists(self.save_path):
+      os.makedirs(self.save_path)
 
     # Eval options.
 
