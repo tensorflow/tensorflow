@@ -185,6 +185,10 @@ paper-dropdown-menu paper-item {
   vertical-align: bottom;
 }
 
+#demo-data-buttons-container {
+  display: none;
+}
+
 </style>
 <div class="title">DATA</div>
 <div class="container">
@@ -251,7 +255,11 @@ paper-dropdown-menu paper-item {
       it unit norm.
     </paper-tooltip>
   </paper-checkbox>
-  <div>
+  <div class="dirs">
+    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
+    <div class="dir">Metadata: <span id="metadata-file"></span></div>
+  </div>
+  <div id="demo-data-buttons-container">
     <span>
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
         Load data from your computer
@@ -264,10 +272,6 @@ paper-dropdown-menu paper-item {
       </paper-tooltip>
       <paper-button id="host-embedding" class="ink-button" onclick="projectorConfigDialog.open()">Publish</paper-button>
     </span>
-  </div>
-  <div class="dirs">
-    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
-    <div class="dir">Metadata: <span id="metadata-file"></span></div>
   </div>
   <div>
     <paper-dialog id="dataDialog" with-backdrop>
