@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, PointAccessors3D} from './data';
+import {DataSet, DistanceFunction, PointAccessors3D} from './data';
 import {NearestEntry} from './knn';
 import {LabelRenderParams} from './renderContext';
+import * as vector from './vector';
 
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
@@ -55,6 +56,13 @@ const TRACE_SELECTED_LINEWIDTH = 3;
 const TRACE_DESELECTED_OPACITY = .05;
 
 const SCATTER_PLOT_CUBE_LENGTH = 2;
+
+/** Color scale for nearest neighbors. */
+const NN_COLOR_SCALE =
+    d3.scale.linear<string>()
+        .domain([1, 0.7, 0.4])
+        .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
+        .clamp(true);
 
 /**
  * Interprets projector events and assembes the arrays and commands necessary
@@ -322,9 +330,9 @@ export class ProjectorScatterPlotAdapter {
 
   generatePointColorArray(
       ds: DataSet, legendPointColorer: (index: number) => string,
-      selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[],
-      hoverPointIndex: number, label3dMode: boolean,
-      spriteImageMode: boolean): Float32Array {
+      distFunc: DistanceFunction, selectedPointIndices: number[],
+      neighborsOfFirstPoint: NearestEntry[], hoverPointIndex: number,
+      label3dMode: boolean, spriteImageMode: boolean): Float32Array {
     if (ds == null) {
       return new Float32Array(0);
     }
@@ -389,8 +397,10 @@ export class ProjectorScatterPlotAdapter {
     // Color the neighbors.
     {
       const n = neighborsOfFirstPoint.length;
-      const c = new THREE.Color(POINT_COLOR_SELECTED);
+      let minDist = n > 0 ? neighborsOfFirstPoint[0].dist : 0;
       for (let i = 0; i < n; ++i) {
+        const c = new THREE.Color(
+            dist2color(distFunc, neighborsOfFirstPoint[i].dist, minDist));
         let dst = neighborsOfFirstPoint[i].index * 3;
         colors[dst++] = c.r;
         colors[dst++] = c.g;
@@ -409,4 +419,19 @@ export class ProjectorScatterPlotAdapter {
 
     return colors;
   }
+}
+
+/**
+ * Normalizes the distance so it can be visually encoded with color.
+ * The normalization depends on the distance metric (cosine vs euclidean).
+ */
+export function normalizeDist(
+    distFunc: DistanceFunction, d: number, minDist: number): number {
+  return (distFunc === vector.dist) ? (minDist / d) : (1 - d);
+}
+
+/** Normalizes and encodes the provided distance with color. */
+export function dist2color(
+    distFunc: DistanceFunction, d: number, minDist: number): string {
+  return NN_COLOR_SCALE(normalizeDist(distFunc, d, minDist));
 }
