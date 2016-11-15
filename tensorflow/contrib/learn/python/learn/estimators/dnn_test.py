@@ -588,9 +588,10 @@ class DNNClassifierTest(tf.test.TestCase):
         enable_centered_bias=False,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=5)
+    input_fn = test_data.iris_input_multiclass_fn
+    classifier.fit(input_fn=input_fn, steps=5)
     self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
-    scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
 
