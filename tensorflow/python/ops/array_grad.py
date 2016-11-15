@@ -443,6 +443,12 @@ def _ReverseGrad(op, grad):
   return array_ops.reverse(grad, reverse_dims), None
 
 
+@ops.RegisterGradient("ReverseV2")
+def _ReverseV2Grad(op, grad):
+  axis = op.inputs[1]
+  return array_ops.reverse_v2(grad, axis), None
+
+
 @ops.RegisterGradient("SpaceToBatch")
 def _SpaceToBatchGrad(op, grad):
   # Its gradient is the opposite op: BatchToSpace.
