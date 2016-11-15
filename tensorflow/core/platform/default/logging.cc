@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -81,7 +82,38 @@ void LogMessage::GenerateLogMessage() {
 }
 #endif
 
-LogMessage::~LogMessage() { GenerateLogMessage(); }
+
+namespace {
+
+int64 MinLogLevel() {
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+  if (tf_env_var_val == nullptr) {
+    return 0;
+  }
+
+  // Ideally we would use env_var / safe_strto64, but it is
+  // hard to use here without pulling in a lot of dependencies,
+  // so we do a poor-man's parsing.
+  StringPiece min_log_level_sp(tf_env_var_val);
+  string min_log_level_str(min_log_level_sp.data(), min_log_level_sp.size());
+  if (min_log_level_str == "1") {
+    return 1;
+  } else if (min_log_level_str == "2") {
+    return 2;
+  } else if (min_log_level_str == "3") {
+    return 3;
+  } else {
+    return 0;
+  }
+}
+
+}  // namespace
+
+LogMessage::~LogMessage() {
+  // Read the min log level once during the first call to logging.
+  static int64 min_log_level = MinLogLevel();
+  if (TF_PREDICT_TRUE(severity_ >= min_log_level)) GenerateLogMessage();
+}
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)
     : LogMessage(file, line, FATAL) {}
