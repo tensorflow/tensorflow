@@ -25,84 +25,62 @@ import tensorflow as tf
 class DecodeImageOpTest(tf.test.TestCase):
 
   def testGif(self):
-    # GIF encoded 2x2 image
-    image_bytes = (b'GIF89a\x02\x00\x02\x00\xf1\x01\x00\x00\x00\x00\xff\xff\xff'
-                   b'\xff\xff\xff\x00\x00\x00!\xf9\x04\x00\x00\x00\x00\x00,\x00'
-                   b'\x00\x00\x00\x02\x00\x02\x00\x00\x02\x03D4\x05\x00;')
-    expected_values = np.array([[[[  0,   0,   0], [255, 255, 255]],
-                                [[255, 255, 255], [0, 0, 0]]]], 
-                                dtype=np.uint8)
-    decode = tf.image.decode_image(image_bytes)
-    with self.test_session():
-      decoded_pixels = decode.eval()
-      self.assertAllEqual(decoded_pixels, expected_values)
+    # Read some real GIFs
+    prefix = 'tensorflow/core/lib/gif/testdata/'
+    filename = 'scan.gif'
+    WIDTH = 20
+    HEIGHT = 40
+    STRIDE = 5
+    shape = (12, HEIGHT, WIDTH, 3)
+
+    with self.test_session(use_gpu=True) as sess:
+      gif0 = tf.read_file(prefix + filename)
+      image0 = tf.image.decode_image(gif0)
+      image1 = tf.image.decode_gif(gif0)
+      gif0, image0, image1 = sess.run([gif0, image0, image1])
+
+      self.assertEqual(image0.shape, shape)
+      self.assertAllEqual(image0, image1)
+
+      for frame_idx, frame in enumerate(image0):
+        gt = np.zeros(shape[1:], dtype=np.uint8)
+        start = frame_idx * STRIDE
+        end = (frame_idx + 1) * STRIDE
+        if end <= WIDTH:
+          gt[:, start:end, :] = 255
+        else:
+          start -= WIDTH
+          end -= WIDTH
+          gt[start:end, :, :] = 255
+
+        self.assertAllClose(frame, gt)
 
   def testJpeg(self):
-    # JPEG encoded 2x2 image
-    image_bytes = (b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00'
-                   b'\x00\xff\xdb\x00C\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\xff'
-                   b'\xdb\x00C\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01'
-                   b'\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\xff\xc2\x00'
-                   b'\x11\x08\x00\x02\x00\x02\x03\x01\x11\x00\x02\x11\x01\x03'
-                   b'\x11\x01\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\t\xff\xc4\x00\x14\x01'
-                   b'\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x10\x03\x10'
-                   b'\x00\x00\x01hO\xff\xc4\x00\x16\x10\x01\x01\x01\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05\x06\x03\xff'
-                   b'\xda\x00\x08\x01\x01\x00\x01\x05\x02*JW"\xff\x00\xff\xc4'
-                   b'\x00\x14\x11\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08\x01\x03\x01\x01?'
-                   b'\x01\x7f\xff\xc4\x00\x14\x11\x01\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08'
-                   b'\x01\x02\x01\x01?\x01\x7f\xff\xc4\x00\x1b\x10\x01\x01\x01'
-                   b'\x00\x03\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02'
-                   b'\x01\x03\x04\x05\x06\x00\x11\xff\xda\x00\x08\x01\x01\x00'
-                   b'\x06?\x02\xebs\xcf\xcc\xf9\xfc\xf3\xcf\x81\xc3\x19\xe6:n'
-                   b'\xb8\x00\x07\x1f2@\'\x8d\t$\xc9\t\x92I\'\xe4\xfb\xff\xc4'
-                   b'\x00\x15\x10\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x01\x00\xff\xda\x00\x08\x01\x01\x00'
-                   b'\x01?! \xd5N\xe1!\xc4\x9c\x00\x05\xff\xda\x00\x0c\x03\x01'
-                   b'\x00\x02\x00\x03\x00\x00\x00\x10\x9f\xff\xc4\x00\x14\x11'
-                   b'\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\xff\xda\x00\x08\x01\x03\x01\x01?\x10\x7f\xff'
-                   b'\xc4\x00\x14\x11\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x08\x01\x02\x01'
-                   b'\x01?\x10\x7f\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00'
-                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xff\xda\x00'
-                   b'\x08\x01\x01\x00\x01?\x10\x0f\xcaHM\xe0\x84\x89\xe8\xff'
-                   b'\xd9')
-    expected_values = np.array([[[  0,   0,   0], [136, 136, 136]],
-                                [[204, 204, 204], [255, 255, 255]]], 
-                               dtype=np.uint8)
-    decode = tf.image.decode_image(image_bytes, channels=3)
-    with self.test_session():
-      decoded_pixels = decode.eval()
-      self.assertAllEqual(decoded_pixels, expected_values)
+    # Read a real jpeg and verify shape
+    path = ('tensorflow/core/lib/jpeg/testdata/'
+            'jpeg_merge_test1.jpg')
+    with self.test_session(use_gpu=True) as sess:
+      jpeg0 = tf.read_file(path)
+      image0 = tf.image.decode_image(jpeg0)
+      image1 = tf.image.decode_jpeg(jpeg0)
+      jpeg0, image0, image1 = sess.run([jpeg0, image0, image1])
+      self.assertEqual(len(jpeg0), 3771)
+      self.assertEqual(image0.shape, (256, 128, 3))
+      self.assertAllEqual(image0, image1)
 
   def testPng(self):
-    # PNG encoded 2x2 image
-    image_bytes = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02\x00\x00'
-                   b'\x00\x02\x08\x06\x00\x00\x00r\xb6\r$\x00\x00\x00\tpHYs\x00'
-                   b'\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00'
-                   b'\x00\x07tIME\x07\xe0\t\x06\x023\x1c\x11\x05a\x9e\x00\x00'
-                   b'\x00\x1bIDAT\x08\xd7cd``\xf8\xdf\xd1\xd1\xc1\xc0p\xe6\xcc'
-                   b'\x99\xff\xff\xff\xff\xff\x0f\x00@\xe3\t\xf8tP\x9c\xec\x00'
-                   b'\x00\x00\x00IEND\xaeB`\x82')
-    expected_values = np.array([[[  0,   0,   0], [136, 136, 136]],
-                                [[204, 204, 204], [255, 255, 255]]], 
-                               dtype=np.uint8)
-    decode = tf.image.decode_image(image_bytes, channels=3)
-    with self.test_session():
-      decoded_pixels = decode.eval()
-      self.assertAllEqual(decoded_pixels, expected_values)
+    # Read some real PNGs, converting to different channel numbers
+    prefix = 'tensorflow/core/lib/png/testdata/'
+    inputs = [(1, 'lena_gray.png')]
+    for channels_in, filename in inputs:
+      for channels in 0, 1, 3:
+        with self.test_session(use_gpu=True) as sess:
+          png0 = tf.read_file(prefix + filename)
+          image0 = tf.image.decode_image(png0, channels=channels)
+          image1 = tf.image.decode_png(png0, channels=channels)
+          png0, image0, image1 = sess.run([png0, image0, image1])
+          self.assertEqual(image0.shape, (26, 51, channels or channels_in))
+          self.assertAllEqual(image0, image1)
 
   def testInvalid(self):
     image_bytes = b'ThisIsNotAnImage!'

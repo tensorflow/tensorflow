@@ -121,6 +121,7 @@ tf_py_test(
     size = "small",
     srcs = ["decode_image_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
+    data = ["//tensorflow/core:image_testdata"],
 )
 
 tf_py_test(
