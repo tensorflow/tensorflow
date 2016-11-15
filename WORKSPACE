@@ -137,8 +137,8 @@ new_http_archive(
 new_http_archive(
   name = "iron_a11y_announcer",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-a11y-announcer/archive/v1.0.4.tar.gz",
-  strip_prefix = "iron-a11y-announcer-1.0.4",
+  url = "https://github.com/polymerelements/iron-a11y-announcer/archive/v1.0.5.tar.gz",
+  strip_prefix = "iron-a11y-announcer-1.0.5",
 )
 
 new_http_archive(
@@ -177,10 +177,10 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "iron_iconset_svg",
+  name = "iron_collapse",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-iconset-svg/archive/v1.1.0.tar.gz",
-  strip_prefix = "iron-iconset-svg-1.1.0",
+  url = "https://github.com/polymerelements/iron-collapse/archive/v1.0.8.tar.gz",
+  strip_prefix = "iron-collapse-1.0.8",
 )
 
 new_http_archive(
@@ -212,10 +212,10 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "iron_overlay_behavior",
+  name = "iron_icon",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-overlay-behavior/archive/v1.10.1.tar.gz",
-  strip_prefix = "iron-overlay-behavior-1.10.1",
+  url = "https://github.com/polymerelements/iron-icon/archive/v1.0.11.tar.gz",
+  strip_prefix = "iron-icon-1.0.11",
 )
 
 new_http_archive(
@@ -228,22 +228,15 @@ new_http_archive(
 new_http_archive(
   name = "iron_iconset_svg",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-iconset-svg/archive/v1.0.10.tar.gz",
-  strip_prefix = "iron-iconset-svg-1.0.10",
+  url = "https://github.com/polymerelements/iron-iconset-svg/archive/v1.1.0.tar.gz",
+  strip_prefix = "iron-iconset-svg-1.1.0",
 )
 
 new_http_archive(
-  name = "iron_scroll_target_behavior",
+  name = "iron_input",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-scroll-target-behavior/archive/v1.0.3.tar.gz",
-  strip_prefix = "iron-scroll-target-behavior-1.0.3",
-)
-
-new_http_archive(
-  name = "iron_selector",
-  build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-selector/archive/v1.5.2.tar.gz",
-  strip_prefix = "iron-selector-1.5.2",
+  url = "https://github.com/polymerelements/iron-input/archive/1.0.10.tar.gz",
+  strip_prefix = "iron-input-1.0.10",
 )
 
 new_http_archive(
@@ -270,8 +263,8 @@ new_http_archive(
 new_http_archive(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-overlay-behavior/archive/v1.9.0.tar.gz",
-  strip_prefix = "iron-overlay-behavior-1.9.0",
+  url = "https://github.com/polymerelements/iron-overlay-behavior/archive/v1.10.1.tar.gz",
+  strip_prefix = "iron-overlay-behavior-1.10.1",
 )
 
 new_http_archive(
@@ -289,10 +282,17 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "paper_checkbox",
+  name = "iron_scroll_target_behavior",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-checkbox/archive/v1.4.0.tar.gz",
-  strip_prefix = "paper-checkbox-1.4.0",.
+  url = "https://github.com/polymerelements/iron-scroll-target-behavior/archive/v1.0.3.tar.gz",
+  strip_prefix = "iron-scroll-target-behavior-1.0.3",
+)
+
+new_http_archive(
+  name = "iron_selector",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/iron-selector/archive/v1.5.2.tar.gz",
+  strip_prefix = "iron-selector-1.5.2",
 )
 
 new_http_archive(
@@ -310,17 +310,10 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "paper_dialog_scrollable",
+  name = "neon_animation",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-dialog-scrollable/archive/1.1.5.tar.gz",
-  strip_prefix = "paper-dialog-scrollable-1.1.5",
-)
-
-new_http_archive(
-  name = "paper_dropdown_menu",
-  build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-dropdown-menu/archive/v1.4.0.tar.gz",
-  strip_prefix = "paper-dropdown-menu-1.4.0",
+  url = "https://github.com/polymerelements/neon-animation/archive/v1.2.2.tar.gz",
+  strip_prefix = "neon-animation-1.2.2",
 )
 
 http_file(
@@ -329,10 +322,10 @@ http_file(
 )
 
 new_http_archive(
-  name = "paper_icon_button",
+  name = "paper_behaviors",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-icon-button/archive/v1.1.3.tar.gz",
-  strip_prefix = "paper-icon-button-1.1.3",
+  url = "https://github.com/polymerelements/paper-behaviors/archive/v1.0.12.tar.gz",
+  strip_prefix = "paper-behaviors-1.0.12",
 )
 
 new_http_archive(
@@ -345,8 +338,8 @@ new_http_archive(
 new_http_archive(
   name = "paper_checkbox",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-checkbox/archive/v1.1.3.tar.gz",
-  strip_prefix = "paper-checkbox-1.1.3",
+  url = "https://github.com/polymerelements/paper-checkbox/archive/v1.4.0.tar.gz",
+  strip_prefix = "paper-checkbox-1.4.0",
 )
 
 new_http_archive(
@@ -361,6 +354,13 @@ new_http_archive(
   build_file = "bower.BUILD",
   url = "https://github.com/polymerelements/paper-dialog-behavior/archive/v1.2.5.tar.gz",
   strip_prefix = "paper-dialog-behavior-1.2.5",
+)
+
+new_http_archive(
+  name = "paper_dialog_scrollable",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/paper-dialog-scrollable/archive/1.1.5.tar.gz",
+  strip_prefix = "paper-dialog-scrollable-1.1.5",
 )
 
 new_http_archive(
@@ -380,8 +380,8 @@ new_http_archive(
 new_http_archive(
   name = "paper_icon_button",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-icon-button/archive/v1.1.2.tar.gz",
-  strip_prefix = "paper-icon-button-1.1.2",
+  url = "https://github.com/polymerelements/paper-icon-button/archive/v1.1.3.tar.gz",
+  strip_prefix = "paper-icon-button-1.1.3",
 )
 
 new_http_archive(
@@ -413,17 +413,10 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "paper_tabs",
+  name = "paper_menu_button",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-tabs/archive/v1.7.0.tar.gz",
-  strip_prefix = "paper-tabs-1.7.0",
-)
-
-new_http_archive(
-  name = "paper_toast",
-  build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-toast/archive/v1.3.0.tar.gz",
-  strip_prefix = "paper-toast-1.3.0",
+  url = "https://github.com/polymerelements/paper-menu-button/archive/v1.5.1.tar.gz",
+  strip_prefix = "paper-menu-button-1.5.1",
 )
 
 new_http_archive(
@@ -471,8 +464,15 @@ new_http_archive(
 new_http_archive(
   name = "paper_tabs",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-tabs/archive/v1.6.2.tar.gz",
-  strip_prefix = "paper-tabs-1.6.2",
+  url = "https://github.com/polymerelements/paper-tabs/archive/v1.7.0.tar.gz",
+  strip_prefix = "paper-tabs-1.7.0",
+)
+
+new_http_archive(
+  name = "paper_toast",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/paper-toast/archive/v1.3.0.tar.gz",
+  strip_prefix = "paper-toast-1.3.0",
 )
 
 new_http_archive(
