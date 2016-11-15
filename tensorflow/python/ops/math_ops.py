@@ -1089,11 +1089,6 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
     return gen_math_ops._range(start, limit, delta, name=name)
 
 
-@ops.RegisterShape("Range")
-def _RangeShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0, 1, 2])
-
-
 # Reduction operations
 def _ReductionDims(x, axis, reduction_indices):
   """Returns range(0, rank(x)) if reduction_indices is None."""
@@ -1961,41 +1956,6 @@ def _BroadcastShape(op):
   return [common_shapes.broadcast_shape(
       op.inputs[0].get_shape(),
       op.inputs[1].get_shape())]
-
-
-@ops.RegisterShape("ArgMax")
-@ops.RegisterShape("ArgMin")
-def _ArgOpShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("All")
-@ops.RegisterShape("Any")
-@ops.RegisterShape("Max")
-@ops.RegisterShape("Mean")
-@ops.RegisterShape("Min")
-@ops.RegisterShape("Prod")
-@ops.RegisterShape("Sum")
-def _ReductionShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("SparseSegmentMeanGrad")
-@ops.RegisterShape("SparseSegmentSqrtNGrad")
-# pylint: disable=invalid-name
-def _SparseSegmentReductionGradShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
-# pylint: enable=invalid-name
-
-
-@ops.RegisterShape("UnsortedSegmentSum")
-def _UnsortedSegmentSumShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
-
-
-@ops.RegisterShape("LinSpace")
-def _LinspaceShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def reduced_shape(input_shape, axes):
