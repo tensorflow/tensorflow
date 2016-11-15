@@ -177,7 +177,7 @@ def weighted_resample(inputs, weights, overall_rate, scope=None,
 
       batch_mean = math_ops.reduce_mean(weights)
       mean = moving_averages.assign_moving_average(
-          estimated_mean, batch_mean, real_decay)
+          estimated_mean, batch_mean, real_decay, zero_debias=False)
 
     # Then, normalize the weights into rates using the mean weight and
     # overall target rate:

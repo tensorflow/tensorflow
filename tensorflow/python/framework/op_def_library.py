@@ -488,6 +488,15 @@ class OpDefLibrary(object):
                 dtype=dtype,
                 as_ref=input_arg.is_ref,
                 preferred_dtype=default_dtype)
+          except TypeError as err:
+            if dtype is None:
+              raise err
+            else:
+              raise TypeError(
+                  "Expected %s passed to parameter '%s' of op '%s', got %s of "
+                  "type '%s' instead." %
+                  (dtypes.as_dtype(dtype).name, input_arg.name, op_type_name,
+                   repr(values), type(values).__name__))
           except ValueError:
             # What type does convert_to_tensor think it has?
             observed = ops.convert_to_tensor(values,

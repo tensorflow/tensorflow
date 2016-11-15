@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import imghdr
 import os
+import numpy as np
 
 from google.protobuf import json_format
 from google.protobuf import text_format
@@ -40,9 +41,6 @@ RUNS_ROUTE = '/runs'
 BOOKMARKS_ROUTE = '/bookmarks'
 SPRITE_IMAGE_ROUTE = '/sprite_image'
 
-# Limit for the number of points we send to the browser.
-LIMIT_NUM_POINTS = 100000
-
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
     'gif': 'image/gif',
@@ -57,8 +55,54 @@ def _read_tensor_file(fpath):
     tensor = []
     for line in f:
       if line:
-        tensor.append(line.rstrip('\n').split('\t'))
-  return tensor
+        tensor.append(map(float, line.rstrip('\n').split('\t')))
+  return np.array(tensor, dtype='float32')
+
+
+def _latest_checkpoints_changed(configs, run_path_pairs):
+  """Returns true if the latest checkpoint has changed in any of the runs."""
+  for run_name, logdir in run_path_pairs:
+    if run_name not in configs:
+      continue
+    config = configs[run_name]
+    if not config.model_checkpoint_path:
+      continue
+
+    # See if you can find a checkpoint file in the logdir.
+    ckpt_path = latest_checkpoint(logdir)
+    if not ckpt_path:
+      # See if you can find a checkpoint in the parent of logdir.
+      ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
+      if not ckpt_path:
+        continue
+    if config.model_checkpoint_path != ckpt_path:
+      return True
+  return False
+
+
+def _parse_positive_int_param(request, query_params, param_name):
+  """Parses and asserts a positive (>0) integer query parameter.
+
+  Args:
+    request: The http request object.
+    query_params: Dictionary of query parameters.
+    param_name: Name of the parameter.
+
+  Returns:
+    None if parameter not present. -1 if parameter is not a positive integer.
+  """
+  param = query_params.get(param_name)
+  if not param:
+    return None
+  try:
+    param = int(param)
+    if param <= 0:
+      raise ValueError()
+    return param
+  except ValueError:
+    request.respond('query parameter "%s" must be integer > 0' % param_name,
+                    'text/plain', 400)
+    return -1
 
 
 class ProjectorPlugin(TBPlugin):
@@ -88,9 +132,16 @@ class ProjectorPlugin(TBPlugin):
   @property
   def configs(self):
     """Returns a map of run paths to `ProjectorConfig` protos."""
-    if self._run_paths_changed():
-      self._configs, self.config_fpaths = self._read_config_files(
-          self.run_paths, self.logdir)
+    run_path_pairs = self.run_paths.items()
+    # If there are no summary event files, the projector should still work,
+    # treating the `logdir` as the model checkpoint directory.
+    if not run_path_pairs:
+      run_path_pairs.append(('.', self.logdir))
+    if (self._run_paths_changed() or
+        _latest_checkpoints_changed(self._configs, run_path_pairs)):
+      self.readers = {}
+      self._configs, self.config_fpaths = self._read_latest_config_files(
+          run_path_pairs)
       self._augment_configs_with_checkpoint_info()
     return self._configs
 
@@ -103,8 +154,11 @@ class ProjectorPlugin(TBPlugin):
 
   def _augment_configs_with_checkpoint_info(self):
     for run, config in self._configs.items():
-      # Find the size of the embeddings that are associated with a tensor file.
       for embedding in config.embeddings:
+        # Normalize the name of the embeddings.
+        if embedding.tensor_name.endswith(':0'):
+          embedding.tensor_name = embedding.tensor_name[:-2]
+        # Find the size of embeddings associated with a tensors file.
         if embedding.tensor_path and not embedding.tensor_shape:
           tensor = _read_tensor_file(embedding.tensor_path)
           embedding.tensor_shape.extend([len(tensor), len(tensor[0])])
@@ -140,15 +194,11 @@ class ProjectorPlugin(TBPlugin):
       del self._configs[run]
       del self.config_fpaths[run]
 
-  def _read_config_files(self, run_paths, summary_logdir):
-    # If there are no summary event files, the projector can still work,
-    # thus treating the `logdir` as the model checkpoint directory.
-    if not run_paths:
-      run_paths['.'] = summary_logdir
-
+  def _read_latest_config_files(self, run_path_pairs):
+    """Reads and returns the projector config files in every run directory."""
     configs = {}
     config_fpaths = {}
-    for run_name, logdir in run_paths.items():
+    for run_name, logdir in run_path_pairs:
       config = ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
@@ -166,7 +216,7 @@ class ProjectorPlugin(TBPlugin):
         ckpt_path = latest_checkpoint(logdir)
         if not ckpt_path:
           # Or in the parent of logdir.
-          ckpt_path = latest_checkpoint(os.path.join('../', logdir))
+          ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
           if not ckpt_path and not has_tensor_files:
             continue
         if ckpt_path:
@@ -249,6 +299,11 @@ class ProjectorPlugin(TBPlugin):
     if name is None:
       request.respond('query parameter "name" is required', 'text/plain', 400)
       return
+
+    num_rows = _parse_positive_int_param(request, query_params, 'num_rows')
+    if num_rows == -1:
+      return
+
     if run not in self.configs:
       request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
@@ -273,7 +328,7 @@ class ProjectorPlugin(TBPlugin):
         lines.append(line)
         if len(lines) == 1 and '\t' in lines[0]:
           num_header_rows = 1
-        if len(lines) >= LIMIT_NUM_POINTS + num_header_rows:
+        if num_rows and len(lines) >= num_rows + num_header_rows:
           break
     request.respond(''.join(lines), 'text/plain')
 
@@ -286,6 +341,10 @@ class ProjectorPlugin(TBPlugin):
     name = query_params.get('name')
     if name is None:
       request.respond('query parameter "name" is required', 'text/plain', 400)
+      return
+
+    num_rows = _parse_positive_int_param(request, query_params, 'num_rows')
+    if num_rows == -1:
       return
 
     if run not in self.configs:
@@ -315,11 +374,13 @@ class ProjectorPlugin(TBPlugin):
         return
       tensor = reader.get_tensor(name)
 
-    # Sample the tensor
-    tensor = tensor[:LIMIT_NUM_POINTS]
-    # Stream it as TSV.
-    tsv = '\n'.join(['\t'.join([str(val) for val in row]) for row in tensor])
-    request.respond(tsv, 'text/tab-separated-values')
+    if num_rows:
+      tensor = tensor[:num_rows]
+
+    if tensor.dtype != 'float32':
+      tensor = tensor.astype(dtype='float32', copy=False)
+    data_bytes = tensor.tobytes()
+    request.respond(data_bytes, 'application/octet-stream')
 
   def _serve_bookmarks(self, request, query_params):
     run = query_params.get('run')

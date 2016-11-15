@@ -20,7 +20,7 @@ ExternalProject_Add(protobuf
     GIT_TAG ${PROTOBUF_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
-    SOURCE_DIR ${CMAKE_BINARY_DIR}/protobuf/src/protobuf
+    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf
     CONFIGURE_COMMAND ${CMAKE_COMMAND} cmake/
         -Dprotobuf_BUILD_TESTS=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON

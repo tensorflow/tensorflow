@@ -84,9 +84,14 @@ inline static SessionVariables* GetSessionVars(JNIEnv* env, jobject thiz) {
     vars->id = id;
     sessions[id] = vars;
   } else {
-    VLOG(0) << "Found session variables for " << std::hex << id;
+    VLOG(1) << "Found session variables for " << std::hex << id;
   }
   return sessions[id];
+}
+
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(testLoaded)(JNIEnv* env,
+                                                     jobject thiz) {
+  LOG(INFO) << "Native TF methods loaded.";
 }
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(

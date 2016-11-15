@@ -73,11 +73,11 @@ class CategoricalTest(tf.test.TestCase):
   def testDtype(self):
     dist = make_categorical([], 5, dtype=tf.int32)
     self.assertEqual(dist.dtype, tf.int32)
-    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     dist = make_categorical([], 5, dtype=tf.int64)
     self.assertEqual(dist.dtype, tf.int64)
-    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.p.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, tf.float32)
@@ -140,7 +140,7 @@ class CategoricalTest(tf.test.TestCase):
       histograms = [[[0.2, 0.8], [0.4, 0.6]]]
       dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       n = 10000
-      samples = dist.sample_n(n, seed=123)
+      samples = dist.sample(n, seed=123)
       samples.set_shape([n, 1, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()

@@ -78,7 +78,10 @@ vz-projector {
   </div>
   <vz-projector route-prefix="[[routePrefix]]"
       serving-mode="[[servingMode]]"
-      projector-config-json-path="[[projectorConfigJsonPath]]"></vz-projector>
+      projector-config-json-path="[[projectorConfigJsonPath]]"
+      page-view-logging="[[pageViewLogging]]"
+      event-logging="[[eventLogging]]">
+  </vz-projector>
 </div>
 <!-- Google analytics -->
 <script>
@@ -88,12 +91,15 @@ vz-projector {
   })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
 
   ga('create', 'UA-46457317-5', 'auto');
-  ga('send', 'pageview');
 </script>
 </template>
 <script>
   Polymer({
-    is: 'vz-projector-app'
+    is: 'vz-projector-app',
+    properties: {
+      pageViewLogging: {type: Boolean, value: false},
+      eventLogging: {type: Boolean, value: false}
+    }
   });
 </script>
 </dom-module>

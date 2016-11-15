@@ -222,8 +222,9 @@ Let N be the size of source (typically N will be the batch size). Split each
 element of `input` based on `delimiter` and return a `SparseTensor`
 containing the splitted tokens. Empty tokens are ignored.
 
-`delimiter` can be empty or a single character. If `delimiter` is an empty
- string, each element of `input` is split into individual 1 character strings.
+`delimiter` can be empty or a single-byte character. If `delimiter` is an empty
+ string, each element of `input` is split into individual single-byte character
+ strings, including splitting of UTF-8 multibyte sequences.
 
 For example:
   N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
@@ -281,32 +282,32 @@ output: Decoded strings.
 )doc");
 
 REGISTER_OP("Substr")
-  .Input("input: string")
-  .Input("pos: T")
-  .Input("len: T")
-  .Output("output: string")
-  .Attr("T: {int32, int64}")
-  .SetShapeFn([](InferenceContext* c) {
-    ShapeHandle pos_shape = c->input(1);
-    ShapeHandle len_shape = c->input(2);
-    ShapeHandle unused;
-    // Check that pos/len have same rank
-    TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
-    // Check that dimensions are equal
-    for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
-      DimensionHandle pos_dim = c->Dim(pos_shape, i);
-      DimensionHandle len_dim = c->Dim(len_shape, i);
-      if (c->Value(pos_dim) != c->Value(len_dim)) {
-        return errors::InvalidArgument("pos and len shapes must match: ",
-                                       c->DebugString(pos_shape), " vs. ",
-                                       c->DebugString(len_shape));
+    .Input("input: string")
+    .Input("pos: T")
+    .Input("len: T")
+    .Output("output: string")
+    .Attr("T: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle pos_shape = c->input(1);
+      ShapeHandle len_shape = c->input(2);
+      ShapeHandle unused;
+      // Check that pos/len have same rank
+      TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
+      // Check that dimensions are equal
+      for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
+        DimensionHandle pos_dim = c->Dim(pos_shape, i);
+        DimensionHandle len_dim = c->Dim(len_shape, i);
+        if (c->Value(pos_dim) != c->Value(len_dim)) {
+          return errors::InvalidArgument("pos and len shapes must match: ",
+                                         c->DebugString(pos_shape), " vs. ",
+                                         c->DebugString(len_shape));
+        }
       }
-    }
-    // c->input(0) is the ShapeHandle to input strings
-    // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
-    return shape_inference::BroadcastBinaryOpShapeFn(c);
-  })
-  .Doc(R"doc(
+      // c->input(0) is the ShapeHandle to input strings
+      // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
+      return shape_inference::BroadcastBinaryOpShapeFn(c);
+    })
+    .Doc(R"doc(
 Return substrings from `Tensor` of strings.
 
 For each string in the input `Tensor`, creates a substring starting at index 

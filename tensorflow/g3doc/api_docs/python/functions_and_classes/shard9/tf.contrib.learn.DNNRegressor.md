@@ -3,24 +3,22 @@ A regressor for TensorFlow DNN models.
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_feature_a = sparse_column_with_hash_bucket(...)
+sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                 combiner="sum")
-occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                 combiner="sum")
+sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                        ...)
+sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                        ...)
 
 estimator = DNNRegressor(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a, sparse_feature_b],
     hidden_units=[1024, 512, 256])
 
 # Or estimator using the ProximalAdagradOptimizer optimizer with
 # regularization.
 estimator = DNNRegressor(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a, sparse_feature_b],
     hidden_units=[1024, 512, 256],
     optimizer=tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
@@ -28,11 +26,11 @@ estimator = DNNRegressor(
     ))
 
 # Input builders
-def input_fn_train: # returns x, Y
+def input_fn_train: # returns x, y
   pass
 estimator.fit(input_fn=input_fn_train)
 
-def input_fn_eval: # returns x, Y
+def input_fn_eval: # returns x, y
   pass
 estimator.evaluate(input_fn=input_fn_eval)
 estimator.predict(x=x)
@@ -53,7 +51,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, label_dimension=1)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -89,6 +87,7 @@ Initializes a `DNNRegressor` instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
+*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
 
 ##### Returns:
 
@@ -167,44 +166,9 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export(*args, **kwargs)` {#DNNRegressor.export}
+#### `tf.contrib.learn.DNNRegressor.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=None, exports_to_keep=None)` {#DNNRegressor.export}
 
-Exports inference graph into given dir. (deprecated arguments)
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
-Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
-
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, labels), where features is a dict of
-        string key to `Tensor` and labels is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input. Can only be `None` if you're using a custom `signature_fn` that
-        does not use the first arg (examples).
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      prediction_key: The key for a tensor in the `predictions` dict (output
-        from the `model_fn`) to use as the `predictions` input to the
-        `signature_fn`. Optional. If `None`, predictions will pass to
-        `signature_fn` without filtering.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
-
-    Returns:
-      The string path to the exported directory. NB: this functionality was
-      added ca. 2016/09/25; clients that depend on the return value may need
-      to handle the case where this function returns None because subclasses
-      are not returning a value.
 
 
 - - -
@@ -360,43 +324,13 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 #### `tf.contrib.learn.DNNRegressor.predict(*args, **kwargs)` {#DNNRegressor.predict}
 
-Returns predictions for given features. (deprecated arguments)
+Runs inference to determine the predicted class. (deprecated arguments)
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
-Estimator is decoupled from Scikit Learn interface by moving into
-separate class SKCompat. Arguments x, y and batch_size are only
-available in the SKCompat class, Estimator will only accept input_fn.
-
-##### Example conversion:
-
-  est = Estimator(...) -> est = SKCompat(Estimator(...))
-
-
-*  <b>`Args`</b>: 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
-*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-        'None'.
-*  <b>`outputs`</b>: list of `str`, name of the output to predict.
-        If `None`, returns all.
-*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
-
-
-*  <b>`Returns`</b>: 
-      A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-      predictions if as_iterable is True.
-
-
-*  <b>`Raises`</b>: 
-*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
 
 - - -

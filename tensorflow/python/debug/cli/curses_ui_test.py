@@ -320,19 +320,19 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
 
     # Initial scroll: At the top.
-    self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
 
     # After 1st scrolling (PageDown).
     # The screen output shouldn't have changed. Only the viewport should.
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
     self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
-    self.assertIn("Scroll: 1.69%", ui.scroll_messages[1])
+    self.assertIn("Scroll (PgDn/PgUp): 1.69%", ui.scroll_messages[1])
 
     # After 2nd scrolling (PageDown).
-    self.assertIn("Scroll: 3.39%", ui.scroll_messages[2])
+    self.assertIn("Scroll (PgDn/PgUp): 3.39%", ui.scroll_messages[2])
 
     # After 3rd scrolling (PageUp).
-    self.assertIn("Scroll: 1.69%", ui.scroll_messages[3])
+    self.assertIn("Scroll (PgDn/PgUp): 1.69%", ui.scroll_messages[3])
 
   def testCutOffTooManyOutputLines(self):
     ui = MockCursesUI(
@@ -375,16 +375,16 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
 
     # Initial scroll: At the top.
-    self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
 
     # After 1st scrolling (End).
-    self.assertIn("Scroll: 100.00%", ui.scroll_messages[1])
+    self.assertIn("Scroll (PgUp): 100.00%", ui.scroll_messages[1])
 
     # After 2nd scrolling (End).
-    self.assertIn("Scroll: 100.00%", ui.scroll_messages[2])
+    self.assertIn("Scroll (PgUp): 100.00%", ui.scroll_messages[2])
 
     # After 3rd scrolling (Hhome).
-    self.assertIn("Scroll: 0.00%", ui.scroll_messages[3])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[3])
 
   def testRunUIWithInitCmd(self):
     """Run UI with an initial command specified."""
@@ -398,7 +398,7 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
     self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
-    self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
 
   def testCompileHelpWithoutHelpIntro(self):
     ui = MockCursesUI(
@@ -571,7 +571,7 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # The 1st scroll info should contain scrolling, because the screen size
     # is less than the number of lines in the output.
-    self.assertIn("Scroll: 0.00%", ui.scroll_messages[0])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
 
   def testTabCompletionWithCommonPrefix(self):
     # Type "b" and trigger tab completion.
@@ -973,77 +973,80 @@ class CursesTest(test_util.TensorFlowTestCase):
         0: None,
         -1: [1, 0]
     }, ui.output_array_pointer_indices[0])
-    self.assertIn(" Scroll: 0.00% -[1,0] ", ui.scroll_messages[0])
+    self.assertIn(" Scroll (PgDn): 0.00% -[1,0] ", ui.scroll_messages[0])
 
     # Scrolled down one line.
     self.assertEqual({
         0: None,
         -1: [2, 0]
     }, ui.output_array_pointer_indices[1])
-    self.assertIn(" Scroll: 16.67% -[2,0] ", ui.scroll_messages[1])
+    self.assertIn(" Scroll (PgDn/PgUp): 16.67% -[2,0] ", ui.scroll_messages[1])
 
     # Scrolled down one line.
     self.assertEqual({
         0: [0, 0],
         -1: [3, 0]
     }, ui.output_array_pointer_indices[2])
-    self.assertIn(" Scroll: 33.33% [0,0]-[3,0] ", ui.scroll_messages[2])
+    self.assertIn(" Scroll (PgDn/PgUp): 33.33% [0,0]-[3,0] ",
+                  ui.scroll_messages[2])
 
     # Scrolled down one line.
     self.assertEqual({
         0: [1, 0],
         -1: [4, 0]
     }, ui.output_array_pointer_indices[3])
-    self.assertIn(" Scroll: 50.00% [1,0]-[4,0] ", ui.scroll_messages[3])
+    self.assertIn(" Scroll (PgDn/PgUp): 50.00% [1,0]-[4,0] ",
+                  ui.scroll_messages[3])
 
     # Scroll to the bottom.
     self.assertEqual({
         0: [4, 0],
         -1: None
     }, ui.output_array_pointer_indices[4])
-    self.assertIn(" Scroll: 100.00% [4,0]- ", ui.scroll_messages[4])
+    self.assertIn(" Scroll (PgUp): 100.00% [4,0]- ", ui.scroll_messages[4])
 
     # Attempt to scroll beyond the bottom should lead to no change.
     self.assertEqual({
         0: [4, 0],
         -1: None
     }, ui.output_array_pointer_indices[5])
-    self.assertIn(" Scroll: 100.00% [4,0]- ", ui.scroll_messages[5])
+    self.assertIn(" Scroll (PgUp): 100.00% [4,0]- ", ui.scroll_messages[5])
 
     # Scrolled up one line.
     self.assertEqual({
         0: [3, 0],
         -1: None
     }, ui.output_array_pointer_indices[6])
-    self.assertIn(" Scroll: 83.33% [3,0]- ", ui.scroll_messages[6])
+    self.assertIn(" Scroll (PgDn/PgUp): 83.33% [3,0]- ", ui.scroll_messages[6])
 
     # Scrolled up one line.
     self.assertEqual({
         0: [2, 0],
         -1: None
     }, ui.output_array_pointer_indices[7])
-    self.assertIn(" Scroll: 66.67% [2,0]- ", ui.scroll_messages[7])
+    self.assertIn(" Scroll (PgDn/PgUp): 66.67% [2,0]- ", ui.scroll_messages[7])
 
     # Scrolled up one line.
     self.assertEqual({
         0: [1, 0],
         -1: [4, 0]
     }, ui.output_array_pointer_indices[8])
-    self.assertIn(" Scroll: 50.00% [1,0]-[4,0] ", ui.scroll_messages[8])
+    self.assertIn(" Scroll (PgDn/PgUp): 50.00% [1,0]-[4,0] ",
+                  ui.scroll_messages[8])
 
     # Scroll to the top.
     self.assertEqual({
         0: None,
         -1: [1, 0]
     }, ui.output_array_pointer_indices[9])
-    self.assertIn(" Scroll: 0.00% -[1,0] ", ui.scroll_messages[9])
+    self.assertIn(" Scroll (PgDn): 0.00% -[1,0] ", ui.scroll_messages[9])
 
     # Attempt to scroll pass the top limit should lead to no change.
     self.assertEqual({
         0: None,
         -1: [1, 0]
     }, ui.output_array_pointer_indices[10])
-    self.assertIn(" Scroll: 0.00% -[1,0] ", ui.scroll_messages[10])
+    self.assertIn(" Scroll (PgDn): 0.00% -[1,0] ", ui.scroll_messages[10])
 
   def testScrollTensorByValidIndices(self):
     """Test scrolling to specified (valid) indices in a tensor."""

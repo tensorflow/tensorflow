@@ -159,7 +159,7 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
-    protobuf::RepeatedPtrField<DebugTensorWatch> debug_tensor_watches;
+    std::unique_ptr<DebuggerState> debugger_state;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -209,7 +209,10 @@ class DirectSession : public Session {
 
   // Use the appropriate WaitForNotification function based on whether
   // operation_timeout_in_ms is greater than 0.
-  void WaitForNotification(RunState* run_state, int64 timeout_in_ms);
+  //
+  // If the timeout expires, the `cm->StartCancel()` will be called.
+  void WaitForNotification(RunState* run_state, CancellationManager* cm,
+                           int64 timeout_in_ms);
 
   ::tensorflow::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);

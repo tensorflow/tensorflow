@@ -292,10 +292,6 @@ def _LSTMBlockCellGrad(op, *grad):
           wco_grad, b_grad)
 
 
-ops.RegisterShape("LSTMBlockCellGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BlockLSTM")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterGradient("BlockLSTM")
 def _BlockLSTMGrad(op, *grad):
   """Gradient for BlockLSTM."""
@@ -329,9 +325,6 @@ def _BlockLSTMGrad(op, *grad):
 
   return [None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wco_grad,
           wcf_grad, b_grad]
-
-
-ops.RegisterShape("BlockLSTMGrad")(common_shapes.call_cpp_shape_fn)
 
 
 class LSTMBlockCell(rnn_cell.RNNCell):

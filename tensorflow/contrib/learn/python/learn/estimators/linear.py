@@ -29,6 +29,7 @@ from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -105,7 +106,7 @@ def _linear_model_fn(features, labels, mode, params):
         sparse and use the 'sum' combiner.
 
   Returns:
-    An `estimator.ModelFnOps` instance.
+    A `ModelFnOps` instance.
 
   Raises:
     ValueError: If mode is not any of the `ModeKeys`.
@@ -178,7 +179,7 @@ def sdca_model_fn(features, labels, mode, params):
           model weights.
 
   Returns:
-    An `estimator.ModelFnOps` instance.
+    A `ModelFnOps` instance.
 
   Raises:
     ValueError: If `optimizer` is not an `SDCAOptimizer` instance.
@@ -295,13 +296,13 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
      ))
 
   # Input builders
-  def input_fn_train: # returns x, y
+  def input_fn_train: # returns x, y (where y represents label's class index).
     ...
-  def input_fn_eval: # returns x, y
+  def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -340,6 +341,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
       n_classes: number of label classes. Default is binary classification.
+        Note that class labels are integers representing the class index (i.e.
+        values from 0 to n_classes-1). For arbitrary label values (e.g. string
+        labels), convert to class indices first.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -428,32 +432,23 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
-    """See trainable.Trainable."""
+    """See trainable.Trainable. Note: Labels must be integer class indices."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is None:
-      monitors = []
-    deprecated_monitors = [
-        m for m in monitors
-        if not isinstance(m, session_run_hook.SessionRunHook)
-    ]
-    for monitor in deprecated_monitors:
-      monitor.set_estimator(self)
-      monitor._lock_estimator()  # pylint: disable=protected-access
-
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
     if self._additional_run_hook:
-      monitors.append(self._additional_run_hook)
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
-
-    for monitor in deprecated_monitors:
-      monitor._unlock_estimator()  # pylint: disable=protected-access
-
-    return result
+      hooks.append(self._additional_run_hook)
+    self._estimator.fit(x=x,
+                        y=y,
+                        input_fn=input_fn,
+                        steps=steps,
+                        batch_size=batch_size,
+                        monitors=hooks,
+                        max_steps=max_steps)
+    return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):
-    """See evaluable.Evaluable."""
+    """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)
@@ -462,7 +457,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Runs inference to determine the predicted class."""
+    """Runs inference to determine the predicted class (i.e. class index)."""
     key = prediction_key.PredictionKey.CLASSES
     preds = self._estimator.predict(
         x=x,
@@ -628,7 +623,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      label_dimension: dimension of the label for multilabels.
+      label_dimension: Dimension of the label for multilabels. Defaults to 1.
       _joint_weights: If True use a single (possibly partitioned) variable to
         store the weights. It's faster, but requires all feature columns are
         sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
@@ -698,26 +693,17 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is None:
-      monitors = []
-    deprecated_monitors = [
-        m for m in monitors
-        if not isinstance(m, session_run_hook.SessionRunHook)
-    ]
-    for monitor in deprecated_monitors:
-      monitor.set_estimator(self)
-      monitor._lock_estimator()  # pylint: disable=protected-access
-
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
     if self._additional_run_hook:
-      monitors.append(self._additional_run_hook)
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
-
-    for monitor in deprecated_monitors:
-      monitor._unlock_estimator()  # pylint: disable=protected-access
-
-    return result
+      hooks.append(self._additional_run_hook)
+    self._estimator.fit(x=x,
+                        y=y,
+                        input_fn=input_fn,
+                        steps=steps,
+                        batch_size=batch_size,
+                        monitors=hooks,
+                        max_steps=max_steps)
+    return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=None, steps=None, metrics=None, name=None):

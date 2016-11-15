@@ -47,6 +47,26 @@ def _make_streaming_with_threshold(streaming_metrics_fn, threshold):
 
 class LogisticRegressor(estimator.Estimator):
   """Logistic regression Estimator for binary classification.
+
+  This class provides a basic Estimator with some additional metrics for custom
+  binary classification models, including AUC, precision/recall and accuracy.
+
+  Example:
+
+  ```python
+    # See tf.contrib.learn.Estimator(...) for details on model_fn structure
+    def my_model_fn(...):
+      pass
+
+    estimator = LogisticRegressor(model_fn=my_model_fn)
+
+    # Input builders
+    def input_fn_train:
+      pass
+
+    estimator.fit(input_fn=input_fn_train)
+    estimator.predict(x=x)
+  ```
   """
 
   def __init__(self, model_fn, thresholds=None, model_dir=None, config=None,
@@ -137,7 +157,7 @@ class LogisticRegressor(estimator.Estimator):
 
     Args:
       x: features.
-      y: labels.
+      y: labels (must be 0 or 1).
       input_fn: Input function.
       feed_fn: Function creating a feed dict every time it is called.
       batch_size: minibatch size to use on the input.

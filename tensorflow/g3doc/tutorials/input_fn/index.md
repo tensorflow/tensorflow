@@ -139,8 +139,8 @@ arguments as your `input_fn` and use it to invoke your input function
 with the desired parameters. For example:
 
 ```python
-def my_input_function_training_set:
-  my_input_function(training_set)
+def my_input_function_training_set():
+  return my_input_function(training_set)
 
 classifier.fit(input_fn=my_input_fn_training_set, steps=2000)
 ```

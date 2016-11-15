@@ -8,6 +8,11 @@ BUS_ANY was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
   intead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
+* The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
+  indicating its preferred use in language bindings for TensorFlow.
+  What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
+* Renamed Tensor to Output in the Python API. Tensor will be an alias for Output
+  until TensorFlow 2.0 is released.
 
 # Release 0.11.0
 

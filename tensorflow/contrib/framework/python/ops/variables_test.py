@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 
 import numpy as np
 import tensorflow as tf
@@ -473,7 +474,7 @@ class ModelVariablesTest(tf.test.TestCase):
   def testInitializedVariableValue(self):
     with self.test_session() as sess:
       a = tf.contrib.framework.model_variable(
-          'a', [5], initializer=tf.ones_initializer)
+          'a', [5], initializer=tf.ones_initializer())
       sess.run(tf.global_variables_initializer())
       self.assertAllEqual(a.eval(), [1]*5)
 
@@ -792,11 +793,13 @@ class AssignFromCheckpointTest(tf.test.TestCase):
       return saver.save(sess, checkpoint_dir, global_step=global_step)
 
   def testLoadExistingVariables(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_existing_variables'))
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -818,11 +821,13 @@ class AssignFromCheckpointTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testRaisesValueErrorIfAVariableIsntFound(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'raises_value_error_if_var_isnt_found'))
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session():
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -836,13 +841,16 @@ class AssignFromCheckpointTest(tf.test.TestCase):
                                                               vars_to_restore)
 
   def testInitFromCheckpointWithScopes(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'init_from_checkpoint_with_scopes'))
+
     init_value0 = np.asarray([1.0, 3.0, 9.0],
                              dtype=np.float32).reshape((1, 3, 1))
     init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0],
                              dtype=np.float32).reshape((2, 1, 2))
 
     var_names_to_values = {'layer0/v0': init_value0, 'layer1/v1': init_value1}
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
+
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -896,11 +904,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       return saver.save(sess, checkpoint_dir, global_step=global_step)
 
   def testLoadExistingVariables(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_existing_variables'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -922,11 +934,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testLoadExistingVariablesDifferentShapeDefaultDoesNotAllowReshape(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_existing_vars_no_reshape'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = [[10.0, 11.0]]
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -945,11 +961,16 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
         init_fn(sess)
 
   def testLoadExistingVariablesDifferentShapeAllowReshape(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(),
+        'load_existing_variables_different_shape_allow_reshape'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = [[10.0, 11.0]]
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -971,11 +992,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testNotFoundError(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'not_found_error'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -996,11 +1021,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
         init_fn(sess)
 
   def testMissingVariablesList(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'missing_variables_list'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -1025,11 +1054,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testMissingVariablesDict(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'missing_variables_dict'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)

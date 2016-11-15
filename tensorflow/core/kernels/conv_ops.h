@@ -40,12 +40,17 @@ class LaunchConv2DOp {
 };
 
 // Used to keep track of persistent memory buffers used within the op.
+// It uses malloc and free to avoid the time cost of initializing the memory.
 template <class T, size_t size>
 struct Im2ColBufferResource : public ResourceBase {
+  Im2ColBufferResource<T, size>() {
+    data = static_cast<T*>(malloc(size * sizeof(T)));
+  }
+  ~Im2ColBufferResource<T, size>() { free(data); }
   // This mutex ensures that only a single operation at a time is able to use
   // the buffer memory held by this resource.
   mutex mu;
-  T data[size];
+  T* data;
   string DebugString() { return "Im2ColBufferResource"; }
 };
 

@@ -173,8 +173,8 @@ REGISTER_OP("DenseToSparseSetOperation")
       } else {
         output_rank = c->UnknownDim();
       }
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(1), c->input(2), c->input(3)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(1), c->input(2), c->input(3)));
       DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
       if (!c->ValueKnown(output_num_elements)) {
         output_num_elements = c->UnknownDim();
@@ -239,10 +239,10 @@ REGISTER_OP("SparseToSparseSetOperation")
       }
       // The following should stay in sync with `ComputeSparseToSparse` shape
       // assertions in kernels/set_kernels.cc.
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(3), c->input(4), c->input(5)));
       c->set_output(0, c->Matrix(c->UnknownDim(), c->UnknownDim()));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(c->UnknownDim()));

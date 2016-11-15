@@ -34,8 +34,8 @@ class NNGradTest : public ::testing::Test {
   void RunTest(const Output& x, const TensorShape& x_shape, const Output& y,
                const TensorShape& y_shape) {
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, x, x_shape, y, y_shape, &max_error));
+    TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
+                                      &max_error));
     EXPECT_LT(max_error, 1e-4);
   }
 

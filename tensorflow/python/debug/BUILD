@@ -22,6 +22,7 @@ py_library(
     deps = [
         ":debug_data",
         ":debug_utils",
+        ":hooks",
         ":local_cli_wrapper",
     ],
 )
@@ -116,9 +117,26 @@ py_library(
     ],
 )
 
+py_library(
+    name = "hooks",
+    srcs = ["wrappers/hooks.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":local_cli_wrapper",
+        "//tensorflow/python:session",
+    ],
+)
+
 py_binary(
     name = "debug_fibonacci",
     srcs = ["examples/debug_fibonacci.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
+    name = "debug_errors",
+    srcs = ["examples/debug_errors.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -131,6 +149,13 @@ py_binary(
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
     ],
+)
+
+py_binary(
+    name = "debug_tflearn_iris",
+    srcs = ["examples/debug_tflearn_iris.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -210,19 +235,27 @@ py_test(
     ],
 )
 
-cuda_py_test(
-    name = "session_debug_test",
-    size = "small",
-    srcs = [
-        "session_debug_test.py",
-    ],
-    additional_deps = [
+py_library(
+    name = "session_debug_testlib",
+    srcs = ["session_debug_testlib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":debug_data",
         ":debug_utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
+    ],
+)
+
+cuda_py_test(
+    name = "session_debug_file_test",
+    size = "small",
+    srcs = ["session_debug_file_test.py"],
+    additional_deps = [
+        ":session_debug_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

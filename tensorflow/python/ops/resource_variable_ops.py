@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resources
 # go/tf-wildcard-import
@@ -35,10 +36,12 @@ ops.RegisterShape("ReadVariableOp")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AssignVariableOp")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AssignAddVariableOp")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("VarIsInitializedOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceGather")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ResourceScatterAdd")(common_shapes.call_cpp_shape_fn)
 
 
-def _register_dense_variable_read(read, collections, trainable):
-  """Helper function to put a read from a dense variable in the collections."""
+def _register_variable_read(read, collections, trainable):
+  """Helper function to put a read from a variable in the collections."""
   if collections is None:
     collections = []
   if (trainable and
@@ -48,12 +51,12 @@ def _register_dense_variable_read(read, collections, trainable):
     ops.add_to_collections(collections, read)
 
 
-class DenseResourceVariable(object):
-  """Dense variable based on resource handles.
+class ResourceVariable(object):
+  """Variable based on resource handles.
 
-  DenseResourceVariabls are read and updated in their entirety, as opposed to
-  a `SparseResourceVariable` (TODO(apassos): add them) which can be operated on
-  sparsely.
+  TODO(apassos): fill this out explaining the semantics and Variable
+  compatibility when the API has settled more.
+
   """
 
   def __init__(self,
@@ -98,23 +101,26 @@ class DenseResourceVariable(object):
 
     self._dtype = dtype
     with ops.name_scope(name, "Variable", [initial_value]) as name:
-      self._handle = var_handle_op(shared_name=name,
-                                   name=name,
-                                   dtype=dtype,
-                                   shape=shape)
+      self._handle = gen_resource_variable_ops.var_handle_op(shared_name=name,
+                                                             name=name,
+                                                             dtype=dtype,
+                                                             shape=shape)
 
       with ops.name_scope("IsInitialized"):
-        self._is_initialized_op = var_is_initialized_op(self._handle)
+        self._is_initialized_op = (
+            gen_resource_variable_ops.var_is_initialized_op(self._handle))
       if initial_value is not None:
         with ops.name_scope("Create"):
-          self._initialize_op = create_variable_op(self._handle, initial_value)
+          self._initialize_op = gen_resource_variable_ops.create_variable_op(
+              self._handle, initial_value)
         resources.register_resource(self._handle,
                                     self._initialize_op,
                                     self._is_initialized_op)
 
       with ops.name_scope("Read"):
-        self._value = read_variable_op(self._handle, dtype=self._dtype)
-      _register_dense_variable_read(
+        self._value = gen_resource_variable_ops.read_variable_op(
+            self._handle, dtype=self._dtype)
+      _register_variable_read(
           self._value, trainable=trainable, collections=collections)
 
   @property
@@ -160,9 +166,16 @@ class DenseResourceVariable(object):
      the read operation.
     """
     with ops.name_scope("Read"):
-      value = read_variable_op(self._handle, dtype=self._dtype)
-    _register_dense_variable_read(
-        value, collections=collections, trainable=trainable)
+      value = gen_resource_variable_ops.read_variable_op(
+          self._handle, dtype=self._dtype)
+    _register_variable_read(value, collections=collections, trainable=trainable)
+    return value
+
+  def sparse_read(self, indices, collections=None, trainable=True, name=None):
+    with ops.name_scope("Gather" if name is None else name):
+      value = gen_resource_variable_ops.resource_gather(
+          self._handle, indices, dtype=self._dtype)
+    _register_variable_read(value, collections=collections, trainable=trainable)
     return value
 
 
@@ -175,5 +188,4 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(DenseResourceVariable,
-                                        _dense_var_to_tensor)
+ops.register_tensor_conversion_function(ResourceVariable, _dense_var_to_tensor)

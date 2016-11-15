@@ -295,7 +295,9 @@ REGISTER_OP("Concat")
     .Output("output: T")
     .Attr("N: int >= 2")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::ConcatShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::ConcatShape(c, c->num_inputs() - 1);
+    })
     .Doc(R"doc(
 Concatenates tensors along one dimension.
 
@@ -403,6 +405,51 @@ value: The tensor to split.
 output: They are identically shaped tensors, whose shape matches that of `value`
   except along `split_dim`, where their sizes are
   `values.shape[split_dim] / num_split`.
+)doc");
+
+REGISTER_OP("SplitV")
+    .Input("value: T")
+    .Input("size_splits: Tlen")
+    .Input("split_dim: int32")
+    .Output("output: num_split * T")
+    .Attr("num_split: int >= 1")
+    .Attr("T: type")
+    .Attr("Tlen: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      int32 num_outputs = c->num_outputs();
+      // Return unknown shapes with the same rank as the input
+      // or unknown rank if input's rank isn't known
+      // can't determine exact shapes until runtime because
+      // we don't know where the tensor containing the split sizes
+      // is located
+      int32 rank = c->Rank(c->input(0));
+      ShapeHandle output_shape;
+      if (rank == InferenceContext::kUnknownRank) {
+        output_shape = c->UnknownShape();
+      } else if (rank == 0) {
+        return errors::InvalidArgument("Can't split scalars");
+      } else {
+        output_shape = c->UnknownShapeOfRank(rank);
+      }
+      for (int i = 0; i < num_outputs; ++i) {
+        c->set_output(i, output_shape);
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Splits a tensor into `num_split` tensors along one dimension.
+
+value: The tensor to split.
+size_splits: list containing the sizes of each output tensor along the split
+             dimension. Must sum to the dimension of value along split_dim.
+             Can contain one -1 indicating that dimension is to be inferred.
+split_dim: 0-D.  The dimension along which to split.  Must be in the range
+  `[0, rank(value))`.
+output: Tensors whose shape matches that of `value`
+  except along `split_dim`, where their sizes are
+  `size_splits[i]`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -950,10 +997,10 @@ REGISTER_OP("EditDistance")
     .Attr("T: type")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(3), c->input(4), c->input(5)));
       const Tensor* hypothesis_shape_t = c->input_tensor(2);
       const Tensor* truth_shape_t = c->input_tensor(5);
       if (hypothesis_shape_t == nullptr || truth_shape_t == nullptr) {
@@ -1045,6 +1092,19 @@ REGISTER_OP("Fill")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      const Tensor* t = c->input_tensor(0);
+      if (t != nullptr) {
+        for (int i = 0; i < t->NumElements(); ++i) {
+          if (t->vec<int32>()(i) < 0) {
+            return errors::InvalidArgument("Fill dimensions must be >= 0");
+          }
+        }
+      }
+
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
@@ -1785,46 +1845,24 @@ size(t) ==> 12
 namespace {
 
 template <typename T>
-Status SliceHelper(InferenceContext* c, const Tensor* begin_t,
-                   const Tensor* sizes_t, std::vector<DimensionHandle>* dims) {
-  auto begin_vec = begin_t->vec<T>();
-  auto sizes_vec = sizes_t->vec<T>();
-  for (int i = 0; i < sizes_t->NumElements(); ++i) {
+Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
+                   const Tensor* sizes_value,
+                   std::vector<DimensionHandle>* dims) {
+  auto sizes_vec = sizes_value->vec<T>();
+  for (int i = 0; i < sizes_value->NumElements(); ++i) {
     DimensionHandle dim = c->Dim(c->input(0), i);
     if (sizes_vec(i) != -1) {
-      if (c->ValueKnown(dim)) {
-        auto dim_val = c->Value(dim);
-        // We validate the contract that:
-        //
-        // 0 <= begin <= begin + size <= dim_val.
-
-        if (begin_vec(i) > dim_val) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-              ": begin vector cannot start after end of dimension, but was ",
-              begin_vec(i));
-        }
-
-        if (sizes_vec(i) < 0) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-              ": sizes vector cannot be < -1, but was ", sizes_vec(i));
-        }
-
-        auto end = begin_vec(i) + sizes_vec(i);
-        // TODO(vrv): use FastBoundsCheck, once it's moved into a more
-        // universal location.
-        if (end < 0 || end > dim_val) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, ": Dimension: ",
-              dim_val, ", begin: ", begin_vec(i), ", size: ", sizes_vec(i));
-        }
+      auto dim_val = c->Value(dim);
+      if (sizes_vec(i) < 0) {
+        return errors::InvalidArgument(
+            "Out of bounds slicing on dimension ", i, " of length ", dim_val,
+            ": sizes vector cannot be < -1, but was ", sizes_vec(i));
       }
 
       dims->emplace_back(c->MakeDim(sizes_vec(i)));
     } else {
       DimensionHandle result;
-      TF_RETURN_IF_ERROR(c->Subtract(dim, begin_vec(i), &result));
+      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
       dims->emplace_back(result);
     }
   }
@@ -1857,17 +1895,28 @@ REGISTER_OP("Slice")
         TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
       }
 
-      const Tensor* begin_t = c->input_tensor(1);
-      const Tensor* sizes_t = c->input_tensor(2);
+      // NOTE(mrry): Use MakeShapeFromShapeTensor to handle partially-known
+      // values, even though the `begin` value does not represent a shape.
+      ShapeHandle begin_value;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
 
-      if (sizes_t != nullptr && begin_t != nullptr) {
+      // NOTE(mrry): We can't use `MakeShapeFromShapeTensor` for `sizes` because
+      // it might contain -1, which can't be represented (-1 in the ShapeHandle
+      // would mean "unknown".
+      const Tensor* sizes_value = c->input_tensor(2);
+
+      if (sizes_value != nullptr) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(begin_value, sizes_value->NumElements(), &begin_value));
         std::vector<DimensionHandle> dims;
         // If the begin and sizes tensors are available, then
         // we can be precise about the shape of the output.
-        if (begin_t->dtype() == DT_INT64) {
-          TF_RETURN_IF_ERROR(SliceHelper<int64>(c, begin_t, sizes_t, &dims));
+        if (sizes_value->dtype() == DT_INT64) {
+          TF_RETURN_IF_ERROR(
+              SliceHelper<int64>(c, begin_value, sizes_value, &dims));
         } else {
-          TF_RETURN_IF_ERROR(SliceHelper<int32>(c, begin_t, sizes_t, &dims));
+          TF_RETURN_IF_ERROR(
+              SliceHelper<int32>(c, begin_value, sizes_value, &dims));
         }
 
         c->set_output(0, c->MakeShape(dims));
@@ -2168,38 +2217,26 @@ REGISTER_OP("Tile")
     .Attr("T: type")
     .Attr("Tmultiples: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
+      ShapeHandle input = c->input(0);
+      // NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+      // it is a vector of non-negative integers, and (ii) doing so allows
+      // us to handle partially-known multiples.
       ShapeHandle multiples;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &multiples));
-      DimensionHandle multiples_dim0 = c->Dim(multiples, 0);
-      if (!c->ValueKnown(multiples_dim0)) {
-        // Length of multiples vector unknown, so output is unknown.
-        //
-        // NOTE: we could potentially merge the input rank with the
-        // multiples length.
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &multiples));
+      if (c->RankKnown(input)) {
+        TF_RETURN_IF_ERROR(c->WithRank(multiples, c->Rank(input), &multiples));
+      }
+
+      if (!c->RankKnown(multiples)) {
         return shape_inference::UnknownShape(c);
       }
 
-      int32 rank = c->Value(multiples_dim0);
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input));
-      const Tensor* multiples_t = c->input_tensor(1);
-      if (multiples_t == nullptr) {
-        // If multiples vector isn't available, we only know the
-        // output rank, not the sizes.
-        c->set_output(0, c->UnknownShapeOfRank(rank));
-        return Status::OK();
-      }
-
-      std::vector<int64> data;
-      if (multiples_t->dtype() == DT_INT32) {
-        data = AsInt64<int32>(multiples_t, rank);
-      } else {
-        data = AsInt64<int64>(multiples_t, rank);
-      }
+      int32 rank = c->Rank(multiples);
+      TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
       std::vector<DimensionHandle> dims(rank);
       for (int i = 0; i < rank; ++i) {
-        const int64 multiple = data[i];
-        TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, i), multiple, &dims[i]));
+        TF_RETURN_IF_ERROR(
+            c->Multiply(c->Dim(input, i), c->Dim(multiples, i), &dims[i]));
       }
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
@@ -2224,6 +2261,7 @@ REGISTER_OP("TileGrad")
     .Output("output: T")
     .Attr("T: type")
     .Deprecated(3, "TileGrad has been replaced with reduce_sum")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .Doc(R"doc(
 Returns the gradient of `Tile`.
 
@@ -3817,7 +3855,7 @@ strides: 1-D of length 4. How far the centers of two consecutive patches are in
 rates: 1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
   input stride, specifying how far two consecutive patch samples are in the
   input. Equivalent to extracting patches with
-  `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by
+  `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by
   subsampling them spatially by a factor of `rates`.
 padding: The type of padding algorithm to use.
 
@@ -4332,9 +4370,10 @@ REGISTER_OP("QuantizedConcat")
     .Attr("N: int >= 2")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c));
+      const int n = (c->num_inputs() - 1) / 3;
+      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c, n));
       ShapeHandle unused;
-      for (int i = std::max(0, c->num_inputs() - 2); i < c->num_inputs(); ++i) {
+      for (int i = n + 1; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
       }
       c->set_output(1, c->Scalar());
@@ -4387,6 +4426,71 @@ output_min: This value is copied from input_min.
 output_max: This value is copied from input_max.
 )Doc");
 
+namespace {
+
+Status ScatterNdShape(InferenceContext* c) {
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
+
+  if (c->Value(c->NumElements(output_shape)) == 0 &&
+      (c->Value(c->NumElements(indices_shape)) > 0 ||
+       c->Value(c->NumElements(updates_shape)) > 0)) {
+    return errors::InvalidArgument(
+        "Indices and updates specified for empty output shape");
+  }
+
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+    const int64 outer_dims = c->Rank(indices_shape) - 1;
+    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
+
+    // We can only do more validation if the last dimension of indices
+    // is a known value.
+    if (c->ValueKnown(ixdim)) {
+      int64 ix = c->Value(ixdim);
+      ShapeHandle unused;
+      ShapeHandle prefix_indices;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
+      ShapeHandle prefix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
+
+      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+
+      ShapeHandle suffix_output;
+      TF_RETURN_IF_ERROR(c->Subshape(output_shape, ix, &suffix_output));
+      ShapeHandle suffix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, outer_dims, &suffix_updates));
+      s = c->Merge(suffix_output, suffix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The inner ", c->Rank(output_shape) - ix,
+            " dimensions of output.shape=", c->DebugString(output_shape),
+            " must match the inner ", c->Rank(updates_shape) - outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+    }
+  }
+
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ScatterNd")
     .Input("indices: Tindices")
     .Input("updates: T")
@@ -4394,13 +4498,18 @@ REGISTER_OP("ScatterNd")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdShape)
     .Doc(
-        R"doc(Creates a new tensor by applying sparse `updates` to individual values or slices within a zero tensor of the given `shape` tensor according to indices.
-This operator is the inverse of the [tf.gather_nd](#gather_nd) operator which extracts values or slices from a given tensor.
+        R"doc(Creates a new tensor by applying sparse `updates` to individual
+values or slices within a zero tensor of the given `shape` tensor according to
+indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
+operator which extracts values or slices from a given tensor.
 
-TODO(simister): Add a link to Variable.__getitem__ documentation on slice syntax.
+TODO(simister): Add a link to Variable.__getitem__ documentation on slice
+syntax.
 
-`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
+`Q`.
 
 `indices` must be integer tensor, containing indices into `shape`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -4415,7 +4524,9 @@ dimension of `shape`.
 [d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
 ```
 
-The simplest form of scatter is to insert individual elements in a tensor by index. For example, say we want to insert 4 scattered elements in a rank-1 tensor with 8 elements.
+The simplest form of scatter is to insert individual elements in a tensor by
+index. For example, say we want to insert 4 scattered elements in a rank-1
+tensor with 8 elements.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/ScatterNd1.png" alt>
@@ -4434,7 +4545,9 @@ The resulting tensor would look like this:
 
     [0, 11, 0, 10, 9, 0, 0, 12]
 
-We can also, insert entire slices of a higher rank tensor all at once. For example, if we wanted to insert two slices in the first dimension of a rank-3 tensor with two matrices of new values.
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/ScatterNd2.png" alt>
@@ -4459,10 +4572,14 @@ The resulting tensor would look like this:
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
 
-indices: A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref.
-updates: A Tensor. Must have the same type as tensor. A tensor of updated values to store in ref.
+indices: A Tensor. Must be one of the following types: int32, int64.
+  A tensor of indices into ref.
+updates: A Tensor. Must have the same type as tensor. A tensor of updated values
+  to store in ref.
 shape: A vector. The shape of the resulting tensor.
-output: A new tensor with the given shape and updates applied according to the indices.)doc");
+output: A new tensor with the given shape and updates applied according
+  to the indices.
+)doc");
 
 REGISTER_OP("FakeQuantWithMinMaxArgs")
     .Attr("min: float = -6.0")

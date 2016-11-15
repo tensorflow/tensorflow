@@ -1380,7 +1380,7 @@ The `apply()` method has to be called to create shadow variables and add
 ops to maintain moving averages.
 
 The optional `num_updates` parameter allows one to tweak the decay rate
-dynamically. .  It is typical to pass the count of training steps, usually
+dynamically. It is typical to pass the count of training steps, usually
 kept in a variable that is incremented at each step, in which case the
 decay rate is lower at the start of training.  This makes moving averages
 move faster.  If passed, the actual decay rate used is:
@@ -1406,7 +1406,8 @@ Maintains moving averages of variables.
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
 They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-For `Tensor` objects, the shadow variables are initialized to 0.
+For `Tensor` objects, the shadow variables are initialized to 0 and zero
+debiased (see docstring in `assign_moving_average` for more details).
 
 shadow variables are created with `trainable=False` and added to the
 `GraphKeys.ALL_VARIABLES` collection.  They will be returned by calls to
@@ -1478,7 +1479,7 @@ Returns the `Variable` holding the average of `var`.
 ##### Returns:
 
   A `Variable` object or `None` if the moving average of `var`
-  is not maintained..
+  is not maintained.
 
 
 - - -
@@ -1691,6 +1692,13 @@ that `RuntimeError`.
 #### `tf.train.Coordinator.joined` {#Coordinator.joined}
 
 
+
+
+- - -
+
+#### `tf.train.Coordinator.raise_requested_exception()` {#Coordinator.raise_requested_exception}
+
+If an exception has been passed to `request_stop`, this raises it.
 
 
 - - -
@@ -3435,7 +3443,7 @@ Returns a list of valid task indices in the given job.
 
 - - -
 
-### `tf.train.replica_device_setter(ps_tasks=0, ps_device='/job:ps', worker_device='/job:worker', merge_devices=True, cluster=None, ps_ops=None)` {#replica_device_setter}
+### `tf.train.replica_device_setter(ps_tasks=0, ps_device='/job:ps', worker_device='/job:worker', merge_devices=True, cluster=None, ps_ops=None, ps_strategy=None)` {#replica_device_setter}
 
 Return a `device function` to use when building a Graph for replicas.
 
@@ -3446,6 +3454,12 @@ outwards. The merging behavior adds constraints to fields that are yet unset
 by a more inner context. Currently the fields are (job, task, cpu/gpu).
 
 If `cluster` is `None`, and `ps_tasks` is 0, the returned function is a no-op.
+Otherwise, the value of `ps_tasks` is derived from `cluster`.
+
+By default, only Variable ops are placed on ps tasks, and the placement
+strategy is round-robin over all ps tasks. A custom `ps_strategy` may be used
+to do more intelligent placement, such as
+`tf.contrib.training.GreedyLoadBalancingStrategy`.
 
 For example,
 
@@ -3466,7 +3480,8 @@ with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
 ##### Args:
 
 
-*  <b>`ps_tasks`</b>: Number of tasks in the `ps` job.
+*  <b>`ps_tasks`</b>: Number of tasks in the `ps` job.  Ignored if `cluster` is
+    provided.
 *  <b>`ps_device`</b>: String.  Device of the `ps` job.  If empty no `ps` job is used.
     Defaults to `ps`.
 *  <b>`worker_device`</b>: String.  Device of the `worker` job.  If empty no `worker`
@@ -3475,7 +3490,12 @@ with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
     device constraint is completely unset. merges device specification rather
     than overriding them.
 *  <b>`cluster`</b>: `ClusterDef` proto or `ClusterSpec`.
-*  <b>`ps_ops`</b>: List of `Operation` objects that need to be placed on `ps` devices.
+*  <b>`ps_ops`</b>: List of strings representing `Operation` types that need to be
+    placed on `ps` devices.  If `None`, defaults to `["Variable"]`.
+*  <b>`ps_strategy`</b>: A callable invoked for every ps `Operation` (i.e. matched by
+    `ps_ops`), that takes the `Operation` and returns the ps task index to
+    use.  If `None`, defaults to a round-robin strategy across all `ps`
+    devices.
 
 ##### Returns:
 
@@ -3483,7 +3503,8 @@ with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
 
 ##### Raises:
 
-  TypeError if `cluster` is not a dictionary or `ClusterDef` protocol buffer.
+  TypeError if `cluster` is not a dictionary or `ClusterDef` protocol buffer,
+  or if `ps_strategy` is provided but not a callable.
 
 
 - - -
@@ -3620,7 +3641,7 @@ Get from cache or create a default operation.
 
 - - -
 
-### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, hooks=None, scaffold=None, config=None)` {#MonitoredTrainingSession}
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, config=None)` {#MonitoredTrainingSession}
 
 Creates a `MonitoredSession` for training.
 
@@ -3639,10 +3660,20 @@ inialize/restore.
     initialize or recover the TensorFlow session.
 *  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
     variables.
-*  <b>`hooks`</b>: Optional list of `SessionRunHook` objects.
 *  <b>`scaffold`</b>: A `Scaffold` used for gathering or building supportive ops. If
     not specified, a default one is created. It's used to finalize the graph.
-*  <b>`config`</b>: `ConfigProto` proto used to configure the session.
+*  <b>`hooks`</b>: Optional list of `SessionRunHook` objects.
+*  <b>`chief_only_hooks`</b>: list of `SessionRunHook` objects. Activate these hooks if
+    `is_chief==True`, ignore otherwise.
+*  <b>`save_checkpoint_secs`</b>: The frequency, in seconds, that a checkpoint is saved
+    using a default checkpoint saver. If `save_checkpoint_secs` is set to
+    `None`, then the default checkpoint saver isn't used.
+*  <b>`save_summaries_steps`</b>: The frequency, in number of global steps, that the
+    summaries are written to disk using a default summary saver. If
+    `save_summaries_steps` is set to `None`, then the default summary saver
+    isn't used.
+*  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
+    It's the `config` argument of constructor of `tf.Session`.
 
 ##### Returns:
 
@@ -4091,12 +4122,111 @@ overview of summaries, event files, and visualization in TensorBoard.
 
 ### `class tf.train.SummaryWriter` {#SummaryWriter}
 
-Exact match for the pre-1.0 tf.train.SummaryWriter.
+Writes `Summary` protocol buffers to event files.
+
+The `FileWriter` class provides a mechanism to create an event file in a
+given directory and add summaries and events to it. The class updates the
+file contents asynchronously. This allows a training program to call methods
+to add data to the file directly from the training loop, without slowing down
+training.
+
 - - -
 
 #### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
 
+Creates a `FileWriter` and an event file.
 
+On construction the summary writer creates a new event file in `logdir`.
+This event file will contain `Event` protocol buffers constructed when you
+call one of the following functions: `add_summary()`, `add_session_log()`,
+`add_event()`, or `add_graph()`.
+
+If you pass a `Graph` to the constructor it is added to
+the event file. (This is equivalent to calling `add_graph()` later).
+
+TensorBoard will pick the graph from the file and display it graphically so
+you can interactively explore the graph you built. You will usually pass
+the graph from the session in which you launched it:
+
+```python
+...create a graph...
+# Launch the graph in a session.
+sess = tf.Session()
+# Create a summary writer, add the 'graph' to the event file.
+writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
+```
+
+The other arguments to the constructor control the asynchronous writes to
+the event file:
+
+*  `flush_secs`: How often, in seconds, to flush the added summaries
+   and events to disk.
+*  `max_queue`: Maximum number of summaries or events pending to be
+   written to disk before one of the 'add' calls block.
+
+##### Args:
+
+
+*  <b>`logdir`</b>: A string. Directory where event file will be written.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
+*  <b>`max_queue`</b>: Integer. Size of the queue for pending events and summaries.
+*  <b>`flush_secs`</b>: Number. How often, in seconds, to flush the
+    pending events and summaries to disk.
+*  <b>`graph_def`</b>: DEPRECATED: Use the `graph` argument instead.
+
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_summary(summary, global_step=None)` {#SummaryWriter.add_summary}
+
+Adds a `Summary` protocol buffer to the event file.
+
+This method wraps the provided summary in an `Event` protocol buffer
+and adds it to the event file.
+
+You can pass the result of evaluating any summary op, using
+[`Session.run()`](client.md#Session.run) or
+[`Tensor.eval()`](framework.md#Tensor.eval), to this
+function. Alternatively, you can pass a `tf.Summary` protocol
+buffer that you populate with your own data. The latter is
+commonly done to report evaluation results in event files.
+
+##### Args:
+
+
+*  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
+
+Adds a `SessionLog` protocol buffer to the event file.
+
+This method wraps the provided session in an `Event` protocol buffer
+and adds it to the event file.
+
+##### Args:
+
+
+*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_event(event)` {#SummaryWriter.add_event}
+
+Adds an event to the event file.
+
+##### Args:
+
+
+*  <b>`event`</b>: An `Event` protocol buffer.
 
 
 - - -
@@ -4124,29 +4254,6 @@ TensorBoard. Most users pass a graph in the constructor instead.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_meta_graph(meta_graph_def, global_step=None)` {#SummaryWriter.add_meta_graph}
-
-Adds a `MetaGraphDef` to the event file.
-
-The `MetaGraphDef` allows running the given graph via
-`saver.import_meta_graph()`.
-
-##### Args:
-
-
-*  <b>`meta_graph_def`</b>: A `MetaGraphDef` object, often as retured by
-    `saver.export_meta_graph()`.
-*  <b>`global_step`</b>: Number. Optional global step counter to record with the
-    graph.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
-
-
-- - -
-
 #### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
 
 Adds a metadata information for a single session.run() call.
@@ -4167,43 +4274,43 @@ Adds a metadata information for a single session.run() call.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
+#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
 
-Adds a `SessionLog` protocol buffer to the event file.
+Returns the directory where event file will be written.
 
-This method wraps the provided session in an `Event` protocol buffer
-and adds it to the event file.
-
-##### Args:
-
-
-*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
-*  <b>`global_step`</b>: Number. Optional global step value to record with the
-    summary.
 
 
 - - -
 
-#### `tf.train.SummaryWriter.add_summary(summary, global_step=None)` {#SummaryWriter.add_summary}
+#### `tf.train.SummaryWriter.flush()` {#SummaryWriter.flush}
 
-Adds a `Summary` protocol buffer to the event file.
+Flushes the event file to disk.
 
-This method wraps the provided summary in an `Event` protocol buffer
-and adds it to the event file.
-
-You can pass the result of evaluating any summary op, using
-[`Session.run()`](client.md#Session.run) or
-[`Tensor.eval()`](framework.md#Tensor.eval), to this
-function. Alternatively, you can pass a `tf.Summary` protocol
-buffer that you populate with your own data. The latter is
-commonly done to report evaluation results in event files.
-
-##### Args:
+Call this method to make sure that all pending events have been written to
+disk.
 
 
-*  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
-*  <b>`global_step`</b>: Number. Optional global step value to record with the
-    summary.
+- - -
+
+#### `tf.train.SummaryWriter.close()` {#SummaryWriter.close}
+
+Flushes the event file to disk and close the file.
+
+Call this method when you do not need the summary writer anymore.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
+
+Reopens the EventFileWriter.
+
+Can be called after `close()` to add more events in the same directory.
+The events will go into a new events file.
+
+Does nothing if the EventFileWriter was not closed.
 
 
 
@@ -4896,6 +5003,8 @@ Args:
       fetches = {'step': global_step_tensor,
                  'ops': [train_op, check_nan_op]}
   feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
+  options: Exactly like the `options` argument to `Session.run()`, i.e., a
+    config_pb2.RunOptions proto.
 - - -
 
 #### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
@@ -4912,7 +5021,7 @@ Exclude the OrderedDict from pickling
 
 - - -
 
-#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None)` {#SessionRunArgs.__new__}
+#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
 
 
 
@@ -4936,6 +5045,13 @@ Alias for field number 1
 #### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
 
 Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
+
+Alias for field number 2
 
 
 
@@ -5020,6 +5136,8 @@ Args:
       => results = [None, nparray(string), nparray(int)]
       fetches = {'step': global_step_tensor, 'summ': summary_op}
       => results = {'step': nparray(int), 'summ': nparray(string)}
+  options: `RunOptions` from the `Session.run()` call.
+  run_metadata: `RunMetadata` from the `Session.run()` call.
 - - -
 
 #### `tf.train.SessionRunValues.__getnewargs__()` {#SessionRunValues.__getnewargs__}
@@ -5036,9 +5154,9 @@ Exclude the OrderedDict from pickling
 
 - - -
 
-#### `tf.train.SessionRunValues.__new__(_cls, results)` {#SessionRunValues.__new__}
+#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
 
-Create new instance of SessionRunValues(results,)
+Create new instance of SessionRunValues(results, options, run_metadata)
 
 
 - - -
@@ -5050,9 +5168,23 @@ Return a nicely formatted representation string
 
 - - -
 
+#### `tf.train.SessionRunValues.options` {#SessionRunValues.options}
+
+Alias for field number 1
+
+
+- - -
+
 #### `tf.train.SessionRunValues.results` {#SessionRunValues.results}
 
 Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
+
+Alias for field number 2
 
 
 

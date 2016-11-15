@@ -190,7 +190,11 @@ Status ReductionShape(shape_inference::InferenceContext* c);
 Status ReductionShapeForReduceJoin(shape_inference::InferenceContext* c);
 
 // Shape function for concat operations.
-Status ConcatShape(shape_inference::InferenceContext* c);
+// <num_inputs_to_concat> is the number of inputs to concatenate and are taken
+// from inputs
+// [1,num_inputs_to_concat] of the op.  Input 0 is the concat_dim input.
+Status ConcatShape(shape_inference::InferenceContext* c,
+                   int num_inputs_to_concat);
 
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
@@ -198,6 +202,11 @@ Status ConcatV2Shape(shape_inference::InferenceContext* c);
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
 Status BroadcastBinaryOpShapeFn(InferenceContext* c);
+
+// Validates the 3 component tensors of a sparse tensor have the proper
+// shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
+Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle values_shape, ShapeHandle shape_shape);
 
 }  // namespace shape_inference
 

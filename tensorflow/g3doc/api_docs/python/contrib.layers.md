@@ -1107,7 +1107,7 @@ Feature columns provide a mechanism to map data to a model.
 
 ### `tf.contrib.layers.bucketized_column(source_column, boundaries)` {#bucketized_column}
 
-Creates a _BucketizedColumn.
+Creates a _BucketizedColumn for discretizing dense input.
 
 ##### Args:
 
@@ -1127,6 +1127,23 @@ Creates a _BucketizedColumn.
 
 - - -
 
+### `tf.contrib.layers.check_feature_columns(feature_columns)` {#check_feature_columns}
+
+Checks the validity of the set of FeatureColumns.
+
+##### Args:
+
+
+*  <b>`feature_columns`</b>: A set of instances or subclasses of FeatureColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If there are duplicate feature column keys.
+
+
+- - -
+
 ### `tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)` {#create_feature_spec_for_parsing}
 
 Helper that prepares features config from input feature_columns.
@@ -1137,22 +1154,25 @@ Typical usage example:
 
 ```python
 # Define features and transformations
-country = sparse_column_with_vocabulary_file("country", VOCAB_FILE)
-age = real_valued_column("age")
-click_bucket = bucketized_column(real_valued_column("historical_click_ratio"),
-                                 boundaries=[i/10. for i in range(10)])
-country_x_click = crossed_column([country, click_bucket], 10)
+feature_a = sparse_column_with_vocabulary_file(...)
+feature_b = real_valued_column(...)
+feature_c_bucketized = bucketized_column(real_valued_column("feature_c"), ...)
+feature_a_x_feature_c = crossed_column(
+  columns=[feature_a, feature_c_bucketized], ...)
 
-feature_columns = set([age, click_bucket, country_x_click])
+feature_columns = set(
+  [feature_b, feature_c_bucketized, feature_a_x_feature_c])
 batch_examples = tf.parse_example(
-    serialized_examples,
-    create_feature_spec_for_parsing(feature_columns))
+    serialized=serialized_examples,
+    features=create_feature_spec_for_parsing(feature_columns))
 ```
 
 For the above example, create_feature_spec_for_parsing would return the dict:
-{"age": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
- "historical_click_ratio": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
- "country": parsing_ops.VarLenFeature(tf.string)}
+{
+  "feature_a": parsing_ops.VarLenFeature(tf.string),
+  "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+  "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+}
 
 ##### Args:
 
@@ -1171,7 +1191,7 @@ For the above example, create_feature_spec_for_parsing would return the dict:
 
 ### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
 
-Creates a _CrossedColumn.
+Creates a _CrossedColumn for performing feature crosses.
 
 ##### Args:
 
@@ -1208,7 +1228,7 @@ Creates a _CrossedColumn.
 
 ### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
 
-Creates an `_EmbeddingColumn`.
+Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 ##### Args:
 
@@ -1279,6 +1299,105 @@ embedding weight whose index is a fingerprint of the pair (v,i).
 
 - - -
 
+### `tf.contrib.layers.input_from_feature_columns(columns_to_tensors, feature_columns, weight_collections=None, trainable=True, scope=None)` {#input_from_feature_columns}
+
+A tf.contrib.layer style input layer builder based on FeatureColumns.
+
+Generally a single example in training data is described with feature columns.
+At the first layer of the model, this column oriented data should be converted
+to a single tensor. Each feature column needs a different kind of operation
+during this conversion. For example sparse features need a totally different
+handling than continuous features.
+
+Example:
+
+```python
+  # Building model for training
+  columns_to_tensor = tf.parse_example(...)
+  first_layer = input_from_feature_columns(
+      columns_to_tensors=columns_to_tensor,
+      feature_columns=feature_columns)
+  second_layer = fully_connected(inputs=first_layer, ...)
+  ...
+```
+
+where feature_columns can be defined as follows:
+
+```python
+  sparse_feature = sparse_column_with_hash_bucket(
+      column_name="sparse_col", ...)
+  sparse_feature_emb = embedding_column(sparse_id_column=sparse_feature, ...)
+  real_valued_feature = real_valued_column(...)
+  real_valued_buckets = bucketized_column(
+      source_column=real_valued_feature, ...)
+
+  feature_columns=[sparse_feature_emb, real_valued_buckets]
+```
+
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived by FeatureColumn.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A Tensor which can be consumed by hidden layers in the neural network.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be consumed by a neural network.
+
+
+- - -
+
+### `tf.contrib.layers.joint_weighted_sum_from_feature_columns(columns_to_tensors, feature_columns, num_outputs, weight_collections=None, trainable=True, scope=None)` {#joint_weighted_sum_from_feature_columns}
+
+A restricted linear prediction builder based on FeatureColumns.
+
+As long as all feature columns are unweighted sparse columns this computes the
+prediction of a linear model which stores all weights in a single variable.
+
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived from FeatureColumn.
+*  <b>`num_outputs`</b>: An integer specifying number of outputs. Default value is 1.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A tuple containing:
+
+    * A Tensor which represents predictions of a linear model.
+    * A list of Variables storing the weights.
+    * A Variable which is used for bias.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be used for linear predictions.
+
+
+- - -
+
 ### `tf.contrib.layers.make_place_holder_tensors_for_base_features(feature_columns)` {#make_place_holder_tensors_for_base_features}
 
 Returns placeholder tensors for inference.
@@ -1299,7 +1418,7 @@ Returns placeholder tensors for inference.
 
 ### `tf.contrib.layers.one_hot_column(sparse_id_column)` {#one_hot_column}
 
-Creates a _OneHotColumn.
+Creates an `_OneHotColumn` for a one-hot or multi-hot repr in a DNN.
 
 ##### Args:
 
@@ -1316,9 +1435,95 @@ Creates a _OneHotColumn.
 
 - - -
 
+### `tf.contrib.layers.parse_feature_columns_from_examples(serialized, feature_columns, name=None, example_names=None)` {#parse_feature_columns_from_examples}
+
+Parses tf.Examples to extract tensors for given feature_columns.
+
+This is a wrapper of 'tf.parse_example'.
+
+Example:
+
+```python
+columns_to_tensor = parse_feature_columns_from_examples(
+    serialized=my_data,
+    feature_columns=my_features)
+
+# Where my_features are:
+# Define features and transformations
+sparse_feature_a = sparse_column_with_keys(
+    column_name="sparse_feature_a", keys=["AB", "CD", ...])
+
+embedding_feature_a = embedding_column(
+    sparse_id_column=sparse_feature_a, dimension=3, combiner="sum")
+
+sparse_feature_b = sparse_column_with_hash_bucket(
+    column_name="sparse_feature_b", hash_bucket_size=1000)
+
+embedding_feature_b = embedding_column(
+    sparse_id_column=sparse_feature_b, dimension=16, combiner="sum")
+
+crossed_feature_a_x_b = crossed_column(
+    columns=[sparse_feature_a, sparse_feature_b], hash_bucket_size=10000)
+
+real_feature = real_valued_column("real_feature")
+real_feature_buckets = bucketized_column(
+    source_column=real_feature, boundaries=[...])
+
+my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
+```
+
+##### Args:
+
+
+*  <b>`serialized`</b>: A vector (1-D Tensor) of strings, a batch of binary
+    serialized `Example` protos.
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns. All items
+    should be instances of classes derived from _FeatureColumn.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`example_names`</b>: A vector (1-D Tensor) of strings (optional), the names of
+    the serialized protos in the batch.
+
+##### Returns:
+
+  A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
+
+
+- - -
+
+### `tf.contrib.layers.parse_feature_columns_from_sequence_examples(serialized, context_feature_columns, sequence_feature_columns, name=None, example_name=None)` {#parse_feature_columns_from_sequence_examples}
+
+Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
+
+##### Args:
+
+
+*  <b>`serialized`</b>: A scalar (0-D Tensor) of type string, a single serialized
+    `SequenceExample` proto.
+*  <b>`context_feature_columns`</b>: An iterable containing the feature columns for
+    context features. All items should be instances of classes derived from
+    `_FeatureColumn`. Can be `None`.
+*  <b>`sequence_feature_columns`</b>: An iterable containing the feature columns for
+    sequence features. All items should be instances of classes derived from
+    `_FeatureColumn`. Can be `None`.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`example_name`</b>: A scalar (0-D Tensor) of type string (optional), the names of
+    the serialized proto.
+
+##### Returns:
+
+  A tuple consisting of:
+
+*  <b>`context_features`</b>: a dict mapping `FeatureColumns` from
+    `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+*  <b>`sequence_features`</b>: a dict mapping `FeatureColumns` from
+    `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+
+
+- - -
+
 ### `tf.contrib.layers.real_valued_column(column_name, dimension=1, default_value=None, dtype=tf.float32, normalizer=None)` {#real_valued_column}
 
-Creates a _RealValuedColumn.
+Creates a `_RealValuedColumn` for dense numeric data.
 
 ##### Args:
 
@@ -1510,6 +1715,25 @@ lookup_id = index_of_feature_in_keys if feature in keys else default_value
 
 Creates a _SparseColumn by combining sparse_id_column with a weight column.
 
+Example:
+
+  ```python
+  sparse_feature = sparse_column_with_hash_bucket(column_name="sparse_col",
+                                                  hash_bucket_size=1000)
+  weighted_feature = weighted_sparse_column(sparse_id_column=sparse_feature,
+                                            weight_column_name="weights_col")
+  ```
+
+  This configuration assumes that input dictionary of model contains the
+  following two items:
+    * (key="sparse_col", value=sparse_tensor) where sparse_tensor is
+      a SparseTensor.
+    * (key="weights_col", value=weights_tensor) where weights_tensor
+      is a SparseTensor.
+   Following are assumed to be true:
+     * sparse_tensor.indices = weights_tensor.indices
+     * sparse_tensor.shape = weights_tensor.shape
+
 ##### Args:
 
 
@@ -1529,20 +1753,60 @@ Creates a _SparseColumn by combining sparse_id_column with a weight column.
 
 *  <b>`ValueError`</b>: if dtype is not convertible to float.
 
-##### An example usage:
 
-  ```python
-  words = sparse_column_with_hash_bucket("words", 1000)
-  tfidf_weighted_words = weighted_sparse_column(words, "tfidf_score")
+- - -
+
+### `tf.contrib.layers.weighted_sum_from_feature_columns(columns_to_tensors, feature_columns, num_outputs, weight_collections=None, trainable=True, scope=None)` {#weighted_sum_from_feature_columns}
+
+A tf.contrib.layer style linear prediction builder based on FeatureColumns.
+
+Generally a single example in training data is described with feature columns.
+This function generates weighted sum for each num_outputs. Weighted sum refers
+to logits in classification problems. It refers to prediction itself for
+linear regression problems.
+
+Example:
+
+  ```
+  # Building model for training
+  feature_columns = (
+      real_valued_column("my_feature1"),
+      ...
+  )
+  columns_to_tensor = tf.parse_example(...)
+  logits = weighted_sum_from_feature_columns(
+      columns_to_tensors=columns_to_tensor,
+      feature_columns=feature_columns,
+      num_outputs=1)
+  loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
   ```
 
-  This configuration assumes that input dictionary of model contains the
-  following two items:
-    * (key="words", value=word_tensor) where word_tensor is a SparseTensor.
-    * (key="tfidf_score", value=tfidf_score_tensor) where tfidf_score_tensor
-      is a SparseTensor.
-   Following are assumed to be true:
-     * word_tensor.indices = tfidf_score_tensor.indices
-     * word_tensor.shape = tfidf_score_tensor.shape
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived from FeatureColumn.
+*  <b>`num_outputs`</b>: An integer specifying number of outputs. Default value is 1.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A tuple containing:
+
+    * A Tensor which represents predictions of a linear model.
+    * A dictionary which maps feature_column to corresponding Variable.
+    * A Variable which is used for bias.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be used for linear predictions.
 
 

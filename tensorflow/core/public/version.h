@@ -69,10 +69,12 @@ limitations under the License.
 // 13. Deprecate multiple batch linear algebra ops (9sep2016).
 // 14. Deprecate batch_matrix_* ops. (10sep2016).
 // 15. Deprecate batch_fft_* ops. (14sep2016).
+// 16. Deprecate tensor_array (v1) ops in favor of v2 (10may2017).
+// 17. Expose reverse_v2 (10nov2016)
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 15
+#define TF_GRAPH_DEF_VERSION 17
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

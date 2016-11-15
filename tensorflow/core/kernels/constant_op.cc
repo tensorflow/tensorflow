@@ -52,12 +52,19 @@ ConstantOp::~ConstantOp() {}
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
 #if TENSORFLOW_USE_SYCL
+<<<<<<< HEAD
 #define REGISTER_SYCL_KERNEL(TYPE)                                    \
   REGISTER_KERNEL_BUILDER(                                            \
                           Name("Const")                               \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<TYPE>("dtype"),             \
 			  ConstantOp);
+=======
+#define REGISTER_SYCL_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+>>>>>>> 463fd9166576248c405e25d505514b703ad6515e
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif
@@ -226,6 +233,7 @@ REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
+REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")

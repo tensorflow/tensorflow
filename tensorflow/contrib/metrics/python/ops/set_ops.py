@@ -20,7 +20,6 @@ from __future__ import print_function
 from tensorflow.contrib.framework.python.framework import tensor_util
 
 from tensorflow.contrib.util import loader
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -33,9 +32,6 @@ _set_ops = loader.load_op_library(
 _VALID_DTYPES = set([
     dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
     dtypes.uint8, dtypes.uint16, dtypes.string])
-
-
-ops.RegisterShape("SetSize")(common_shapes.call_cpp_shape_fn)
 
 
 def set_size(a, validate_indices=True):
@@ -63,11 +59,6 @@ def set_size(a, validate_indices=True):
   return _set_ops.set_size(a.indices, a.values, a.shape, validate_indices)
 
 ops.NotDifferentiable("SetSize")
-
-
-ops.RegisterShape("DenseToDenseSetOperation")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DenseToSparseSetOperation")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseToSparseSetOperation")(common_shapes.call_cpp_shape_fn)
 
 
 ops.NotDifferentiable("DenseToDenseSetOperation")

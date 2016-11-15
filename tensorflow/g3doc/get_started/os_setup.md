@@ -579,7 +579,7 @@ In order to build or run TensorFlow with GPU support, both NVIDIA's Cuda Toolkit
 (>= 7.0) and cuDNN (>= v3) need to be installed.
 
 TensorFlow GPU support requires having a GPU card with NVidia Compute Capability
-(>= 3.0).  Supported cards include but are not limited to:
+(\>= 3.0).  Supported cards include but are not limited to:
 
 * NVidia Titan
 * NVidia Titan X
@@ -588,19 +588,19 @@ TensorFlow GPU support requires having a GPU card with NVidia Compute Capability
 
 ##### Check NVIDIA Compute Capability of your GPU card
 
-https://developer.nvidia.com/cuda-gpus
+[https://developer.nvidia.com/cuda-gpus](https://developer.nvidia.com/cuda-gpus)
 
 ##### Download and install Cuda Toolkit
 
-https://developer.nvidia.com/cuda-downloads
+[https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads)
 
 Install version 8.0 if using our binary releases.
 
-Install the toolkit into e.g. `/usr/local/cuda`
+Install the toolkit into e.g. `/usr/local/cuda`.
 
 ##### Download and install cuDNN
 
-https://developer.nvidia.com/cudnn
+[https://developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn)
 
 Download cuDNN v5.
 

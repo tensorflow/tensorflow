@@ -6591,7 +6591,7 @@ op {
   attr {
     name: "rates"
     type: "list(int)"
-    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by\nsubsampling them spatially by a factor of `rates`."
+    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by\nsubsampling them spatially by a factor of `rates`."
     has_minimum: true
     minimum: 4
   }
@@ -15477,12 +15477,12 @@ op {
   name: "ScatterNd"
   input_arg {
     name: "indices"
-    description: "A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref."
+    description: "A Tensor. Must be one of the following types: int32, int64.\nA tensor of indices into ref."
     type_attr: "Tindices"
   }
   input_arg {
     name: "updates"
-    description: "A Tensor. Must have the same type as tensor. A tensor of updated values to store in ref."
+    description: "A Tensor. Must have the same type as tensor. A tensor of updated values\nto store in ref."
     type_attr: "T"
   }
   input_arg {
@@ -15492,7 +15492,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A new tensor with the given shape and updates applied according to the indices."
+    description: "A new tensor with the given shape and updates applied according\nto the indices."
     type_attr: "T"
   }
   attr {
@@ -15509,8 +15509,8 @@ op {
       }
     }
   }
-  summary: "Creates a new tensor by applying sparse `updates` to individual values or slices within a zero tensor of the given `shape` tensor according to indices."
-  description: "This operator is the inverse of the [tf.gather_nd](#gather_nd) operator which extracts values or slices from a given tensor.\n\nTODO(simister): Add a link to Variable.__getitem__ documentation on slice syntax.\n\n`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `shape`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `shape`.\n\n`updates` is Tensor of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].\n```\n\nThe simplest form of scatter is to insert individual elements in a tensor by index. For example, say we want to insert 4 scattered elements in a rank-1 tensor with 8 elements.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd1.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    shape = tf.constant([8])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n\nThe resulting tensor would look like this:\n\n    [0, 11, 0, 10, 9, 0, 0, 12]\n\nWe can also, insert entire slices of a higher rank tensor all at once. For example, if we wanted to insert two slices in the first dimension of a rank-3 tensor with two matrices of new values.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd2.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n    indices = tf.constant([[0], [2]])\n    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]],\n                           [[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]]])\n    shape = tf.constant([4, 4, 4])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n\nThe resulting tensor would look like this:\n\n    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],\n     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]"
+  summary: "Creates a new tensor by applying sparse `updates` to individual"
+  description: "values or slices within a zero tensor of the given `shape` tensor according to\nindices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)\noperator which extracts values or slices from a given tensor.\n\nTODO(simister): Add a link to Variable.__getitem__ documentation on slice\nsyntax.\n\n`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank\n`Q`.\n\n`indices` must be integer tensor, containing indices into `shape`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `shape`.\n\n`updates` is Tensor of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].\n```\n\nThe simplest form of scatter is to insert individual elements in a tensor by\nindex. For example, say we want to insert 4 scattered elements in a rank-1\ntensor with 8 elements.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd1.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    shape = tf.constant([8])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n\nThe resulting tensor would look like this:\n\n    [0, 11, 0, 10, 9, 0, 0, 12]\n\nWe can also, insert entire slices of a higher rank tensor all at once. For\nexample, if we wanted to insert two slices in the first dimension of a\nrank-3 tensor with two matrices of new values.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd2.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n    indices = tf.constant([[0], [2]])\n    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]],\n                           [[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]]])\n    shape = tf.constant([4, 4, 4])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n\nThe resulting tensor would look like this:\n\n    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],\n     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]"
 }
 op {
   name: "ScatterNdAdd"
@@ -15522,17 +15522,17 @@ op {
   }
   input_arg {
     name: "indices"
-    description: "A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref."
+    description: "A Tensor. Must be one of the following types: int32, int64.\nA tensor of indices into ref."
     type_attr: "Tindices"
   }
   input_arg {
     name: "updates"
-    description: "A Tensor. Must have the same type as ref. A tensor of updated values to add to ref."
+    description: "A Tensor. Must have the same type as ref. A tensor of updated values\nto add to ref."
     type_attr: "T"
   }
   output_arg {
     name: "output_ref"
-    description: "Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done."
+    description: "Same as ref. Returned as a convenience for operations that want\nto use the updated values after the update is done."
     type_attr: "T"
     is_ref: true
   }
@@ -15574,144 +15574,10 @@ op {
     default_value {
       b: false
     }
-    description: "An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
-  summary: "Applies sparse addition between `updates` and individual values or slices within a given variable according to `indices`."
-  description: "`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8 elements. In Python, that addition would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    add = tf.scatter_nd_add(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(add)\n\nThe resulting update to ref would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices."
-}
-op {
-  name: "ScatterNdDiv"
-  input_arg {
-    name: "ref"
-    description: "A mutable Tensor. Should be from a Variable node."
-    type_attr: "T"
-    is_ref: true
-  }
-  input_arg {
-    name: "indices"
-    description: "A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref."
-    type_attr: "Tindices"
-  }
-  input_arg {
-    name: "updates"
-    description: "A Tensor. Must have the same type as ref. A tensor of updated values to subtract from ref."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output_ref"
-    description: "Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done."
-    type_attr: "T"
-    is_ref: true
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT64
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_UINT16
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_HALF
-      }
-    }
-  }
-  attr {
-    name: "Tindices"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  attr {
-    name: "use_locking"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention."
-  }
-  summary: "Applies sparse subtraction between `updates` and individual values or slices within a given variable according to `indices`."
-  description: "`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to divide a rank-1 tensor with 8 elements by 4 scattered elements. In Python, that division would look like this:\n\n    ref = tf.Variable([10, 20, 30, 40, 50, 60, 70, 80])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([2, 3, 4, 5])\n    sub = tf.scatter_nd_div(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(sub)\n\nThe resulting update to ref would look like this:\n\n    [10, 5, 30, 13, 25, 60, 70, 16]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices."
-}
-op {
-  name: "ScatterNdMul"
-  input_arg {
-    name: "ref"
-    description: "A mutable Tensor. Should be from a Variable node."
-    type_attr: "T"
-    is_ref: true
-  }
-  input_arg {
-    name: "indices"
-    description: "A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref."
-    type_attr: "Tindices"
-  }
-  input_arg {
-    name: "updates"
-    description: "A Tensor. Must have the same type as ref. A tensor of updated values to subtract from ref."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output_ref"
-    description: "Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done."
-    type_attr: "T"
-    is_ref: true
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT64
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_UINT16
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_HALF
-      }
-    }
-  }
-  attr {
-    name: "Tindices"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  attr {
-    name: "use_locking"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention."
-  }
-  summary: "Applies sparse subtraction between `updates` and individual values or slices within a given variable according to `indices`."
-  description: "`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to multiply 4 scattered elements with a rank-1 tensor with 8 elements. In Python, that multiplication would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    sub = tf.scatter_nd_mul(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(sub)\n\nThe resulting update to ref would look like this:\n\n    [1, 22, 3, 40, 45, 6, 7, 96]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices."
+  summary: "Applies sparse addition between `updates` and individual values or slices"
+  description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    add = tf.scatter_nd_add(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(add)\n\nThe resulting update to ref would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterNdSub"
@@ -15723,17 +15589,17 @@ op {
   }
   input_arg {
     name: "indices"
-    description: "A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref."
+    description: "A Tensor. Must be one of the following types: int32, int64.\nA tensor of indices into ref."
     type_attr: "Tindices"
   }
   input_arg {
     name: "updates"
-    description: "A Tensor. Must have the same type as ref. A tensor of updated values to subtract from ref."
+    description: "A Tensor. Must have the same type as ref. A tensor of updated values\nto subtract from ref."
     type_attr: "T"
   }
   output_arg {
     name: "output_ref"
-    description: "Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done."
+    description: "Same as ref. Returned as a convenience for operations that want\nto use the updated values after the update is done."
     type_attr: "T"
     is_ref: true
   }
@@ -15775,10 +15641,10 @@ op {
     default_value {
       b: false
     }
-    description: "An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
-  summary: "Applies sparse subtraction between `updates` and individual values or slices within a given variable according to `indices`."
-  description: "`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to subtract 4 scattered elements from a rank-1 tensor with 8 elements. In Python, that subtraction would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    sub = tf.scatter_nd_sub(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(sub)\n\nThe resulting update to ref would look like this:\n\n    [1, -9, 3, -6, -4, 6, 7, -4]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices."
+  summary: "Applies sparse subtraction between `updates` and individual values or slices"
+  description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to subtract 4 scattered elements from a rank-1 tensor\nwith 8 elements. In Python, that subtraction would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    sub = tf.scatter_nd_sub(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(sub)\n\nThe resulting update to ref would look like this:\n\n    [1, -9, 3, -6, -4, 6, 7, -4]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterNdUpdate"
@@ -15790,17 +15656,17 @@ op {
   }
   input_arg {
     name: "indices"
-    description: "A Tensor. Must be one of the following types: int32, int64. A tensor of indices into ref."
+    description: "A Tensor. Must be one of the following types: int32, int64.\nA tensor of indices into ref."
     type_attr: "Tindices"
   }
   input_arg {
     name: "updates"
-    description: "A Tensor. Must have the same type as ref. A tensor of updated values to add to ref."
+    description: "A Tensor. Must have the same type as ref. A tensor of updated\nvalues to add to ref."
     type_attr: "T"
   }
   output_arg {
     name: "output_ref"
-    description: "Same as ref. Returned as a convenience for operations that want to use the updated values after the update is done."
+    description: "Same as ref. Returned as a convenience for operations that want to\nuse the updated values after the update is done."
     type_attr: "T"
     is_ref: true
   }
@@ -15824,10 +15690,10 @@ op {
     default_value {
       b: true
     }
-    description: "An optional bool. Defaults to True. If True, the assignment will be protected by a lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
-  summary: "Applies sparse `updates` to individual values or slices within a given variable according to `indices`."
-  description: "`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to 8 elements. In Python, that update would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to slices."
+  summary: "Applies sparse `updates` to individual values or slices within a given"
+  description: "variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to\n8 elements. In Python, that update would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterSub"
@@ -19515,6 +19381,54 @@ op {
   summary: "Splits a tensor into `num_split` tensors along one dimension."
 }
 op {
+  name: "SplitV"
+  input_arg {
+    name: "value"
+    description: "The tensor to split."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size_splits"
+    description: "list containing the sizes of each output tensor along the split\ndimension. Must sum to the dimension of value along split_dim.\nCan contain one -1 indicating that dimension is to be inferred."
+    type_attr: "Tlen"
+  }
+  input_arg {
+    name: "split_dim"
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Tensors whose shape matches that of `value`\nexcept along `split_dim`, where their sizes are\n`size_splits[i]`."
+    type_attr: "T"
+    number_attr: "num_split"
+  }
+  attr {
+    name: "num_split"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tlen"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Splits a tensor into `num_split` tensors along one dimension."
+}
+op {
   name: "Sqrt"
   input_arg {
     name: "x"
@@ -20060,7 +19974,7 @@ op {
     type: DT_INT64
   }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
-  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single character. If `delimiter` is an empty\n string, each element of `input` is split into individual 1 character strings.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single-byte character. If `delimiter` is an empty\n string, each element of `input` is split into individual single-byte character\n strings, including splitting of UTF-8 multibyte sequences.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"
@@ -20191,6 +20105,41 @@ op {
   }
   summary: "Returns x - y element-wise."
   description: "*NOTE*: `Sub` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+}
+op {
+  name: "Substr"
+  input_arg {
+    name: "input"
+    description: "Tensor of strings"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "pos"
+    description: "Scalar defining the position of first character in each substring"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "len"
+    description: "Scalar defining the number of characters to include in each substring"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Tensor of substrings"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return substrings from `Tensor` of strings."
+  description: "For each string in the input `Tensor`, creates a substring starting at index\n`pos` with a total length of `len`.\n\nIf `len` defines a substring that would extend beyond the length of the input\nstring, then as many characters as possible are used.\n\nIf `pos` is negative or specifies a character index larger than any of the input\nstrings, then an `InvalidArgumentError` is thrown.\n\n`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on\nOp creation.\n\n*NOTE*: `Substr` supports broadcasting up to two dimensions. More about\nbroadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)\n\n---\n\nExamples\n\nUsing scalar `pos` and `len`:\n\n```\ninput = [b\'Hello\', b\'World\']\nposition = 1\nlength = 3\n\noutput = [b\'ell\', b\'orl\']\n```\n\nUsing `pos` and `len` with same shape as `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\']]\nposition = [[1, 2, 3],\n            [1, 2, 3],\n            [1, 2, 3]]\nlength =   [[2, 3, 4],\n            [4, 3, 2],\n            [5, 5, 5]]\n\noutput = [[b\'en\', b\'eve\', b\'lve\'],\n          [b\'hirt\', b\'urt\', b\'te\'],\n          [b\'ixtee\', b\'vente\', b\'hteen\']]\n```\n\nBroadcasting `pos` and `len` onto `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\'],\n         [b\'nineteen\', b\'twenty\', b\'twentyone\']]\nposition = [1, 2, 3]\nlength =   [1, 2, 3]\n\noutput = [[b\'e\', b\'ev\', b\'lve\'],\n          [b\'h\', b\'ur\', b\'tee\'],\n          [b\'i\', b\'ve\', b\'hte\'],\n          [b\'i\', b\'en\', b\'nty\']]\n```\n\nBroadcasting `input` onto `pos` and `len`:\n\n```\ninput = b\'thirteen\'\nposition = [1, 5, 7]\nlength =   [3, 2, 1]\n\noutput = [b\'hir\', b\'ee\', b\'n\"]\n```"
 }
 op {
   name: "Sum"
@@ -20567,19 +20516,16 @@ op {
   name: "TensorArray"
   input_arg {
     name: "size"
-    description: "The size of the array."
     type: DT_INT32
   }
   output_arg {
     name: "handle"
-    description: "The handle to the TensorArray."
     type: DT_STRING
     is_ref: true
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of the elements on the tensor_array."
   }
   attr {
     name: "dynamic_size"
@@ -20587,7 +20533,6 @@ op {
     default_value {
       b: false
     }
-    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
   }
   attr {
     name: "clear_after_read"
@@ -20595,7 +20540,6 @@ op {
     default_value {
       b: true
     }
-    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
   }
   attr {
     name: "tensor_array_name"
@@ -20603,19 +20547,31 @@ op {
     default_value {
       s: ""
     }
-    description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
   }
-  summary: "An array of Tensors of given size, with data written via Write and read"
-  description: "via Read or Pack."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayV2"
+  }
   is_stateful: true
 }
 op {
   name: "TensorArrayClose"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
     is_ref: true
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayCloseV2"
+  }
+}
+op {
+  name: "TensorArrayCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
   }
   summary: "Delete the TensorArray from its resource container.  This enables"
   description: "the user to close and release the resource in the middle of a step/run."
@@ -20624,9 +20580,45 @@ op {
   name: "TensorArrayConcat"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayConcatV2"
+  }
+}
+op {
+  name: "TensorArrayConcatV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "flow_in"
@@ -20665,9 +20657,45 @@ op {
   name: "TensorArrayGather"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGatherV2"
+  }
+}
+op {
+  name: "TensorArrayGatherV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "indices"
@@ -20706,6 +20734,31 @@ op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGradV2"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV2"
+  input_arg {
+    name: "handle"
     description: "The handle to the forward TensorArray."
     type: DT_STRING
   }
@@ -20717,7 +20770,6 @@ op {
   output_arg {
     name: "grad_handle"
     type: DT_STRING
-    is_ref: true
   }
   attr {
     name: "source"
@@ -20732,24 +20784,20 @@ op {
   name: "TensorArrayPack"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "flow_in"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
     name: "value"
-    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
     type_attr: "dtype"
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of the elem that is returned."
   }
   attr {
     name: "element_shape"
@@ -20759,18 +20807,46 @@ op {
         unknown_rank: true
       }
     }
-    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
   }
-  summary: "Pack the elements from the TensorArray into output `value`."
-  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayGather` with\n`indices = RangeOp(0, TensorArraySizeOp)`.\n\nAll elements must have the same shape."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGatherV2 with RangeOp"
+  }
 }
 op {
   name: "TensorArrayRead"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayReadV2"
+  }
+}
+op {
+  name: "TensorArrayReadV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "index"
@@ -20797,9 +20873,40 @@ op {
   name: "TensorArrayScatter"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayScatterV2"
+  }
+}
+op {
+  name: "TensorArrayScatterV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "indices"
@@ -20832,9 +20939,28 @@ op {
   name: "TensorArraySize"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArraySizeV2"
+  }
+}
+op {
+  name: "TensorArraySizeV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
   }
   input_arg {
     name: "flow_in"
@@ -20852,9 +20978,40 @@ op {
   name: "TensorArraySplit"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArraySplitV2"
+  }
+}
+op {
+  name: "TensorArraySplitV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "value"
@@ -20887,39 +21044,113 @@ op {
   name: "TensorArrayUnpack"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "value"
-    description: "The concatenated tensor to write to the TensorArray."
     type_attr: "T"
   }
   input_arg {
     name: "flow_in"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
     name: "flow_out"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Unpack the data from the input value into TensorArray elements."
-  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayScatter` with\n`indices = RangeOp(0, SizeOp(value)[0])`."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayScatterV2 with RangeOp"
+  }
+}
+op {
+  name: "TensorArrayV2"
+  input_arg {
+    name: "size"
+    description: "The size of the array."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the TensorArray."
+    type: DT_STRING
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
+  }
+  summary: "An array of Tensors of given size, with data written via Write and read"
+  description: "via Read or Pack."
+  is_stateful: true
 }
 op {
   name: "TensorArrayWrite"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayWriteV2"
+  }
+}
+op {
+  name: "TensorArrayWriteV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "index"

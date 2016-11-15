@@ -27,6 +27,7 @@ Train and evaluate TensorFlow models.
 @@DNNRegressor
 @@LinearClassifier
 @@LinearRegressor
+@@LogisticRegressor
 
 ## Graph actions
 

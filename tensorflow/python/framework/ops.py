@@ -193,31 +193,28 @@ class _TensorLike(object):
   pass
 
 
-class Tensor(_TensorLike):
+class Output(_TensorLike):
   """Represents one of the outputs of an `Operation`.
 
-  *Note:* the `Tensor` class will be replaced by `Output` in the future.
-  Currently these two are aliases for each other.
-
-  A `Tensor` is a symbolic handle to one of the outputs of an
+  An `Output` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
   TensorFlow [`Session`](../../api_docs/python/client.md#Session).
 
   This class has two primary purposes:
 
-  1. A `Tensor` can be passed as an input to another `Operation`.
+  1. An `Output` can be passed as an input to another `Operation`.
      This builds a dataflow connection between operations, which
      enables TensorFlow to execute an entire `Graph` that represents a
      large, multi-step computation.
 
   2. After the graph has been launched in a session, the value of the
-     `Tensor` can be computed by passing it to
+     `Output` can be computed by passing it to
      [`Session.run()`](../../api_docs/python/client.md#Session.run).
      `t.eval()` is a shortcut for calling
      `tf.get_default_session().run(t)`.
 
-  In the following example, `c`, `d`, and `e` are symbolic `Tensor`
+  In the following example, `c`, `d`, and `e` are symbolic `Output`
   objects, whereas `result` is a numpy array that stores a concrete
   value:
 
@@ -285,7 +282,7 @@ class Tensor(_TensorLike):
   }
 
   def __init__(self, op, value_index, dtype):
-    """Creates a new `Tensor`.
+    """Creates a new `Output`.
 
     Args:
       op: An `Operation`. `Operation` that computes this tensor.
@@ -302,7 +299,7 @@ class Tensor(_TensorLike):
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
     self._shape = tensor_shape.unknown_shape()
-    # List of operations that use this Tensor as input.  We maintain this list
+    # List of operations that use this Output as input.  We maintain this list
     # to easily navigate a computation graph.
     self._consumers = []
 
@@ -379,7 +376,7 @@ class Tensor(_TensorLike):
 
     In some cases, the inferred shape may have unknown dimensions. If
     the caller has additional information about the values of these
-    dimensions, `Tensor.set_shape()` can be used to augment the
+    dimensions, `Output.set_shape()` can be used to augment the
     inferred shape.
 
     Returns:
@@ -450,10 +447,10 @@ class Tensor(_TensorLike):
     """Return a value to use for the NodeDef "input" attribute.
 
     The returned string can be used in a NodeDef "input" attribute
-    to indicate that the NodeDef uses this Tensor as input.
+    to indicate that the NodeDef uses this Output as input.
 
     Raises:
-      ValueError: if this Tensor's Operation does not have a name.
+      ValueError: if this Output's Operation does not have a name.
 
     Returns:
       a string.
@@ -466,7 +463,7 @@ class Tensor(_TensorLike):
       return "%s:%d" % (self._op.name, self._value_index)
 
   def __str__(self):
-    return "Tensor(\"%s\"%s%s%s)" % (
+    return "Output(\"%s\"%s%s%s)" % (
         self.name,
         (", shape=%s" % self.get_shape())
         if self.get_shape().ndims is not None else "",
@@ -474,7 +471,7 @@ class Tensor(_TensorLike):
         (", device=%s" % self.device) if self.device else "")
 
   def __repr__(self):
-    return "<tf.Tensor '%s' shape=%s dtype=%s>" % (
+    return "<tf.Output '%s' shape=%s dtype=%s>" % (
         self.name, self.get_shape(), self._dtype.name)
 
   def __hash__(self):
@@ -485,37 +482,37 @@ class Tensor(_TensorLike):
     # Necessary to support Python's collection membership operators
     return id(self) == id(other)
 
-  # NOTE(mrry): This enables the Tensor's overloaded "right" binary
+  # NOTE(mrry): This enables the Output's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
-  # accords the Tensor class higher priority than an ndarray, or a
+  # accords the Output class higher priority than an ndarray, or a
   # numpy matrix.
   # TODO(mrry): Convert this to using numpy's __numpy_ufunc__
-  # mechanism, which allows more control over how Tensors interact
+  # mechanism, which allows more control over how Outputs interact
   # with ndarrays.
   __array_priority__ = 100
 
   @staticmethod
   def _override_operator(operator, func):
-    _override_helper(Tensor, operator, func)
+    _override_helper(Output, operator, func)
 
   def __iter__(self):
     """Dummy method to prevent iteration. Do not call.
 
     NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the Tensor from 0 to
+    Python will valiantly attempt to iterate over the Output from 0 to
     infinity.  Declaring this method prevents this unintended
     behavior.
 
     Raises:
       TypeError: when invoked.
     """
-    raise TypeError("'Tensor' object is not iterable.")
+    raise TypeError("'Output' object is not iterable.")
 
   def __bool__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
 
     This overload raises a `TypeError` when the user inadvertently
-    treats a `Tensor` as a boolean (e.g. in an `if` statement). For
+    treats an `Output` as a boolean (e.g. in an `if` statement). For
     example:
 
     ```python
@@ -527,12 +524,12 @@ class Tensor(_TensorLike):
     ```
 
     This disallows ambiguities between testing the Python value vs testing the
-    dynamic condition of the `Tensor`.
+    dynamic condition of the `Output`.
 
     Raises:
       `TypeError`.
     """
-    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+    raise TypeError("Using a `tf.Output` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
                     "tensor is defined, and use TensorFlow ops such as "
                     "tf.cond to execute subgraphs conditioned on the value of "
@@ -546,7 +543,7 @@ class Tensor(_TensorLike):
     Raises:
       `TypeError`.
     """
-    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+    raise TypeError("Using a `tf.Output` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
                     "tensor is defined, and use TensorFlow ops such as "
                     "tf.cond to execute subgraphs conditioned on the value of "
@@ -559,12 +556,12 @@ class Tensor(_TensorLike):
     produce the inputs needed for the operation that produces this
     tensor.
 
-    *N.B.* Before invoking `Tensor.eval()`, its graph must have been
+    *N.B.* Before invoking `Output.eval()`, its graph must have been
     launched in a session, and either a default session must be
     available, or `session` must be specified explicitly.
 
     Args:
-      feed_dict: A dictionary that maps `Tensor` objects to feed values.
+      feed_dict: A dictionary that maps `Output` objects to feed values.
         See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this tensor. If
@@ -577,8 +574,7 @@ class Tensor(_TensorLike):
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
 
-# TODO(josh11b): Switch everyone from "Tensor" to "Output" to match C++ API.
-Output = Tensor
+Tensor = Output
 
 
 def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
@@ -1552,6 +1548,29 @@ def get_gradient_function(op):
 _shape_registry = registry.Registry("shape functions")
 _default_shape_function_registry = registry.Registry("default shape functions")
 
+# These are set to common_shapes.call_cpp_shape_fn by op generated code
+# (generated by python_op_gen.cc).
+# It is set outside ops.py to avoid a circular dependency.
+_call_cpp_shape_fn = None
+_call_cpp_shape_fn_and_require_op = None
+
+
+def _set_call_cpp_shape_fn(call_cpp_shape_fn):
+  """Sets default shape fns from passed common_shapes.call_cpp_shape_fn."""
+  global _call_cpp_shape_fn, _call_cpp_shape_fn_and_require_op
+  if _call_cpp_shape_fn:
+    return  # already registered
+
+  def call_without_requiring(op):
+    return call_cpp_shape_fn(op, require_shape_fn=False)
+
+  _call_cpp_shape_fn = call_without_requiring
+
+  def call_with_requiring(op):
+    return call_cpp_shape_fn(op, require_shape_fn=True)
+
+  _call_cpp_shape_fn_and_require_op = call_with_requiring
+
 
 class RegisterShape(object):
   """A decorator for registering the shape function for an op type.
@@ -1586,10 +1605,12 @@ class RegisterShape(object):
   def __call__(self, f):
     """Registers "f" as the shape function for "op_type"."""
     if f is None:
+      assert _call_cpp_shape_fn
+
       # None is a special "weak" value that provides a default shape function,
       # and can be overridden by a non-None registration.
       try:
-        _default_shape_function_registry.register(_no_shape_function,
+        _default_shape_function_registry.register(_call_cpp_shape_fn,
                                                   self._op_type)
       except KeyError:
         # Ignore duplicate registrations of the weak value. This can
@@ -1602,10 +1623,6 @@ class RegisterShape(object):
     return f
 
 
-def _no_shape_function(op):
-  return [tensor_shape.unknown_shape() for _ in op.outputs]
-
-
 def set_shapes_for_outputs(op):
   """Uses the registered shape functions to set the shapes for op's outputs."""
   try:
@@ -1614,8 +1631,8 @@ def set_shapes_for_outputs(op):
     try:
       shape_func = _default_shape_function_registry.lookup(op.type)
     except LookupError:
-      raise RuntimeError("No shape function registered for standard op: %s"
-                         % op.type)
+      shape_func = _call_cpp_shape_fn_and_require_op
+
   shapes = shape_func(op)
   if shapes is None:
     raise RuntimeError(

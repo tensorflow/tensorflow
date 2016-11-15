@@ -8,7 +8,7 @@ Construct a `StochasticTensor`.
 `StochasticTensor` is backed by the `dist` distribution and its `value`
 method will return the same value each time it is called. What `value` is
 returned is controlled by the `dist_value_type` (defaults to
-`SampleAndReshapeValue`).
+`SampleValue`).
 
 Some distributions' sample functions are not differentiable (e.g. a sample
 from a discrete distribution like a Bernoulli) and so to differentiate

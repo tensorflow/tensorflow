@@ -141,10 +141,10 @@ checkpoints per device.
     variables in the graph. Otherwise, construct the saver anyway and make
     it a no-op.
 *  <b>`write_version`</b>: controls what format to use when saving checkpoints.  It
-    also affects certain filepath matching logic.  Defaults to V1
-    currently, and will be switched to the more memory-efficient V2 format
-    in the future.  If set to V2, the Saver is still able to restore from
-    old V1 checkpoints.
+    also affects certain filepath matching logic.  The V2 format is the
+    recommended choice: it is much more optimized than V1 in terms of
+    memory required and latency incurred during restore.  Regardless of
+    this flag, the Saver is able to restore from both V2 and V1 checkpoints.
 *  <b>`pad_step_number`</b>: if True, pads the global step number in the checkpoint
     filepaths to some fixed width (8 by default).  This is turned off by
     default.

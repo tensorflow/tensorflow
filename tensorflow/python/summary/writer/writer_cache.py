@@ -21,7 +21,7 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.framework import ops
-from tensorflow.python.summary.writer.writer import LegacySummaryWriter as SummaryWriter
+from tensorflow.python.summary.writer.writer import FileWriter as SummaryWriter
 
 
 class SummaryWriterCache(object):

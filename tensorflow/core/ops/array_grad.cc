@@ -328,6 +328,30 @@ Status ReverseGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Reverse", ReverseGrad);
 
+Status ReverseV2Grad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "ReverseV2Grad for int64 index are not supported.");
+  }
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "d: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dd: int32"},
+      // Attr defs
+      {"T: type", "Tidx: {int32, int64}"},
+      // Nodes
+      {
+          {{"dx"}, "ReverseV2", {"dy", "d"}, {{"T", "$T"}}},
+          {{"dd"}, "ZerosLike", {"d"}, {{"T", "$Tidx"}}},
+      });
+  VLOG(1) << "ReverseGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("ReverseV2", ReverseV2Grad);
+
 Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));

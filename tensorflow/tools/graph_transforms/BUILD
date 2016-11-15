@@ -92,15 +92,26 @@ tf_cc_test(
     ],
 )
 
-cc_binary(
-    name = "fold_constants_tool",
+# This library includes a main function, to make it easy to create other
+# versions of the tool linked against different operator libs.
+cc_library(
+    name = "fold_constants_main_lib",
     srcs = ["fold_constants_tool.cc"],
     copts = tf_copts(),
-    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":fold_constants_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_binary(
+    name = "fold_constants_tool",
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fold_constants_main_lib",
     ],
 )

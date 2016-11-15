@@ -235,8 +235,13 @@ class InferenceContext {
     }
     return s->dims_[idx];
   }
-  int32 Rank(ShapeHandle s) const { return s->rank_; }
-  bool RankKnown(ShapeHandle s) const { return Rank(s) != kUnknownRank; }
+  int32 Rank(ShapeHandle s) const {
+    DCHECK(s.IsSet());
+    return s->rank_;
+  }
+  bool RankKnown(ShapeHandle s) const {
+    return (s.IsSet() && (Rank(s) != kUnknownRank));
+  }
   inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
@@ -417,50 +422,6 @@ class InferenceContext {
   }
   DataType output_handle_dtype(int idx) const {
     return output_handle_dtype_[idx];
-  }
-
-  // Validates the 3 component tensors of a sparse tensor have the proper
-  // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
-  Status ValidateSparseTensor(ShapeHandle indices_shape,
-                              ShapeHandle values_shape,
-                              ShapeHandle shape_shape) {
-    // Validate ranks.
-    ShapeHandle unused_shape;
-    TF_RETURN_IF_ERROR(WithRank(indices_shape, 2, &unused_shape));
-    TF_RETURN_IF_ERROR(WithRank(values_shape, 1, &unused_shape));
-    TF_RETURN_IF_ERROR(WithRank(shape_shape, 1, &unused_shape));
-
-    // Number of elements in indices and values must match.
-    DimensionHandle num_index_elements_dim = Dim(indices_shape, 0);
-    if (ValueKnown(num_index_elements_dim)) {
-      DimensionHandle num_values_elements_dim = Dim(values_shape, 0);
-      if (ValueKnown(num_values_elements_dim)) {
-        int64 num_index_elements = Value(num_index_elements_dim);
-        int64 num_values_elements = Value(num_values_elements_dim);
-        if (num_index_elements != num_values_elements) {
-          return errors::InvalidArgument(
-              "Number of elements in index (", num_index_elements,
-              ") and values (", num_values_elements, ") do not match.");
-        }
-      }
-    }
-
-    // Rank embedded in indices must match shape.
-    DimensionHandle index_rank_dim = Dim(indices_shape, 1);
-    if (ValueKnown(index_rank_dim)) {
-      DimensionHandle shape_rank_dim = Dim(shape_shape, 0);
-      if (ValueKnown(shape_rank_dim)) {
-        int64 index_rank = Value(index_rank_dim);
-        int32 shape_rank = Value(shape_rank_dim);
-        if (index_rank != shape_rank) {
-          return errors::InvalidArgument("Index rank (", index_rank,
-                                         ") and shape rank (", shape_rank,
-                                         ") do not match.");
-        }
-      }
-    }
-
-    return Status::OK();
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,

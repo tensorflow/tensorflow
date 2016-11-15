@@ -71,6 +71,7 @@ def _get_logged_ops(graph, run_meta=None):
   if run_meta:
     graph = _fill_missing_graph_shape(graph, run_meta)
 
+  op_missing_shape = 0
   logged_ops = {}
   graph_def = graph.as_graph_def()
   for node in graph_def.node:
@@ -78,6 +79,7 @@ def _get_logged_ops(graph, run_meta=None):
       stats = ops.get_stats_for_node_def(graph, node, REGISTERED_FLOP_STATS)
     except ValueError:
       # Catch Exception When shape is incomplete. Skip it.
+      op_missing_shape += 1
       stats = None
 
     if not stats or not stats.value:
@@ -96,6 +98,11 @@ def _get_logged_ops(graph, run_meta=None):
       logged_ops[entry.name] = entry
     else:
       logged_ops[v.op.name].types.append(TRAINABLE_VARIABLES)
+  if op_missing_shape > 0 and not run_meta:
+    sys.stderr.write(
+        '%d ops no flops stats due to incomplete shapes. '
+        'Consider passing run_meta to use run_time shapes.\n' %
+        op_missing_shape)
   return logged_ops
 
 

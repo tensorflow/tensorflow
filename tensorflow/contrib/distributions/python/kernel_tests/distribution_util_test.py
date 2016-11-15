@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import numpy as np
 from scipy import special
 import tensorflow as tf
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import tensor_util
 
 
 class AssertCloseTest(tf.test.TestCase):
@@ -315,48 +317,49 @@ class PickVectorTest(tf.test.TestCase):
 
 class FillLowerTriangularTest(tf.test.TestCase):
 
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def _fill_lower_triangular(self, x):
+    """Numpy implementation of `fill_lower_triangular`."""
+    x = np.asarray(x)
+    d = x.shape[-1]
+    # d = n(n+1)/2 implies n is:
+    n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))
+    ids = np.tril_indices(n)
+    y = np.zeros(list(x.shape[:-1]) + [n, n], dtype=x.dtype)
+    y[..., ids[0], ids[1]] = x
+    return y
+
   def testCorrectlyMakes1x1LowerTril(self):
     with self.test_session():
-      x = np.array([[1.], [2], [3]])
-      expected = np.array([[[1.]], [[2]], [[3]]])
-      actual = distribution_util.fill_lower_triangular(x)
+      x = tf.convert_to_tensor(self._rng.randn(3, 1))
+      expected = self._fill_lower_triangular(tensor_util.constant_value(x))
+      actual = distribution_util.fill_lower_triangular(x, validate_args=True)
       self.assertAllEqual(expected.shape, actual.get_shape())
       self.assertAllEqual(expected, actual.eval())
 
   def testCorrectlyMakesNoBatchLowerTril(self):
     with self.test_session():
-      x = tf.convert_to_tensor(np.arange(9, dtype=np.float32))
-      expected = np.array(
-          [[0., 0., 0.],
-           [1., 2., 0.],
-           [3., 4., 5.]])
-      actual = distribution_util.fill_lower_triangular(x)
+      x = tf.convert_to_tensor(self._rng.randn(10))
+      expected = self._fill_lower_triangular(tensor_util.constant_value(x))
+      actual = distribution_util.fill_lower_triangular(x, validate_args=True)
       self.assertAllEqual(expected.shape, actual.get_shape())
       self.assertAllEqual(expected, actual.eval())
-      self.assertAllEqual(
-          np.concatenate([np.ones(6, dtype=np.float32),
-                          np.zeros(3, dtype=np.float32)]),
-          tf.gradients(distribution_util.fill_lower_triangular(x), x)[0].eval())
+      g = tf.gradients(distribution_util.fill_lower_triangular(x), x)
+      self.assertAllEqual(np.tri(4).reshape(-1), g[0].values.eval())
 
   def testCorrectlyMakesBatchLowerTril(self):
     with self.test_session():
-      x = np.reshape(np.arange(24), (2, 2, 6))
-      expected = np.array(
-          [[[[0., 0., 0.],
-             [1., 2., 0.],
-             [3., 4., 5.]],
-            [[6., 0., 0.],
-             [7., 8., 0.],
-             [9., 10., 11.]]],
-           [[[12., 0., 0.],
-             [13., 14., 0.],
-             [15., 16., 17.]],
-            [[18., 0., 0.],
-             [19., 20., 0.],
-             [21., 22., 23.]]]])
-      actual = distribution_util.fill_lower_triangular(x)
+      x = tf.convert_to_tensor(self._rng.randn(2, 2, 6))
+      expected = self._fill_lower_triangular(tensor_util.constant_value(x))
+      actual = distribution_util.fill_lower_triangular(x, validate_args=True)
       self.assertAllEqual(expected.shape, actual.get_shape())
       self.assertAllEqual(expected, actual.eval())
+      self.assertAllEqual(
+          np.ones((2, 2, 6)),
+          tf.gradients(distribution_util.fill_lower_triangular(
+              x), x)[0].eval())
 
 
 if __name__ == "__main__":

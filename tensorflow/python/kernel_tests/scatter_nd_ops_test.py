@@ -78,7 +78,7 @@ def _NumpyDiv(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, lambda p, u: p / u)
 
 
-class ScatterTest(tf.test.TestCase):
+class ScatterNdTest(tf.test.TestCase):
 
   def _VariableRankTest(self,
                         np_scatter,
@@ -145,11 +145,13 @@ class ScatterTest(tf.test.TestCase):
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, tf.scatter_nd_sub)
 
-  def testVariableRankMul(self):
-    self._VariableRankTests(_NumpyMul, tf.scatter_nd_mul)
+  # TODO(simister): Re-enable once binary size increase due to
+  # scatter_nd ops is under control.
+  # def testVariableRankMul(self):
+  #   self._VariableRankTests(_NumpyMul, tf.scatter_nd_mul)
 
-  def testVariableRankDiv(self):
-    self._VariableRankTests(_NumpyDiv, tf.scatter_nd_div)
+  # def testVariableRankDiv(self):
+  #   self._VariableRankTests(_NumpyDiv, tf.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
     for vtype in (np.float32, np.float64):
@@ -167,25 +169,29 @@ class ScatterTest(tf.test.TestCase):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, tf.scatter_nd_add)
     self._ScatterRepeatIndicesTest(_NumpySub, tf.scatter_nd_sub)
-    self._ScatterRepeatIndicesTest(_NumpyMul, tf.scatter_nd_mul)
-    self._ScatterRepeatIndicesTest(_NumpyDiv, tf.scatter_nd_div)
+    # TODO(simister): Re-enable once binary size increase due to
+    # extra templating is back under control.
+    # self._ScatterRepeatIndicesTest(_NumpyMul, tf.scatter_nd_mul)
+    # self._ScatterRepeatIndicesTest(_NumpyDiv, tf.scatter_nd_div)
 
-  def testBooleanScatterUpdate(self):
-    with self.test_session(use_gpu=False) as session:
-      var = tf.Variable([True, False])
-      update0 = tf.scatter_nd_update(var, [[1]], [True])
-      update1 = tf.scatter_nd_update(
-          var, tf.constant(
-              [[0]], dtype=tf.int64), [False])
-      var.initializer.run()
-
-      session.run([update0, update1])
-
-      self.assertAllEqual([False, True], var.eval())
+  # TODO(simister): Re-enable once binary size increase due to
+  # extra templating is back under control and this op is re-enabled
+  # def testBooleanScatterUpdate(self):
+  #   with self.test_session(use_gpu=False) as session:
+  #     var = tf.Variable([True, False])
+  #     update0 = tf.scatter_nd_update(var, [[1]], [True])
+  #     update1 = tf.scatter_nd_update(
+  #         var, tf.constant(
+  #             [[0]], dtype=tf.int64), [False])
+  #     var.initializer.run()
+  #     session.run([update0, update1])
+  #     self.assertAllEqual([False, True], var.eval())
 
   def testScatterOutOfRangeCpu(self):
-    for op in (tf.scatter_nd_add, tf.scatter_nd_sub, tf.scatter_nd_mul,
-               tf.scatter_nd_div, tf.scatter_nd_update):
+    # TODO(simister): Re-enable once binary size increase due to
+    # scatter_nd ops is under control.
+    #  tf.scatter_nd_mul, tf.scatter_nd_div,
+    for op in (tf.scatter_nd_add, tf.scatter_nd_sub, tf.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.test_session(use_gpu=False):
@@ -237,7 +243,7 @@ class ScatterTest(tf.test.TestCase):
     shape = tf.placeholder(tf.int32, shape=[None])
     tf.scatter_nd(indices, updates, shape)
 
-  def testEmptyoutputShape1(self):
+  def testEmptyOutputShape1(self):
     indices = tf.zeros([2, 2, 2], tf.int32)
     updates = tf.zeros([2, 2, 2], tf.int32)
     shape = tf.constant([0, 3, 2], tf.int32)
@@ -246,7 +252,7 @@ class ScatterTest(tf.test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       tf.scatter_nd(indices, updates, shape)
 
-  def testEmptyoutputShape2(self):
+  def testEmptyOutputShape2(self):
     indices = tf.placeholder(tf.int32, shape=None)
     updates = tf.placeholder(tf.int32, shape=None)
     shape = tf.constant([0, 3, 2], tf.int32)
@@ -259,7 +265,7 @@ class ScatterTest(tf.test.TestCase):
               [2, 2, 2], dtype=np.int32)
       })
 
-  def testEmptyoutputShape3(self):
+  def testEmptyOutputShape3(self):
     indices = tf.zeros([0], tf.int32)
     updates = tf.zeros([0], tf.int32)
     shape = tf.constant([0], tf.int32)
@@ -355,8 +361,10 @@ class ScatterTest(tf.test.TestCase):
   def _disabledTestScatterOutOfRangeGpu(self):
     if not tf.test.IsBuiltWithCuda():
       return
-    for op in (tf.scatter_nd_add, tf.scatter_nd_sub, tf.scatter_nd_mul,
-               tf.scatter_nd_div, tf.scatter_nd_update):
+    # TODO(simister): Re-enable once binary size increase due to
+    # scatter_nd ops is under control.
+    # tf.scatter_nd_mul, tf.scatter_nd_div,
+    for op in (tf.scatter_nd_add, tf.scatter_nd_sub, tf.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       # With GPU, the code ignores indices that are out of range.
@@ -374,6 +382,14 @@ class ScatterTest(tf.test.TestCase):
         op(ref, indices, updates).eval()
         indices = np.array([2, 0, 6])
         op(ref, indices, updates).eval()
+
+  def testScatterNdRepatedIndicesAdd(self):
+    indices = tf.zeros([100000, 1], tf.int32)
+    values = np.random.randn(100000)
+    shape = [1]
+    with self.test_session():
+      val = tf.scatter_nd(indices, values, shape).eval()
+    self.assertAllClose([np.sum(values)], val)
 
 
 if __name__ == "__main__":

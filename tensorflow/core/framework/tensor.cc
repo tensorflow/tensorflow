@@ -723,9 +723,9 @@ bool Tensor::CanUseDMA() const {
 namespace {
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit, 
+void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
                  int shape_size, T* data, int64* data_index, string* result) {
-  if (*data_index >= limit) return;  
+  if (*data_index >= limit) return;
   int64 element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
   if (dim_index == shape_size - 1) {
@@ -735,7 +735,7 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
       strings::StrAppend(result, data[(*data_index)++]);
     }
     return;
-  }  
+  }
   // Loop every element of one dim.
   for (int64 i = 0; i < element_count; i++) {
     bool flag = false;
@@ -744,8 +744,8 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
       flag = true;
     }
     // As for each element, print the sub-dim.
-    PrintOneDim(dim_index + 1, shape, limit, shape_size,
-                data, data_index, result);
+    PrintOneDim(dim_index + 1, shape, limit, shape_size, data, data_index,
+                result);
     if (*data_index < limit || flag) {
       strings::StrAppend(result, "]");
       flag = false;
@@ -754,13 +754,13 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
 }
 
 template <typename T>
-string SummarizeArray(int64 limit, int64 num_elts, const TensorShape& tensor_shape, 
-                      const char* data) {
+string SummarizeArray(int64 limit, int64 num_elts,
+                      const TensorShape& tensor_shape, const char* data) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
 
   const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
-  if(shape.empty()) {
+  if (shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
       strings::StrAppend(&ret, array[i]);
@@ -770,8 +770,7 @@ string SummarizeArray(int64 limit, int64 num_elts, const TensorShape& tensor_sha
   }
   int64 data_index = 0;
   const int shape_size = tensor_shape.dims();
-  PrintOneDim(0, shape, limit, shape_size, 
-              array, &data_index, &ret);  
+  PrintOneDim(0, shape, limit, shape_size, array, &data_index, &ret);
 
   if (num_elts > limit) strings::StrAppend(&ret, "...");
   return ret;

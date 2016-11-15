@@ -15,6 +15,7 @@ limitations under the License.
 import {State} from './data';
 import {DataProvider, EmbeddingInfo} from './data-provider';
 import * as logging from './logging';
+import {ProjectorEventContext} from './projectorEventContext';
 import {Projector} from './vz-projector';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -33,12 +34,12 @@ export let BookmarkPanelPolymer = PolymerElement({
 
 export class BookmarkPanel extends BookmarkPanelPolymer {
   private projector: Projector;
-  private dataProvider: DataProvider;
 
   // A list containing all of the saved states.
   private savedStates: State[];
   private hasStates = false;
   private selectedState: number;
+  private ignoreNextProjectionEvent: boolean;
 
   private dom: d3.Selection<any>;
 
@@ -46,18 +47,27 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
     this.dom = d3.select(this);
     this.savedStates = [];
     this.setupUploadButton();
+    this.ignoreNextProjectionEvent = false;
   }
 
-  initialize(projector: Projector, dataProvider: DataProvider) {
+  initialize(
+      projector: Projector, projectorEventContext: ProjectorEventContext) {
     this.projector = projector;
-    this.dataProvider = dataProvider;
+    projectorEventContext.registerProjectionChangedListener(() => {
+      if (this.ignoreNextProjectionEvent) {
+        this.ignoreNextProjectionEvent = false;
+      } else {
+        this.clearStateSelection();
+      }
+    });
   }
 
-  setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
+  setSelectedTensor(
+      run: string, tensorInfo: EmbeddingInfo, dataProvider: DataProvider) {
     if (tensorInfo && tensorInfo.bookmarksPath) {
       this.loadAllStates([]);
       // Get any bookmarks that may come when the projector starts up.
-      this.dataProvider.getBookmarks(run, tensorInfo.tensorName, bookmarks => {
+      dataProvider.getBookmarks(run, tensorInfo.tensorName, bookmarks => {
         this.loadAllStates(bookmarks);
       });
     }
@@ -180,7 +190,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
         this.savedStates[i].isSelected = true;
         this.notifyPath('savedStates.' + i + '.isSelected', true, false);
 
-        // Update the world to this state.
+        this.ignoreNextProjectionEvent = true;
         this.projector.loadState(this.savedStates[i]);
       }
     }

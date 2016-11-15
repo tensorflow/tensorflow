@@ -19,6 +19,7 @@ import {runAsyncTask} from './util';
 
 /** Maximum number of colors supported in the color map. */
 const NUM_COLORS_COLOR_MAP = 50;
+const MAX_SPRITE_IMAGE_SIZE_PX = 8192;
 
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';
@@ -47,10 +48,15 @@ export interface EmbeddingInfo {
   sprite?: SpriteMetadata;
 }
 
-/** Matches the json format of `projector_config.proto` */
+/**
+ * Matches the json format of `projector_config.proto`
+ * This should be kept in sync with the code in vz-projector-data-panel which
+ * holds a template for users to build a projector config JSON object from the
+ * projector UI.
+ */
 export interface ProjectorConfig {
   embeddings: EmbeddingInfo[];
-  modelCheckpointPath: string;
+  modelCheckpointPath?: string;
 }
 
 export type ServingMode = 'demo' | 'server' | 'proto';
@@ -118,14 +124,13 @@ export function parseTensors(
         vector: null,
         index: data.length,
         projections: null,
-        projectedPoint: null
       };
       // If the first label is not a number, take it as the label.
       if (isNaN(row[0] as any) || numDim === row.length - 1) {
         dataPoint.metadata['label'] = row[0];
-        dataPoint.vector = row.slice(1).map(Number);
+        dataPoint.vector = new Float32Array(row.slice(1).map(Number));
       } else {
-        dataPoint.vector = row.map(Number);
+        dataPoint.vector = new Float32Array(row.map(Number));
       }
       data.push(dataPoint);
       if (numDim == null) {
@@ -143,6 +148,29 @@ export function parseTensors(
       }
     });
     return data;
+  }, TENSORS_MSG_ID).then(dataPoints => {
+    logging.setModalMessage(null, TENSORS_MSG_ID);
+    return dataPoints;
+  });
+}
+
+/** Parses a tsv text file. */
+export function parseTensorsFromFloat32Array(data: Float32Array,
+    dim: number): Promise<DataPoint[]> {
+  return runAsyncTask('Parsing tensors...', () => {
+    let N = data.length / dim;
+    let dataPoints: DataPoint[] = [];
+    let offset = 0;
+    for (let i = 0; i < N; ++i) {
+      dataPoints.push({
+        metadata: {},
+        vector: data.subarray(offset, offset + dim),
+        index: i,
+        projections: null,
+      });
+      offset += dim;
+    }
+    return dataPoints;
   }, TENSORS_MSG_ID).then(dataPoints => {
     logging.setModalMessage(null, TENSORS_MSG_ID);
     return dataPoints;
@@ -274,8 +302,17 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
       logging.setModalMessage(null, spriteMsgId);
     }
     let [metadata, spriteImage] = values;
-    metadata.spriteImage = spriteImage;
-    metadata.spriteMetadata = spriteMetadata;
-    callback(metadata);
+
+    if (spriteImage && (spriteImage.height > MAX_SPRITE_IMAGE_SIZE_PX ||
+                        spriteImage.width > MAX_SPRITE_IMAGE_SIZE_PX)) {
+      logging.setModalMessage(
+          `Error: Sprite image of dimensions ${spriteImage.width}px x ` +
+          `${spriteImage.height}px exceeds maximum dimensions ` +
+          `${MAX_SPRITE_IMAGE_SIZE_PX}px x ${MAX_SPRITE_IMAGE_SIZE_PX}px`);
+    } else {
+      metadata.spriteImage = spriteImage;
+      metadata.spriteMetadata = spriteMetadata;
+      callback(metadata);
+    }
   });
 }

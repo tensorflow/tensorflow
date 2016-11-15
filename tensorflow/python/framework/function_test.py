@@ -167,18 +167,19 @@ class FunctionTest(tf.test.TestCase):
       self.assertEqual(y.get_shape(), dy.get_shape())
 
   def testSymGradAttr(self):
+
     @function.Defun(noinline=True)
     def Foo(x):
       return x * 2
+
+    self.assertTrue(
+        Foo.instantiate([tf.float32]).definition.attr["_noinline"].b)
 
     g = tf.Graph()
     with g.as_default():
       x = tf.constant(3.0)
       y = Foo(x)
       dx, = tf.gradients(y, [x])
-
-    self.assertTrue(y.op.node_def.attr["_noinline"].b)
-    self.assertTrue(dx.op.node_def.attr['f'].func.attr['_noinline'].b)
 
     cfg = tf.ConfigProto(graph_options=tf.GraphOptions(
         optimizer_options=tf.OptimizerOptions(
@@ -190,7 +191,6 @@ class FunctionTest(tf.test.TestCase):
     with self.test_session(graph=g, config=cfg):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
-
 
   def testZNoDepOnY(self):
 
@@ -764,7 +764,6 @@ class FunctionInlineControlTest(tf.test.TestCase):
             do_constant_folding=True)))
     for noinline in [False, True]:
 
-      # pylint: disable=unexpected-keyword-arg
       @function.Defun(dtype, noinline=noinline)
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
@@ -778,6 +777,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
           x = Cell(x)
         return tf.reduce_sum(x, [0, 1])
 
+      self.assertEqual(noinline, Cell.definition.attr["_noinline"].b)
+
       g = tf.Graph()
       with g.as_default():
         x = tf.placeholder(dtype)
@@ -786,11 +787,24 @@ class FunctionInlineControlTest(tf.test.TestCase):
 
       np.random.seed(321)
       inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
+      run_metadata = tf.RunMetadata()
       with tf.Session(graph=g, config=cfg) as sess:
-        ans = sess.run([y, dx], {x: inp})
+        ans = sess.run(
+            [y, dx], {x: inp},
+            run_metadata=run_metadata,
+            options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE))
         print(ans[0], np.sum(ans[1]))
         self.assertAllClose(ans[0], 255.971, rtol=1e-3)
         self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
+
+      def MetadataHasCell(run_metadata):
+        for dev_stats in run_metadata.step_stats.dev_stats:
+          for node_stats in dev_stats.node_stats:
+            if "Cell" in node_stats.timeline_label:
+              return True
+        return False
+
+      self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
 @function.Defun(*[tf.float32] * 3)

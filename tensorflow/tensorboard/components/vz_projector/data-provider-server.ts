@@ -18,6 +18,8 @@ import {ProjectorConfig, DataProvider, TENSORS_MSG_ID, EmbeddingInfo} from './da
 import * as dataProvider from './data-provider';
 import * as logging from './logging';
 
+// Limit for the number of data points we receive from the server.
+const LIMIT_NUM_POINTS = 100000;
 
 /**
  * Data provider that loads data provided by a python server (usually backed
@@ -82,17 +84,36 @@ export class ServerDataProvider implements DataProvider {
       callback: (ds: DataSet) => void) {
     // Get the tensor.
     logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
-    d3.text(
-        `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
-        (err: any, tsv: string) => {
-          if (err) {
-            logging.setModalMessage('Error: ' + err.responseText);
-            return;
-          }
-          dataProvider.parseTensors(tsv).then(dataPoints => {
-            callback(new DataSet(dataPoints));
-          });
+    let xhr = new XMLHttpRequest();
+    xhr.open('GET', `${this.routePrefix}/tensor?` +
+        `run=${run}&name=${tensorName}&num_rows=${LIMIT_NUM_POINTS}`);
+    xhr.responseType = 'arraybuffer';
+    xhr.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        let percent = (ev.loaded * 100 / ev.total).toFixed(1);
+        logging.setModalMessage('Fetching tensor values: ' + percent + '%',
+                                TENSORS_MSG_ID);
+      }
+    };
+    xhr.onload = () => {
+      let data = new Float32Array(xhr.response);
+      this.getEmbeddingInfo(run, tensorName, embedding => {
+        if (embedding.tensorShape[0] > LIMIT_NUM_POINTS) {
+          logging.setWarningMessage(
+            `Showing the first ${LIMIT_NUM_POINTS.toLocaleString()}` +
+            ` of ${embedding.tensorShape[0].toLocaleString()} data points`);
+        }
+        let dim = embedding.tensorShape[1];
+        dataProvider.parseTensorsFromFloat32Array(data, dim).then(
+            dataPoints => {
+          callback(new DataSet(dataPoints));
         });
+      });
+    };
+    xhr.onerror = () => {
+      logging.setModalMessage('Error: ' + xhr.responseText);
+    };
+    xhr.send(null);
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,
@@ -101,7 +122,8 @@ export class ServerDataProvider implements DataProvider {
       let metadataPath = null;
       if (embedding.metadataPath) {
         metadataPath =
-            `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`;
+            `${this.routePrefix}/metadata?` +
+            `run=${run}&name=${tensorName}&num_rows=${LIMIT_NUM_POINTS}`;
       }
       let spriteImagePath = null;
       if (embedding.sprite && embedding.sprite.imagePath) {

@@ -1,16 +1,9 @@
 # tfprof: A Profiling Tool for TensorFlow Models
 
-Internal User Please Use: go/tfprof
-
 Author: Xin Pan (xpan@google.com, github: panyx0718)
 
 Consultants: Jon Shlens, Pete Warden
 
-
-## Introduction
-
-tfprof is a profiling tool for TensorFlow that analyzes model architectures
-and measures system performance.
 
 ###Major Features
 
@@ -20,17 +13,83 @@ and measures system performance.
 4.  Explore model based on name scope or graph structure.
 5.  Selectively grouping/filtering/accounting/ordering ops.
 
-### Interfaces
+[Python API Tutorials](#python-api-tutorials): It can be called directly from
+Python codes. Results are either printed
+to stdout or dumped to file. tensorflow.tfprof.TFProfNode proto is returned from
+the API to allow users to perform further analysis.
 
 [CLI Tutorials](#cli-tutorials):
 It supports interactive mode for exploration and single-shot mode for
 scripts. Outputs can be dumped to files or printed in terminal.
 
-Python API Tutorials: Python API is not released yet.
+[Options](#options):
+tfprof supports many options to selectively account/display/order ops and
+statistics.
+
+## Python API Tutorials
+
+tfprof is part of TensorFlow core. Simply ```import tensorflow as tf```.
+
+### Examine the shapes and sizes of all trainiable Variables.
+```python
+# Print trainable variable parameter statistics to stdout.
+param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
+    tf.get_default_graph(),
+    tfprof_options=tf.contrib.tfprof.model_analyzer.
+        TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
+
+# param_stats is tensorflow.tfprof.TFProfNode proto. It organize the statistics
+# of each graph node in tree scructure. Let's print the root below.
+sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
+```
+
+### Examine the number of floating point operations
+``` python
+# Print to stdout an analysis of the number of floating point operations in the
+# model broken down by individual operations.
+#
+# Note: Only Ops with RegisterStatistics('flops') defined have flop stats. It
+# also requires complete shape information. It is common that shape is unknown
+# statically. To complete the shape, provide run-time shape information with
+# tf.RunMetadata to the API (See next example on how to provide RunMetadata).
+tf.contrib.tfprof.model_analyzer.print_model_analysis(
+    tf.get_default_graph(),
+    tfprof_options=tf.contrib.tfprof.model_analyzer.FLOAT_OPS_OPTIONS)
+```
+
+### Examine the timing and memory usage
+You will first need to run the following set up in your model in order to
+compute the memory and timing statistics.
+
+```python
+# Generate the meta information for the model that contains the memory usage
+# and timing information.
+run_metadata = tf.RunMetadata()
+with tf.Session() as sess:
+  _ = sess.run(train_op,
+               options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+               run_metadata=run_metadata)
+```
+
+Finally, you may run `print_model_analysis` to explore the timing and memory
+demands of the model.
+
+``` python
+# Print to stdout an analysis of the memory usage and the timing information
+# from running the graph broken down by operations.
+tf.contrib.tfprof.model_analyzer.print_model_analysis(
+    tf.get_default_graph(),
+    run_meta=run_metadata,
+    tfprof_options=tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY)
+```
+
+Users can change ```tfprof_options``` to fully leverage tfprof's power.
+
 
 ## CLI Tutorials
 
-Tutorials are based on a 32 layers ResNet.
+Tutorials below are based on a 32 layers ResNet.
+
 TODO(xpan): Provide graph.pbtxt, model.ckpt, tfprof_log and run_meta download.
 
 ### Examples
@@ -43,6 +102,12 @@ bazel build -c opt tensorflow/tools/tfprof/...
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/tools/tfprof/tfprof help
+#
+# The following command start tfprof in one-shot mode.
+#
+bazel-bin/tensorflow/tools/tfprof/tfprof scope \
+    --graph_path=graph.pbtxt \
+    --max_depth=3
 #
 # The following commands will start tfprof interactive mode.
 #
@@ -168,7 +233,8 @@ _TFProfRoot (0us/2.29sec)
 Note: float operations calculation depends on
 1) op.RegisterStatistics. If an op doesn’t
 have RegisterStatistics defined, its float operations cannot be counted.
-2) fully defined shape is also necessary in order to calculate flops.
+2) fully defined shape is also necessary in order to calculate flops. Sometimes
+full shape is not available statically. Use RunMetadata to get run-time shape.
 float operations number is provided by tensorflow::tfprof::OpLog logged from
 Python API.
 
@@ -276,6 +342,10 @@ Second, call write_op_log to write the OpLog proto.
 ```python
 tf.contrib.tfprof.tfprof_logger.write_op_log(
     sess.graph, /tmp/my_op_log_dir, op_log)
+
+# Get run-time shape information in order to fill shapes and get flops.
+tf.contrib.tfprof.tfprof_logger.write_op_log(
+    sess.graph, /tmp/my_op_log_dir, op_log, run_meta)
 ```
 
 Third, when starting the tfprof tool, specify
@@ -372,84 +442,43 @@ TensorFlow checkpoint. It defines _checkpoint_variable op type. It also
 provides checkpointed tensors' values.
 
 
-## Design
+##Options
 
+`-max_depth`: Show ops that are at most this number of hops from starting op in the tree/graph structure.
 
-### In-memory representation
+`-min_bytes`: Show ops that request at least this number of bytes.
 
-<b>Scope:</b> This representation organizes ops based on name scope hierarchy,
-similar to filesystem hierarchy. Hence, it is essentially a tree data structure.
-For example op1 with name “name1/name2” is a child of op2 with name “name1”.
+`-min_micros`: Show ops that spend at least this number of microseconds to run.
 
-<b>Graph:</b> The representation organizes ops based on op inputs. Hence it is
-a graph structure. The graph is a “directed acyclic graph” (hopefully), with
-direction from “output to input”. The direction is design this way so that users
-can trace from “result” to its “sources”.
+`-min_params`: Show ops that contains at least this number of parameters.
 
-### Command line options
+`-min_float_ops`: Show ops that contain at least this number of float operations. Only available if an op has op.RegisterStatistics() defined and OpLog is provided
 
-tfprof’s major goals are to measure system performance and quicly analyze
-model architectures. Hence, its commands and options should allow users to achieve
-these 2 goals easily.
+`-device_regexes`: Show ops that a placed on the specified devices. regexes are comma-separated.
 
-<b>graph:</b> It is expected that users will mostly use graph representation to
-debug system performance. Hence, tfprof supports graph command, which pulls the
-graph in-memory representation described above.
+`-order_by`: Order the results by [name|depth|bytes|micros|params|float_ops]
 
-<b>scope:</b> It is expected that some users might want to explore their model
-statistics using the name scope information they defined in the Python codes.
-Hence, tfprof supports “scope” command, which pulls the tree in-memory
-representation.
+`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-sperated.
 
-<b>set:</b> It is used to store the options so that user doesn’t need to
-re-type the same option again and again in the follow up command line. Note that
-tfprof has traditional terminal’s history and auto-complete support.
+`-start_name_regexes`: Show ops starting from the ops that matches the regexes, recursively. regexes are comma-separated.
 
-<b>help:</b> print help information.
+`-trim_name_regexes`: Hide ops starting from the ops that matches the regexes, recursively, regexes are comma-seprated.
 
-<b>Options:</b> Run “tfprof help” to get detailed explanations.
+`-show_name_regexes`: Show ops that match the regexes. regexes are comma-seprated.
 
-```python
-"-max_depth",
-"-min_bytes",
-"-min_micros",
-"-min_params",
-"-min_float_ops",
-"-order_by",
-"-account_type_regexes",
-"-start_name_regexes",
-"-trim_name_regexes",
-"-show_name_regexes",
-"-hide_name_regexes",
-"-account_displayed_op_only",
-"-select",
-"-viz",  # Only supported for graph command.
-"-dump_to_file",
-```
+`-hide_name_regexes`: Hide ops that match the regexes. regexes are comma-seprated.
 
-A key design is that stats are aggregated from descendants up to ancestors.
-`-account_type_regexes` is used to decide which ops stat is accounted. It makes
-decision based on op type. Usually set it to `.*` if no extra type information
-is added to the ops using OpLog. Intuitively, only accounted ops are displayed.
-`-min/max` and `-show/hide/trim/start` options are only used the optionally
-displayed or hide ops based on ops’ name and stats. However, they don’t prevent
-tfprof from accounting stats of hidden ops. Hence, the stat of a op can be
-aggregated by its parent even if it is hidden. `-account_displayed_op_only` is
-an option to break this rule. When it is set, only displayed ops are accounted.
+Notes: For each op, `-account_type_regexes` is first evaluated, only ops with
+types matching the specified regexes are accounted and selected for displayed.
+`-start/trim/show/hide_name_regexes` are used to further filter ops for display.
+`-start_name_regexes` is evaluated first to search the starting ops to display.
+Descendants of starting ops are then evaluated against `-show/hide_name_regexes`
+to make display decision. If an op matches trim_name_regexes, all its
+descendants are hidden. Ops statistics are *accounted even if they are hidden*
+as long as they match the `-account_xxx` options.
 
-Regexes are all comma-separated, for example `-show_name_regexes`
-`regex1.*,regex2.*`. It is designed this way because it is convenient and comma
-is not expected to show up in op names.
+`-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
-`-order_by` is used to order displayed ops. Displayed ops at the same hierarchy
-(notice the indent printed) are sorted according to order_by.
+`-select`: Comma-separated list of metrics to show: [bytes|micros|params|float_ops|num_hidden_ops|tensor_value|device|op_types].
 
-## Future Work
-
-* Load SummaryWriter event logs so that it can show the latest summary value.
-
-* Better sorting and aggregation of outputs. Easier comprehension.
-
-* Currently, shape information is based on `graph.pbtxt`. When the shape
-information is incomplete, tfprof ignores it. See if it can use `RunMetadata`
-and `Checkpoint` to complete shape information.
+`-dump_to_file`: Dump the output to a file, instead of terminal.

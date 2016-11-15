@@ -36,10 +36,16 @@ def _ResizeNearestNeighborGrad(op, grad):
   Returns:
     The gradients w.r.t. the input and the output.
   """
+  image = op.inputs[0]
+  if image.get_shape()[1:3].is_fully_defined():
+    image_shape = image.get_shape()[1:3]
+  else:
+    image_shape = array_ops.shape(image)[1:3]
+
   # pylint: disable=protected-access
   grads = gen_image_ops._resize_nearest_neighbor_grad(
       grad,
-      op.inputs[0].get_shape()[1:3],
+      image_shape,
       align_corners=op.get_attr("align_corners"))
   # pylint: enable=protected-access
   return [grads, None]
@@ -73,15 +79,9 @@ def _ResizeShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("ResizeBilinearGrad")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("CropAndResizeGradImage")
 def _CropAndResizeGradImageShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
-
-
-ops.RegisterShape("CropAndResizeGradBoxes")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("CropAndResize")

@@ -1,5 +1,19 @@
 #!/bin/bash
-
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+#
 # This script assumes the standard setup on tensorflow Jenkins windows machines.
 # It is NOT guaranteed to work on any other machine. Use at your own risk!
 #
@@ -44,6 +58,9 @@ export PATH="/c/Program Files/Anaconda3:$PATH"
 bazel clean
 output_base=$(bazel info output_base)
 bazel shutdown
+# Sleep 5s to wait for jvm shutdown completely
+# otherwise rm will fail with device or resource busy error
+sleep 5
 rm -rf ${output_base}
 
 echo "" | ./configure

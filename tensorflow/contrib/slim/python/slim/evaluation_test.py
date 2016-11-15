@@ -284,10 +284,12 @@ class EvaluationTest(tf.test.TestCase):
           '', chkpt_dir, logdir, eval_op=update_op,
           eval_interval_secs=2.0, timeout=6.0)
       end = time.time()
+
       # Check we've waited for the timeout.
       self.assertGreater(end - start, 6.0)
+
       # Then the timeout kicked in and stops the loop.
-      self.assertLess(end - start, 7.5)
+      self.assertLess(end - start, 8.0)
 
 
 class SingleEvaluationTest(tf.test.TestCase):

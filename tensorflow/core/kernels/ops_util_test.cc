@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/ops_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -281,6 +283,58 @@ TEST_F(OpsUtilTest, GetBroadcastTest3_3_3_2) {
 
 TEST_F(OpsUtilTest, SanitizeThreadSuffix) {
   EXPECT_EQ("_aBc123_-___", SanitizeThreadSuffix("/aBc123_-  /"));
+}
+
+TEST_F(OpsUtilTest, Aligned1DSlice) {
+  Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
+  int64 start = 0;
+  int64 end = EIGEN_MAX_ALIGN_BYTES;
+  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  EXPECT_EQ(output, true);
+  // Checks sliced 1D tensor is aligned for sanity.
+  Tensor sliced;
+  CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({end - start})));
+  EXPECT_EQ(sliced.IsAligned(), true);
+}
+
+TEST_F(OpsUtilTest, Misaligned1DSlice) {
+  Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
+  int64 start = 1;
+  int64 end = EIGEN_MAX_ALIGN_BYTES + 1;
+  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  EXPECT_EQ(output, false);
+  // Checks sliced 1D tensor is misaligned for sanity.
+  Tensor sliced;
+  CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({end - start})));
+  EXPECT_EQ(sliced.IsAligned(), false);
+}
+
+TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
+  // For multidimensional tensors, alignment is dictated by inner_dim_size.
+  int64 inner_dim_size = EIGEN_MAX_ALIGN_BYTES;
+  Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
+  int64 start = 1;
+  int64 end = 2;
+  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  EXPECT_EQ(output, true);
+  // Checks sliced 2D is aligned, for sanity.
+  Tensor sliced;
+  CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({1, inner_dim_size})));
+  EXPECT_EQ(sliced.IsAligned(), true);
+}
+
+TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
+  // For multidimensional tensors, alignment is dictated by inner_dim_size.
+  int64 inner_dim_size = EIGEN_MAX_ALIGN_BYTES + 1;
+  Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
+  int64 start = 1;
+  int64 end = 2;
+  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  EXPECT_EQ(output, false);
+  // Checks sliced 2D is misaligned, for sanity.
+  Tensor sliced;
+  CHECK(sliced.CopyFrom(t.Slice(start, end), TensorShape({1, inner_dim_size})));
+  EXPECT_EQ(sliced.IsAligned(), false);
 }
 
 }  // namespace

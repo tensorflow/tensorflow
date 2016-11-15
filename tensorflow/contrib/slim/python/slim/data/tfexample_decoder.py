@@ -294,10 +294,7 @@ class Image(ItemHandler):
     image_buffer = keys_to_tensors[self._image_key]
     image_format = keys_to_tensors[self._format_key]
 
-    image = self._decode(image_buffer, image_format)
-    if self._shape is not None:
-      image = array_ops.reshape(image, self._shape)
-    return image
+    return self._decode(image_buffer, image_format)
 
   def _decode(self, image_buffer, image_format):
     """Decodes the image buffer.
@@ -316,12 +313,23 @@ class Image(ItemHandler):
     def decode_jpg():
       return image_ops.decode_jpeg(image_buffer, self._channels)
 
-    image = control_flow_ops.case({
+    # For RGBA images JPEG is not a valid decoder option.
+    if self._channels > 3:
+      pred_fn_pairs = {
+        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
+                            math_ops.equal(image_format, 'RAW')): decode_raw,
+      }
+      default_decoder = decode_png
+    else:
+      pred_fn_pairs = {
         math_ops.logical_or(math_ops.equal(image_format, 'png'),
                             math_ops.equal(image_format, 'PNG')): decode_png,
         math_ops.logical_or(math_ops.equal(image_format, 'raw'),
                             math_ops.equal(image_format, 'RAW')): decode_raw,
-    }, default=decode_jpg, exclusive=True)
+      }
+      default_decoder = decode_jpg
+
+    image = control_flow_ops.case(pred_fn_pairs, default=default_decoder, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:

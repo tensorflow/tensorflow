@@ -722,6 +722,8 @@ class MultivariateNormalFull(_MultivariateNormalOperatorPD):
     self._parameters = parameters
 
 
+@kullback_leibler.RegisterKL(
+    _MultivariateNormalOperatorPD, _MultivariateNormalOperatorPD)
 def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
   """Batched KL divergence `KL(mvn_a || mvn_b)` for multivariate normals.
 
@@ -771,21 +773,3 @@ def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
     k = math_ops.cast(cov_a.vector_space_dimension(), mvn_a.dtype)
     one_half_l = cov_b.sqrt_log_det() - cov_a.sqrt_log_det()
     return 0.5 * (t + q - k) + one_half_l
-
-
-# Register KL divergences.
-kl_classes = [
-    MultivariateNormalFull,
-    MultivariateNormalCholesky,
-    MultivariateNormalDiag,
-    MultivariateNormalDiagPlusVDVT,
-]
-
-
-for mvn_aa in kl_classes:
-  # Register when they are the same here, and do not register when they are the
-  # same below because that would result in a repeated registration.
-  kullback_leibler.RegisterKL(mvn_aa, mvn_aa)(_kl_mvn_mvn_brute_force)
-  for mvn_bb in kl_classes:
-    if mvn_bb != mvn_aa:
-      kullback_leibler.RegisterKL(mvn_aa, mvn_bb)(_kl_mvn_mvn_brute_force)

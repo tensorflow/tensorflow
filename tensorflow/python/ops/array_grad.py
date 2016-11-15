@@ -90,6 +90,12 @@ def _ConcatGrad(op, grad):
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
     sizes = _ExtractInputShapes(op.inputs[1:])
+    # The following line to be enabled once ready
+    # if len(sizes) > 16:
+    # sizes = array_ops.squeeze(array_ops.slice(
+    # array_ops.pack(sizes, axis=1), [concat_dim, 0], [1, -1]))
+    # out_grads = array_ops.split_v(grad, sizes, concat_dim)
+    # else:
     # pylint: disable=protected-access
     offset = gen_array_ops._concat_offset(concat_dim, sizes)
     # pylint: enable=protected-access
@@ -215,6 +221,12 @@ def _StridedSliceGradGrad(op, grad):
 def _SplitGrad(op, *grads):
   return None, array_ops.concat(op.inputs[0], list(grads))
 
+@ops.RegisterGradient("SplitV")
+def _SplitVGrad(op, *grads):
+  returnval = array_ops.concat(op.inputs[2], list(grads))
+  returnval = [returnval] + [None,] * (len(op.inputs) - 1)
+  print(returnval)
+  return returnval
 
 ops.NotDifferentiable("Const")
 
@@ -222,6 +234,7 @@ ops.NotDifferentiable("Const")
 @ops.RegisterGradient("Diag")
 def _DiagGrad(_, grad):
   return array_ops.diag_part(grad)
+
 
 @ops.RegisterGradient("DiagPart")
 def _DiagPartGrad(_, grad):
@@ -430,6 +443,12 @@ def _ReverseGrad(op, grad):
   return array_ops.reverse(grad, reverse_dims), None
 
 
+@ops.RegisterGradient("ReverseV2")
+def _ReverseV2Grad(op, grad):
+  axis = op.inputs[1]
+  return array_ops.reverse_v2(grad, axis), None
+
+
 @ops.RegisterGradient("SpaceToBatch")
 def _SpaceToBatchGrad(op, grad):
   # Its gradient is the opposite op: BatchToSpace.
@@ -504,6 +523,10 @@ def _ExtractImagePatchesGrad(op, grad):
   batch_size, rows_in, cols_in, channels = [
     dim.value for dim in op.inputs[0].get_shape()
   ]
+  input_bhwc = array_ops.shape(op.inputs[0])
+  batch_size = input_bhwc[0]
+  channels = input_bhwc[3]
+
   _, rows_out, cols_out, _ = [
     dim.value for dim in op.outputs[0].get_shape()
   ]

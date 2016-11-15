@@ -241,6 +241,19 @@ class EinsumTest(tf.test.TestCase):
     print(axes, err)
     assert err < 1e-8
 
+  def test_input_is_placeholder(self):
+    with tf.Graph().as_default():
+      m0 = tf.placeholder(tf.int32, shape=(1, None))
+      m1 = tf.placeholder(tf.int32, shape=(None, 1))
+      out = tf.einsum('ij,jk->ik', m0, m1)
+      with tf.Session() as sess:
+        feed_dict = {
+            m0: [[1, 2, 3]],
+            m1: [[2], [1], [1]],
+        }
+        np.testing.assert_almost_equal([[7]],
+                                       sess.run(out, feed_dict=feed_dict))
+
 
 if __name__ == '__main__':
   tf.test.main()

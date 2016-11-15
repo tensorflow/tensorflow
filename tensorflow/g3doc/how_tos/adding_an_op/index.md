@@ -44,6 +44,8 @@ add a call to the `REGISTER_OP` macro that defines the interface for such an Op:
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
+using namespace tensorflow;
+
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
     .Output("zeroed: int32")
@@ -236,12 +238,26 @@ class ZeroOutTest(tf.test.TestCase):
     with self.test_session():
       result = zero_out_module.zero_out([5, 4, 3, 2, 1])
       self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+
+if __name__ == "__main__":
+  tf.test.main()
+```
+
+Add a 'zero_out_op_test' target to `tensorflow/python/kernel_tests/BUILD` among the other CPU-only test targets:
+
+```
+tf_py_test(
+    name = "zero_out_op_test",
+    size = "small",
+    srcs = ["zero_out_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
 ```
 
 Then run your test:
 
 ```sh
-$ bazel test tensorflow/python:zero_out_op_test
+$ bazel test //tensorflow/python/kernel_tests:zero_out_op_test
 ```
 
 ## Validation
@@ -491,7 +507,7 @@ for the types](../../resources/dims_types.md#data-types).
 
 For ops that can take different types as input or produce different output
 types, you can specify [an attr](#attrs) in
-[an input or output type](#inputs-outputs) in the Op registration.  Typically
+[an input or output type](#inputs-and-outputs) in the Op registration.  Typically
 you would then register an `OpKernel` for each supported type.
 
 For instance, if you'd like the `ZeroOut` Op to work on `float`s
@@ -895,7 +911,7 @@ For more details, see
 
 In general, changes to specifications must be backwards-compatible: changing the
 specification of an Op must not break prior serialized `GraphDef` protocol
-buffers constructed from older specfications.  The details of `GraphDef`
+buffers constructed from older specifications.  The details of `GraphDef`
 compatibility are [described here](../../resources/versions.md#graphs).
 
 There are several ways to preserve backwards-compatibility.
@@ -1193,7 +1209,7 @@ the following:
 ```
 
 This specifies that the shape function should use the C++-implemented
-shape specfication defined in your `REGISTER_OP` declaration above.  Note
+shape specification defined in your `REGISTER_OP` declaration above.  Note
 that TensorFlow will soon make this the default, so you only need
 to define the shape function once in C++ to get shape inference for
 free in Python.

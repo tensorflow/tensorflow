@@ -311,6 +311,19 @@ Status ReadBinaryProto(Env* env, const string& fname,
   return Status::OK();
 }
 
+Status WriteTextProto(Env* env, const string& fname,
+                      const ::tensorflow::protobuf::Message& proto) {
+#if !defined(TENSORFLOW_LITE_PROTOS)
+  string serialized;
+  if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &serialized)) {
+    return errors::FailedPrecondition("Unable to convert proto to text.");
+  }
+  return WriteStringToFile(env, fname, serialized);
+#else
+  return errors::Unimplemented("Can't write text protos with protolite.");
+#endif
+}
+
 Status ReadTextProto(Env* env, const string& fname,
                      ::tensorflow::protobuf::Message* proto) {
 #if !defined(TENSORFLOW_LITE_PROTOS)
