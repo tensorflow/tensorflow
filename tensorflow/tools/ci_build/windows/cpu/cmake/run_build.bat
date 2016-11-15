@@ -24,7 +24,7 @@ ECHO ON
 
 :: Some common variables to be shared between runs.
 SET CMAKE_EXE="C:\Program Files\cmake\bin\cmake.exe"
-SET SWIG_EXE="C:\ProgramData\chocolatey\bin\swig.exe"
+SET SWIG_EXE="C:\swigwin-3.0.10\swig.exe"
 SET PY_EXE="C:\Program Files\Anaconda3\python.exe"
 SET PY_LIB="C:\Program Files\Anaconda3\libs\python35.lib"
 
