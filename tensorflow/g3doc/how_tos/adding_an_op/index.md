@@ -1117,7 +1117,7 @@ found in [common_shape_fns.h](https://www.tensorflow.org/code/tensorflow/core/fr
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
     .Output("zeroed: int32")
-    .SetShapeFn([](::tensorflow::shape_inference::UnchangedShape);
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
 ```
 
 A shape function can also constrain the shape of an input. For the version of
