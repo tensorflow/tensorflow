@@ -622,9 +622,7 @@ def round(x, name=None):
   if x.dtype.is_integer:
     return x
   else:
-    # TODO(nolivia): Switch to new Round op
-    # return gen_math_ops.round(x, name=name)
-    return gen_math_ops.floor(x + 0.5, name=name)
+    return gen_math_ops.round(x, name=name)
 
 
 def cast(x, dtype, name=None):
