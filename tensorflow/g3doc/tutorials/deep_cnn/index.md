@@ -7,7 +7,9 @@ and assumes expertise and experience in machine learning.
 
 CIFAR-10 classification is a common benchmark problem in machine learning.  The
 problem is to classify RGB 32x32 pixel images across 10 categories:
-```airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.```
+```
+airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.
+```
 
 For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
 and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)

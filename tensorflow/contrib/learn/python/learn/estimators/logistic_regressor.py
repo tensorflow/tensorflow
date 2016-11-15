@@ -157,7 +157,7 @@ class LogisticRegressor(estimator.Estimator):
 
     Args:
       x: features.
-      y: labels.
+      y: labels (must be 0 or 1).
       input_fn: Input function.
       feed_fn: Function creating a feed dict every time it is called.
       batch_size: minibatch size to use on the input.

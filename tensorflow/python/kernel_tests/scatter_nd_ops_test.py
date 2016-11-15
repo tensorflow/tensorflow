@@ -243,7 +243,7 @@ class ScatterNdTest(tf.test.TestCase):
     shape = tf.placeholder(tf.int32, shape=[None])
     tf.scatter_nd(indices, updates, shape)
 
-  def testEmptyoutputShape1(self):
+  def testEmptyOutputShape1(self):
     indices = tf.zeros([2, 2, 2], tf.int32)
     updates = tf.zeros([2, 2, 2], tf.int32)
     shape = tf.constant([0, 3, 2], tf.int32)
@@ -252,7 +252,7 @@ class ScatterNdTest(tf.test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       tf.scatter_nd(indices, updates, shape)
 
-  def testEmptyoutputShape2(self):
+  def testEmptyOutputShape2(self):
     indices = tf.placeholder(tf.int32, shape=None)
     updates = tf.placeholder(tf.int32, shape=None)
     shape = tf.constant([0, 3, 2], tf.int32)
@@ -265,7 +265,7 @@ class ScatterNdTest(tf.test.TestCase):
               [2, 2, 2], dtype=np.int32)
       })
 
-  def testEmptyoutputShape3(self):
+  def testEmptyOutputShape3(self):
     indices = tf.zeros([0], tf.int32)
     updates = tf.zeros([0], tf.int32)
     shape = tf.constant([0], tf.int32)

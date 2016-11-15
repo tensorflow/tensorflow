@@ -270,8 +270,8 @@ new_http_archive(
 new_http_archive(
   name = "paper_checkbox",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-checkbox/archive/v1.1.3.tar.gz",
-  strip_prefix = "paper-checkbox-1.1.3",
+  url = "https://github.com/polymerelements/paper-checkbox/archive/v1.4.0.tar.gz",
+  strip_prefix = "paper-checkbox-1.4.0",
 )
 
 new_http_archive(
@@ -286,6 +286,13 @@ new_http_archive(
   build_file = "bower.BUILD",
   url = "https://github.com/polymerelements/paper-dialog-behavior/archive/v1.2.5.tar.gz",
   strip_prefix = "paper-dialog-behavior-1.2.5",
+)
+
+new_http_archive(
+  name = "paper_dialog_scrollable",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/paper-dialog-scrollable/archive/1.1.5.tar.gz",
+  strip_prefix = "paper-dialog-scrollable-1.1.5",
 )
 
 new_http_archive(

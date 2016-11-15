@@ -156,7 +156,7 @@ class RpcRecvTensorFreeList {
  public:
   RpcRecvTensorFreeList() {}
   ~RpcRecvTensorFreeList() {
-    for (int i = 0; i < objects_.size(); i++) {
+    for (size_t i = 0; i < objects_.size(); i++) {
       delete objects_[i];
     }
   }

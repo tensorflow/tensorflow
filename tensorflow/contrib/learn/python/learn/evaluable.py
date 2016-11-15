@@ -54,7 +54,9 @@ class Evaluable(object):
          label values (class labels in classification, real numbers in
          regression) or dictionary of multiple vectors/matrices. Can be iterator
          that returns array of targets or dictionary of array of targets. If set,
-         `input_fn` must be `None`.
+         `input_fn` must be `None`. Note: For classification, label values must
+         be integers representing the class index (i.e. values from 0 to
+         n_classes-1).
       input_fn: Input function returning a tuple of:
           features - Dictionary of string feature name to `Tensor` or `Tensor`.
           labels - `Tensor` or dictionary of `Tensor` with labels.

@@ -168,12 +168,6 @@ def constant(value, dtype=None, shape=None, name="Const"):
   return const_tensor
 
 
-@ops.RegisterShape("Const")
-def _ConstantShape(op):
-  return [tensor_shape.TensorShape(
-      [d.size for d in op.get_attr("value").tensor_shape.dim])]
-
-
 def _constant_tensor_conversion_function(v, dtype=None, name=None,
                                          as_ref=False):
   _ = as_ref

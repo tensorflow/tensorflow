@@ -82,8 +82,20 @@ py_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/core:protos_all_py"],
+)
+
+py_test(
+    name = "utils_test",
+    size = "small",
+    srcs = [
+        "utils_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/core:protos_all_py",
+        ":utils",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

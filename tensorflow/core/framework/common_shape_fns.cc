@@ -715,12 +715,8 @@ Status ReductionShapeForReduceJoin(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ConcatShapeHelper(InferenceContext* c, bool dim_is_last_argument) {
-  const int dim_index = dim_is_last_argument ? c->num_inputs() - 1 : 0;
-  const int start_value_index = dim_is_last_argument ? 0 : 1;
-  const int end_value_index =
-      dim_is_last_argument ? c->num_inputs() - 1 : c->num_inputs();
-
+Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
+                         int end_value_index, int dim_index) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(dim_index), 0, &unused));
   const Tensor* concat_dim_t = c->input_tensor(dim_index);
@@ -788,12 +784,16 @@ Status ConcatShapeHelper(InferenceContext* c, bool dim_is_last_argument) {
   return Status::OK();
 }
 
-Status ConcatShape(InferenceContext* c) {
-  return ConcatShapeHelper(c, /* dim_is_last_argument */ false);
+Status ConcatShape(InferenceContext* c, int num_inputs_to_concat) {
+  return ConcatShapeHelper(c, 1 /* start_value_index */,
+                           1 + num_inputs_to_concat /* end_value_index */,
+                           0 /* dim_index */);
 }
 
 Status ConcatV2Shape(InferenceContext* c) {
-  return ConcatShapeHelper(c, /* dim_is_last_argument */ true);
+  return ConcatShapeHelper(c, 0 /* start_value_index */,
+                           c->num_inputs() - 1 /* end_value_index */,
+                           c->num_inputs() - 1 /* dim_index */);
 }
 
 Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
@@ -857,6 +857,47 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle values_shape, ShapeHandle shape_shape) {
+  // Validate ranks.
+  ShapeHandle unused_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(indices_shape, 2, &unused_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(values_shape, 1, &unused_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(shape_shape, 1, &unused_shape));
+
+  // Number of elements in indices and values must match.
+  DimensionHandle num_index_elements_dim = c->Dim(indices_shape, 0);
+  if (c->ValueKnown(num_index_elements_dim)) {
+    DimensionHandle num_values_elements_dim = c->Dim(values_shape, 0);
+    if (c->ValueKnown(num_values_elements_dim)) {
+      int64 num_index_elements = c->Value(num_index_elements_dim);
+      int64 num_values_elements = c->Value(num_values_elements_dim);
+      if (num_index_elements != num_values_elements) {
+        return errors::InvalidArgument("Number of elements in index (",
+                                       num_index_elements, ") and values (",
+                                       num_values_elements, ") do not match.");
+      }
+    }
+  }
+
+  // Rank embedded in indices must match shape.
+  DimensionHandle index_rank_dim = c->Dim(indices_shape, 1);
+  if (c->ValueKnown(index_rank_dim)) {
+    DimensionHandle shape_rank_dim = c->Dim(shape_shape, 0);
+    if (c->ValueKnown(shape_rank_dim)) {
+      int64 index_rank = c->Value(index_rank_dim);
+      int32 shape_rank = c->Value(shape_rank_dim);
+      if (index_rank != shape_rank) {
+        return errors::InvalidArgument("Index rank (", index_rank,
+                                       ") and shape rank (", shape_rank,
+                                       ") do not match.");
+      }
+    }
+  }
+
   return Status::OK();
 }
 

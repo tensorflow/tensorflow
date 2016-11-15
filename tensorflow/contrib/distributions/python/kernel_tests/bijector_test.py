@@ -243,6 +243,23 @@ class InlineBijectorTest(tf.test.TestCase):
       self.assertAllClose(x, rev.eval())
       self.assertAllClose(-np.sum(np.log(y), axis=-1), jac.eval())
 
+  def testShapeGetters(self):
+    with self.test_session():
+      bijector = bijectors.Inline(
+          forward_event_shape_fn=lambda x: tf.concat(0, (x, [1])),
+          get_forward_event_shape_fn=lambda x: x.as_list() + [1],
+          inverse_event_shape_fn=lambda x: x[:-1],
+          get_inverse_event_shape_fn=lambda x: x[:-1],
+          name="shape_only")
+      x = tf.TensorShape([1, 2, 3])
+      y = tf.TensorShape([1, 2, 3, 1])
+      self.assertAllEqual(y, bijector.get_forward_event_shape(x))
+      self.assertAllEqual(y.as_list(),
+                          bijector.forward_event_shape(x.as_list()).eval())
+      self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
+      self.assertAllEqual(x.as_list(),
+                          bijector.inverse_event_shape(y.as_list()).eval())
+
 
 class ScaleAndShiftBijectorTest(tf.test.TestCase):
   """Tests correctness of the Y = scale * x + shift transformation."""
@@ -636,6 +653,22 @@ class SoftmaxCenteredBijectorTest(tf.test.TestCase):
                           softmax.forward_log_det_jacobian(x).eval(),
                           atol=0., rtol=1e-7)
 
+  def testShapeGetters(self):
+    with self.test_session():
+      for x, y, b in (
+          (tf.TensorShape([]),
+           tf.TensorShape([2]),
+           bijectors.SoftmaxCentered(event_ndims=0, validate_args=True)),
+          (tf.TensorShape([4]),
+           tf.TensorShape([5]),
+           bijectors.SoftmaxCentered(event_ndims=1, validate_args=True))):
+        self.assertAllEqual(y, b.get_forward_event_shape(x))
+        self.assertAllEqual(y.as_list(),
+                            b.forward_event_shape(x.as_list()).eval())
+        self.assertAllEqual(x, b.get_inverse_event_shape(y))
+        self.assertAllEqual(x.as_list(),
+                            b.inverse_event_shape(y.as_list()).eval())
+
 
 class SigmoidCenteredBijectorTest(tf.test.TestCase):
   """Tests correctness of the Y = g(X) = (1 + exp(-X))^-1 transformation."""
@@ -757,6 +790,20 @@ class ChainBijectorTest(tf.test.TestCase):
                                   bijectors.Softplus()))
       assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
 
+  def testShapeGetters(self):
+    with self.test_session():
+      bijector = bijectors.Chain((
+          bijectors.SoftmaxCentered(event_ndims=1, validate_args=True),
+          bijectors.SoftmaxCentered(event_ndims=0, validate_args=True)))
+      x = tf.TensorShape([])
+      y = tf.TensorShape([2+1])
+      self.assertAllEqual(y, bijector.get_forward_event_shape(x))
+      self.assertAllEqual(y.as_list(),
+                          bijector.forward_event_shape(x.as_list()).eval())
+      self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
+      self.assertAllEqual(x.as_list(),
+                          bijector.inverse_event_shape(y.as_list()).eval())
+
 
 class InvertBijectorTest(tf.test.TestCase):
   """Tests the correctness of the Y = Invert(bij) transformation."""
@@ -794,6 +841,19 @@ class InvertBijectorTest(tf.test.TestCase):
     with self.test_session():
       bijector = bijectors.Invert(bijectors.Exp())
       assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
+
+  def testShapeGetters(self):
+    with self.test_session():
+      bijector = bijectors.Invert(bijectors.SigmoidCentered(
+          validate_args=True))
+      x = tf.TensorShape([2])
+      y = tf.TensorShape([])
+      self.assertAllEqual(y, bijector.get_forward_event_shape(x))
+      self.assertAllEqual(y.as_list(),
+                          bijector.forward_event_shape(x.as_list()).eval())
+      self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
+      self.assertAllEqual(x.as_list(),
+                          bijector.inverse_event_shape(y.as_list()).eval())
 
 
 if __name__ == "__main__":

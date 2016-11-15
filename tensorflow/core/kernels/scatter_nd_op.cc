@@ -317,9 +317,9 @@ class ScatterNdUpdateOp : public OpKernel {
                                     scatter_nd_op::UpdateOp::SUB);
 // TODO(simister): Find a way to reduce amount of templated generated code
 // to reduce build size, then re-enable these additional operations.
-// REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMul",     \
-//                                   scatter_nd_op::UpdateOp::MUL); \
-// REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdDiv",     \
+// REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMul",
+//                                   scatter_nd_op::UpdateOp::MUL);
+// REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdDiv",
 //                                   scatter_nd_op::UpdateOp::DIV);
 
 #define REGISTER_SCATTER_ND(type, dev) \

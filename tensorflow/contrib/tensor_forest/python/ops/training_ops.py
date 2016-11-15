@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
@@ -40,15 +39,6 @@ ops.NotDifferentiable('FinishedNodes')
 # latent bugs here.
 ops.NotDifferentiable('ScatterAddNdim')
 ops.NotDifferentiable('UpdateFertileSlots')
-
-
-ops.RegisterShape('CountExtremelyRandomStats')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('SampleInputs')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('BestSplits')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('GrowTree')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('FinishedNodes')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('ScatterAddNdim')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('UpdateFertileSlots')(common_shapes.call_cpp_shape_fn)
 
 
 # Workaround for the fact that importing tensorflow imports contrib

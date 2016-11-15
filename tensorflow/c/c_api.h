@@ -41,6 +41,9 @@ limitations under the License.
 //   size on the bool type, so the macro defined in stdbool.h could
 //   be inconsistent with the bool keyword in C++. Thus, the use
 //   of stdbool.h is avoided and unsigned char is used instead.
+// * size_t is used to represent byte sizes of objects that are
+//   materialized in the address space of the calling process.
+// * int is used as an index into arrays.
 //
 // Questions left to address:
 // * Might at some point need a way for callers to provide their own Env.
@@ -64,6 +67,11 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// --------------------------------------------------------------------------
+// TF_Version returns a string describing version information of the
+// TensorFlow library. TensorFlow using semantic versioning.
+extern const char* TF_Version();
 
 // --------------------------------------------------------------------------
 // TF_DataType holds the type for a scalar value.  E.g., one slot in a tensor.
@@ -384,13 +392,13 @@ extern void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op);
 // `value` must point to a string of length `length` bytes.
 extern void TF_SetAttrString(TF_OperationDescription* desc,
                              const char* attr_name, const void* value,
-                             int length);
-// `values` and `lengths` both must have lengths `num_values`.
+                             size_t length);
+// `values` and `lengths` each must have lengths `num_values`.
 // `values[i]` must point to a string of length `lengths[i]` bytes.
 extern void TF_SetAttrStringList(TF_OperationDescription* desc,
                                  const char* attr_name,
-                                 const void* const* values, const int* lengths,
-                                 int num_values);
+                                 const void* const* values,
+                                 const size_t* lengths, int num_values);
 extern void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
                           int64_t value);
 extern void TF_SetAttrIntList(TF_OperationDescription* desc,
@@ -430,23 +438,19 @@ extern void TF_SetAttrShapeList(TF_OperationDescription* desc,
 // binary-serialized TensorShapeProto.
 extern void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
                                        const char* attr_name, const void* proto,
-                                       int proto_len, TF_Status* status);
+                                       size_t proto_len, TF_Status* status);
 // `protos` and `proto_lens` must point to arrays of length `num_shapes`.
 // `protos[i]` must point to an array of `proto_lens[i]` bytes
 // representing a binary-serialized TensorShapeProto.
 extern void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
                                            const char* attr_name,
                                            const void* const* protos,
-                                           const int* proto_lens,
+                                           const size_t* proto_lens,
                                            int num_shapes, TF_Status* status);
 
-// This functions takes ownership of *value (the
-// implementation will eventually call TF_DeleteTensor).
 extern void TF_SetAttrTensor(TF_OperationDescription* desc,
                              const char* attr_name, TF_Tensor* value,
                              TF_Status* status);
-// This functions takes ownership of values[0]..values[num_values-1] (the
-// implementation will eventually call TF_DeleteTensor on each).
 extern void TF_SetAttrTensorList(TF_OperationDescription* desc,
                                  const char* attr_name,
                                  TF_Tensor* const* values, int num_values,
@@ -592,15 +596,15 @@ extern TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
 // TF_AttrMetadata.total_size from TF_OperationGetAttrMetadata(oper,
 // attr_name)).
 extern void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
-                                      void* value, int max_length,
+                                      void* value, size_t max_length,
                                       TF_Status* status);
 
 // Get the list of strings in the value of the attribute `attr_name`.  Fills in
-// `values` and `lengths`, both of which must point to an array of length at
+// `values` and `lengths`, each of which must point to an array of length at
 // least `max_values`.
 //
 // The elements of values will point to addresses in `storage` which must be at
-// least `storage_size` bytes large.  Ideally, max_values would be set to
+// least `storage_size` bytes in length.  Ideally, max_values would be set to
 // TF_AttrMetadata.list_size and `storage` would be at least
 // TF_AttrMetadata.total_size, obtained from TF_OperationGetAttrMetadata(oper,
 // attr_name).
@@ -608,7 +612,7 @@ extern void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
 // Fails if storage_size is too small to hold the requested number of strings.
 extern void TF_OperationGetAttrStringList(TF_Operation* oper,
                                           const char* attr_name, void** values,
-                                          int* lengths, int max_values,
+                                          size_t* lengths, int max_values,
                                           void* storage, size_t storage_size,
                                           TF_Status* status);
 
@@ -808,9 +812,7 @@ extern void TF_CloseSession(TF_Session*, TF_Status* status);
 extern void TF_DeleteSession(TF_Session*, TF_Status* status);
 
 // Run the graph associated with the session starting with the supplied inputs
-// (inputs[0,ninputs-1] with corresponding values in input_values[0,ninputs-1])/
-// Regardless of success or failure, the TF_SessionRun call takes ownership the
-// elements of input_values and will eventually call TF_DeleteTensor on them.
+// (inputs[0,ninputs-1] with corresponding values in input_values[0,ninputs-1]).
 //
 // Any NULL and non-NULL value combinations for (`run_options`,
 // `run_metadata`) are valid.
@@ -823,8 +825,10 @@ extern void TF_DeleteSession(TF_Session*, TF_Status* status);
 //      `TF_Buffer` that may be updated to contain the serialized representation
 //      of a `RunMetadata` protocol buffer.
 //
-// The caller retains the ownership of `run_options` and/or `run_metadata` (when
-// not NULL) and should manually call TF_DeleteBuffer on them.
+// The caller retains ownership of `input_values` (which can be deleted using
+// TF_DeleteTensor). The caller also retains ownership of `run_options` and/or
+// `run_metadata` (when not NULL) and should manually call TF_DeleteBuffer on
+// them.
 //
 // On success, the tensors corresponding to outputs[0,noutputs-1] are placed in
 // output_values[]. Ownership of the elements of output_values[] is transferred
@@ -906,43 +910,23 @@ extern void TF_ExtendGraph(TF_DeprecatedSession*, const void* proto,
                            size_t proto_len, TF_Status*);
 
 // See TF_SessionRun() above.
-extern void TF_Run(TF_DeprecatedSession*,
-                   // RunOptions
-                   const TF_Buffer* run_options,
-                   // Input tensors
+extern void TF_Run(TF_DeprecatedSession*, const TF_Buffer* run_options,
                    const char** input_names, TF_Tensor** inputs, int ninputs,
-                   // Output tensors
                    const char** output_names, TF_Tensor** outputs, int noutputs,
-                   // Target operations
                    const char** target_oper_names, int ntargets,
-                   // RunMetadata
-                   TF_Buffer* run_metadata,
-                   // Output status
-                   TF_Status*);
+                   TF_Buffer* run_metadata, TF_Status*);
 
 // See TF_SessionPRunSetup() above.
-extern void TF_PRunSetup(TF_DeprecatedSession*,
-                         // Input names
-                         const char** input_names, int ninputs,
-                         // Output names
-                         const char** output_names, int noutputs,
-                         // Target operations
+extern void TF_PRunSetup(TF_DeprecatedSession*, const char** input_names,
+                         int ninputs, const char** output_names, int noutputs,
                          const char** target_oper_names, int ntargets,
-                         // Output handle
-                         const char** handle,
-                         // Output status
-                         TF_Status*);
+                         const char** handle, TF_Status*);
 
 // See TF_SessionPRun above.
 extern void TF_PRun(TF_DeprecatedSession*, const char* handle,
-                    // Input tensors
                     const char** input_names, TF_Tensor** inputs, int ninputs,
-                    // Output tensors
                     const char** output_names, TF_Tensor** outputs,
-                    int noutputs,
-                    // Target operations
-                    const char** target_oper_names, int ntargets,
-                    // Output status
+                    int noutputs, const char** target_oper_names, int ntargets,
                     TF_Status*);
 
 // --------------------------------------------------------------------------

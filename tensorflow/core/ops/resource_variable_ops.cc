@@ -179,13 +179,13 @@ REGISTER_OP("ResourceGather")
     .Input("resource: resource")
     .Input("indices: Tindices")
     .Attr("validate_indices: bool = true")
-    .Output("output: Tparams")
-    .Attr("Tparams: type")
+    .Output("output: dtype")
+    .Attr("dtype: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      DataType tparams;
-      TF_RETURN_IF_ERROR(c->GetAttr("Tparams", &tparams));
-      if (c->input_handle_dtype(0) != tparams) {
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &dtype));
+      if (c->input_handle_dtype(0) != dtype) {
         return errors::InvalidArgument(
             "Trying to gather from a variable with the wrong dtype.");
       }
@@ -223,8 +223,8 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 REGISTER_OP("ResourceScatterAdd")
     .Input("resource: resource")
     .Input("indices: Tindices")
-    .Input("updates: T")
-    .Attr("T: numbertype")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle var_shape = c->input_handle_shape(0);

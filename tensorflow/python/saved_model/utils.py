@@ -21,23 +21,25 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.framework import dtypes
 
 # TensorInfo helpers.
 
 
-def build_tensor_info(name=None, dtype=None, shape=None):
+def build_tensor_info(tensor):
   """Utility function to build TensorInfo proto.
 
   Args:
-    name: Name of the tensor to be used in the TensorInfo.
-    dtype: Datatype to be set in the TensorInfo.
-    shape: TensorShapeProto to specify the shape of the tensor in the
-        TensorInfo.
+    tensor: Tensor whose name, dtype and shape are used to build the TensorInfo.
 
   Returns:
-    A TensorInfo protocol buffer constructed based on the supplied arguments.
+    A TensorInfo protocol buffer constructed based on the supplied argument.
   """
-  return meta_graph_pb2.TensorInfo(name=name, dtype=dtype, shape=shape)
+  dtype_enum = dtypes.as_dtype(tensor.dtype).as_datatype_enum
+  return meta_graph_pb2.TensorInfo(
+      name=tensor.name,
+      dtype=dtype_enum,
+      tensor_shape=tensor.get_shape().as_proto())
 
 # SignatureDef helpers.
 

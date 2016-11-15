@@ -139,32 +139,20 @@ if __name__ == '__main__':
               name,
               _GetMatrixBinaryFunctorGradientTest(
                   tf.matrix_solve, dtype, shape, adjoint=adjoint))
-          if dtype == np.float64:
-            # TODO(rmlarsen): The gradients of triangular solves seems
-            # particularly sensitive to round-off when computed in float32.
-            # In some tests, a few gradient elements differ by 25% between the
-            # numerical and theoretical values. Disable tests for float32 until
-            # we understand this better.
+
+          for lower in True, False:
+            name = '%s_low_%s' % (name, lower)
             _AddTest(
                 MatrixBinaryFunctorGradientTest,
                 'MatrixTriangularSolveGradient',
-                name + '_low_True',
+                name,
                 _GetMatrixBinaryFunctorGradientTest(
                     tf.matrix_triangular_solve,
                     dtype,
                     shape,
+                    float32_tol_fudge=4.0,
                     adjoint=adjoint,
-                    lower=True))
-            _AddTest(
-                MatrixBinaryFunctorGradientTest,
-                'MatrixTriangularSolveGradient',
-                name + '_low_False',
-                _GetMatrixBinaryFunctorGradientTest(
-                    tf.matrix_triangular_solve,
-                    dtype,
-                    shape,
-                    adjoint=adjoint,
-                    lower=False))
+                    lower=lower))
 
   # Tests for gradients of unary matrix operations.
   for dtype in np.float32, np.float64:

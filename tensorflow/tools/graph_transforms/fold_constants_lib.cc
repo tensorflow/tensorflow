@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -149,8 +149,10 @@ Status FoldConstants(const GraphDef& input_graph_def,
   DeviceAttributes device_attributes;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       &input_graph, inputs, outputs, {}, device_attributes));
-  DoConstantFolding(ConstantFoldingOptions(), nullptr, Env::Default(), nullptr,
-                    &input_graph);
+  if (!DoConstantFolding(ConstantFoldingOptions(), nullptr, Env::Default(),
+                         nullptr, &input_graph)) {
+    return errors::InvalidArgument("Constant folding failed");
+  }
   GraphDef folded_graph_def;
   input_graph.ToGraphDef(&folded_graph_def);
   GraphDef send_recvs_replaced;

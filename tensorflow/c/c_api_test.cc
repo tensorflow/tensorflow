@@ -45,6 +45,11 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
 
 namespace {
 
+typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
+    unique_tensor_ptr;
+
+TEST(CAPI, Version) { EXPECT_NE("", string(TF_Version())); }
+
 TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));
@@ -257,8 +262,9 @@ TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s) {
 }
 
 TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
+  unique_tensor_ptr tensor(Int32Tensor(v), TF_DeleteTensor);
   TF_OperationDescription* desc = TF_NewOperation(graph, "Const", "scalar");
-  TF_SetAttrTensor(desc, "value", Int32Tensor(v), s);
+  TF_SetAttrTensor(desc, "value", tensor.get(), s);
   if (TF_GetCode(s) != TF_OK) return nullptr;
   TF_SetAttrType(desc, "dtype", TF_INT32);
   return TF_FinishOperation(desc, s);
@@ -750,8 +756,7 @@ class CSession {
                   inputs_.size(), outputs_ptr, output_values_ptr,
                   outputs_.size(), targets_ptr, targets_.size(), nullptr, s);
 
-    // TF_SessionRun() takes ownership of the tensors in input_values_.
-    input_values_.clear();
+    DeleteInputValues();
   }
 
   void CloseAndDelete(TF_Status* s) {
@@ -871,7 +876,7 @@ TEST(CAPI, ColocateWith) {
   EXPECT_EQ(1, m.list_size);
   EXPECT_EQ(TF_ATTR_STRING, m.type);
   void* values[1];
-  int lens[1];
+  size_t lens[1];
   std::unique_ptr<char[]> storage(new char[m.total_size]);
   TF_OperationGetAttrStringList(add, tensorflow::kColocationAttrName, values,
                                 lens, 1, storage.get(), m.total_size, s);
@@ -896,9 +901,9 @@ TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
 
 void StringVectorToArrays(const std::vector<string>& v,
                           std::unique_ptr<const void* []>* ptrs,
-                          std::unique_ptr<int[]>* lens) {
+                          std::unique_ptr<size_t[]>* lens) {
   ptrs->reset(new const void*[v.size()]);
-  lens->reset(new int[v.size()]);
+  lens->reset(new size_t[v.size()]);
   for (size_t i = 0; i < v.size(); ++i) {
     (*ptrs)[i] = v[i].data();
     (*lens)[i] = v[i].size();
@@ -986,7 +991,7 @@ TEST_F(CApiAttributesTest, String) {
 TEST_F(CApiAttributesTest, StringList) {
   std::vector<string> list = {"bugs", "bunny", "duck"};
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   StringVectorToArrays(list, &list_ptrs, &list_lens);
   int list_total_size = 0;
   for (const auto& s : list) {
@@ -1002,7 +1007,7 @@ TEST_F(CApiAttributesTest, StringList) {
 
   EXPECT_TF_META("v", list.size(), TF_ATTR_STRING, list_total_size);
   std::unique_ptr<void* []> values(new void*[list.size()]);
-  std::unique_ptr<int[]> lens(new int[list.size()]);
+  std::unique_ptr<size_t[]> lens(new size_t[list.size()]);
   std::unique_ptr<char[]> storage(new char[list_total_size]);
   TF_OperationGetAttrStringList(oper, "v", values.get(), lens.get(),
                                 list.size(), storage.get(), list_total_size,
@@ -1227,7 +1232,7 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
   proto.SerializeToString(&bytes2);
 
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   const std::vector<string> list = {bytes1, bytes2};
   StringVectorToArrays(list, &list_ptrs, &list_lens);
 
@@ -1259,7 +1264,8 @@ TEST_F(CApiAttributesTest, Tensor) {
   const size_t ndims = TF_ARRAYSIZE(dims);
 
   auto desc = init("tensor");
-  TF_SetAttrTensor(desc, "v", Int8Tensor(dims, ndims, tensor), s_);
+  unique_tensor_ptr v(Int8Tensor(dims, ndims, tensor), TF_DeleteTensor);
+  TF_SetAttrTensor(desc, "v", v.get(), s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
   auto oper = TF_FinishOperation(desc, s_);
@@ -1294,6 +1300,9 @@ TEST_F(CApiAttributesTest, TensorList) {
       Int8Tensor(dims1, ndims1, tensor1), Int8Tensor(dims2, ndims2, tensor2),
   };
   TF_SetAttrTensorList(desc, "v", tmp, TF_ARRAYSIZE(tmp), s_);
+  for (int i = 0; i < TF_ARRAYSIZE(tmp); ++i) {
+    TF_DeleteTensor(tmp[i]);
+  }
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   auto oper = TF_FinishOperation(desc, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
