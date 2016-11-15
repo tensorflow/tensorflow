@@ -91,9 +91,13 @@ export class DataPanel extends DataPanelPolymer {
     this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
   }
 
+  private addWordBreaks(longString: string): string {
+    return longString.replace(/([\/=-_,])/g, '$1<wbr>');
+  }
+
   private updateMetadataUI(columnStats: ColumnStats[], metadataFile: string) {
     this.dom.select('#metadata-file')
-        .text(metadataFile)
+        .html(this.addWordBreaks(metadataFile))
         .attr('title', metadataFile);
     // Label by options.
     let labelIndex = -1;
@@ -205,8 +209,10 @@ export class DataPanel extends DataPanelPolymer {
           shape: this.getEmbeddingInfoByName(name).tensorShape
         };
       });
+      let wordBreakablePath =
+          this.addWordBreaks(this.projectorConfig.modelCheckpointPath);
       this.dom.select('#checkpoint-file')
-          .text(this.projectorConfig.modelCheckpointPath)
+          .html(wordBreakablePath)
           .attr('title', this.projectorConfig.modelCheckpointPath);
       this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
         if (this.selectedTensor === defaultTensor) {
