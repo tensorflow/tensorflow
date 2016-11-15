@@ -245,7 +245,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
 
       // Set the results.
       *result = StringPiece(buffer_.data(), std::min(buffer_.size(), n));
-      std::memcpy(scratch, buffer_.data(), buffer_.size());
+      std::memcpy(scratch, buffer_.data(), result->size());
     }
 
     if (result->size() < n) {
