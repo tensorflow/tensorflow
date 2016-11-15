@@ -342,7 +342,7 @@ class ZerosLikeTest(tf.test.TestCase):
       self._compareZeros(dtype, False)
 
   def testZerosLikeGPU(self):
-    for dtype in [tf.float32, tf.float64, tf.int32, tf.bool]:
+    for dtype in [tf.float32, tf.float64, tf.int32, tf.bool, tf.int64]:
       self._compareZeros(dtype, True)
 
   def testZerosLikePartialShape(self):

@@ -1,6 +1,6 @@
 ### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
 
-Creates an `_EmbeddingColumn`.
+Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 ##### Args:
 

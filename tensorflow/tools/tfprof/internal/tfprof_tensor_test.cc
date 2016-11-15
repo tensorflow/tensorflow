@@ -34,7 +34,7 @@ class TFProfTensorTest : public ::testing::Test {
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
-    TF_CHECK_OK(ReadGraphDefText(Env::Default(), graph_path, graph_pb.get()));
+    TF_CHECK_OK(ReadGraphDef(Env::Default(), graph_path, graph_pb.get()));
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb;
     std::unique_ptr<OpLog> op_log_pb;

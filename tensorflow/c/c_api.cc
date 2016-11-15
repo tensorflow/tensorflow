@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -443,25 +444,25 @@ static bool TF_Run_Inputs(
     std::vector<std::pair<tensorflow::string, Tensor>>* input_pairs,
     TF_Status* status) {
   const int ninputs = input_pairs->size();
-  bool ok = true;
   for (int i = 0; i < ninputs; ++i) {
     TF_Tensor* src = c_inputs[i];
-    if (ok) {
-      if (c_inputs[i]->dtype != TF_STRING) {
-        (*input_pairs)[i].second = tensorflow::TensorCApi::MakeTensor(
-            src->dtype, src->shape, src->buffer);
-      } else {
-        // TF_STRING tensors require copying since Tensor class expects
-        // a sequence of string objects.
-        ok = tensorflow::TF_Tensor_DecodeStrings(src, &(*input_pairs)[i].second,
-                                                 status);
-        // Must keep looping through all c_inputs even if there is an error
-        // so that TF_DeleteTensor() is called unconditionally on all c_inputs.
-      }
+    if (c_inputs[i]->dtype != TF_STRING) {
+      (*input_pairs)[i].second = tensorflow::TensorCApi::MakeTensor(
+          src->dtype, src->shape, src->buffer);
+    } else if (!tensorflow::TF_Tensor_DecodeStrings(
+                   src, &(*input_pairs)[i].second, status)) {
+      // TF_STRING tensors require copying since Tensor class expects
+      // a sequence of string objects.
+      return false;
     }
-    TF_DeleteTensor(src);
   }
-  return ok;
+  return true;
+}
+
+static void TF_DeleteTensors(TF_Tensor* const* tensors, int num) {
+  for (int i = 0; i < num; ++i) {
+    TF_DeleteTensor(tensors[i]);
+  }
 }
 
 static void TF_Run_Helper(
@@ -542,7 +543,9 @@ void TF_Run(TF_DeprecatedSession* s, const TF_Buffer* run_options,
             TF_Buffer* run_metadata, TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
+  const bool ok = TF_Run_Inputs(c_inputs, &input_pairs, status);
+  TF_DeleteTensors(c_inputs, ninputs);
+  if (!ok) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
@@ -603,7 +606,9 @@ void TF_PRun(TF_DeprecatedSession* s, const char* handle,
              TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
+  const bool ok = TF_Run_Inputs(c_inputs, &input_pairs, status);
+  TF_DeleteTensors(c_inputs, ninputs);
+  if (!ok) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
@@ -868,13 +873,13 @@ void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op) {
 }
 
 void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
-                      const void* value, int length) {
+                      const void* value, size_t length) {
   tensorflow::StringPiece s(static_cast<const char*>(value), length);
   desc->node_builder.Attr(attr_name, s);
 }
 
 void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
-                          const void* const* values, const int* lengths,
+                          const void* const* values, const size_t* lengths,
                           int num_values) {
   std::vector<tensorflow::StringPiece> v;
   v.reserve(num_values);
@@ -971,9 +976,17 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
 
 void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
                                 const char* attr_name, const void* proto,
-                                int proto_len, TF_Status* status) {
+                                size_t proto_len, TF_Status* status) {
+  // shape.ParseFromArray takes an int as length, this function takes size_t,
+  // make sure there is no information loss.
+  if (proto_len > std::numeric_limits<int>::max()) {
+    status->status = InvalidArgument(
+        "proto_len (", proto_len,
+        " bytes) is too large to be parsed by the protocol buffer library");
+    return;
+  }
   TensorShapeProto shape;
-  if (shape.ParseFromArray(proto, proto_len)) {
+  if (shape.ParseFromArray(proto, static_cast<int>(proto_len))) {
     desc->node_builder.Attr(attr_name, shape);
     status->status = Status::OK();
   } else {
@@ -984,12 +997,18 @@ void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
 void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
                                     const char* attr_name,
                                     const void* const* protos,
-                                    const int* proto_lens, int num_shapes,
+                                    const size_t* proto_lens, int num_shapes,
                                     TF_Status* status) {
   std::vector<TensorShapeProto> shapes;
   shapes.resize(num_shapes);
   for (int i = 0; i < num_shapes; ++i) {
-    if (!shapes[i].ParseFromArray(protos[i], proto_lens[i])) {
+    if (proto_lens[i] > std::numeric_limits<int>::max()) {
+      status->status = InvalidArgument(
+          "length of element ", i, " in the list (", proto_lens[i],
+          " bytes) is too large to be parsed by the protocol buffer library");
+      return;
+    }
+    if (!shapes[i].ParseFromArray(protos[i], static_cast<int>(proto_lens[i]))) {
       status->status =
           InvalidArgument("Unparseable TensorShapeProto at index ", i);
       return;
@@ -1333,7 +1352,8 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
 }
 
 void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
-                               void* value, int max_length, TF_Status* status) {
+                               void* value, size_t max_length,
+                               TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
   if (!status->status.ok()) return;
   if (attr->value_case() != tensorflow::AttrValue::kS) {
@@ -1349,9 +1369,9 @@ void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
 }
 
 void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
-                                   void** values, int* lengths, int max_values,
-                                   void* storage, size_t storage_size,
-                                   TF_Status* status) {
+                                   void** values, size_t* lengths,
+                                   int max_values, void* storage,
+                                   size_t storage_size, TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
   if (!status->status.ok()) return;
   if (attr->value_case() != tensorflow::AttrValue::kList) {
@@ -1553,7 +1573,7 @@ TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos) {
   }
 
   mutex_lock l(graph->mu);
-  while (*pos < graph->graph.num_node_ids()) {
+  while (*pos < static_cast<size_t>(graph->graph.num_node_ids())) {
     Node* node = graph->graph.FindNodeId(*pos);
     // FindNodeId() returns nullptr for nodes that have been deleted.
     // We aren't currently allowing nodes to be deleted, but it is safer
@@ -1695,9 +1715,7 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
   if (!ExtendSessionGraphHelper(session, status)) {
-    for (int i = 0; i < ninputs; ++i) {
-      TF_DeleteTensor(input_values[i]);
-    }
+    TF_DeleteTensors(input_values, ninputs);
     return;
   }
 
@@ -1705,7 +1723,9 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
 
   // Convert from TF_Port and TF_Tensor to a string and Tensor.
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
+  const bool ok = TF_Run_Inputs(input_values, &input_pairs, status);
+  TF_DeleteTensors(input_values, ninputs);
+  if (!ok) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = PortName(inputs[i]);
   }
@@ -1771,9 +1791,7 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
   if (!ExtendSessionGraphHelper(session, status)) {
-    for (int i = 0; i < ninputs; ++i) {
-      TF_DeleteTensor(input_values[i]);
-    }
+    TF_DeleteTensors(input_values, ninputs);
     return;
   }
 
@@ -1781,7 +1799,9 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
   // Convert from TF_Port and TF_Tensor to a string and Tensor.
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
+  const bool ok = TF_Run_Inputs(input_values, &input_pairs, status);
+  TF_DeleteTensors(input_values, ninputs);
+  if (!ok) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = PortName(inputs[i]);
   }

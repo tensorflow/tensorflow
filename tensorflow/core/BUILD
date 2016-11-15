@@ -1117,6 +1117,7 @@ tf_version_info_genrule()
 cc_library(
     name = "version_lib",
     srcs = ["util/version_info.cc"],
+    hdrs = ["public/version.h"],
     copts = tf_copts(),
 )
 
@@ -1128,7 +1129,6 @@ tf_cuda_library(
             "example/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
-            "public/version.h",
             "util/**/*.h",
             "util/**/*.cc",
         ],
@@ -1141,6 +1141,7 @@ tf_cuda_library(
             "framework/fake_input.*",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/version_info.cc",
         ],
     ) + select({
         "//tensorflow:windows": [],

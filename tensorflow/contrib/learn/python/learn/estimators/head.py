@@ -25,6 +25,7 @@ from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.python import summary
@@ -200,6 +201,7 @@ class _Head(object):
   def logits_dimension(self):
     raise NotImplementedError("Calling an abstract method.")
 
+  @abc.abstractmethod
   def head_ops(self, features, labels, mode, train_op_fn, logits=None,
                logits_input=None):
     """Returns ops for a model_fn.
@@ -214,70 +216,10 @@ class _Head(object):
       logits_input: tensor to build logits from.
 
     Returns:
-      `estimator.ModelFnOps`
+      `ModelFnOps`.
 
     Raises:
       ValueError: if mode is not recognized.
-    """
-    _check_logits_input_not_supported(logits, logits_input)
-    if mode == estimator.ModeKeys.TRAIN:
-      loss, additional_train_op = self._training_loss(features, labels,
-                                                      logits, logits_input)
-
-      train_op = train_op_fn(loss)
-
-      if additional_train_op:
-        if train_op:
-          train_op = control_flow_ops.group(train_op, *additional_train_op)
-        else:
-          train_op = control_flow_ops.group(*additional_train_op)
-
-      return estimator.ModelFnOps(
-          mode=estimator.ModeKeys.TRAIN,
-          loss=loss,
-          training_op=train_op,
-          default_metrics=self._default_metric(),
-          signature_fn=self._create_signature_fn())
-
-    if mode == estimator.ModeKeys.INFER:
-      return estimator.ModelFnOps(
-          mode=estimator.ModeKeys.INFER,
-          predictions=self._infer_op(logits, logits_input),
-          default_metrics=self._default_metric(),
-          signature_fn=self._create_signature_fn())
-
-    if mode == estimator.ModeKeys.EVAL:
-      predictions, loss = self._eval_op(features, labels, logits, logits_input)
-      return estimator.ModelFnOps(
-          mode=estimator.ModeKeys.EVAL,
-          predictions=predictions,
-          loss=loss,
-          default_metrics=self._default_metric(),
-          signature_fn=self._create_signature_fn())
-
-    raise ValueError("mode=%s unrecognized." % str(mode))
-
-  @abc.abstractmethod
-  def _training_loss(self, features, labels, logits=None, logits_input=None,
-                     name="training_loss"):
-    raise NotImplementedError("Calling an abstract method.")
-
-  @abc.abstractmethod
-  def _infer_op(self, logits=None, logits_input=None, name="infer_op"):
-    raise NotImplementedError("Calling an abstract method.")
-
-  @abc.abstractmethod
-  def _eval_op(self, features, labels, logits=None, logits_input=None,
-               name="eval_op"):
-    raise NotImplementedError("Calling an abstract method.")
-
-  @abc.abstractmethod
-  def _default_metric(self):
-    raise NotImplementedError("Calling an abstract method.")
-
-  @abc.abstractmethod
-  def _create_signature_fn(self):
-    """Creates signature function for the Head.
     """
     raise NotImplementedError("Calling an abstract method.")
 
@@ -319,8 +261,29 @@ class _RegressionHead(_Head):
   def logits_dimension(self):
     return self._logits_dimension
 
-  def _training_loss(self, features, labels, logits=None,
-                     logits_input=None, name="training_loss"):
+  def head_ops(self, features, labels, mode, train_op_fn, logits=None,
+               logits_input=None):
+    """See `_Head`."""
+    _check_mode_valid(mode)
+    _check_logits_input_not_supported(logits, logits_input)
+    predictions = self._predictions(logits)
+    loss = (None if labels is None
+            else self._training_loss(features, labels, logits))
+    train_op = (None if labels is None or train_op_fn is None
+                else self._train_op(features, labels, train_op_fn, logits))
+    eval_metric_ops = (None if labels is None
+                       else self._eval_metric_ops(features, labels, logits))
+    signature_fn = self._signature_fn()
+
+    return model_fn.ModelFnOps(
+        mode=mode,
+        predictions=predictions,
+        loss=loss,
+        train_op=train_op,
+        eval_metric_ops=eval_metric_ops,
+        signature_fn=signature_fn)
+
+  def _training_loss(self, features, labels, logits, name="training_loss"):
     """Returns training loss tensor for this head.
 
     Training loss is different from the loss reported on the tensorboard as we
@@ -336,24 +299,17 @@ class _RegressionHead(_Head):
       labels: either a tensor for labels or in multihead case, a dict of string
         to labels tensor.
       logits: logits, a float tensor.
-      logits_input: Output of last hidden layer.
       name: Op name.
 
     Returns:
-      A tuple of training Loss and additional_train_op (possibly None)
+      A loss `Tensor`.
     """
     labels = _check_labels(labels, self._label_name)
 
-    centered_bias_step = None
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
           self.logits_dimension,
           self._centered_bias_weight_collection))
-      centered_bias_step = [_centered_bias_step(
-          self.logits_dimension,
-          self._centered_bias_weight_collection,
-          labels,
-          self._train_loss_fn)]
 
     loss_unweighted = self._train_loss_fn(logits, labels)
     loss, weighted_average_loss = _loss(
@@ -362,32 +318,54 @@ class _RegressionHead(_Head):
         name=name)
     summary.scalar(
         _head_prefixed(self._head_name, "loss"), weighted_average_loss)
-    return loss, centered_bias_step
+    return loss
 
-  def _eval_op(self, features, labels, logits=None, logits_input=None,
-               name="eval_op"):
+  def _train_op(self, features, labels, train_op_fn, logits):
+    """Returns op for the training step."""
+    loss = self._training_loss(features, labels, logits)
+    train_op = train_op_fn(loss)
+
+    if self._enable_centered_bias:
+      centered_bias_step = [_centered_bias_step(
+          self.logits_dimension,
+          self._centered_bias_weight_collection,
+          labels,
+          self._train_loss_fn)]
+      train_op = control_flow_ops.group(train_op, *centered_bias_step)
+
+    return train_op
+
+  def _eval_metric_ops(self, features, labels, logits):
+    """Returns a dict of metric ops keyed by name."""
     labels = _check_labels(labels, self._label_name)
+    predictions = self._predictions(logits)
+    return estimator._make_metrics_ops(  # pylint: disable=protected-access
+        self._default_metrics(), features, labels, predictions)
+
+  def _predictions(self, logits):
+    """Returns a dict of predictions.
+
+    Args:
+      logits: logits `Tensor` before applying possible centered bias.
+
+    Returns:
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
+    """
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
           self.logits_dimension,
           self._centered_bias_weight_collection))
-    loss_unweighted = self._eval_loss_fn(logits, labels)
-    loss, _ = _loss(loss_unweighted,
-                    _weight_tensor(features, self._weight_column_name),
-                    name=name)
+    return self._logits_to_predictions(logits)
 
-    predictions = self._logits_to_prediction(logits)
+  def _logits_to_predictions(self, logits):
+    """Returns a dict of predictions.
 
-    return predictions, loss
+    Args:
+      logits: logits `Tensor` after applying possible centered bias.
 
-  def _infer_op(self, logits=None, logits_input=None):
-    if self._enable_centered_bias:
-      logits = nn.bias_add(logits, _centered_bias(
-          self.logits_dimension,
-          self._centered_bias_weight_collection))
-    return self._logits_to_prediction(logits)
-
-  def _logits_to_prediction(self, logits=None):
+    Returns:
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
+    """
     predictions = {}
     if self.logits_dimension == 1:
       predictions[prediction_key.PredictionKey.SCORES] = array_ops.squeeze(
@@ -396,8 +374,8 @@ class _RegressionHead(_Head):
       predictions[prediction_key.PredictionKey.SCORES] = logits
     return predictions
 
-  # pylint: disable=undefined-variable
-  def _create_signature_fn(self):
+  def _signature_fn(self):
+    """Returns the signature_fn to be used in exporting."""
     def _regression_signature_fn(examples, unused_features, predictions):
       if isinstance(predictions, dict):
         score = predictions[prediction_key.PredictionKey.SCORES]
@@ -410,7 +388,8 @@ class _RegressionHead(_Head):
       return default_signature, {}
     return _regression_signature_fn
 
-  def _default_metric(self):
+  def _default_metrics(self):
+    """Returns a dict of `MetricSpec` keyed by `MetricKey`."""
     return {_head_prefixed(self._head_name, metric_key.MetricKey.LOSS):
             _weighted_average_loss_metric_spec(
                 self._eval_loss_fn,
@@ -464,8 +443,29 @@ class _MultiClassHead(_Head):
   def logits_dimension(self):
     return self._logits_dimension
 
-  def _training_loss(self, features, labels, logits=None,
-                     logits_input=None, name="training_loss"):
+  def head_ops(self, features, labels, mode, train_op_fn, logits=None,
+               logits_input=None):
+    """See `_Head`."""
+    _check_mode_valid(mode)
+    _check_logits_input_not_supported(logits, logits_input)
+    predictions = self._predictions(logits)
+    loss = (None if labels is None
+            else self._training_loss(features, labels, logits))
+    train_op = (None if labels is None or train_op_fn is None
+                else self._train_op(features, labels, train_op_fn, logits))
+    eval_metric_ops = (None if labels is None
+                       else self._eval_metric_ops(features, labels, logits))
+    signature_fn = self._signature_fn()
+
+    return model_fn.ModelFnOps(
+        mode=mode,
+        predictions=predictions,
+        loss=loss,
+        train_op=train_op,
+        eval_metric_ops=eval_metric_ops,
+        signature_fn=signature_fn)
+
+  def _training_loss(self, features, labels, logits=None, name="training_loss"):
     """Returns training loss tensor for this head.
 
     Training loss is different from the loss reported on the tensorboard as we
@@ -481,24 +481,17 @@ class _MultiClassHead(_Head):
       labels: either a tensor for labels or in multihead case, a dict of string
         to labels tensor.
       logits: logits, a float tensor.
-      logits_input: Output of last hidden layer.
       name: Op name.
 
     Returns:
-      A tuple of training Loss and additional_train_op (possibly None)
+      A loss `Tensor`.
     """
     labels = _check_labels(labels, self._label_name)
 
-    centered_bias_step = None
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
           self.logits_dimension,
           self._centered_bias_weight_collection))
-      centered_bias_step = [_centered_bias_step(
-          self.logits_dimension,
-          self._centered_bias_weight_collection,
-          labels,
-          self._train_loss_fn)]
 
     loss_unweighted = self._train_loss_fn(logits, labels)
     loss, weighted_average_loss = _loss(
@@ -507,33 +500,54 @@ class _MultiClassHead(_Head):
         name=name)
     summary.scalar(
         _head_prefixed(self._head_name, "loss"), weighted_average_loss)
-    return loss, centered_bias_step
+    return loss
 
-  def _eval_op(self, features, labels, logits=None, logits_input=None,
-               name="eval_op"):
+  def _train_op(self, features, labels, train_op_fn, logits):
+    """Returns op for the training step."""
+    loss = self._training_loss(features, labels, logits)
+    train_op = train_op_fn(loss)
+
+    if self._enable_centered_bias:
+      centered_bias_step = [_centered_bias_step(
+          self.logits_dimension,
+          self._centered_bias_weight_collection,
+          labels,
+          self._train_loss_fn)]
+      train_op = control_flow_ops.group(train_op, *centered_bias_step)
+
+    return train_op
+
+  def _eval_metric_ops(self, features, labels, logits):
+    """Returns a dict of metric ops keyed by name."""
     labels = _check_labels(labels, self._label_name)
+    predictions = self._predictions(logits)
+    return estimator._make_metrics_ops(  # pylint: disable=protected-access
+        self._default_metrics(), features, labels, predictions)
+
+  def _predictions(self, logits):
+    """Returns a dict of predictions.
+
+    Args:
+      logits: logits `Tensor` before applying possible centered bias.
+
+    Returns:
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
+    """
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
           self.logits_dimension,
           self._centered_bias_weight_collection))
-    loss_unweighted = self._eval_loss_fn(logits, labels)
-    loss, _ = _loss(loss_unweighted,
-                    _weight_tensor(features, self._weight_column_name),
-                    name=name)
+    return self._logits_to_predictions(logits)
 
-    predictions = self._logits_to_prediction(logits)
+  def _logits_to_predictions(self, logits):
+    """Returns a dict of predictions.
 
-    return predictions, loss
+    Args:
+      logits: logits `Tensor` after applying possible centered bias.
 
-  def _infer_op(self, logits=None, logits_input=None):
-    if self._enable_centered_bias:
-      logits = nn.bias_add(logits, _centered_bias(
-          self.logits_dimension,
-          self._centered_bias_weight_collection))
-    return self._logits_to_prediction(logits)
-
-  def _logits_to_prediction(self, logits=None):
-    # pylint: disable=missing-docstring
+    Returns:
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
+    """
     predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
       predictions[prediction_key.PredictionKey.LOGISTIC] = math_ops.sigmoid(
@@ -546,8 +560,8 @@ class _MultiClassHead(_Head):
 
     return predictions
 
-  def _create_signature_fn(self):
-    """See superclass."""
+  def _signature_fn(self):
+    """Returns the signature_fn to be used in exporting."""
     def _classification_signature_fn(examples, unused_features, predictions):
       """Servo signature function."""
       if isinstance(predictions, dict):
@@ -565,7 +579,8 @@ class _MultiClassHead(_Head):
       return default_signature, {}
     return _classification_signature_fn
 
-  def _default_metric(self):
+  def _default_metrics(self):
+    """Returns a dict of `MetricSpec` objects keyed by name."""
     metrics = {_head_prefixed(self._head_name, metric_key.MetricKey.LOSS):
                _weighted_average_loss_metric_spec(
                    self._eval_loss_fn,
@@ -646,7 +661,8 @@ class _BinarySvmHead(_MultiClassHead):
         head_name=head_name,
         thresholds=thresholds)
 
-  def _logits_to_prediction(self, logits=None):
+  def _logits_to_predictions(self, logits):
+    """See `_MultiClassHead`."""
     predictions = {}
     predictions[prediction_key.PredictionKey.LOGITS] = logits
     logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
@@ -655,7 +671,8 @@ class _BinarySvmHead(_MultiClassHead):
 
     return predictions
 
-  def _default_metric(self):
+  def _default_metrics(self):
+    """See `_MultiClassHead`."""
     metrics = {_head_prefixed(self._head_name, metric_key.MetricKey.LOSS):
                _weighted_average_loss_metric_spec(
                    self._eval_loss_fn,
@@ -689,7 +706,8 @@ class _MultiLabelHead(_MultiClassHead):
         head_name=head_name,
         thresholds=thresholds)
 
-  def _logits_to_prediction(self, logits=None):
+  def _logits_to_predictions(self, logits):
+    """See `_MultiClassHead`."""
     predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
       predictions[prediction_key.PredictionKey.LOGISTIC] = math_ops.sigmoid(
@@ -739,6 +757,14 @@ def _check_logits_input_not_supported(logits, logits_input):
   if logits_input is not None or logits is None:
     raise NotImplementedError("logits_input is not supported yet, "
                               "must pass logits")
+
+
+def _check_mode_valid(mode):
+  """Raises ValueError if the given mode is invalid."""
+  if (mode != model_fn.ModeKeys.TRAIN and
+      mode != model_fn.ModeKeys.INFER and
+      mode != model_fn.ModeKeys.EVAL):
+    raise ValueError("mode=%s unrecognized." % str(mode))
 
 
 def _centered_bias(logits_dimension, weight_collection):

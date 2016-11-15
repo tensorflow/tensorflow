@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import tensor_shape
+
 
 class GreedyLoadBalancingStrategy(object):
   """Returns the least-loaded ps task for op placement.
@@ -93,7 +95,13 @@ def byte_size_load_fn(op):
   if len(op.outputs) != 1:
     raise ValueError("Op %s must have a single output" % op)
   output = op.outputs[0]
-  output.get_shape().assert_is_fully_defined()
-  num_elems = output.get_shape().num_elements()
   elem_size = output.dtype.size
-  return num_elems * elem_size
+  shape = output.get_shape()
+  if not shape.is_fully_defined():
+    # Due to legacy behavior, scalar "Variable" ops have output Tensors that
+    # have unknown shape when the op is created (and hence passed to this
+    # load function for placement), even though the scalar shape is set
+    # explicitly immediately afterward.
+    shape = tensor_shape.TensorShape(op.get_attr("shape"))
+  shape.assert_is_fully_defined()
+  return shape.num_elements() * elem_size

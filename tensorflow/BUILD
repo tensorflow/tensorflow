@@ -125,6 +125,7 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/specs:all_files",
+        "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
@@ -190,6 +191,8 @@ filegroup(
         "//tensorflow/tools/tfprof/internal:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
+        "//third_party/sycl:all_files",
+        "//third_party/sycl/sycl:all_files",
     ],
     visibility = [":__subpackages__"],
 )

@@ -1107,7 +1107,7 @@ Feature columns provide a mechanism to map data to a model.
 
 ### `tf.contrib.layers.bucketized_column(source_column, boundaries)` {#bucketized_column}
 
-Creates a _BucketizedColumn.
+Creates a _BucketizedColumn for discretizing dense input.
 
 ##### Args:
 
@@ -1154,22 +1154,25 @@ Typical usage example:
 
 ```python
 # Define features and transformations
-country = sparse_column_with_vocabulary_file("country", VOCAB_FILE)
-age = real_valued_column("age")
-click_bucket = bucketized_column(real_valued_column("historical_click_ratio"),
-                                 boundaries=[i/10. for i in range(10)])
-country_x_click = crossed_column([country, click_bucket], 10)
+feature_a = sparse_column_with_vocabulary_file(...)
+feature_b = real_valued_column(...)
+feature_c_bucketized = bucketized_column(real_valued_column("feature_c"), ...)
+feature_a_x_feature_c = crossed_column(
+  columns=[feature_a, feature_c_bucketized], ...)
 
-feature_columns = set([age, click_bucket, country_x_click])
+feature_columns = set(
+  [feature_b, feature_c_bucketized, feature_a_x_feature_c])
 batch_examples = tf.parse_example(
-    serialized_examples,
-    create_feature_spec_for_parsing(feature_columns))
+    serialized=serialized_examples,
+    features=create_feature_spec_for_parsing(feature_columns))
 ```
 
 For the above example, create_feature_spec_for_parsing would return the dict:
-{"age": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
- "historical_click_ratio": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
- "country": parsing_ops.VarLenFeature(tf.string)}
+{
+  "feature_a": parsing_ops.VarLenFeature(tf.string),
+  "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+  "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+}
 
 ##### Args:
 
@@ -1188,7 +1191,7 @@ For the above example, create_feature_spec_for_parsing would return the dict:
 
 ### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
 
-Creates a _CrossedColumn.
+Creates a _CrossedColumn for performing feature crosses.
 
 ##### Args:
 
@@ -1225,7 +1228,7 @@ Creates a _CrossedColumn.
 
 ### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
 
-Creates an `_EmbeddingColumn`.
+Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 ##### Args:
 
@@ -1306,28 +1309,30 @@ to a single tensor. Each feature column needs a different kind of operation
 during this conversion. For example sparse features need a totally different
 handling than continuous features.
 
-An example usage of input_from_feature_columns is as follows:
+Example:
 
+```python
   # Building model for training
   columns_to_tensor = tf.parse_example(...)
   first_layer = input_from_feature_columns(
       columns_to_tensors=columns_to_tensor,
       feature_columns=feature_columns)
-  second_layer = fully_connected(first_layer, ...)
+  second_layer = fully_connected(inputs=first_layer, ...)
   ...
+```
 
-  where feature_columns can be defined as follows:
+where feature_columns can be defined as follows:
 
-  occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
-  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                   combiner="sum")
-  age = real_valued_column("age")
-  age_buckets = bucketized_column(
-      source_column=age,
-      boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
+```python
+  sparse_feature = sparse_column_with_hash_bucket(
+      column_name="sparse_col", ...)
+  sparse_feature_emb = embedding_column(sparse_id_column=sparse_feature, ...)
+  real_valued_feature = real_valued_column(...)
+  real_valued_buckets = bucketized_column(
+      source_column=real_valued_feature, ...)
 
-  feature_columns=[occupation_emb, age_buckets]
+  feature_columns=[sparse_feature_emb, real_valued_buckets]
+```
 
 ##### Args:
 
@@ -1413,7 +1418,7 @@ Returns placeholder tensors for inference.
 
 ### `tf.contrib.layers.one_hot_column(sparse_id_column)` {#one_hot_column}
 
-Creates a _OneHotColumn.
+Creates an `_OneHotColumn` for a one-hot or multi-hot repr in a DNN.
 
 ##### Args:
 
@@ -1518,7 +1523,7 @@ Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
 
 ### `tf.contrib.layers.real_valued_column(column_name, dimension=1, default_value=None, dtype=tf.float32, normalizer=None)` {#real_valued_column}
 
-Creates a _RealValuedColumn.
+Creates a `_RealValuedColumn` for dense numeric data.
 
 ##### Args:
 
@@ -1710,6 +1715,25 @@ lookup_id = index_of_feature_in_keys if feature in keys else default_value
 
 Creates a _SparseColumn by combining sparse_id_column with a weight column.
 
+Example:
+
+  ```python
+  sparse_feature = sparse_column_with_hash_bucket(column_name="sparse_col",
+                                                  hash_bucket_size=1000)
+  weighted_feature = weighted_sparse_column(sparse_id_column=sparse_feature,
+                                            weight_column_name="weights_col")
+  ```
+
+  This configuration assumes that input dictionary of model contains the
+  following two items:
+    * (key="sparse_col", value=sparse_tensor) where sparse_tensor is
+      a SparseTensor.
+    * (key="weights_col", value=weights_tensor) where weights_tensor
+      is a SparseTensor.
+   Following are assumed to be true:
+     * sparse_tensor.indices = weights_tensor.indices
+     * sparse_tensor.shape = weights_tensor.shape
+
 ##### Args:
 
 
@@ -1728,22 +1752,6 @@ Creates a _SparseColumn by combining sparse_id_column with a weight column.
 
 
 *  <b>`ValueError`</b>: if dtype is not convertible to float.
-
-##### An example usage:
-
-  ```python
-  words = sparse_column_with_hash_bucket("words", 1000)
-  tfidf_weighted_words = weighted_sparse_column(words, "tfidf_score")
-  ```
-
-  This configuration assumes that input dictionary of model contains the
-  following two items:
-    * (key="words", value=word_tensor) where word_tensor is a SparseTensor.
-    * (key="tfidf_score", value=tfidf_score_tensor) where tfidf_score_tensor
-      is a SparseTensor.
-   Following are assumed to be true:
-     * word_tensor.indices = tfidf_score_tensor.indices
-     * word_tensor.shape = tfidf_score_tensor.shape
 
 
 - - -

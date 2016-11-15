@@ -27,7 +27,7 @@ Report a benchmark.
 
 - - -
 
-#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, name=None, extras=None)` {#Benchmark.run_op_benchmark}
+#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
 
 Run an op or tensor in the given session.  Report the results.
 
@@ -48,6 +48,8 @@ Run an op or tensor in the given session.  Report the results.
     Otherwise it is inferred from the top-level method name.
 *  <b>`extras`</b>: (optional) Dict mapping string keys to additional benchmark info.
     Values may be either floats or values that are convertible to strings.
+*  <b>`mbs`</b>: (optional) The number of megabytes moved by this op, used to
+    calculate the ops throughput.
 
 ##### Returns:
 

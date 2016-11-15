@@ -30,7 +30,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -598,6 +597,3 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(None)
 
     return output_pack(results_flat)
-
-
-ops.RegisterShape("SymbolicGradient")(common_shapes.call_cpp_shape_fn)

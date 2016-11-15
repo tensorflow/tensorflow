@@ -41,9 +41,6 @@ RUNS_ROUTE = '/runs'
 BOOKMARKS_ROUTE = '/bookmarks'
 SPRITE_IMAGE_ROUTE = '/sprite_image'
 
-# Limit for the number of points we send to the browser.
-LIMIT_NUM_POINTS = 100000
-
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
     'gif': 'image/gif',
@@ -75,12 +72,37 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
     ckpt_path = latest_checkpoint(logdir)
     if not ckpt_path:
       # See if you can find a checkpoint in the parent of logdir.
-      ckpt_path = latest_checkpoint(os.path.join('../', logdir))
+      ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
       if not ckpt_path:
         continue
     if config.model_checkpoint_path != ckpt_path:
       return True
   return False
+
+
+def _parse_positive_int_param(request, query_params, param_name):
+  """Parses and asserts a positive (>0) integer query parameter.
+
+  Args:
+    request: The http request object.
+    query_params: Dictionary of query parameters.
+    param_name: Name of the parameter.
+
+  Returns:
+    None if parameter not present. -1 if parameter is not a positive integer.
+  """
+  param = query_params.get(param_name)
+  if not param:
+    return None
+  try:
+    param = int(param)
+    if param <= 0:
+      raise ValueError()
+    return param
+  except ValueError:
+    request.respond('query parameter "%s" must be integer > 0' % param_name,
+                    'text/plain', 400)
+    return -1
 
 
 class ProjectorPlugin(TBPlugin):
@@ -132,8 +154,11 @@ class ProjectorPlugin(TBPlugin):
 
   def _augment_configs_with_checkpoint_info(self):
     for run, config in self._configs.items():
-      # Find the size of the embeddings that are associated with a tensor file.
       for embedding in config.embeddings:
+        # Normalize the name of the embeddings.
+        if embedding.tensor_name.endswith(':0'):
+          embedding.tensor_name = embedding.tensor_name[:-2]
+        # Find the size of embeddings associated with a tensors file.
         if embedding.tensor_path and not embedding.tensor_shape:
           tensor = _read_tensor_file(embedding.tensor_path)
           embedding.tensor_shape.extend([len(tensor), len(tensor[0])])
@@ -274,6 +299,11 @@ class ProjectorPlugin(TBPlugin):
     if name is None:
       request.respond('query parameter "name" is required', 'text/plain', 400)
       return
+
+    num_rows = _parse_positive_int_param(request, query_params, 'num_rows')
+    if num_rows == -1:
+      return
+
     if run not in self.configs:
       request.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
@@ -298,7 +328,7 @@ class ProjectorPlugin(TBPlugin):
         lines.append(line)
         if len(lines) == 1 and '\t' in lines[0]:
           num_header_rows = 1
-        if len(lines) >= LIMIT_NUM_POINTS + num_header_rows:
+        if num_rows and len(lines) >= num_rows + num_header_rows:
           break
     request.respond(''.join(lines), 'text/plain')
 
@@ -311,6 +341,10 @@ class ProjectorPlugin(TBPlugin):
     name = query_params.get('name')
     if name is None:
       request.respond('query parameter "name" is required', 'text/plain', 400)
+      return
+
+    num_rows = _parse_positive_int_param(request, query_params, 'num_rows')
+    if num_rows == -1:
       return
 
     if run not in self.configs:
@@ -340,8 +374,9 @@ class ProjectorPlugin(TBPlugin):
         return
       tensor = reader.get_tensor(name)
 
-    # Sample the tensor
-    tensor = tensor[:LIMIT_NUM_POINTS]
+    if num_rows:
+      tensor = tensor[:num_rows]
+
     if tensor.dtype != 'float32':
       tensor = tensor.astype(dtype='float32', copy=False)
     data_bytes = tensor.tobytes()

@@ -21,6 +21,8 @@ import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
+const NUM_PCA_COMPONENTS = 10;
+
 // tslint:disable-next-line
 export let ProjectionsPanelPolymer = PolymerElement({
   is: 'vz-projector-projections-panel',
@@ -30,7 +32,7 @@ export let ProjectionsPanelPolymer = PolymerElement({
     tSNEis3d:
         {type: Boolean, value: true, observer: '_tsneDimensionToggleObserver'},
     // PCA projection.
-    pcaComponents: {type: Array, value: d3.range(0, 10)},
+    pcaComponents: Array,
     pcaX: {type: Number, value: 0, observer: 'showPCAIfEnabled'},
     pcaY: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
     pcaZ: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
@@ -62,6 +64,11 @@ type Centroids = {
  */
 export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private projector: Projector;
+  private pcaComponents: Array<{
+    id: number,
+    componentNumber: number,
+    percVariance: string
+  }>;
   private currentProjection: Projection;
   private polymerChangesTriggerReprojection: boolean;
   private dataSet: DataSet;
@@ -403,6 +410,17 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     }
   }
 
+  private updateTotalVarianceMessage() {
+    let variances = this.dataSet.fracVariancesExplained;
+    let totalVariance = variances[this.pcaX] + variances[this.pcaY];
+    let msg = 'Total variance described: ';
+    if (this.pcaIs3d) {
+      totalVariance += variances[this.pcaZ];
+    }
+    msg += (totalVariance * 100).toFixed(1) + '%.';
+    this.dom.select('#total-variance').html(msg);
+  }
+
   private showPCA() {
     if (this.dataSet == null) {
       return;
@@ -413,6 +431,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
           'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
       this.projector.setProjection('pca', this.pcaIs3d ? 3 : 2, accessors);
+      let numComponents = Math.min(NUM_PCA_COMPONENTS, this.dataSet.dim[1]);
+      this.updateTotalVarianceMessage();
+      this.pcaComponents = d3.range(0, numComponents).map(i => {
+        let fracVariance = this.dataSet.fracVariancesExplained[i];
+        return {
+          id: i,
+          componentNumber: i + 1,
+          percVariance: (fracVariance * 100).toFixed(1)
+        };
+      });
     });
   }
 
@@ -516,10 +544,6 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   getTsneSampleSize() {
     return SAMPLE_SIZE.toLocaleString();
-  }
-
-  _addOne(value: number) {
-    return value + 1;
   }
 }
 

@@ -81,7 +81,7 @@ summary_writer = tf.train.SummaryWriter(LOG_DIR)
 config = projector.ProjectorConfig()
 
 # You can add multiple embeddings. Here we add only one.
-embedding = config.embedding.add()
+embedding = config.embeddings.add()
 embedding.tensor_name = embedding_var.name
 # Link this tensor to its metadata file (e.g. labels).
 embedding.metadata_path = os.path.join(LOG_DIR, 'metadata.tsv')
@@ -157,9 +157,7 @@ concrete example of a sprite, see
 [this sprite image](../../images/mnist_10k_sprite.png) of 10,000 MNIST digits
 (100x100).
 
-Note: We currently support sprites up to 4096px X 4096px.
-
-
+Note: We currently support sprites up to 8192px X 8192px.
 
 After constructing the sprite, you need to tell the Embedding Projector where
 to find it:

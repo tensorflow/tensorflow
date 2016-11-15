@@ -87,6 +87,8 @@ class Feature {
         *dtype = DT_INT64;
         break;
       default:
+        // Initialize variable to avoid compiler warning
+        *dtype = DT_INVALID;
         return errors::InvalidArgument("Unsuported datatype.");
     }
     return Status::OK();

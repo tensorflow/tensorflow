@@ -2779,6 +2779,9 @@ Save the list of files matching pattern, so it is only computed once.
 
 Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
+Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+initialize local variables.
+
 ##### Args:
 
 
@@ -2799,9 +2802,12 @@ Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
 - - -
 
-### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None)` {#input_producer}
+### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None, cancel_op=None)` {#input_producer}
 
 Output the rows of `input_tensor` to a queue for an input pipeline.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2825,6 +2831,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 *  <b>`summary_name`</b>: (Optional.) If set, a scalar summary for the current queue
     size will be generated, using this name as part of the tag.
 *  <b>`name`</b>: (Optional.) A name for queue.
+*  <b>`cancel_op`</b>: (Optional.) Cancel op for the queue
 
 ##### Returns:
 
@@ -2843,6 +2850,9 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 ### `tf.train.range_input_producer(limit, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#range_input_producer}
 
 Produces the integers from 0 to limit-1 in a queue.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2906,9 +2916,12 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
 - - -
 
-### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#string_input_producer}
+### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None, cancel_op=None)` {#string_input_producer}
 
 Output strings (e.g. filenames) to a queue for an input pipeline.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2926,6 +2939,7 @@ Output strings (e.g. filenames) to a queue for an input pipeline.
 *  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: A name for the operations (optional).
+*  <b>`cancel_op`</b>: Cancel op for the queue (optional).
 
 ##### Returns:
 
@@ -3009,6 +3023,9 @@ elements to fill the batch, otherwise the pending elements are discarded.
 In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3186,6 +3203,9 @@ elements to fill the batch, otherwise the pending elements are discarded.
 In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 

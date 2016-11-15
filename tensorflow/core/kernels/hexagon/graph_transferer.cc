@@ -16,15 +16,19 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 
 #include <algorithm>
+#include <cinttypes>
 #include <unordered_map>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
 namespace tensorflow {
 
+constexpr bool DBG_DUMP_VERIFICATION_STRING = false;
 constexpr bool DBG_DUMP_PARAMS = false;
+
 const string INPUTS_NODE_PREFIX = "inputs_for_";
 const string OUTPUTS_NODE_PREFIX = "outputs_for_";
 const string DATA_NODE_PREFIX = "data_for_op_";
@@ -38,14 +42,19 @@ const string PADDING_SAME_STR = "SAME";
 const string PADDING_NA = "NA";
 const string NULL_OUTPUT_NAME = "NULL";
 
-void GraphTransferer::LoadGraphFromProto(
+Status GraphTransferer::LoadGraphFromProto(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const GraphDef& graph_def, const std::vector<string>& input_node_names,
     const std::vector<string>& output_node_names) {
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.op_registry());
-  ImportGraphDef(opts, graph_def, &graph, &shape_refiner);
+  VLOG(1) << "Start import graph";
+  Status status = ImportGraphDef(opts, graph_def, &graph, &shape_refiner);
+  if (!status.ok()) {
+    VLOG(1) << "Failed to import graph " << status.ToString();
+    return status;
+  }
 
   std::unordered_multimap<string, const Node*> op_name_to_node_multimap(
       graph.num_nodes());
@@ -70,6 +79,50 @@ void GraphTransferer::LoadGraphFromProto(
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
   }
+  if (DBG_DUMP_VERIFICATION_STRING) {
+    DumpVerificationStringOfNodeTransferParams();
+  }
+  return Status();
+}
+
+Status GraphTransferer::LoadGraphFromProtoFile(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const string& graph_def_path, const std::vector<string>& input_node_names,
+    const std::vector<string>& output_node_names, const bool is_text_proto) {
+  GraphDef graph_def;
+  string output;
+  Status status;
+  if (is_text_proto) {
+    status = ReadFileToString(Env::Default(), graph_def_path, &output);
+    if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
+      return errors::InvalidArgument("Cannot parse proto string.");
+    }
+  } else {
+    status = ReadBinaryProto(Env::Default(), graph_def_path, &graph_def);
+  }
+  if (!status.ok()) {
+    return status;
+  }
+  return LoadGraphFromProto(ops_definitions, graph_def, input_node_names,
+                            output_node_names);
+}
+
+Status GraphTransferer::LoadGraphFromProtoFile(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const string& graph_def_path, const std::vector<string>& input_node_names,
+    const std::vector<string>& output_node_names) {
+  GraphDef graph_def;
+  string output;
+  Status status = ReadFileToString(Env::Default(), graph_def_path, &output);
+  if (!status.ok()) {
+    return status;
+  }
+  if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
+    return errors::InvalidArgument("Cannot parse proto string.");
+  }
+  LoadGraphFromProto(ops_definitions, graph_def, input_node_names,
+                     output_node_names);
+  return Status();
 }
 
 const std::vector<GraphTransferer::ConstNodeTransferParams>&
@@ -395,7 +448,6 @@ GraphTransferer::BuildShapeArray(
 }
 
 void GraphTransferer::DumpNodeTransferParams() const {
-  // TODO(satok): Dump all params
   LOG(INFO) << "*** Const Nodes ***";
   for (const ConstNodeTransferParams& params :
        const_node_transfer_params_list_) {
@@ -436,6 +488,51 @@ void GraphTransferer::DumpNodeTransferParams() const {
     }
   }
   LOG(INFO) << "******\n";
+}
+
+void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
+  for (const ConstNodeTransferParams& params :
+       const_node_transfer_params_list_) {
+    std::stringstream sstream;
+    sstream << "---(CONST) [" << std::hex << params.node_id << ","
+            << params.shape[0] << "," << params.shape[1] << ","
+            << params.shape[2] << "," << params.shape[3] << ","
+            << params.data_name << "," << params.data_size << "," << params.name
+            << "]";
+    LOG(INFO) << sstream.str();
+  }
+  LOG(INFO) << "Const node count = " << const_node_transfer_params_list_.size();
+  for (const NodeTransferParams& params : node_transfer_params_list_) {
+    std::stringstream sstream;
+    sstream << "---(OP) [" << params.name.c_str() << "," << std::hex
+            << params.node_id << "," << params.soc_op_id << ","
+            << params.padding << "," << params.inputs_name << ","
+            << params.inputs_size << "," << params.outputs_name << ","
+            << params.outputs_size << "," << params.type << "]";
+    LOG(INFO) << sstream.str();
+  }
+  LOG(INFO) << "Op node count = " << node_transfer_params_list_.size();
+  for (const NodeInputParams& params : node_input_params_list_) {
+    std::stringstream sstream;
+    sstream << "---(INPUT) [" << std::hex << params.node_id;
+    for (const std::tuple<int, int>& pair :
+         params.input_node_id_and_output_port_list) {
+      sstream << "," << std::get<0>(pair) << "," << std::get<1>(pair);
+    }
+    sstream << "]";
+    LOG(INFO) << sstream.str();
+  }
+  LOG(INFO) << "Input params count = " << node_input_params_list_.size();
+  for (const NodeOutputParams& params : node_output_params_list_) {
+    std::stringstream sstream;
+    sstream << "---(OUTPUT) [" << std::hex << params.node_id;
+    for (const int max_size : params.max_sizes) {
+      sstream << "," << max_size;
+    }
+    sstream << "]";
+    LOG(INFO) << sstream.str();
+  }
+  LOG(INFO) << "Output params count = " << node_input_params_list_.size();
 }
 
 }  // namespace tensorflow

@@ -326,7 +326,7 @@ Returns x / y element-wise.
 
 #### `tf.Output.__floordiv__(x, y)` {#Output.__floordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -746,7 +746,7 @@ Returns x / y element-wise.
 
 #### `tf.Output.__rfloordiv__(y, x)` {#Output.__rfloordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though

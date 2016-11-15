@@ -69,5 +69,18 @@ class GreedyLoadBalancingStrategyTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:ps/task:0", x.initializer.device)
       self.assertDeviceEqual("/job:worker", a.device)
 
+  def testByteSizeLoadFnWithScalar(self):
+    with tf.device(tf.train.replica_device_setter(
+        cluster=self._cluster_spec,
+        ps_strategy=tf.contrib.training.GreedyLoadBalancingStrategy(
+            2, tf.contrib.training.byte_size_load_fn))):
+      # Note: we must test the load function as part of the device function
+      # instead of passing u.op to the function directly, because the only
+      # time that the output Tensor has unknown shape for scalars is during
+      # Variable construction.
+      u = tf.Variable(0)
+      self.assertDeviceEqual("/job:ps/task:0", u.device)
+      self.assertDeviceEqual("/job:ps/task:0", u.initializer.device)
+
 if __name__ == "__main__":
   tf.test.main()

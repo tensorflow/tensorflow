@@ -91,22 +91,23 @@ REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name("_Arg").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
-  TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-  TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
-						 .Device(DEVICE_GPU)
-						 .HostMemory("output")
-						 .TypeConstraint<int32>("T"),
-						 ArgOp);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
+                                                   .Device(DEVICE_GPU)
+                                                   .HostMemory("output")
+                                                   .TypeConstraint<int32>("T"),
+                                               ArgOp);
 #undef REGISTER
-#define REGISTER(type)     \
-  REGISTER_KERNEL_BUILDER( \
-      Name("_Retval").Device(DEVICE_SYCL).TypeConstraint<type>("T"), RetvalOp);
-  TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-  TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
-						 .Device(DEVICE_GPU)
-						 .HostMemory("input")
-						 .TypeConstraint<int32>("T"),
-						 RetvalOp);
+#define REGISTER(type)                                               \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("_Retval").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      RetvalOp);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
+                                                   .Device(DEVICE_GPU)
+                                                   .HostMemory("input")
+                                                   .TypeConstraint<int32>("T"),
+                                               RetvalOp);
 #undef REGISTER
 #endif
 

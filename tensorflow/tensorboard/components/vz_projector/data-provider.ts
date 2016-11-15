@@ -19,6 +19,7 @@ import {runAsyncTask} from './util';
 
 /** Maximum number of colors supported in the color map. */
 const NUM_COLORS_COLOR_MAP = 50;
+const MAX_SPRITE_IMAGE_SIZE_PX = 8192;
 
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';
@@ -47,10 +48,15 @@ export interface EmbeddingInfo {
   sprite?: SpriteMetadata;
 }
 
-/** Matches the json format of `projector_config.proto` */
+/**
+ * Matches the json format of `projector_config.proto`
+ * This should be kept in sync with the code in vz-projector-data-panel which
+ * holds a template for users to build a projector config JSON object from the
+ * projector UI.
+ */
 export interface ProjectorConfig {
   embeddings: EmbeddingInfo[];
-  modelCheckpointPath: string;
+  modelCheckpointPath?: string;
 }
 
 export type ServingMode = 'demo' | 'server' | 'proto';
@@ -296,8 +302,17 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
       logging.setModalMessage(null, spriteMsgId);
     }
     let [metadata, spriteImage] = values;
-    metadata.spriteImage = spriteImage;
-    metadata.spriteMetadata = spriteMetadata;
-    callback(metadata);
+
+    if (spriteImage && (spriteImage.height > MAX_SPRITE_IMAGE_SIZE_PX ||
+                        spriteImage.width > MAX_SPRITE_IMAGE_SIZE_PX)) {
+      logging.setModalMessage(
+          `Error: Sprite image of dimensions ${spriteImage.width}px x ` +
+          `${spriteImage.height}px exceeds maximum dimensions ` +
+          `${MAX_SPRITE_IMAGE_SIZE_PX}px x ${MAX_SPRITE_IMAGE_SIZE_PX}px`);
+    } else {
+      metadata.spriteImage = spriteImage;
+      metadata.spriteMetadata = spriteMetadata;
+      callback(metadata);
+    }
   });
 }
