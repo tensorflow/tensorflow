@@ -20,8 +20,8 @@ import {LabelRenderParams} from './renderContext';
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
 const LABEL_SCALE_LARGE = 2;
-const LABEL_FILL_COLOR = 0x000000;
-const LABEL_STROKE_COLOR = 0xFFFFFF;
+const LABEL_FILL_COLOR = '#000000';
+const LABEL_STROKE_COLOR = '#FFFFFF';
 
 const POINT_COLOR_UNSELECTED = 0xE3E3E3;
 const POINT_COLOR_NO_SELECTION = 0x7575D9;
@@ -104,6 +104,14 @@ export class ProjectorScatterPlotAdapter {
     return positions;
   }
 
+  private packRgbIntoUint8Array(
+      rgbArray: Uint8Array, labelIndex: number, r: number, g: number,
+      b: number) {
+    rgbArray[labelIndex * 3] = r;
+    rgbArray[labelIndex * 3 + 1] = g;
+    rgbArray[labelIndex * 3 + 2] = b;
+  }
+
   generateVisibleLabelRenderParams(
       ds: DataSet, selectedPointIndices: number[],
       neighborsOfFirstPoint: NearestEntry[],
@@ -118,6 +126,11 @@ export class ProjectorScatterPlotAdapter {
     const visibleLabels = new Uint32Array(n);
     const scale = new Float32Array(n);
     const opacityFlags = new Int8Array(n);
+    const fillColors = new Uint8Array(n * 3);
+    const strokeColors = new Uint8Array(n * 3);
+
+    const fillRgb = d3.rgb(LABEL_FILL_COLOR);
+    const strokeRgb = d3.rgb(LABEL_STROKE_COLOR);
 
     scale.fill(LABEL_SCALE_DEFAULT);
     opacityFlags.fill(1);
@@ -128,6 +141,10 @@ export class ProjectorScatterPlotAdapter {
       visibleLabels[dst] = hoverPointIndex;
       scale[dst] = LABEL_SCALE_LARGE;
       opacityFlags[dst] = 0;
+      this.packRgbIntoUint8Array(
+          fillColors, dst, fillRgb.r, fillRgb.g, fillRgb.b);
+      this.packRgbIntoUint8Array(
+          strokeColors, dst, strokeRgb.r, strokeRgb.g, strokeRgb.b);
       ++dst;
     }
 
@@ -138,6 +155,10 @@ export class ProjectorScatterPlotAdapter {
         visibleLabels[dst] = selectedPointIndices[i];
         scale[dst] = LABEL_SCALE_LARGE;
         opacityFlags[dst] = (n === 1) ? 0 : 1;
+        this.packRgbIntoUint8Array(
+            fillColors, dst, fillRgb.r, fillRgb.g, fillRgb.b);
+        this.packRgbIntoUint8Array(
+            strokeColors, dst, strokeRgb.r, strokeRgb.g, strokeRgb.b);
         ++dst;
       }
     }
@@ -146,13 +167,18 @@ export class ProjectorScatterPlotAdapter {
     {
       const n = neighborsOfFirstPoint.length;
       for (let i = 0; i < n; ++i) {
-        visibleLabels[dst++] = neighborsOfFirstPoint[i].index;
+        visibleLabels[dst] = neighborsOfFirstPoint[i].index;
+        this.packRgbIntoUint8Array(
+            fillColors, dst, fillRgb.r, fillRgb.g, fillRgb.b);
+        this.packRgbIntoUint8Array(
+            strokeColors, dst, strokeRgb.r, strokeRgb.g, strokeRgb.b);
+        ++dst;
       }
     }
 
     return new LabelRenderParams(
-        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, LABEL_FILL_COLOR,
-        LABEL_STROKE_COLOR);
+        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, fillColors,
+        strokeColors);
   }
 
   generatePointScaleFactorArray(
