@@ -36,7 +36,6 @@ class BarrierTest(tf.test.TestCase):
           shared_name="B",
           name="B")
     self.assertTrue(isinstance(b.barrier_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, b.barrier_ref.dtype)
     self.assertProtoEquals("""
       name:'B' op:'Barrier'
       attr {

@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.client import device_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
@@ -534,10 +535,10 @@ class ControlFlowTest(tf.test.TestCase):
       i = tf.constant(0)
       c = lambda i, x: tf.less(i, 100)
 
-      self.assertEqual(x.dtype, tf.int32_ref)
+      self.assertEqual(x.dtype, dtypes.int32_ref)
 
       def b(i, x):
-        self.assertEqual(x.dtype, tf.int32_ref)
+        self.assertEqual(x.dtype, dtypes.int32_ref)
         return (i+1, gen_array_ops._ref_identity(x))
 
       r = tf.while_loop(c, b, [i, x], parallel_iterations=5)
@@ -545,7 +546,7 @@ class ControlFlowTest(tf.test.TestCase):
       tf.global_variables_initializer().run()
 
       self.assertEqual(r[0].dtype, tf.int32)
-      self.assertEqual(r[1].dtype, tf.int32_ref)
+      self.assertEqual(r[1].dtype, dtypes.int32_ref)
 
       value_i, value_x = sess.run(r)
 
@@ -1581,11 +1582,11 @@ class ControlFlowTest(tf.test.TestCase):
       i = tf.constant(0)
       c = lambda i, x: tf.less(i, 10)
 
-      self.assertEqual(x.dtype, tf.int32_ref)
+      self.assertEqual(x.dtype, dtypes.int32_ref)
 
       # pylint: disable=protected-access
       def body(i, x):
-        self.assertEqual(x.dtype, tf.int32_ref)
+        self.assertEqual(x.dtype, dtypes.int32_ref)
         return [i+1, gen_array_ops._ref_identity(x)]
       # pylint: enable=protected-access
 
@@ -1597,7 +1598,7 @@ class ControlFlowTest(tf.test.TestCase):
       tf.global_variables_initializer().run()
 
       self.assertEqual(r[0].dtype, tf.int32)
-      self.assertEqual(r[1].dtype, tf.int32_ref)
+      self.assertEqual(r[1].dtype, dtypes.int32_ref)
 
       value_i, value_x, value_x_grad = sess.run(r + grad)
 

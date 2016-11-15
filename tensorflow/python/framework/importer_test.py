@@ -26,6 +26,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -335,11 +336,11 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[0], a.outputs[0])
       self.assertEqual(d.inputs[1], b.outputs[0])
 
-      self.assertEqual(a.outputs[0].dtype, tf.int32_ref)
+      self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
       self.assertEqual(c._input_dtypes, [tf.int32, tf.int32])
       self.assertEqual(c.outputs, [])
       self.assertEqual(d._input_dtypes,
-                       [tf.int32_ref, tf.int32])
+                       [dtypes.int32_ref, tf.int32])
       self.assertEqual(d.outputs, [])
 
   def testCyclic(self):
