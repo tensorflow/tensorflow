@@ -33,7 +33,7 @@ public:
       devices->push_back(new SYCLDevice(options, name, Bytes(256 << 20),
                                         DeviceLocality(),
                                         SYCLDevice::GetShortDeviceDescription(),
-                                        new SYCLAllocator(), cpu_allocator()));
+                                        cl::sycl::gpu_selector(), cpu_allocator()));
     }
     return Status::OK();
   }

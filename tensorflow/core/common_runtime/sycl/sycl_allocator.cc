@@ -19,10 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-SYCLAllocator::SYCLAllocator()
-    : device_(new Eigen::SyclDevice(cl::sycl::gpu_selector())) {}
-
-SYCLAllocator::~SYCLAllocator() { delete device_; }
+SYCLAllocator::~SYCLAllocator() { }
 
 string SYCLAllocator::Name() { return "device:SYCL"; }
 
@@ -33,7 +30,6 @@ void *SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 
 void SYCLAllocator::DeallocateRaw(void *ptr) { device_->deallocate(ptr); }
 
-Eigen::SyclDevice *SYCLAllocator::get_device() { return device_; }
 } // namespace tensorflow
 
 #endif // TENSORFLOW_USE_SYCL

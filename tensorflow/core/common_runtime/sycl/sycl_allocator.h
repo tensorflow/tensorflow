@@ -29,17 +29,14 @@ namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
 public:
-  SYCLAllocator();
-
+  SYCLAllocator(Eigen::SyclDevice* device) : device_(device) {}
   virtual ~SYCLAllocator() override;
   string Name() override;
   void *AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void *ptr) override;
 
-  Eigen::SyclDevice *get_device();
-
 private:
-  Eigen::SyclDevice *device_;
+  Eigen::SyclDevice *device_;  // not owned
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);
 };
 

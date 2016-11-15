@@ -23,25 +23,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-cl::sycl::gpu_selector s;
-cl::sycl::queue q(s);
-
-SYCLDevice::SYCLDevice(const SessionOptions &options, const string &name,
-                       Bytes memory_limit, const DeviceLocality &locality,
-                       const string &physical_device_desc,
-                       SYCLAllocator *sycl_allocator, Allocator *cpu_allocator)
-    : LocalDevice(options,
-                  Device::BuildDeviceAttributes(name, DEVICE_SYCL, memory_limit,
-                                                locality, physical_device_desc),
-                  sycl_allocator),
-      cpu_allocator_(cpu_allocator), sycl_allocator_(sycl_allocator),
-      device_context_(new SYCLDeviceContext()) {
-  set_eigen_sycl_device(sycl_allocator_->get_device());
-}
-
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
   delete sycl_allocator_;
+  delete sycl_device_;
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
