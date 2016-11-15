@@ -273,7 +273,7 @@ py_test(
 
 py_test(
     name = "experiment_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/experiment_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -384,7 +384,7 @@ py_test(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
