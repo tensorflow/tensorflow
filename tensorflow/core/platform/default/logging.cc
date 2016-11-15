@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -94,15 +93,18 @@ int64 MinLogLevel() {
   // Ideally we would use env_var / safe_strto64, but it is
   // hard to use here without pulling in a lot of dependencies,
   // so we do a poor-man's parsing.
-  StringPiece min_log_level_sp(tf_env_var_val);
-  string min_log_level_str(min_log_level_sp.data(), min_log_level_sp.size());
-  if (min_log_level_str == "1") {
+  string min_log_level(tf_env_var_val);
+  if (min_log_level == "1") {
+    // Maps to WARNING
     return 1;
-  } else if (min_log_level_str == "2") {
+  } else if (min_log_level == "2") {
+    // Maps to ERROR
     return 2;
-  } else if (min_log_level_str == "3") {
+  } else if (min_log_level == "3") {
+    // Maps to FATAL
     return 3;
   } else {
+    // Maps to INFO (the default).
     return 0;
   }
 }
