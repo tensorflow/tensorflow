@@ -90,6 +90,7 @@ sh_binary(
             ":included_headers",
             ":simple_console",
             "//tensorflow:tensorflow_py",
+            "//tensorflow/contrib/labeled_tensor:all_files",
             "//tensorflow/contrib/ndlstm:all_files",
             "//tensorflow/contrib/session_bundle:all_files",
             "//tensorflow/contrib/slim:all_files",

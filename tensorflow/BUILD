@@ -98,6 +98,7 @@ filegroup(
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/integrate:all_files",
+        "//tensorflow/contrib/labeled_tensor:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",

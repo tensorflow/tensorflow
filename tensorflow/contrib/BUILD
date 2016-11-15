@@ -24,6 +24,7 @@ py_library(
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/integrate:integrate_py",
+        "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
