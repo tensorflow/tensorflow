@@ -115,8 +115,9 @@ def scalar(name, tensor, collections=None, prefix=''):
   name = _clean_tag(name)
   with _ops.name_scope(name, None, [tensor]) as scope:
     # pylint: disable=protected-access
+    tags = prefix + scope.rstrip('/')
     val = _gen_logging_ops._scalar_summary(
-        tags=prefix+scope.rstrip('/'), values=tensor, name=scope)
+        tags=tags, values=tensor, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
@@ -168,8 +169,9 @@ def image(name, tensor, max_outputs=3, collections=None, prefix=''):
   name = _clean_tag(name)
   with _ops.name_scope(name, None, [tensor]) as scope:
     # pylint: disable=protected-access
+    tag = prefix + scope.rstrip('/')
     val = _gen_logging_ops._image_summary(
-        tag=prefix+scope.rstrip('/'),
+        tag=tag,
         tensor=tensor,
         max_images=max_outputs,
         name=scope)
@@ -204,8 +206,9 @@ def histogram(name, values, collections=None, prefix=''):
   name = _clean_tag(name)
   with _ops.name_scope(name, 'HistogramSummary', [values]) as scope:
     # pylint: disable=protected-access
+    tag = prefix + scope.rstrip('/')
     val = _gen_logging_ops._histogram_summary(
-        tag=prefix+scope.rstrip('/'), values=values, name=scope)
+        tag=tag, values=values, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
@@ -247,10 +250,11 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None, prefix='')
   name = _clean_tag(name)
   with _ops.name_scope(name, None, [tensor]) as scope:
     # pylint: disable=protected-access
+    tag = prefix + scope.rstrip('/')
     sample_rate = _ops.convert_to_tensor(
         sample_rate, dtype=_dtypes.float32, name='sample_rate')
     val = _gen_logging_ops._audio_summary_v2(
-        tag=prefix+scope.rstrip('/'),
+        tag=tag,
         tensor=tensor,
         max_outputs=max_outputs,
         sample_rate=sample_rate,
