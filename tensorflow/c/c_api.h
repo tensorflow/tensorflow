@@ -71,7 +71,7 @@ extern "C" {
 // --------------------------------------------------------------------------
 // TF_Version returns a string describing version information of the
 // TensorFlow library. TensorFlow using semantic versioning.
-const char* TF_Version();
+extern const char* TF_Version();
 
 // --------------------------------------------------------------------------
 // TF_DataType holds the type for a scalar value.  E.g., one slot in a tensor.
@@ -448,13 +448,9 @@ extern void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
                                            const size_t* proto_lens,
                                            int num_shapes, TF_Status* status);
 
-// This functions takes ownership of *value (the
-// implementation will eventually call TF_DeleteTensor).
 extern void TF_SetAttrTensor(TF_OperationDescription* desc,
                              const char* attr_name, TF_Tensor* value,
                              TF_Status* status);
-// This functions takes ownership of values[0]..values[num_values-1] (the
-// implementation will eventually call TF_DeleteTensor on each).
 extern void TF_SetAttrTensorList(TF_OperationDescription* desc,
                                  const char* attr_name,
                                  TF_Tensor* const* values, int num_values,
@@ -816,9 +812,7 @@ extern void TF_CloseSession(TF_Session*, TF_Status* status);
 extern void TF_DeleteSession(TF_Session*, TF_Status* status);
 
 // Run the graph associated with the session starting with the supplied inputs
-// (inputs[0,ninputs-1] with corresponding values in input_values[0,ninputs-1])/
-// Regardless of success or failure, the TF_SessionRun call takes ownership the
-// elements of input_values and will eventually call TF_DeleteTensor on them.
+// (inputs[0,ninputs-1] with corresponding values in input_values[0,ninputs-1]).
 //
 // Any NULL and non-NULL value combinations for (`run_options`,
 // `run_metadata`) are valid.
@@ -831,8 +825,10 @@ extern void TF_DeleteSession(TF_Session*, TF_Status* status);
 //      `TF_Buffer` that may be updated to contain the serialized representation
 //      of a `RunMetadata` protocol buffer.
 //
-// The caller retains the ownership of `run_options` and/or `run_metadata` (when
-// not NULL) and should manually call TF_DeleteBuffer on them.
+// The caller retains ownership of `input_values` (which can be deleted using
+// TF_DeleteTensor). The caller also retains ownership of `run_options` and/or
+// `run_metadata` (when not NULL) and should manually call TF_DeleteBuffer on
+// them.
 //
 // On success, the tensors corresponding to outputs[0,noutputs-1] are placed in
 // output_values[]. Ownership of the elements of output_values[] is transferred
