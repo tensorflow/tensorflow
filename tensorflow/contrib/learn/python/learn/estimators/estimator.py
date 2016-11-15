@@ -199,7 +199,7 @@ def _get_replica_device_setter(config):
   if config.num_ps_replicas > 0:
     return device_setter.replica_device_setter(
         ps_tasks=config.num_ps_replicas, worker_device=worker_device,
-        merge_devices=False, ps_ops=ps_ops, cluster=config.cluster_spec)
+        merge_devices=True, ps_ops=ps_ops, cluster=config.cluster_spec)
   else:
     return None
 
