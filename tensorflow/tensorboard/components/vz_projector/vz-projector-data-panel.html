@@ -101,6 +101,7 @@ paper-dropdown-menu paper-item {
 
 #projector-config-template {
   --paper-input-container-input: {
+    line-height: 13px;
     font-family: monospace;
     font-size: 12px;
   };
@@ -122,7 +123,7 @@ paper-dropdown-menu paper-item {
 }
 
 .projector-config-options {
-  margin-top: 24px;
+  margin-top: 12px;
 }
 
 .projector-config-dialog-container {
@@ -144,10 +145,48 @@ paper-dropdown-menu paper-item {
 .upload-step {
   display: flex;
   justify-content: space-between;
+  margin-bottom: 6px;
 }
 
 .upload-step paper-button {
   margin-left: 30px;
+}
+
+.step-label {
+  color: rgb(38, 180, 226);
+}
+
+.scrollable-container {
+  margin-top: 0;
+  min-width: 400px;
+}
+
+#projectorConfigDialog p {
+  margin: 8px 0 8px;
+}
+
+.data-step {
+  margin-top: 40px;
+}
+
+.data-step-contents {
+  display: table;
+  width: 100%;
+}
+
+.data-step-contents-contents {
+  display: table-cell;
+  margin-top: 6px;
+}
+
+.data-step-contents-upload {
+  display: table-cell;
+  text-align: right;
+  vertical-align: bottom;
+}
+
+#demo-data-buttons-container {
+  display: none;
 }
 
 </style>
@@ -216,12 +255,16 @@ paper-dropdown-menu paper-item {
       it unit norm.
     </paper-tooltip>
   </paper-checkbox>
-  <div>
+  <div class="dirs">
+    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
+    <div class="dir">Metadata: <span id="metadata-file"></span></div>
+  </div>
+  <div id="demo-data-buttons-container">
     <span>
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
-        Upload data from your computer
+        Load data from your computer
       </paper-tooltip>
-      <paper-button id="upload" title="Upload data" class="ink-button" onclick="dataDialog.open()">Upload data</paper-button>
+      <paper-button id="upload" class="ink-button" onclick="dataDialog.open()">Load data</paper-button>
     </span>
     <span>
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
@@ -230,48 +273,52 @@ paper-dropdown-menu paper-item {
       <paper-button id="host-embedding" class="ink-button" onclick="projectorConfigDialog.open()">Publish</paper-button>
     </span>
   </div>
-  <div class="dirs">
-    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
-    <div class="dir">Metadata: <span id="metadata-file"></span></div>
-  </div>
   <div>
     <paper-dialog id="dataDialog" with-backdrop>
-      <h2>Upload data from your computer</h2>
-      <paper-dialog-scrollable>
+      <h2>Load data from your computer</h2>
+      <paper-dialog-scrollable class="scrollable-container">
         <div class="data-step">
           <div class="upload-step">
-            <div><b>Step 1: Upload a TSV file of vectors.</b></div>
             <div>
-              <paper-button id="upload-tensors" title="Upload a TSV tensor file">Upload</paper-button>
+                <b><span class="step-label">Step 1:</span> Load a TSV file of vectors.</b>
+            </div>
+          </div>
+          <div class="data-step-contents">
+            <div class="data-step-contents-contents">
+              Example of 3 vectors with dimension 4:
+              <div class="code">
+                0.1<span class="delimiter">\t</span>0.2<span class="delimiter">\t</span>0.5<span class="delimiter">\t</span>0.9<br/>
+                0.2<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>5.0<span class="delimiter">\t</span>0.2<br/>
+                0.4<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>7.0<span class="delimiter">\t</span>0.8
+              </div>
+            </div>
+            <div class="data-step-contents-upload">
+              <paper-button id="upload-tensors" title="Choose a TSV tensor file">Choose file</paper-button>
               <input type="file" id="file" name="file"/>
             </div>
           </div>
-          Example of 3 vectors with dimension 4:
-          <div class="code">
-            0.1<span class="delimiter">\t</span>0.2<span class="delimiter">\t</span>0.5<span class="delimiter">\t</span>0.9<br/>
-            0.2<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>5.0<span class="delimiter">\t</span>0.2<br/>
-            0.4<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>7.0<span class="delimiter">\t</span>0.8
-          </div>
-          <p>
-
-          </p>
         </div>
-        <div style="height: 60px;"></div>
         <div class="data-step">
           <div class="upload-step">
-            <div><b>Step 2 (optional): Upload a TSV file of metadata.</b></div>
             <div>
-              <paper-button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload</paper-button>
-              <input type="file" id="file-metadata" name="file-metadata"/>
+                <span class="step-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
             </div>
           </div>
-          Example of 3 data points and 2 columns.<br/>
-          Note that the first row is a header.
-          <div class="code">
-            <b>Pokémon<span class="delimiter">\t</span>Species</b><br/>
-            Wartortle<span class="delimiter">\t</span>Turtle<br/>
-            Venusaur<span class="delimiter">\t</span>Seed<br/>
-            Charmeleon<span class="delimiter">\t</span>Flame
+          <div class="data-step-contents">
+            <div class="data-step-contents-contents">
+              Example of 3 data points and 2 columns.<br/>
+              <i>Note: the first row is a header.</i>
+              <div class="code">
+                <b>Pokémon<span class="delimiter">\t</span>Species</b><br/>
+                Wartortle<span class="delimiter">\t</span>Turtle<br/>
+                Venusaur<span class="delimiter">\t</span>Seed<br/>
+                Charmeleon<span class="delimiter">\t</span>Flame
+              </div>
+            </div>
+            <div class="data-step-contents-upload">
+              <paper-button id="upload-metadata" title="Choose a TSV metadata file" class="ink-button">Choose file</paper-button>
+              <input type="file" id="file-metadata" name="file-metadata"/>
+            </div>
           </div>
         </div>
       </paper-dialog-scrollable>
@@ -279,22 +326,22 @@ paper-dropdown-menu paper-item {
     </paper-dialog>
     <paper-dialog id="projectorConfigDialog" with-backdrop>
       <h2>Publish your embedding visualization and data</h2>
-      <paper-dialog-scrollable>
+      <paper-dialog-scrollable class="scrollable-container">
         <div>
           <p>
             If you'd like to share your visualization with the world, follow these simple steps.
             See <a target=_blank href="https://www.tensorflow.org/versions/master/how_tos/embedding_viz/index.md">this tutorial</a> for more.
           </p>
-          <h4>Step 1: Make your data public.</h4>
+          <h4><span class="step-label">Step 1:</span> Make data public</h4>
           <p>
-            Host your tensors, metadata (optional), sprite image (optional), and bookmarks (optional) TSV files <i>publicly</i> on the web.
+            Host tensors, metadata, sprite image, and bookmarks TSV files <i>publicly</i> on the web.
           </p>
           <p>
             One option is using a <a target=_blank href="https://gist.github.com/">github gist</a>.
           </p>
         </div>
         <div>
-          <h4>Step 2: Fill out the projector config from the template below.</h4>
+          <h4><span class="step-label">Step 2:</span> Projector config</h4>
           <div class="projector-config-options">
             <i>Optional:</i>
             <div class="config-checkbox">
@@ -310,8 +357,8 @@ paper-dropdown-menu paper-item {
         </div>
         <paper-textarea id="projector-config-template" label="template_projector_config.json"></paper-textarea>
         <div>
-          <h4>Step 3: Host the projector config and paste the URL below.</h4>
-          After you have hosted the projector config JSON file you build above, paste the URL to the config below.
+          <h4><span class="step-label">Step 3:</span> Host projector config</h4>
+          After you have hosted the projector config JSON file you built above, paste the URL to the config below.
         </div>
         <paper-input id="projector-config-url" label="Path to projector config"></paper-input>
         <paper-input id="projector-share-url" label="Your shareable URL" readonly></paper-input>

@@ -123,7 +123,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
   return sparse_tensor.SparseTensor(indices_out, values_out, shape_out)
 
 
-ops.RegisterShape("SparseFeatureCross")(common_shapes.call_cpp_shape_fn)
 ops.NotDifferentiable("SparseFeatureCross")
-ops.RegisterShape("SparseFeatureCrossV2")(common_shapes.call_cpp_shape_fn)
+
+
 ops.NotDifferentiable("SparseFeatureCrossV2")

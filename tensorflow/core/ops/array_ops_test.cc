@@ -1044,14 +1044,17 @@ TEST(ArrayOpsTest, Tile_ShapeFn) {
                    .Input("multiples", 1, DT_INT32)
                    .Finalize(&op.node_def));
 
-  // If multiples rank is unknown, output is unknown.
-  INFER_OK(op, "[2,3,1,4];?", "?");
+  // If both are unknown, output is unknown.
+  INFER_OK(op, "?;?", "?");
+
+  // If multiples rank is unknown but input is, output rank is known.
+  INFER_OK(op, "[2,3,1,4];?", "[?,?,?,?]");
 
   // Bad rank for 'multiples'
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[2,3,1,4];[4,1]");
 
-  // No multiples tensor available, but output rank is known.
-  INFER_OK(op, "[2,3,1,4];[4]", "[?,?,?,?]");
+  // No multiples tensor available, but output rank is known from multiples.
+  INFER_OK(op, "?;[4]", "[?,?,?,?]");
 
   // Test a tile of a 4D input.
   Tensor multiples = test::AsTensor<int32>({2, 3, 4, 5});
@@ -1472,17 +1475,9 @@ TEST(ArrayOpsTest, Slice_ShapeFn) {
   sizes = test::AsTensor<int32>({-1, -1, 1, -1});
   INFER_OK(op, "[2,3,4,5];[4];[4]", "[d0_0,2,1,4]");
 
-  // sizes too large on one dimension
-  sizes = test::AsTensor<int32>({1, 2, 1, 5});
-  INFER_ERROR("Out of bounds slicing", op, "[2,3,4,5];[4];[4]");
-
   begin = test::AsTensor<int32>({0, 1, 2, 6});
   sizes = test::AsTensor<int32>({-1, -1, -1, -1});
   INFER_ERROR("Negative dimension size", op, "[2,3,4,5];[4];[4]");
-
-  begin = test::AsTensor<int32>({0, 1, 2, 6});
-  sizes = test::AsTensor<int32>({-1, -1, -1, 0});
-  INFER_ERROR("cannot start after end", op, "[2,3,4,5];[4];[4]");
 
   begin = test::AsTensor<int32>({0, 1, 2, 5});
   sizes = test::AsTensor<int32>({-1, -1, -1, -2});

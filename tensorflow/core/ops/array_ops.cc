@@ -997,10 +997,10 @@ REGISTER_OP("EditDistance")
     .Attr("T: type")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(3), c->input(4), c->input(5)));
       const Tensor* hypothesis_shape_t = c->input_tensor(2);
       const Tensor* truth_shape_t = c->input_tensor(5);
       if (hypothesis_shape_t == nullptr || truth_shape_t == nullptr) {
@@ -1092,6 +1092,19 @@ REGISTER_OP("Fill")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      const Tensor* t = c->input_tensor(0);
+      if (t != nullptr) {
+        for (int i = 0; i < t->NumElements(); ++i) {
+          if (t->vec<int32>()(i) < 0) {
+            return errors::InvalidArgument("Fill dimensions must be >= 0");
+          }
+        }
+      }
+
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
@@ -1832,46 +1845,24 @@ size(t) ==> 12
 namespace {
 
 template <typename T>
-Status SliceHelper(InferenceContext* c, const Tensor* begin_t,
-                   const Tensor* sizes_t, std::vector<DimensionHandle>* dims) {
-  auto begin_vec = begin_t->vec<T>();
-  auto sizes_vec = sizes_t->vec<T>();
-  for (int i = 0; i < sizes_t->NumElements(); ++i) {
+Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
+                   const Tensor* sizes_value,
+                   std::vector<DimensionHandle>* dims) {
+  auto sizes_vec = sizes_value->vec<T>();
+  for (int i = 0; i < sizes_value->NumElements(); ++i) {
     DimensionHandle dim = c->Dim(c->input(0), i);
     if (sizes_vec(i) != -1) {
-      if (c->ValueKnown(dim)) {
-        auto dim_val = c->Value(dim);
-        // We validate the contract that:
-        //
-        // 0 <= begin <= begin + size <= dim_val.
-
-        if (begin_vec(i) > dim_val) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-              ": begin vector cannot start after end of dimension, but was ",
-              begin_vec(i));
-        }
-
-        if (sizes_vec(i) < 0) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-              ": sizes vector cannot be < -1, but was ", sizes_vec(i));
-        }
-
-        auto end = begin_vec(i) + sizes_vec(i);
-        // TODO(vrv): use FastBoundsCheck, once it's moved into a more
-        // universal location.
-        if (end < 0 || end > dim_val) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, ": Dimension: ",
-              dim_val, ", begin: ", begin_vec(i), ", size: ", sizes_vec(i));
-        }
+      auto dim_val = c->Value(dim);
+      if (sizes_vec(i) < 0) {
+        return errors::InvalidArgument(
+            "Out of bounds slicing on dimension ", i, " of length ", dim_val,
+            ": sizes vector cannot be < -1, but was ", sizes_vec(i));
       }
 
       dims->emplace_back(c->MakeDim(sizes_vec(i)));
     } else {
       DimensionHandle result;
-      TF_RETURN_IF_ERROR(c->Subtract(dim, begin_vec(i), &result));
+      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
       dims->emplace_back(result);
     }
   }
@@ -1904,17 +1895,28 @@ REGISTER_OP("Slice")
         TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
       }
 
-      const Tensor* begin_t = c->input_tensor(1);
-      const Tensor* sizes_t = c->input_tensor(2);
+      // NOTE(mrry): Use MakeShapeFromShapeTensor to handle partially-known
+      // values, even though the `begin` value does not represent a shape.
+      ShapeHandle begin_value;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
 
-      if (sizes_t != nullptr && begin_t != nullptr) {
+      // NOTE(mrry): We can't use `MakeShapeFromShapeTensor` for `sizes` because
+      // it might contain -1, which can't be represented (-1 in the ShapeHandle
+      // would mean "unknown".
+      const Tensor* sizes_value = c->input_tensor(2);
+
+      if (sizes_value != nullptr) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(begin_value, sizes_value->NumElements(), &begin_value));
         std::vector<DimensionHandle> dims;
         // If the begin and sizes tensors are available, then
         // we can be precise about the shape of the output.
-        if (begin_t->dtype() == DT_INT64) {
-          TF_RETURN_IF_ERROR(SliceHelper<int64>(c, begin_t, sizes_t, &dims));
+        if (sizes_value->dtype() == DT_INT64) {
+          TF_RETURN_IF_ERROR(
+              SliceHelper<int64>(c, begin_value, sizes_value, &dims));
         } else {
-          TF_RETURN_IF_ERROR(SliceHelper<int32>(c, begin_t, sizes_t, &dims));
+          TF_RETURN_IF_ERROR(
+              SliceHelper<int32>(c, begin_value, sizes_value, &dims));
         }
 
         c->set_output(0, c->MakeShape(dims));
@@ -2215,38 +2217,26 @@ REGISTER_OP("Tile")
     .Attr("T: type")
     .Attr("Tmultiples: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
+      ShapeHandle input = c->input(0);
+      // NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+      // it is a vector of non-negative integers, and (ii) doing so allows
+      // us to handle partially-known multiples.
       ShapeHandle multiples;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &multiples));
-      DimensionHandle multiples_dim0 = c->Dim(multiples, 0);
-      if (!c->ValueKnown(multiples_dim0)) {
-        // Length of multiples vector unknown, so output is unknown.
-        //
-        // NOTE: we could potentially merge the input rank with the
-        // multiples length.
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &multiples));
+      if (c->RankKnown(input)) {
+        TF_RETURN_IF_ERROR(c->WithRank(multiples, c->Rank(input), &multiples));
+      }
+
+      if (!c->RankKnown(multiples)) {
         return shape_inference::UnknownShape(c);
       }
 
-      int32 rank = c->Value(multiples_dim0);
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input));
-      const Tensor* multiples_t = c->input_tensor(1);
-      if (multiples_t == nullptr) {
-        // If multiples vector isn't available, we only know the
-        // output rank, not the sizes.
-        c->set_output(0, c->UnknownShapeOfRank(rank));
-        return Status::OK();
-      }
-
-      std::vector<int64> data;
-      if (multiples_t->dtype() == DT_INT32) {
-        data = AsInt64<int32>(multiples_t, rank);
-      } else {
-        data = AsInt64<int64>(multiples_t, rank);
-      }
+      int32 rank = c->Rank(multiples);
+      TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
       std::vector<DimensionHandle> dims(rank);
       for (int i = 0; i < rank; ++i) {
-        const int64 multiple = data[i];
-        TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, i), multiple, &dims[i]));
+        TF_RETURN_IF_ERROR(
+            c->Multiply(c->Dim(input, i), c->Dim(multiples, i), &dims[i]));
       }
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
@@ -2271,6 +2261,7 @@ REGISTER_OP("TileGrad")
     .Output("output: T")
     .Attr("T: type")
     .Deprecated(3, "TileGrad has been replaced with reduce_sum")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .Doc(R"doc(
 Returns the gradient of `Tile`.
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {AnalyticsLogger} from './analyticsLogger';
 import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, PointAccessors3D, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
 import {DataProvider, EmbeddingInfo, ServingMode} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
@@ -49,7 +50,9 @@ export let ProjectorPolymer = PolymerElement({
     routePrefix: String,
     dataProto: {type: String, observer: '_dataProtoChanged'},
     servingMode: String,
-    projectorConfigJsonPath: String
+    projectorConfigJsonPath: String,
+    pageViewLogging: Boolean,
+    eventLogging: Boolean
   }
 });
 
@@ -95,8 +98,14 @@ export class Projector extends ProjectorPolymer implements
   private metadataCard: MetadataCard;
 
   private statusBar: d3.Selection<HTMLElement>;
+  private analyticsLogger: AnalyticsLogger;
+  private eventLogging: boolean;
+  private pageViewLogging: boolean;
 
   ready() {
+    this.analyticsLogger =
+        new AnalyticsLogger(this.pageViewLogging, this.eventLogging);
+    this.analyticsLogger.logPageView('embeddings');
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
     this.projectionChangedListeners = [];
@@ -498,7 +507,7 @@ export class Projector extends ProjectorPolymer implements
     this.selectedProjection = projection;
     this.selectedProjectionPointAccessors = pointAccessors;
     this.scatterPlot.setDimensions(dimensionality);
-
+    this.analyticsLogger.logProjectionChanged(projection);
     if (this.dataSet.projectionCanBeRendered(projection)) {
       this.updateScatterPlotAttributes();
       this.notifyProjectionsUpdated();

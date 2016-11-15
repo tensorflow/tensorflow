@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/version.h"
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
@@ -75,6 +76,9 @@ using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
 
 extern "C" {
+
+// --------------------------------------------------------------------------
+const char* TF_Version() { return TF_VERSION_STRING; }
 
 // --------------------------------------------------------------------------
 struct TF_Status {
@@ -459,12 +463,6 @@ static bool TF_Run_Inputs(
   return true;
 }
 
-static void TF_DeleteTensors(TF_Tensor* const* tensors, int num) {
-  for (int i = 0; i < num; ++i) {
-    TF_DeleteTensor(tensors[i]);
-  }
-}
-
 static void TF_Run_Helper(
     Session* session, const char* handle, const TF_Buffer* run_options,
     // Input tensors
@@ -543,9 +541,7 @@ void TF_Run(TF_DeprecatedSession* s, const TF_Buffer* run_options,
             TF_Buffer* run_metadata, TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  const bool ok = TF_Run_Inputs(c_inputs, &input_pairs, status);
-  TF_DeleteTensors(c_inputs, ninputs);
-  if (!ok) return;
+  if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
@@ -606,9 +602,7 @@ void TF_PRun(TF_DeprecatedSession* s, const char* handle,
              TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  const bool ok = TF_Run_Inputs(c_inputs, &input_pairs, status);
-  TF_DeleteTensors(c_inputs, ninputs);
-  if (!ok) return;
+  if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
@@ -1033,7 +1027,6 @@ void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
     ok = tensorflow::TF_Tensor_DecodeStrings(value, &t, status);
   }
 
-  TF_DeleteTensor(value);
   if (ok) desc->node_builder.Attr(attr_name, t);
 }
 
@@ -1045,21 +1038,16 @@ void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
   t.reserve(num_values);
   bool ok = true;
 
-  for (int i = 0; i < num_values; ++i) {
-    if (ok) {
-      if (values[i]->dtype != TF_STRING) {
-        t.emplace_back(tensorflow::TensorCApi::MakeTensor(
-            values[i]->dtype, values[i]->shape, values[i]->buffer));
-      } else {
-        t.emplace_back(::tensorflow::DT_STRING);
-        // TF_STRING tensors require copying since Tensor class expects
-        // a sequence of string objects.
-        ok = tensorflow::TF_Tensor_DecodeStrings(values[i], &t.back(), status);
-      }
+  for (int i = 0; i < num_values && ok; ++i) {
+    if (values[i]->dtype != TF_STRING) {
+      t.emplace_back(tensorflow::TensorCApi::MakeTensor(
+          values[i]->dtype, values[i]->shape, values[i]->buffer));
+    } else {
+      t.emplace_back(::tensorflow::DT_STRING);
+      // TF_STRING tensors require copying since Tensor class expects
+      // a sequence of string objects.
+      ok = tensorflow::TF_Tensor_DecodeStrings(values[i], &t.back(), status);
     }
-    // We always delete value[i], even when there is an error,
-    // as promised in the API.
-    TF_DeleteTensor(values[i]);
   }
 
   if (ok) desc->node_builder.Attr(attr_name, t);
@@ -1715,7 +1703,6 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
   if (!ExtendSessionGraphHelper(session, status)) {
-    TF_DeleteTensors(input_values, ninputs);
     return;
   }
 
@@ -1723,9 +1710,7 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
 
   // Convert from TF_Port and TF_Tensor to a string and Tensor.
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  const bool ok = TF_Run_Inputs(input_values, &input_pairs, status);
-  TF_DeleteTensors(input_values, ninputs);
-  if (!ok) return;
+  if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = PortName(inputs[i]);
   }
@@ -1791,7 +1776,6 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
   if (!ExtendSessionGraphHelper(session, status)) {
-    TF_DeleteTensors(input_values, ninputs);
     return;
   }
 
@@ -1799,9 +1783,7 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
   // Convert from TF_Port and TF_Tensor to a string and Tensor.
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
-  const bool ok = TF_Run_Inputs(input_values, &input_pairs, status);
-  TF_DeleteTensors(input_values, ninputs);
-  if (!ok) return;
+  if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = PortName(inputs[i]);
   }

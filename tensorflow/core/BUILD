@@ -214,6 +214,7 @@ cc_library(
         "platform/protobuf.h",
         "platform/stacktrace.h",
         "platform/strong_hash.h",
+        "platform/subprocess.h",
         "platform/thread_annotations.h",
         "platform/types.h",
     ],
@@ -1540,6 +1541,7 @@ tf_cc_tests(
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
+        "platform/subprocess_test.cc",
     ],
     deps = [
         ":lib",

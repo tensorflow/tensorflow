@@ -20516,19 +20516,16 @@ op {
   name: "TensorArray"
   input_arg {
     name: "size"
-    description: "The size of the array."
     type: DT_INT32
   }
   output_arg {
     name: "handle"
-    description: "The handle to the TensorArray."
     type: DT_STRING
     is_ref: true
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of the elements on the tensor_array."
   }
   attr {
     name: "dynamic_size"
@@ -20536,7 +20533,6 @@ op {
     default_value {
       b: false
     }
-    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
   }
   attr {
     name: "clear_after_read"
@@ -20544,7 +20540,6 @@ op {
     default_value {
       b: true
     }
-    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
   }
   attr {
     name: "tensor_array_name"
@@ -20552,19 +20547,31 @@ op {
     default_value {
       s: ""
     }
-    description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
   }
-  summary: "An array of Tensors of given size, with data written via Write and read"
-  description: "via Read or Pack."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayV2"
+  }
   is_stateful: true
 }
 op {
   name: "TensorArrayClose"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
     is_ref: true
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayCloseV2"
+  }
+}
+op {
+  name: "TensorArrayCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
   }
   summary: "Delete the TensorArray from its resource container.  This enables"
   description: "the user to close and release the resource in the middle of a step/run."
@@ -20573,9 +20580,45 @@ op {
   name: "TensorArrayConcat"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayConcatV2"
+  }
+}
+op {
+  name: "TensorArrayConcatV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "flow_in"
@@ -20614,9 +20657,45 @@ op {
   name: "TensorArrayGather"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGatherV2"
+  }
+}
+op {
+  name: "TensorArrayGatherV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "indices"
@@ -20655,6 +20734,31 @@ op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGradV2"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV2"
+  input_arg {
+    name: "handle"
     description: "The handle to the forward TensorArray."
     type: DT_STRING
   }
@@ -20666,7 +20770,6 @@ op {
   output_arg {
     name: "grad_handle"
     type: DT_STRING
-    is_ref: true
   }
   attr {
     name: "source"
@@ -20681,24 +20784,20 @@ op {
   name: "TensorArrayPack"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "flow_in"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
     name: "value"
-    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
     type_attr: "dtype"
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of the elem that is returned."
   }
   attr {
     name: "element_shape"
@@ -20708,18 +20807,46 @@ op {
         unknown_rank: true
       }
     }
-    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
   }
-  summary: "Pack the elements from the TensorArray into output `value`."
-  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayGather` with\n`indices = RangeOp(0, TensorArraySizeOp)`.\n\nAll elements must have the same shape."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGatherV2 with RangeOp"
+  }
 }
 op {
   name: "TensorArrayRead"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayReadV2"
+  }
+}
+op {
+  name: "TensorArrayReadV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "index"
@@ -20746,9 +20873,40 @@ op {
   name: "TensorArrayScatter"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayScatterV2"
+  }
+}
+op {
+  name: "TensorArrayScatterV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "indices"
@@ -20781,9 +20939,28 @@ op {
   name: "TensorArraySize"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArraySizeV2"
+  }
+}
+op {
+  name: "TensorArraySizeV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
   }
   input_arg {
     name: "flow_in"
@@ -20801,9 +20978,40 @@ op {
   name: "TensorArraySplit"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArraySplitV2"
+  }
+}
+op {
+  name: "TensorArraySplitV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "value"
@@ -20836,39 +21044,113 @@ op {
   name: "TensorArrayUnpack"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "value"
-    description: "The concatenated tensor to write to the TensorArray."
     type_attr: "T"
   }
   input_arg {
     name: "flow_in"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
     name: "flow_out"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Unpack the data from the input value into TensorArray elements."
-  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayScatter` with\n`indices = RangeOp(0, SizeOp(value)[0])`."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayScatterV2 with RangeOp"
+  }
+}
+op {
+  name: "TensorArrayV2"
+  input_arg {
+    name: "size"
+    description: "The size of the array."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the TensorArray."
+    type: DT_STRING
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
+  }
+  summary: "An array of Tensors of given size, with data written via Write and read"
+  description: "via Read or Pack."
+  is_stateful: true
 }
 op {
   name: "TensorArrayWrite"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayWriteV2"
+  }
+}
+op {
+  name: "TensorArrayWriteV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
   }
   input_arg {
     name: "index"

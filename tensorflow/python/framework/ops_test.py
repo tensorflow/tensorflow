@@ -270,14 +270,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       ops.Operation(ops._NodeDef("op", "invalid:0"), g)
 
-  def testShapeFunctionAbsence(self):
-    # TODO(cwhipkey): enable this test
-    # with self.assertRaisesRegexp(
-    #     RuntimeError,
-    #     r"No .* shape function registered for standard op: ShapelessOp"):
-    #   test_ops_2.shapeless_op()
-    pass
-
   def testNoShapeFunction(self):
     g = ops.Graph()
     ops.Operation(ops._NodeDef("op", "an_op"), g,

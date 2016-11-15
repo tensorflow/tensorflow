@@ -216,7 +216,7 @@ class ProjectorPlugin(TBPlugin):
         ckpt_path = latest_checkpoint(logdir)
         if not ckpt_path:
           # Or in the parent of logdir.
-          ckpt_path = latest_checkpoint(os.path.join('../', logdir))
+          ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
           if not ckpt_path and not has_tensor_files:
             continue
         if ckpt_path:
