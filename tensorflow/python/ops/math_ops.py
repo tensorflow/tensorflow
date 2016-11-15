@@ -1061,6 +1061,10 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
 
   Returns:
     An 1-D `Tensor` of type `dtype`.
+
+  @compatibility(numpy)
+  Equivalent to np.arange
+  @end_compatibility
   """
   if limit is None:
     start, limit = 0, start
@@ -1148,6 +1152,10 @@ def reduce_sum(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.sum
+  @end_compatibility
   """
   return gen_math_ops._sum(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1240,6 +1248,10 @@ def reduce_mean(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.mean
+  @end_compatibility
   """
   return gen_math_ops._mean(input_tensor, _ReductionDims(input_tensor,
                                                          axis,
@@ -1269,6 +1281,10 @@ def reduce_prod(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.prod
+  @end_compatibility
   """
   return gen_math_ops._prod(input_tensor, _ReductionDims(input_tensor,
                                                          axis,
@@ -1298,6 +1314,10 @@ def reduce_min(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.min
+  @end_compatibility
   """
   return gen_math_ops._min(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1327,6 +1347,10 @@ def reduce_max(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.max
+  @end_compatibility
   """
   return gen_math_ops._max(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1366,6 +1390,10 @@ def reduce_all(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.all
+  @end_compatibility
   """
   return gen_math_ops._all(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1405,6 +1433,10 @@ def reduce_any(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.any
+  @end_compatibility
   """
   return gen_math_ops._any(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1766,6 +1798,10 @@ def sigmoid(x, name=None):
   Returns:
     A Tensor with the same type as `x` if `x.dtype != qint32`
       otherwise the return type is `quint8`.
+
+  @compatibility(numpy)
+  Equivalent to np.scipy.special.expit
+  @end_compatibility
   """
   with ops.name_scope(name, "Sigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
