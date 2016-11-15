@@ -1732,38 +1732,13 @@ def meshgrid(*args, **kwargs):
 
 
 @ops.RegisterShape("Slice")
-def _SliceShape(op):
-  """Shape function for array_ops.slice."""
-  input_shape = op.inputs[0].get_shape()
-  begin_shape = op.inputs[1].get_shape().with_rank(1)
-  sizes_shape = op.inputs[2].get_shape().with_rank(1)
-  ndims = begin_shape.merge_with(sizes_shape)[0].value
-  if ndims is not None:
-    input_shape.assert_has_rank(ndims)
-  # NOTE(mrry): Use `constant_value_as_shape()` to handle
-  # partially-known values.
-  begin_value = tensor_util.constant_value_as_shape(
-      op.inputs[1]).with_rank(ndims)
-  # NOTE(mrry): We can't use `constant_value_as_shape()` for `sizes`
-  # because it might contain -1, which can't be represented as a
-  # `TensorShape`.
-  sizes_value = tensor_util.constant_value(op.inputs[2])
-  if sizes_value is not None:
-    returned_dims = []
-    for i, (slice_size, begin_dim) in enumerate(zip(sizes_value.ravel(),
-                                                    begin_value.dims)):
-      if slice_size != -1:
-        returned_dims.append(slice_size)
-      else:
-        returned_dims.append(input_shape[i] - begin_dim)
-    return [tensor_shape.TensorShape(returned_dims)]
-  else:
-    if input_shape.ndims is not None:
-      return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
-    elif ndims is not None:
-      return [tensor_shape.unknown_shape(ndims=ndims)]
-    else:
-      return [tensor_shape.unknown_shape()]
+# pylint: disable=invalid-name
+def _DelegateSliceShape(op):
+  return common_shapes.call_cpp_shape_fn(
+      op,
+      input_tensors_needed=[2],
+      input_tensors_as_shapes_needed=[1])
+# pylint: enable=invalid-name
 
 
 NEW_AXIS = -1
@@ -1834,27 +1809,9 @@ def _DelegateReshapeShape(op):
 
 
 @ops.RegisterShape("Fill")
-def _FillShape(op):
-  """Shape function for the Fill op.
-
-  This op takes a vector of dimensions and a scalar, and produces a
-  tensor with the given dimensions.
-
-  Args:
-    op: A Fill Operation.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: If the shapes or arguments are known to be invalid.
-  """
-  op.inputs[0].get_shape().assert_has_rank(1)
-  op.inputs[1].get_shape().assert_has_rank(0)
-  fill_dims = tensor_util.constant_value(op.inputs[0])
-  if fill_dims is not None and any(d < 0 for d in fill_dims):
-    raise ValueError("Fill dimensions must be >= 0")
-  return [tensor_util.constant_value_as_shape(op.inputs[0])]
+def _DelegateFillShape(op):
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[0], input_tensors_as_shapes_needed=[0])
 
 
 @ops.RegisterShape("Pad")
@@ -1879,43 +1836,18 @@ def _SplitShape(op):
 
 
 @ops.RegisterShape("Tile")
-def _TileShape(op):
-  """Shape function for the Tile op.
-
-  This op has two inputs:
-
-  * input: A rank-N tensor.
-  * multiples: A length-N vector, in which the i^th element contains
-    the factor by which `input` will be tiled in the i^th dimension.
-
-  It has one output, which has the same rank as input, and additional
-  elements according to the values in multiples
-
-  Args:
-    op: A Tile Operation.
-
-  Returns:
-    A single-element list containing the shape of the output.
-  """
-  multiples_shape = op.inputs[1].get_shape().with_rank(1)
-  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0].value)
-  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
-  # it is a vector of non-negative integers, and (ii) doing so allows
-  # us to handle partially-known multiples.
-  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
-      input_shape.ndims)
-
-  if multiples.ndims is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    input_dims = input_shape.dims or [None for _ in multiples.dims]
-    output_dims = []
-    for dim, multiple in zip(input_dims, multiples.dims):
-      output_dims.append(multiple * dim)
-    return [tensor_shape.TensorShape(output_dims)]
+def _DelegateTileShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
 
 
 @ops.RegisterShape("TileGrad")
+def _DelegateTileGradShape(op):
+  return common_shapes.call_cpp_shape_fn(
+      op,
+      input_tensors_as_shapes_needed=[1],
+      debug_python_shape_fn=_TileGradShape)
+
+
 def _TileGradShape(op):
   """Shape function for the TileGrad op."""
   multiples_shape = op.inputs[1].get_shape().with_rank(1)
