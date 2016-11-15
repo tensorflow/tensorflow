@@ -175,7 +175,6 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
   """Assemble a logline prefix using the google2 format."""
   # pylint: disable=global-variable-not-assigned
   global _level_names
-  global _logfile_map, _logfile_map_mutex
   # pylint: enable=global-variable-not-assigned
 
   # Record current time
