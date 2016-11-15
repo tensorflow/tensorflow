@@ -122,7 +122,7 @@ export class Projector extends ProjectorPolymer implements
     this.bookmarkPanel.initialize(this, this as ProjectorEventContext);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
-    this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
+    this.scopeSubtree(this.$$('#notification-dialog'), true);
     this.setupUIControls();
     this.initializeDataProvider();
   }
