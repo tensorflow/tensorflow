@@ -25,12 +25,13 @@ from tensorflow.python.training import moving_averages
 
 class MovingAveragesTest(tf.test.TestCase):
 
-  def testAssignMovingAverage(self):
+  def testAssignMovingAverageWithoutZeroDebias(self):
     with self.test_session():
       var = tf.Variable([10.0, 11.0])
       val = tf.constant([1.0, 2.0], tf.float32)
       decay = 0.25
-      assign = moving_averages.assign_moving_average(var, val, decay)
+      assign = moving_averages.assign_moving_average(
+          var, val, decay, zero_debias=False)
       tf.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
       assign.op.run()
@@ -38,13 +39,12 @@ class MovingAveragesTest(tf.test.TestCase):
                            11.0 * 0.25 + 2.0 * (1.0 - 0.25)],
                           var.eval())
 
-  def testAssignMovingAverageWithZeroDebias(self):
+  def testAssignMovingAverage(self):
     with self.test_session():
       var = tf.Variable([0.0, 0.0])
       val = tf.constant([1.0, 2.0], tf.float32)
       decay = 0.25
-      assign = moving_averages.assign_moving_average(
-          var, val, decay, zero_debias=True)
+      assign = moving_averages.assign_moving_average(var, val, decay)
       tf.global_variables_initializer().run()
       self.assertAllClose([0.0, 0.0], var.eval())
       assign.op.run()
@@ -293,8 +293,8 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     with tf.device("/job:dev_v0"):
       v0 = tf.Variable(10.0, name="v0")
     with tf.device("/job:dev_v1"):
-      v1 = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
-          name="v1", container="", shared_name="")
+      v1 = gen_state_ops._variable(shape=[1], dtype=tf.float32,
+                                   name="v1", container="", shared_name="")
       v1.set_shape([1])
     tensor2 = v0 + v1
     ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")

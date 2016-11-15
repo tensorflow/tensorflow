@@ -29,7 +29,7 @@ from tensorflow.python.training import slot_creator
 
 
 # TODO(touts): switch to variables.Variable.
-def assign_moving_average(variable, value, decay, zero_debias=False, name=None):
+def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   """Compute the moving average of a variable.
 
   The moving average of 'variable' updated with 'value' is:
@@ -124,8 +124,10 @@ def weighted_moving_average(value,
                                                dtype=weight.dtype),
         trainable=False,
         collections=collections)
-    numerator = assign_moving_average(value_x_weight_var, value * weight, decay)
-    denominator = assign_moving_average(weight_var, weight, decay)
+    numerator = assign_moving_average(
+        value_x_weight_var, value * weight, decay, zero_debias=False)
+    denominator = assign_moving_average(
+        weight_var, weight, decay, zero_debias=False)
 
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
