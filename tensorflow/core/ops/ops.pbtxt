@@ -8493,6 +8493,10 @@ op {
   }
   summary: "Computes the reciprocal of x element-wise."
   description: "I.e., \\\\(y = 1 / x\\\\)."
+  deprecation {
+    version: 17
+    explanation: "Use Reciprocal"
+  }
 }
 op {
   name: "InvGrad"
@@ -8523,6 +8527,10 @@ op {
   }
   summary: "Computes the gradient for the inverse of `x` wrt its input."
   description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
+  deprecation {
+    version: 17
+    explanation: "Use ReciprocalGrad"
+  }
 }
 op {
   name: "InvertPermutation"
