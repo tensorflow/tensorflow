@@ -244,8 +244,8 @@ class GcsRandomAccessFile : public RandomAccessFile {
       TF_RETURN_IF_ERROR(LoadBufferFromGCS());
 
       // Set the results.
-      *result = StringPiece(buffer_.data(), std::min(buffer_.size(), n));
-      std::memcpy(scratch, buffer_.data(), result->size());
+      std::memcpy(scratch, buffer_.data(), std::min(buffer_.size(), n));
+      *result = StringPiece(scratch, std::min(buffer_.size(), n));
     }
 
     if (result->size() < n) {
