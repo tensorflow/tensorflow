@@ -46,7 +46,7 @@ mathematical functions to your graph.
 @@abs
 @@negative
 @@sign
-@@inv
+@@reciprocal
 @@square
 @@round
 @@sqrt

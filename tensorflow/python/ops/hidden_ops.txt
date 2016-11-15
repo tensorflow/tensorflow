@@ -198,6 +198,7 @@ Tanh
 SigmoidGrad
 TanhGrad
 InvGrad
+ReciprocalGrad
 SqrtGrad
 RsqrtGrad
 

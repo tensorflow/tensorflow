@@ -687,7 +687,7 @@ class CoreUnaryOpsTest(Base, DocStringCheckMixin, UnaryOpsTestsMixin):
         # TODO(shoyer): add unary + to core TensorFlow
         ('pos', None, None, None),
         ('sign', None, tf.sign, core.sign),
-        ('inv', None, tf.inv, core.inv),
+        ('reciprocal', None, tf.reciprocal, core.reciprocal),
         ('square', None, tf.square, core.square),
         ('round', None, tf.round, core.round_function),
         ('sqrt', None, tf.sqrt, core.sqrt),

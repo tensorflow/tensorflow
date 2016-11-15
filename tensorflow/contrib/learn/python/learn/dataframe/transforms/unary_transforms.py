@@ -29,7 +29,7 @@ from tensorflow.python.ops import math_ops
 # `Series`.registered_name().
 UNARY_TRANSFORMS = [("__neg__", math_ops.neg),
                     ("sign", math_ops.sign),
-                    ("inv", math_ops.inv),
+                    ("reciprocal", math_ops.reciprocal),
                     ("square", math_ops.square),
                     ("round", math_ops.round),
                     ("sqrt", math_ops.sqrt),
