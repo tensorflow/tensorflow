@@ -575,19 +575,19 @@ class TestClone(tf.test.TestCase):
       # case 1
       c_out = meta_graph.clone(c, "copy", replace={b: b_new})
       with tf.Session() as sess:
-        self.assertNear(sess.run(c_out), 4., 1e-6)
+        self.assertNear(sess.run(c_out[0]), 4., 1e-6)
 
       # case 2
       b_out, c_out = meta_graph.clone([b, c], "copy", replace={b: b_new})
       with tf.Session() as sess:
-        b_out_, c_out_ = sess.run([b_out, c_out])
+        b_out_, c_out_ = sess.run([b_out[0], c_out[0]])
       self.assertNear(b_out_, 2., 1e-6)
       self.assertNear(c_out_, 2., 1e-6)
 
       # case 3
       a_out, c_out = meta_graph.clone([a, c], "copy", replace={b: b_new})
       with tf.Session() as sess:
-        a_out_, c_out_ = sess.run([a_out, c_out])
+        a_out_, c_out_ = sess.run([a_out[0], c_out[0]])
       self.assertNear(a_out_, 1., 1e-6)
       self.assertNear(c_out_, 4., 1e-6)
 
@@ -595,7 +595,7 @@ class TestClone(tf.test.TestCase):
       a_out, b_out, c_out = meta_graph.clone([a, b, c], "copy",
                                              replace={a: a_new})
       with tf.Session() as sess:
-        a_out_, b_out_, c_out_ = sess.run([a_out, b_out, c_out])
+        a_out_, b_out_, c_out_ = sess.run([a_out[0], b_out[0], c_out[0]])
       self.assertNear(a_out_, 4., 1e-6)
       self.assertNear(b_out_, 2., 1e-6)
       self.assertNear(c_out_, 4., 1e-6)
