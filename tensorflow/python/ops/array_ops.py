@@ -1878,9 +1878,6 @@ def _SplitShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-ops.RegisterShape("SplitV")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterShape("Tile")
 def _TileShape(op):
   """Shape function for the Tile op.
@@ -2020,26 +2017,10 @@ def _EditDistanceShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2, 5])
 
 
-ops.RegisterShape("Quantize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Dequantize")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterGradient("FakeQuantWithMinMaxArgs")
 def _FakeQuantWithMinMaxArgsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxArgs op."""
   return fake_quant_with_min_max_args_gradient(grad, op.inputs[0])
-
-
-ops.RegisterShape("FakeQuantWithMinMaxArgs")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FakeQuantWithMinMaxArgsGradient")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FakeQuantWithMinMaxVars")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FakeQuantWithMinMaxVarsGradient")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannelGradient")(
-    common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVars")
@@ -2357,9 +2338,6 @@ def _OneHotShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.RegisterShape("PlaceholderWithDefault")(common_shapes.call_cpp_shape_fn)
-
-
 def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   """Return a mask tensor representing the first N positions of each row.
 
@@ -2509,12 +2487,6 @@ def where(condition, x=None, y=None, name=None):
 def _DelegateQuantizedReshapeShape(op):
   return common_shapes.call_cpp_shape_fn(
       op, input_tensors_as_shapes_needed=[1])
-
-ops.RegisterShape("QuantizeV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(
-    common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("QuantizedConcat")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ScatterNd")

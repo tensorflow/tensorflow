@@ -23,7 +23,6 @@ from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -78,9 +77,6 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   loader.load_op_library(
       resource_loader.get_path_to_datafile("_variable_ops.so"))
   return gen_variable_ops.zero_initializer(ref, name=name)
-
-
-ops.RegisterShape('ZeroInitializer')(common_shapes.call_cpp_shape_fn)
 
 
 def assert_global_step(global_step_tensor):

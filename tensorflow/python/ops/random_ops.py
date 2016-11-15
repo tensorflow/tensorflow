@@ -458,6 +458,3 @@ ops.NotDifferentiable("RandomGamma")
 @ops.RegisterShape("RandomUniformInt")
 def _RandomShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-ops.RegisterShape("RandomShuffle")(common_shapes.call_cpp_shape_fn)
