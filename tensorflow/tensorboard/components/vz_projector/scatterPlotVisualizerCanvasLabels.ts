@@ -123,12 +123,10 @@ export class ScatterPlotVisualizerCanvasLabels implements
           if (sceneIs3D && (lrc.useSceneOpacityFlags[i] === 1)) {
             opacity = opacityMap(camToPoint.length());
           }
-          this.gc.fillStyle = this.styleStringFromRGBA(
-              lrc.fillColors[i * 3], lrc.fillColors[i * 3 + 1],
-              lrc.fillColors[i * 3 + 2], opacity);
-          this.gc.strokeStyle = this.styleStringFromRGBA(
-              lrc.strokeColors[i * 3], lrc.strokeColors[i * 3 + 1],
-              lrc.strokeColors[i * 3 + 2], opacity);
+          this.gc.fillStyle =
+              this.styleStringFromPackedRgba(lrc.fillColors, i, opacity);
+          this.gc.strokeStyle =
+              this.styleStringFromPackedRgba(lrc.strokeColors, i, opacity);
           this.gc.lineWidth = LABEL_STROKE_WIDTH;
           this.gc.strokeText(text, x, y);
           this.gc.lineWidth = LABEL_FILL_WIDTH;
@@ -138,9 +136,14 @@ export class ScatterPlotVisualizerCanvasLabels implements
     }
   }
 
-  private styleStringFromRGBA(r: number, g: number, b: number, a: number):
-      string {
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+  private styleStringFromPackedRgba(
+      packedRgbaArray: Uint8Array, colorIndex: number,
+      opacity: number): string {
+    const offset = colorIndex * 3;
+    const r = packedRgbaArray[offset];
+    const g = packedRgbaArray[offset + 1];
+    const b = packedRgbaArray[offset + 2];
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
   }
 
   onResize(newWidth: number, newHeight: number) {
