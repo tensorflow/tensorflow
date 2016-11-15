@@ -578,7 +578,7 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier.export(export_dir)
 
   def testEnableCenteredBias(self):
-    """Tests that we can disable centered bias."""
+    """Tests that we can enable centered bias."""
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
 
@@ -589,8 +589,26 @@ class DNNClassifierTest(tf.test.TestCase):
         enable_centered_bias=True,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=200)
+    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=5)
     self.assertIn('centered_bias_weight', classifier.get_variable_names())
+    scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+
+  def testDisableCenteredBias(self):
+    """Tests that we can disable centered bias."""
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=3,
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        enable_centered_bias=False,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=5)
+    self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
     scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
@@ -962,7 +980,7 @@ class DNNRegressorTest(tf.test.TestCase):
     self.assertIn('loss', scores)
 
   def testEnableCenteredBias(self):
-    """Tests that we can disable centered bias."""
+    """Tests that we can enable centered bias."""
     def _input_fn(num_epochs=None):
       features = {
           'age': tf.train.limit_epochs(
@@ -988,8 +1006,41 @@ class DNNRegressorTest(tf.test.TestCase):
         enable_centered_bias=True,
         config=tf.contrib.learn.RunConfig(tf_random_seed=3))
 
-    regressor.fit(input_fn=_input_fn, steps=200)
+    regressor.fit(input_fn=_input_fn, steps=5)
     self.assertIn('centered_bias_weight', regressor.get_variable_names())
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertIn('loss', scores)
+
+  def testDisableCenteredBias(self):
+    """Tests that we can disable centered bias."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
+      }
+      return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
+
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        enable_centered_bias=False,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn, steps=5)
+    self.assertNotIn('centered_bias_weight', regressor.get_variable_names())
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores)

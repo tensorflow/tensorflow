@@ -265,22 +265,22 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testNoGradientForStringOutputs(self):
-    # TODO(cwhipkey): enable this test
-    pass
-#      with ops.Graph().as_default():
-#        @ops.RegisterGradient("TestStringOutput")
-#        def _TestOpGrad(op, float_grad, string_grad):
-#          """Gradient function for TestStringOutput."""
-#          self.assertEquals(float_grad.dtype, dtypes.float32)
-#          self.assertFalse(string_grad)
-#          return float_grad
-#  
-#        c = constant(1.0)
-#        x, y = test_ops.test_string_output(c)
-#        z = x * 2.0
-#        w = z * 3.0
-#        grads = gradients.gradients(z, [c])
-#        self.assertTrue(isinstance(grads[0], ops.Tensor))
+    with ops.Graph().as_default():
+      def _TestOpGrad(_, float_grad, string_grad):
+        """Gradient function for TestStringOutput."""
+        self.assertEquals(float_grad.dtype, dtypes.float32)
+        self.assertFalse(string_grad)
+        return float_grad
+      ops.RegisterGradient("TestStringOutput")(_TestOpGrad)
+
+      c = constant(1.0)
+      x, _ = test_ops.test_string_output(c)
+      z = x * 2.0
+      w = z * 3.0
+      grads = gradients.gradients(z, [c])
+      self.assertTrue(isinstance(grads[0], ops.Tensor))
+      grads = gradients.gradients(w, [c])
+      self.assertTrue(isinstance(grads[0], ops.Tensor))
 
   def testSingletonIndexedSlices(self):
     with ops.Graph().as_default():

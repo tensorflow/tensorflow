@@ -81,7 +81,7 @@ func (s *Session) Run(inputs map[Output]*Tensor, outputs []Output, targets []*Op
 	if inputs != nil {
 		for port, tensor := range inputs {
 			inputPorts = append(inputPorts, port.c())
-			inputValues = append(inputValues, tensor.c())
+			inputValues = append(inputValues, tensor.c)
 		}
 	}
 
@@ -120,10 +120,9 @@ func (s *Session) Run(inputs map[Output]*Tensor, outputs []Output, targets []*Op
 		return nil, err
 	}
 
-	var tensors []*Tensor
-	for _, val := range outputValues {
-		tensors = append(tensors, newTensorFromC(val))
-		C.TF_DeleteTensor(val)
+	tensors := make([]*Tensor, len(outputValues))
+	for i, val := range outputValues {
+		tensors[i] = newTensorFromC(val)
 	}
 
 	return tensors, nil

@@ -91,14 +91,14 @@ def ndlstm_base_dynamic(inputs, noutput, scope=None, reverse=False):
     sequence_length = int(inputs.get_shape()[0])
     sequence_lengths = tf.to_int64(tf.fill([batch_size], sequence_length))
     if reverse:
-      inputs = tf.reverse(inputs, [True, False, False])
+      inputs = tf.reverse_v2(inputs, [0])
     outputs, _ = tf.nn.dynamic_rnn(lstm_cell,
                                    inputs,
                                    sequence_lengths,
                                    state,
                                    time_major=True)
     if reverse:
-      outputs = tf.reverse(outputs, [True, False, False])
+      outputs = tf.reverse_v2(outputs, [0])
     return outputs
 
 

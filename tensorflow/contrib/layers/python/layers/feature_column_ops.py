@@ -810,29 +810,29 @@ class _Transformer(object):
   feature columns require data transformations. This class handles those
   transformations if they are not handled already.
 
-  Some features may be used in more than one places. For example one can use a
+  Some features may be used in more than one place. For example, one can use a
   bucketized feature by itself and a cross with it. In that case Transformer
   should create only one bucketization op instead of multiple ops for each
   feature column. To handle re-use of transformed columns, Transformer keeps all
   previously transformed columns.
 
-  An example usage of Transformer is as follows:
+  Example:
 
-    occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                                hash_bucket_size=1000)
-    age = real_valued_column("age")
-    age_buckets = bucketized_column(
-        source_column=age,
-        boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
-    occupation_x_age = crossed_column(columns=[occupation, age_buckets],
-                                      hash_bucket_size=10000)
+  ```python
+    sparse_feature = sparse_column_with_hash_bucket(...)
+    real_valued_feature = real_valued_column(...)
+    real_valued_buckets = bucketized_column(source_column=real_valued_feature,
+                                            ...)
+    sparse_x_real = crossed_column(
+        columns=[sparse_feature, real_valued_buckets], hash_bucket_size=10000)
 
     columns_to_tensor = tf.parse_example(...)
     transformer = Transformer(columns_to_tensor)
 
-    occupation_x_age_tensor = transformer.transform(occupation_x_age)
-    occupation_tensor = transformer.transform(occupation)
-    age_buckets_tensor = transformer.transform(age_buckets)
+    sparse_x_real_tensor = transformer.transform(sparse_x_real)
+    sparse_tensor = transformer.transform(sparse_feature)
+    real_buckets_tensor = transformer.transform(real_valued_buckets)
+  ```
   """
 
   def __init__(self, columns_to_tensors):

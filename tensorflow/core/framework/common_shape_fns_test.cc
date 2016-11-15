@@ -40,6 +40,19 @@ TensorShapeProto Unknown() {
   return ret;
 }
 
+OpDef MakeOpDef(int num_inputs, int num_outputs) {
+  OpRegistrationData op_reg_data;
+  OpDefBuilder b("dummy");
+  for (int i = 0; i < num_inputs; ++i) {
+    b.Input(strings::StrCat("i", i, ": float"));
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    b.Output(strings::StrCat("o", i, ": float"));
+  }
+  CHECK(b.Attr("foo:string").Finalize(&op_reg_data).ok());
+  return op_reg_data.op_def;
+}
+
 }  // namespace
 
 TEST(CommonShapeFnsTest, NoOutputShapeTest) {
@@ -838,6 +851,139 @@ TEST(CommonShapeFnsTest, ReduceForReduceJoin_ShapeFn) {
   // TODO(cwhipkey): in this case, it could output [?,?,?], because the shape of
   // reduction indices is known to be non-empty.
   INFER_OK(op, "[?,?,?];[2]", "?");
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownShapes) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {Unknown(), Unknown(), Unknown()},
+                     {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownDims) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({-1, -1}), S({-1}), S({-1})}, {},
+                     {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_InvalidIndicesRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({-1}), S({-1}), S({-1})}, {}, {},
+                     {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            ValidateSparseTensor(&c, indices, values, shape).code());
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_InvalidNumElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({5, 3}), S({4}), S({3})}, {}, {},
+                     {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            ValidateSparseTensor(&c, indices, values, shape).code());
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_InvalidRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({5, 3}), S({5}), S({4})}, {}, {},
+                     {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            ValidateSparseTensor(&c, indices, values, shape).code());
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownNumIndexElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({-1, 3}), S({5}), S({3})}, {},
+                     {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownNumValueElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({5, 3}), S({-1}), S({3})}, {},
+                     {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownIndexRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({5, -1}), S({5}), S({3})}, {},
+                     {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownShapeRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({5, 3}), S({5}), S({-1})}, {},
+                     {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {S({5, 3}), S({5}), S({3})}, {}, {},
+                     {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
 }
 
 }  // namespace shape_inference

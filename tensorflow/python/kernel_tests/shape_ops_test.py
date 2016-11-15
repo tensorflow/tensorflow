@@ -345,7 +345,7 @@ class TileTest(tf.test.TestCase):
     """Importing can call _TileShape without shape of <multiples> known."""
     with self.test_session():
       inp = tf.placeholder(tf.float32)  # unknown shape
-      multiples = tf.constant(np.random.rand(4).astype(np.int32))
+      multiples = tf.constant([1, 2, 3, 4], dtype=np.int32)
       tiled = tf.tile(inp, multiples)
       gdef = tiled.graph.as_graph_def()
 

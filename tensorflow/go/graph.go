@@ -245,7 +245,7 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		list := (*C.TF_DataType)(&value[0])
 		C.TF_SetAttrTypeList(cdesc, cAttrName, list, C.int(len(value)))
 	case *Tensor:
-		C.TF_SetAttrTensor(cdesc, cAttrName, value.c(), status.c)
+		C.TF_SetAttrTensor(cdesc, cAttrName, value.c, status.c)
 		if err := status.Err(); err != nil {
 			return fmt.Errorf("bad value for attribute %q: %v", name, err)
 		}
@@ -253,7 +253,7 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		size := len(value)
 		list := make([]*C.TF_Tensor, size)
 		for i, v := range value {
-			list[i] = v.c()
+			list[i] = v.c
 		}
 		C.TF_SetAttrTensorList(cdesc, cAttrName, &list[0], C.int(size), status.c)
 		if err := status.Err(); err != nil {

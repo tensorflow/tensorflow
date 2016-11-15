@@ -119,11 +119,13 @@ from __future__ import print_function
 import abc
 import collections
 import math
+
 import six
 
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
+from tensorflow.contrib.layers.python.ops import sparse_ops as contrib_sparse_ops
 from tensorflow.contrib.lookup import lookup_ops as contrib_lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
@@ -400,6 +402,22 @@ class _SparseColumn(_FeatureColumn,
         initializer=init_ops.zeros_initializer,
         combiner=self.combiner)
 
+  def _get_input_sparse_tensor(self, columns_to_tensors):
+    """Looks up the input tensor for transformation and sparsify it if dense."""
+    input_tensor = columns_to_tensors[self.name]
+    if not isinstance(input_tensor, sparse_tensor_py.SparseTensor):
+      # To avoid making any assumptions about which values are to be ignored,
+      # we set ignore_value to -1 for numeric tensors to avoid excluding valid
+      # indices.
+      if input_tensor.dtype == dtypes.string:
+        ignore_value = ""
+      else:
+        ignore_value = -1
+      input_tensor = contrib_sparse_ops.dense_to_sparse_tensor(
+          input_tensor, ignore_value=ignore_value)
+
+    return input_tensor
+
   def is_compatible(self, other_column):
     """Check compatability of two sparse columns."""
     if self.lookup_config and other_column.lookup_config:
@@ -432,12 +450,12 @@ class _SparseColumnIntegerized(_SparseColumn):
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
-    sparse_id_values = math_ops.mod(columns_to_tensors[self.name].values,
-                                    self.bucket_size,
+    input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
+
+    sparse_id_values = math_ops.mod(input_tensor.values, self.bucket_size,
                                     name="mod")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        columns_to_tensors[self.name].indices, sparse_id_values,
-        columns_to_tensors[self.name].shape)
+        input_tensor.indices, sparse_id_values, input_tensor.shape)
 
 
 def sparse_column_with_integerized_feature(column_name,
@@ -501,16 +519,17 @@ class _SparseColumnHashed(_SparseColumn):
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
-    sparse_tensor = columns_to_tensors[self.name]
+    input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
+
     if self.dtype.is_integer:
-      sparse_values = string_ops.as_string(sparse_tensor.values)
+      sparse_values = string_ops.as_string(input_tensor.values)
     else:
-      sparse_values = sparse_tensor.values
+      sparse_values = input_tensor.values
 
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         sparse_values, self.bucket_size, name="lookup")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        sparse_tensor.indices, sparse_id_values, sparse_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
@@ -563,8 +582,10 @@ class _SparseColumnKeys(_SparseColumn):
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
+    input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
+
     columns_to_tensors[self] = contrib_lookup_ops.string_to_index(
-        tensor=columns_to_tensors[self.name],
+        tensor=input_tensor,
         mapping=list(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
         name="lookup")
@@ -636,9 +657,14 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
     """Inserts a tuple with the id and weight tensors."""
     if self.sparse_id_column not in columns_to_tensors:
       self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
+
+    weight_tensor = columns_to_tensors[self.weight_column_name]
+    if not isinstance(weight_tensor, sparse_tensor_py.SparseTensor):
+      # The weight tensor can be a regular Tensor. In such case, sparsify it.
+      weight_tensor = contrib_sparse_ops.dense_to_sparse_tensor(weight_tensor)
     columns_to_tensors[self] = tuple([
         columns_to_tensors[self.sparse_id_column],
-        columns_to_tensors[self.weight_column_name]
+        weight_tensor
     ])
 
   def id_tensor(self, input_tensor):

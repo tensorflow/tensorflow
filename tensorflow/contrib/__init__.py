@@ -29,6 +29,7 @@ from tensorflow.contrib import framework
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import integrate
+from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 from tensorflow.contrib import linear_optimizer
@@ -40,6 +41,7 @@ from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
 from tensorflow.contrib import seq2seq
 from tensorflow.contrib import slim
+from tensorflow.contrib import solvers
 from tensorflow.contrib import stat_summarizer
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard

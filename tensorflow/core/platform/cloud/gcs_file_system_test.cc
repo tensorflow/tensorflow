@@ -145,8 +145,10 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
   StringPiece result;
 
   // Read the first chunk. The buffer will be updated with 4 + 5 = 9 bytes.
+  scratch[5] = 'x';
   TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
   EXPECT_EQ("0123", result);
+  EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
 
   // The second chunk will be fully loaded from the buffer, no requests are
   // made.

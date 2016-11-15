@@ -72,8 +72,9 @@ def module_names():
       "tf.contrib.learn",
       "tf.contrib.learn.monitors",
       "tf.contrib.losses",
-      "tf.contrib.rnn",
       "tf.contrib.metrics",
+      "tf.contrib.rnn",
+      "tf.contrib.solvers",
       "tf.contrib.training",
       "tf.contrib.util",
   ]
