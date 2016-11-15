@@ -161,6 +161,7 @@
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
   * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
+  * [`reverse_v2`](../../api_docs/python/array_ops.md#reverse_v2)
   * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
   * [`scatter_nd`](../../api_docs/python/array_ops.md#scatter_nd)
   * [`sequence_mask`](../../api_docs/python/array_ops.md#sequence_mask)
