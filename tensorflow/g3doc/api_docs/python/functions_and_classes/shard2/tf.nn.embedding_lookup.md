@@ -1,4 +1,4 @@
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True, max_norm=None)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -41,6 +41,8 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`validate_indices`</b>: Whether or not to validate gather indices.
+*  <b>`max_norm`</b>: If not None, embedding values are l2-normalized to the value of
+   max_norm.
 
 ##### Returns:
 

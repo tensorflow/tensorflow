@@ -1907,7 +1907,7 @@ tensors.
 
 - - -
 
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True, max_norm=None)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -1950,6 +1950,8 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`validate_indices`</b>: Whether or not to validate gather indices.
+*  <b>`max_norm`</b>: If not None, embedding values are l2-normalized to the value of
+   max_norm.
 
 ##### Returns:
 
@@ -1963,7 +1965,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 - - -
 
-### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None)` {#embedding_lookup_sparse}
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None, max_norm=None)` {#embedding_lookup_sparse}
 
 Computes embeddings for the given ids and weights.
 
@@ -1996,6 +1998,8 @@ is the sum of the size of params along dimension 0.
     "mean" is the weighted sum divided by the total weight.
     "sqrtn" is the weighted sum divided by the square root of the sum of the
     squares of the weights.
+*  <b>`max_norm`</b>: If not None, each embedding is normalized to have l2 norm equal
+    to max_norm before combining.
 
 ##### Returns:
 
