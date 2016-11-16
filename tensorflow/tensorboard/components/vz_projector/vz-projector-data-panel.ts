@@ -92,6 +92,9 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   private addWordBreaks(longString: string): string {
+    if (longString == null) {
+      return '';
+    }
     return longString.replace(/([\/=-_,])/g, '$1<wbr>');
   }
 
