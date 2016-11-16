@@ -468,11 +468,12 @@ export class ScatterPlot {
     return this.dimensionality === 3;
   }
 
-  private remove3dAxis() {
+  private remove3dAxis(): THREE.Object3D {
     const axes = this.scene.getObjectByName('axes');
     if (axes != null) {
       this.scene.remove(axes);
     }
+    return axes;
   }
 
   private add3dAxis() {
@@ -633,7 +634,11 @@ export class ScatterPlot {
       v.onPickingRender(rc);
     });
 
-    this.renderer.render(this.scene, this.camera, this.pickingTexture);
+    {
+      const axes = this.remove3dAxis();
+      this.renderer.render(this.scene, this.camera, this.pickingTexture);
+      this.scene.add(axes);
+    }
 
     // Render second pass to color buffer, to be displayed on the canvas.
     this.visualizers.forEach(v => {
