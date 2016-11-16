@@ -698,7 +698,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels, 'train')
+      self._check_inputs(features, labels, ModeKeys.TRAIN)
       # The default return type of _get_train_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_train_ops returns a
@@ -790,7 +790,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels, 'eval')
+      self._check_inputs(features, labels, ModeKeys.EVAL)
       # The default return type of _get_eval_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_eval_ops returns an
