@@ -217,6 +217,45 @@ size_t TF_TensorByteSize(const TF_Tensor* t) { return t->buffer->size(); }
 void* TF_TensorData(const TF_Tensor* t) { return t->buffer->data(); }
 
 // --------------------------------------------------------------------------
+size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
+                       size_t dst_len, TF_Status* status) {
+  const size_t sz = TF_StringEncodedSize(src_len);
+  if (dst_len < sz) {
+    status->status =
+        InvalidArgument("dst_len (", dst_len, ") too small to encode a ",
+                        src_len, "-byte string");
+    return 0;
+  }
+  dst = tensorflow::core::EncodeVarint64(dst, src_len);
+  memcpy(dst, src, src_len);
+  return sz;
+}
+
+size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
+                       size_t* dst_len, TF_Status* status) {
+  tensorflow::uint64 len64 = 0;
+  const char* p = tensorflow::core::GetVarint64Ptr(src, src + src_len, &len64);
+  if (p == nullptr) {
+    status->status =
+        InvalidArgument("invalid string encoding or truncated src buffer");
+    return 0;
+  }
+  if (len64 > std::numeric_limits<size_t>::max()) {
+    status->status =
+        InvalidArgument("encoded string is ", len64,
+                        "-bytes, which is too large for this architecture");
+    return 0;
+  }
+  *dst = p;
+  *dst_len = static_cast<size_t>(len64);
+  return static_cast<size_t>(p - src) + *dst_len;
+}
+
+size_t TF_StringEncodedSize(size_t len) {
+  return static_cast<size_t>(tensorflow::core::VarintLength(len)) + len;
+}
+
+// --------------------------------------------------------------------------
 struct TF_SessionOptions {
   SessionOptions options;
 };
@@ -348,14 +387,16 @@ bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status) {
   for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =
         reinterpret_cast<const tensorflow::uint64*>(input)[i];
-    tensorflow::uint64 len;
-    const char* p;
-    if (static_cast<ptrdiff_t>(offset) >= (limit - data_start) ||
-        !(p = tensorflow::core::GetVarint64Ptr(data_start + offset, limit,
-                                               &len)) ||
-        (static_cast<ptrdiff_t>(len) > (limit - p))) {
+    if (static_cast<ptrdiff_t>(offset) >= (limit - data_start)) {
       status->status = InvalidArgument("Malformed TF_STRING tensor; element ",
                                        i, " out of range");
+      return false;
+    }
+    size_t len;
+    const char* p;
+    const char* srcp = data_start + offset;
+    TF_StringDecode(srcp, limit - srcp, &p, &len, status);
+    if (!status->status.ok()) {
       return false;
     }
     dstarray(i).assign(p, len);
@@ -370,24 +411,27 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
   const auto& srcarray = src.flat<tensorflow::string>();
   for (int i = 0; i < srcarray.size(); ++i) {
     const tensorflow::string& s = srcarray(i);
-    // uint64 starting_offset, varint64 length, string contents
-    size += sizeof(tensorflow::uint64) +
-            tensorflow::core::VarintLength(s.size()) + s.size();
+    // uint64 starting_offset, TF_StringEncode-d string.
+    size += sizeof(tensorflow::uint64) + TF_StringEncodedSize(s.size());
   }
 
   // Encode all strings.
   char* base = new char[size];
   char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
   char* dst = data_start;  // Where next string is encoded.
+  size_t dst_len = size - static_cast<size_t>(data_start - base);
   tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
+  TF_Status status;
   for (int i = 0; i < srcarray.size(); ++i) {
-    const tensorflow::string& s = srcarray(i);
     *offsets = (dst - data_start);
     offsets++;
-    dst = tensorflow::core::EncodeVarint64(dst, s.size());
-    memcpy(dst, s.data(), s.size());
-    dst += s.size();
+    const tensorflow::string& s = srcarray(i);
+    size_t consumed =
+        TF_StringEncode(s.data(), s.size(), dst, dst_len, &status);
+    dst += consumed;
+    dst_len -= consumed;
   }
+  CHECK(status.status.ok());
   CHECK_EQ(dst, base + size);
 
   auto dims = src.shape().dim_sizes();
