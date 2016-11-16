@@ -32,11 +32,69 @@ __all__ = ["simple_decoder_fn_train",
            "simple_decoder_fn_inference"]
 
 def simple_decoder_fn_train(encoder_state, name=None):
+  """ Simple decoder function for a sequence-to-sequence model used in the
+  `dynamic_rnn_decoder`.
+
+  The `simple_decoder_fn_train` is a simple training function for a
+  sequence-to-sequence model. It should be used when `dynamic_rnn_decoder` is
+  in the training mode.
+
+  The `simple_decoder_fn_train` is called with a set of the user arguments and
+  returns the `decoder_fn`, which can be passed to the `dynamic_rnn_decoder`,
+  such that
+
+  ```
+  dynamic_fn_train = simple_decoder_fn_train(encoder_state)
+  outputs_train, state_train = dynamic_rnn_decoder(
+      decoder_fn=dynamic_fn_train, ...)
+  ```
+
+  Further usage can be found in the `kernel_tests/seq2seq_test.py`.
+
+  Args:
+    encoder_state: The encoded state to initialize the `dynamic_rnn_decoder`.
+    name: (default: `None`) NameScope for the decoder function;
+      defaults to "simple_decoder_fn_train"
+
+  Returns:
+    A decoder function with the required interface of `dynamic_rnn_decoder`
+    intended for training.
+  """
   with ops.name_scope(name, "simple_decoder_fn_train", [encoder_state]):
     if type(encoder_state) is not rnn_cell.LSTMStateTuple:
       encoder_state = ops.convert_to_tensor(encoder_state)
 
   def decoder_fn(time, cell_state, cell_input, cell_output, context_state):
+    """ Decoder function used in the `dynamic_rnn_decoder` with the purpose of
+    training.
+
+    Args:
+      time: positive integer constant reflecting the current timestep.
+      cell_state: state of RNNCell.
+      cell_input: input provided by `dynamic_rnn_decoder`.
+      cell_output: output of RNNCell.
+      context_state: context state provided by `dynamic_rnn_decoder`.
+
+    Returns:
+      A tuple (done, next state, next input, emit output, next context state)
+      where:
+
+      done: `None`, which is used by the `dynamic_rnn_decoder` to indicate
+      that `sequence_lengths` in `dynamic_rnn_decoder` should be used.
+
+      next state: `cell_state`, this decoder function does not modify the
+      given state.
+
+      next input: `cell_input`, this decoder function does not modify the
+      given input. The input could be modified when applying e.g. attention.
+
+      emit output: `cell_output`, this decoder function does not modify the
+      given output.
+
+      next context state: `context_state`, this decoder function does not
+      modify the given context state. The context state could be modified when
+      applying e.g. beam search.
+  """
     with ops.name_scope(name, "simple_decoder_fn_train",
                         [time, cell_state, cell_input, cell_output,
                          context_state]):
@@ -51,6 +109,63 @@ def simple_decoder_fn_inference(output_fn, encoder_state, embeddings,
                                 start_of_sequence_id, end_of_sequence_id,
                                 maximum_length, num_decoder_symbols,
                                 dtype=dtypes.int32, name=None):
+  """ Simple decoder function for a sequence-to-sequence model used in the
+  `dynamic_rnn_decoder`.
+
+  The `simple_decoder_fn_inference` is a simple inference function for a
+  sequence-to-sequence model. It should be used when `dynamic_rnn_decoder` is
+  in the inference mode.
+
+  The `simple_decoder_fn_inference` is called with a set of the user arguments
+  and returns the `decoder_fn`, which can be passed to the
+  `dynamic_rnn_decoder`, such that
+
+  ```
+  dynamic_fn_inference = simple_decoder_fn_inference(...)
+  outputs_inference, state_inference = dynamic_rnn_decoder(
+      decoder_fn=dynamic_fn_inference, ...)
+  ```
+
+  Further usage can be found in the `kernel_tests/seq2seq_test.py`.
+
+  Args:
+    output_fn: An output function to project your `cell_output` onto class
+    logits.
+
+    An example of an output function;
+
+    ```
+      tf.variable_scope("decoder") as varscope
+        output_fn = lambda x: layers.linear(x, num_decoder_symbols,
+                                            scope=varscope)
+
+        outputs_train, state_train = seq2seq.dynamic_rnn_decoder(...)
+        logits_train = output_fn(outputs_train)
+
+        varscope.reuse_variables()
+        logits_inference, state_inference = seq2seq.dynamic_rnn_decoder(
+            output_fn=output_fn, ...)
+    ```
+
+    If `None` is supplied it will act as an identity function, which
+    might be wanted when using the RNNCell `OutputProjectionWrapper`.
+
+    encoder_state: The encoded state to initialize the `dynamic_rnn_decoder`.
+    embeddings: The embeddings matrix used for the decoder sized
+    `[num_decoder_symbols, embedding_size]`.
+    start_of_sequence_id: The start of sequence ID in the decoder embeddings.
+    end_of_sequence_id: The end of sequence ID in the decoder embeddings.
+    maximum_length: The maximum allowed of time steps to decode.
+    num_decoder_symbols: The number of classes to decode at each time step.
+    dtype: (default: `dtypes.int32`) The default data type to use when
+    handling integer objects.
+    name: (default: `None`) NameScope for the decoder function;
+      defaults to "simple_decoder_fn_inference"
+
+  Returns:
+    A decoder function with the required interface of `dynamic_rnn_decoder`
+    intended for inference.
+  """
   with ops.name_scope(name, "simple_decoder_fn_inference",
                       [output_fn, encoder_state, embeddings,
                        start_of_sequence_id, end_of_sequence_id,
@@ -69,6 +184,47 @@ def simple_decoder_fn_inference(output_fn, encoder_state, embeddings,
       batch_size = array_ops.shape(encoder_info)[0]
 
   def decoder_fn(time, cell_state, cell_input, cell_output, context_state):
+    """ Decoder function used in the `dynamic_rnn_decoder` with the purpose of
+    inference.
+
+    The main difference between this decoder function and the `decoder_fn` in
+    `simple_decoder_fn_train` is how `next_cell_input` is calculated. In this
+    decoder function we calculate the next input by applying an argmax across
+    the feature dimension of the output from the decoder. This approach is
+    taken from popular neural machine translation litterature such as:
+    Bahhdanau et al., 2014 (https://arxiv.org/abs/1409.0473) and Sutskever
+    et al., 2014 (https://arxiv.org/abs/1409.3215).
+
+    Args:
+      time: positive integer constant reflecting the current timestep.
+      cell_state: state of RNNCell.
+      cell_input: input provided by `dynamic_rnn_decoder`.
+      cell_output: output of RNNCell.
+      context_state: context state provided by `dynamic_rnn_decoder`.
+
+    Returns:
+      A tuple (done, next state, next input, emit output, next context state)
+      where:
+
+      done: A boolean vector to indicate which sentences has reached a
+      `end_of_sequence_id`. This is used for early stopping by the
+      `dynamic_rnn_decoder`. When `time>=maximum_length` a boolean vector with
+      all elements as `true` is returned.
+
+      next state: `cell_state`, this decoder function does not modify the
+      given state.
+
+      next input: The embedding from argmax of the `cell_output` is used as
+      `next_input`.
+
+      emit output: If `output_fn is None` the supplied `cell_output` is
+      returned, else the `output_fn` is used to update the `cell_output`
+      before calculating `next_input` and returning `cell_output`.
+
+      next context state: `context_state`, this decoder function does not
+      modify the given context state. The context state could be modified when
+      applying e.g. beam search.
+  """
     with ops.name_scope(name, "simple_decoder_fn_inference",
                         [time, cell_state, cell_input, cell_output,
                          context_state]):
