@@ -267,14 +267,17 @@ class DataFeeder(object):
     """Initializes a DataFeeder instance.
 
     Args:
-      x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]` or dictionary of aforementioned.
+      x: One feature sample which can either Nd numpy matrix of shape
+        `[n_samples, n_features, ...]` or dictionary of Nd numpy matrix.
       y: label vector, either floats for regression or class id for
-        classification. If matrix, will consider as a sequence
-        of labels. Can be `None` for unsupervised setting. Also supports dictionary of labels.
+        classification. If matrix, will consider as a sequence of labels.
+        Can be `None` for unsupervised setting. Also supports dictionary of
+        labels.
       n_classes: Number of classes, 0 and 1 are considered regression, `None`
-        will pass through the input labels without one-hot conversion. Also, if y is dict, then
-        n_classes must be dict such that n_classes[key] = n_classes for label y[key], None otherwise.
-      batch_size: Mini-batch size to accumulate.
+        will pass through the input labels without one-hot conversion. Also, if
+        y is dict, then n_classes must be dict such that n_classes[key] =
+        n_classes for label y[key], None otherwise.
+      batch_size: Mini-batch size to accumulate samples in one mini batch.
       shuffle: Whether to shuffle `x`.
       random_state: Numpy `RandomState` object to reproduce sampling.
       epochs: Number of times to iterate over input data before raising
@@ -517,12 +520,17 @@ class StreamingDataFeeder(DataFeeder):
     """Initializes a StreamingDataFeeder instance.
 
     Args:
-      x: iterator that returns for each element or dictionary of single element, returns features.
-      y: iterator that returns for each element or dictionary of single element, returns 1 or many classes /
-         regression values.
-      n_classes: indicator of how many classes the target has. Can be dictionary of how many classes each target
-        in y in case y is a dictionary.
-      batch_size: Mini batch size to accumulate. If set None then assumes iterator to return already batched element.
+      x: iterator each element of which returns one feature sample. Sample can
+        be a Nd numpy matrix or dictionary of Nd numpy matrices.
+      y: iterator each element of which returns one label sample. Sample can be
+        a Nd numpy matrix or dictionary of Nd numpy matrices with 1 or many
+        classes regression values.
+      n_classes: indicator of how many classes the corresponding label sample
+        has for the purposes of one-hot conversion of label. In case where y is
+        a dictionary, n_classes can be dictionary of how many classes there are
+        in each label in y.
+      batch_size: Mini batch size to accumulate samples in one batch. If set
+        None then assumes iterator to return already batched element.
 
     Attributes:
       x: input features (or dictionary of input features).
