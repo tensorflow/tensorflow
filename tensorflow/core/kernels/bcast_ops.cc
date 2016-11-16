@@ -90,4 +90,14 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .HostMemory("r1"),
                         BCastGradArgsOp);
 
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("s0")
+                            .HostMemory("s1")
+                            .HostMemory("r0")
+                            .HostMemory("r1"),
+                        BCastGradArgsOp);
+#endif
 }  // end namespace tensorflow
