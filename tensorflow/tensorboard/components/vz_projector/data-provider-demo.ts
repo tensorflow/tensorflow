@@ -47,7 +47,7 @@ export class DemoDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching projector config...');
     d3.json(this.projectorConfigPath, (err, projectorConfig) => {
       if (err) {
-        logging.setModalMessage('Error: ' + err.responseText);
+        logging.setErrorMessage(err.responseText);
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -69,7 +69,7 @@ export class DemoDataProvider implements DataProvider {
     logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
     d3.text(url, (error: any, dataString: string) => {
       if (error) {
-        logging.setModalMessage('Error: ' + error.responseText);
+        logging.setErrorMessage(error.responseText);
         return;
       }
       dataProvider.parseTensors(dataString, separator).then(points => {
@@ -95,7 +95,7 @@ export class DemoDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching bookmarks...');
     d3.json(embedding.bookmarksPath, (err, bookmarks: State[]) => {
       if (err) {
-        logging.setModalMessage('Error: ' + err.responseText);
+        logging.setErrorMessage(err.responseText);
         return;
       }
 

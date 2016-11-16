@@ -29,7 +29,7 @@ from tensorflow.python.training import slot_creator
 
 
 # TODO(touts): switch to variables.Variable.
-def assign_moving_average(variable, value, decay, zero_debias=False, name=None):
+def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   """Compute the moving average of a variable.
 
   The moving average of 'variable' updated with 'value' is:
@@ -124,8 +124,10 @@ def weighted_moving_average(value,
                                                dtype=weight.dtype),
         trainable=False,
         collections=collections)
-    numerator = assign_moving_average(value_x_weight_var, value * weight, decay)
-    denominator = assign_moving_average(weight_var, weight, decay)
+    numerator = assign_moving_average(
+        value_x_weight_var, value * weight, decay, zero_debias=False)
+    denominator = assign_moving_average(
+        weight_var, weight, decay, zero_debias=False)
 
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
@@ -191,8 +193,9 @@ def _zero_debias(unbiased_var, value, decay):
       # use the new values of the biased variable and the local step.
       with ops.control_dependencies([update_biased, update_local_step]):
         # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
-        unbiased_ema_delta = (unbiased_var - biased_var.ref() /
-                              (1 - math_ops.pow(1.0 - decay, local_step.ref())))
+        unbiased_ema_delta = (unbiased_var - biased_var.read_value() /
+                              (1 - math_ops.pow(
+                                  1.0 - decay, local_step.read_value())))
 
       return unbiased_ema_delta
 

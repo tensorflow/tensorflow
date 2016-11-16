@@ -198,7 +198,7 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
       # degenerate eigenvalues, the corresponding eigenvectors are only defined
       # up to arbitrary rotation in a (k-dimensional) subspace.
       f = array_ops.matrix_set_diag(
-          math_ops.inv(
+          math_ops.reciprocal(
               array_ops.expand_dims(e, -2) - array_ops.expand_dims(e, -1)),
           array_ops.zeros_like(e))
       grad_a = math_ops.batch_matmul(

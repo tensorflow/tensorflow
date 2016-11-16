@@ -6649,7 +6649,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
@@ -6664,7 +6664,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
@@ -6915,7 +6915,7 @@ op {
   }
   input_arg {
     name: "value"
-    description: "0-D (scalar). Value to fill the returned tensor."
+    description: "0-D (scalar). Value to fill the returned tensor.\n\n@compatibility(numpy)\nEquivalent to np.full\n@end_compatibility"
     type_attr: "T"
   }
   output_arg {
@@ -8107,7 +8107,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.ifft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
@@ -8122,7 +8122,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
@@ -8493,6 +8493,10 @@ op {
   }
   summary: "Computes the reciprocal of x element-wise."
   description: "I.e., \\\\(y = 1 / x\\\\)."
+  deprecation {
+    version: 17
+    explanation: "Use Reciprocal"
+  }
 }
 op {
   name: "InvGrad"
@@ -8523,6 +8527,10 @@ op {
   }
   summary: "Computes the gradient for the inverse of `x` wrt its input."
   description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
+  deprecation {
+    version: 17
+    explanation: "Use ReciprocalGrad"
+  }
 }
 op {
   name: "InvertPermutation"
@@ -8574,6 +8582,7 @@ op {
     }
   }
   summary: "Returns which elements of x are finite."
+  description: "@compatibility(numpy)\nEquivalent to np.isfinite\n@end_compatibility"
 }
 op {
   name: "IsInf"
@@ -8597,6 +8606,7 @@ op {
     }
   }
   summary: "Returns which elements of x are Inf."
+  description: "@compatibility(numpy)\nEquivalent to np.isinf\n@end_compatibility"
 }
 op {
   name: "IsNan"
@@ -8620,6 +8630,7 @@ op {
     }
   }
   summary: "Returns which elements of x are NaN."
+  description: "@compatibility(numpy)\nEquivalent to np.isnan\n@end_compatibility"
 }
 op {
   name: "IsVariableInitialized"
@@ -9560,7 +9571,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, M]`."
+    description: "Shape is `[..., M, M]`.\n\n@compatibility(numpy)\nEquivalent to np.linalg.inv\n@end_compatibility"
     type_attr: "T"
   }
   attr {
@@ -9661,7 +9672,7 @@ op {
   }
   input_arg {
     name: "l2_regularizer"
-    description: "Scalar tensor."
+    description: "Scalar tensor.\n\n@compatibility(numpy)\nEquivalent to np.linalg.lstsq\n@end_compatibility"
     type: DT_DOUBLE
   }
   output_arg {
@@ -9720,7 +9731,7 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\n         adjoint.\n\n@compatibility(numpy)\nEquivalent to np.linalg.triangular_solve\n@end_compatibility"
   }
   attr {
     name: "T"

@@ -185,8 +185,9 @@ extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 //   start_offset: array[uint64]
 //   data:         byte[...]
 //
-//   String length is encoded (varint?) starting at data[start_offset[i]]
-//   String contents follow immediately after string length.
+//   The string length (as a varint), followed by the contents of the string
+//   is encoded at data[start_offset[i]]]. TF_StringEncode and TF_StringDecode
+//   facilitate this encoding.
 
 typedef struct TF_Tensor TF_Tensor;
 
@@ -232,6 +233,31 @@ extern size_t TF_TensorByteSize(const TF_Tensor*);
 
 // Return a pointer to the underlying data buffer.
 extern void* TF_TensorData(const TF_Tensor*);
+
+// --------------------------------------------------------------------------
+// Encode the string "src" ("src_len" bytes long) into "dst" in the format
+// required by TF_STRING tensors. Does not write to memory more than "dst_len"
+// bytes beyond "*dst". "dst_len" should be at least
+// TF_StringEncodedSize(src_len).
+//
+// On success returns the size in bytes of the encoded string.
+extern size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
+                              size_t dst_len, TF_Status* status);
+
+// Decode a string encoded using TF_StringEncode.
+//
+// On success, sets "*dst" to the start of the decoded string and "*dst_len" to
+// its length. Returns the number of bytes starting at "src" consumed while
+// decoding. "*dst" points to memory within the encoded buffer.  On failure,
+// "*dst" and "*dst_len" are undefined.
+//
+// Does not read memory pointed to by "limit" or beyond.
+extern size_t TF_DecodeString(const char* src, size_t src_len, char** dst,
+                              size_t* dst_len, TF_Status* status);
+
+// Return the size in bytes required to encode a string "len" bytes long into a
+// TF_STRING tensor.
+extern size_t TF_StringEncodedSize(size_t len);
 
 // --------------------------------------------------------------------------
 // TF_SessionOptions holds options that can be passed during session creation.

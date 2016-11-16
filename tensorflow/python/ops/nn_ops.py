@@ -23,7 +23,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -1616,51 +1615,6 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 padding=padding,
                                 data_format=data_format,
                                 name=name)
-
-
-@ops.RegisterShape("TopKV2")
-def _TopKV2Shape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("FusedResizeAndPadConv2D")
-def _FusedResizeAndPadConv2DShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
-
-
-@ops.RegisterShape("FusedPadConv2D")
-def _FusedPadConv2DShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("AvgPoolGrad")
-def _AvgPoolGradShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("FractionalAvgPoolGrad")
-def _fractional_avg_pool_grad_shape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("Conv2DBackpropFilter")
-def _Conv2DBackpropFilterShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("Conv2DBackpropInput")
-def _Conv2DBackpropInputShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
-def _DepthwiseConv2dNativeBackpropFilterShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
-def _DepthwiseConv2dNativeBackpropInputShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 @ops.RegisterStatistics("Conv2D", "flops")

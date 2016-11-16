@@ -52,7 +52,7 @@ export class ServerDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching runs...');
     d3.json(`${this.routePrefix}/runs`, (err, runs: string[]) => {
       if (err) {
-        logging.setModalMessage('Error: ' + err.responseText);
+        logging.setErrorMessage(err.responseText);
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -71,7 +71,7 @@ export class ServerDataProvider implements DataProvider {
     d3.json(`${this.routePrefix}/info?run=${run}`, (err,
         config: ProjectorConfig) => {
       if (err) {
-        logging.setModalMessage('Error: ' + err.responseText);
+        logging.setErrorMessage(err.responseText);
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -111,7 +111,7 @@ export class ServerDataProvider implements DataProvider {
       });
     };
     xhr.onerror = () => {
-      logging.setModalMessage('Error: ' + xhr.responseText);
+      logging.setErrorMessage(xhr.responseText);
     };
     xhr.send(null);
   }

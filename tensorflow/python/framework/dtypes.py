@@ -69,7 +69,7 @@ class DType(object):
 
   @@as_numpy_dtype
   @@as_datatype_enum
-  
+
   @@limits
   """
 

@@ -46,7 +46,7 @@ mathematical functions to your graph.
 @@abs
 @@negative
 @@sign
-@@inv
+@@reciprocal
 @@square
 @@round
 @@sqrt
@@ -622,9 +622,7 @@ def round(x, name=None):
   if x.dtype.is_integer:
     return x
   else:
-    # TODO(nolivia): Switch to new Round op
-    # return gen_math_ops.round(x, name=name)
-    return gen_math_ops.floor(x + 0.5, name=name)
+    return gen_math_ops.round(x, name=name)
 
 
 def cast(x, dtype, name=None):
@@ -1061,6 +1059,10 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
 
   Returns:
     An 1-D `Tensor` of type `dtype`.
+
+  @compatibility(numpy)
+  Equivalent to np.arange
+  @end_compatibility
   """
   if limit is None:
     start, limit = 0, start
@@ -1083,11 +1085,6 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
       delta = cast(delta, inferred_dtype)
 
     return gen_math_ops._range(start, limit, delta, name=name)
-
-
-@ops.RegisterShape("Range")
-def _RangeShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0, 1, 2])
 
 
 # Reduction operations
@@ -1148,6 +1145,10 @@ def reduce_sum(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.sum
+  @end_compatibility
   """
   return gen_math_ops._sum(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1240,6 +1241,10 @@ def reduce_mean(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.mean
+  @end_compatibility
   """
   return gen_math_ops._mean(input_tensor, _ReductionDims(input_tensor,
                                                          axis,
@@ -1269,6 +1274,10 @@ def reduce_prod(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.prod
+  @end_compatibility
   """
   return gen_math_ops._prod(input_tensor, _ReductionDims(input_tensor,
                                                          axis,
@@ -1298,6 +1307,10 @@ def reduce_min(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.min
+  @end_compatibility
   """
   return gen_math_ops._min(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1327,6 +1340,10 @@ def reduce_max(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.max
+  @end_compatibility
   """
   return gen_math_ops._max(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1366,6 +1383,10 @@ def reduce_all(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.all
+  @end_compatibility
   """
   return gen_math_ops._all(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1405,6 +1426,10 @@ def reduce_any(input_tensor, axis=None, keep_dims=False,
 
   Returns:
     The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.any
+  @end_compatibility
   """
   return gen_math_ops._any(input_tensor, _ReductionDims(input_tensor,
                                                         axis,
@@ -1766,6 +1791,10 @@ def sigmoid(x, name=None):
   Returns:
     A Tensor with the same type as `x` if `x.dtype != qint32`
       otherwise the return type is `quint8`.
+
+  @compatibility(numpy)
+  Equivalent to np.scipy.special.expit
+  @end_compatibility
   """
   with ops.name_scope(name, "Sigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -1925,41 +1954,6 @@ def _BroadcastShape(op):
   return [common_shapes.broadcast_shape(
       op.inputs[0].get_shape(),
       op.inputs[1].get_shape())]
-
-
-@ops.RegisterShape("ArgMax")
-@ops.RegisterShape("ArgMin")
-def _ArgOpShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("All")
-@ops.RegisterShape("Any")
-@ops.RegisterShape("Max")
-@ops.RegisterShape("Mean")
-@ops.RegisterShape("Min")
-@ops.RegisterShape("Prod")
-@ops.RegisterShape("Sum")
-def _ReductionShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("SparseSegmentMeanGrad")
-@ops.RegisterShape("SparseSegmentSqrtNGrad")
-# pylint: disable=invalid-name
-def _SparseSegmentReductionGradShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
-# pylint: enable=invalid-name
-
-
-@ops.RegisterShape("UnsortedSegmentSum")
-def _UnsortedSegmentSumShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
-
-
-@ops.RegisterShape("LinSpace")
-def _LinspaceShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def reduced_shape(input_shape, axes):

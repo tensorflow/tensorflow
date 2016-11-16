@@ -288,6 +288,10 @@ def rank(input, name=None):
 
   Returns:
     A `Tensor` of type `int32`.
+
+  @compatibility(numpy)
+  Equivalent to np.ndim
+  @end_compatibility
   """
   return rank_internal(input, name, optimize=True)
 
@@ -1000,17 +1004,6 @@ def concat(concat_dim, values, name="concat"):
   return gen_array_ops._concat(concat_dim=concat_dim,
                                values=values,
                                name=name)
-
-
-@ops.RegisterShape("Concat")
-def _ConcatShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("ConcatV2")
-def _ConcatV2Shape(op):  # pylint: disable=invalid-name
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[len(op.inputs)-1])
 
 
 def boolean_mask(tensor, mask, name="boolean_mask"):
@@ -1788,52 +1781,10 @@ def _compute_size_of_strided_dim(shrink, spec, size):
     return unknown  # unknown because stride is unknown
 
 
-@ops.RegisterShape("StridedSliceGrad")
-def _StridedSliceGradShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("StridedSlice")
-def _DelegateStridedSliceShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2, 3])
-
-
-@ops.RegisterShape("ExpandDims")
-def _ExpandDims(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("Reshape")
-def _DelegateReshapeShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
-
-
 @ops.RegisterShape("Fill")
 def _DelegateFillShape(op):
   return common_shapes.call_cpp_shape_fn(
       op, input_tensors_needed=[0], input_tensors_as_shapes_needed=[0])
-
-
-@ops.RegisterShape("Pad")
-@ops.RegisterShape("MirrorPad")
-def _PadShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("MirrorPadGrad")
-def _MirrorPadGradShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("Transpose")
-def _TransposeShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("Split")
-def _SplitShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 @ops.RegisterShape("Tile")
@@ -1943,11 +1894,6 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
                                       truth.shape,
                                       normalize=normalize,
                                       name=name)
-
-
-@ops.RegisterShape("EditDistance")
-def _EditDistanceShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2, 5])
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxArgs")
@@ -2076,26 +2022,6 @@ def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=rede
 
 
 batch_to_space.__doc__ = gen_array_ops._batch_to_space.__doc__
-
-
-@ops.RegisterShape("SpaceToBatch")
-def _SpaceToBatchShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("SpaceToBatchND")
-def _SpaceToBatchNDShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
-
-
-@ops.RegisterShape("BatchToSpace")
-def _BatchToSpaceShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("BatchToSpaceND")
-def _BatchToSpaceNDShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
 
 
 def one_hot(indices, depth, on_value=None, off_value=None,
@@ -2266,11 +2192,6 @@ def one_hot(indices, depth, on_value=None, off_value=None,
                                   name)
 
 
-@ops.RegisterShape("OneHot")
-def _OneHotShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
 def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   """Return a mask tensor representing the first N positions of each row.
 
@@ -2414,14 +2335,3 @@ def where(condition, x=None, y=None, name=None):
     return gen_math_ops.select(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
-
-
-@ops.RegisterShape("QuantizedReshape")
-def _DelegateQuantizedReshapeShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_as_shapes_needed=[1])
-
-
-@ops.RegisterShape("ScatterNd")
-def _DelegateScatterNdShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[2])

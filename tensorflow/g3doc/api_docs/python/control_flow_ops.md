@@ -717,6 +717,10 @@ debug your graph.
 
 Returns which elements of x are finite.
 
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
+
 ##### Args:
 
 
@@ -734,6 +738,10 @@ Returns which elements of x are finite.
 
 Returns which elements of x are Inf.
 
+@compatibility(numpy)
+Equivalent to np.isinf
+@end_compatibility
+
 ##### Args:
 
 
@@ -750,6 +758,10 @@ Returns which elements of x are Inf.
 ### `tf.is_nan(x, name=None)` {#is_nan}
 
 Returns which elements of x are NaN.
+
+@compatibility(numpy)
+Equivalent to np.isnan
+@end_compatibility
 
 ##### Args:
 

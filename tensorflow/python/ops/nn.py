@@ -795,7 +795,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.name_scope(name, "normalize", [counts, mean_ss, variance_ss, shift]):
-    divisor = math_ops.inv(counts, name="divisor")
+    divisor = math_ops.reciprocal(counts, name="divisor")
     if shift is not None:
       shifted_mean = math_ops.mul(mean_ss, divisor, name="shifted_mean")
       mean = math_ops.add(shifted_mean, shift, name="mean")
@@ -904,7 +904,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
         name="sum_of_weights",
         keep_dims=True)
 
-    divisor = math_ops.inv(sum_of_weights, name="inv_weight_sum")
+    divisor = math_ops.reciprocal(sum_of_weights, name="inv_weight_sum")
 
     weighted_mean = math_ops.mul(weighted_input_sum, divisor)
 

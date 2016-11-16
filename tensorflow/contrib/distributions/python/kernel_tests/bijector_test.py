@@ -28,6 +28,11 @@ bijectors = tf.contrib.distributions.bijector
 rng = np.random.RandomState(42)
 
 
+def assert_finite(array):
+  if not np.isfinite(array).all():
+    raise AssertionError("array was not all finite. %s" % array[:15])
+
+
 def assert_strictly_increasing(array):
   np.testing.assert_array_less(0.0, np.diff(array))
 
@@ -152,6 +157,56 @@ def assert_scalar_congruency(
                              atol=1e-5, rtol=1e-3)
 
 
+def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
+  """Assert that forward/inverse (along with jacobians) are inverses and finite.
+
+  It is recommended to use x and y values that are very very close to the edge
+  of the Bijector's domain.
+
+  Args:
+    bijector:  A Bijector instance.
+    x:  np.array of values in the domain of bijector.forward.
+    y:  np.array of values in the domain of bijector.inverse.
+    atol:  Absolute tolerance.
+    rtol:  Relative tolerance.
+    sess:  TensorFlow session.  Defaults to the default session.
+
+  Raises:
+    AssertionError:  If tests fail.
+  """
+  sess = sess or tf.get_default_session()
+
+  f_x = bijector.forward(x)
+  g_y = bijector.inverse(y)
+
+  (
+      x_from_x, y_from_y, ildj_f_x, fldj_x, ildj_y, fldj_g_y, f_x_v, g_y_v,
+  ) = sess.run(
+      [bijector.inverse(f_x),
+       bijector.forward(g_y),
+       bijector.inverse_log_det_jacobian(f_x),
+       bijector.forward_log_det_jacobian(x),
+       bijector.inverse_log_det_jacobian(y),
+       bijector.forward_log_det_jacobian(g_y),
+       f_x,
+       g_y,
+      ])
+
+  assert_finite(x_from_x)
+  assert_finite(y_from_y)
+  assert_finite(ildj_f_x)
+  assert_finite(fldj_x)
+  assert_finite(ildj_y)
+  assert_finite(fldj_g_y)
+  assert_finite(f_x_v)
+  assert_finite(g_y_v)
+
+  np.testing.assert_allclose(x_from_x, x, atol=atol, rtol=rtol)
+  np.testing.assert_allclose(y_from_y, y, atol=atol, rtol=rtol)
+  np.testing.assert_allclose(-ildj_f_x, fldj_x, atol=atol, rtol=rtol)
+  np.testing.assert_allclose(-ildj_y, fldj_g_y, atol=atol, rtol=rtol)
+
+
 class BaseBijectorTest(tf.test.TestCase):
   """Tests properties of the Bijector base-class."""
 
@@ -211,6 +266,13 @@ class ExpBijectorTest(tf.test.TestCase):
     with self.test_session():
       bijector = bijectors.Exp()
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
+
+  def testBijectiveAndFinite(self):
+    with self.test_session():
+      bijector = bijectors.Exp(event_ndims=0)
+      x = np.linspace(-10, 10, num=10).astype(np.float32)
+      y = np.logspace(-10, 10, num=10).astype(np.float32)
+      assert_bijective_and_finite(bijector, x, y)
 
 
 class InlineBijectorTest(tf.test.TestCase):
@@ -611,6 +673,13 @@ class SoftplusBijectorTest(tf.test.TestCase):
       bijector = bijectors.Softplus(event_ndims=0)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
 
+  def testBijectiveAndFinite(self):
+    with self.test_session():
+      bijector = bijectors.Softplus(event_ndims=0)
+      x = np.linspace(-20., 20., 10)
+      y = np.logspace(-10, 10, 10).astype(np.float32)
+      assert_bijective_and_finite(bijector, x, y)
+
 
 class SoftmaxCenteredBijectorTest(tf.test.TestCase):
   """Tests correctness of the Y = g(X) = exp(X) / sum(exp(X)) transformation."""
@@ -668,6 +737,19 @@ class SoftmaxCenteredBijectorTest(tf.test.TestCase):
         self.assertAllEqual(x, b.get_inverse_event_shape(y))
         self.assertAllEqual(x.as_list(),
                             b.inverse_event_shape(y.as_list()).eval())
+
+  def testBijectiveAndFinite(self):
+    with self.test_session():
+      softmax = bijectors.SoftmaxCentered(event_ndims=1)
+      x = np.linspace(-50, 50, num=10).reshape(5, 2).astype(np.float32)
+      # Make y values on the simplex with a wide range.
+      y_0 = np.ones(5).astype(np.float32)
+      y_1 = (1e-5 * rng.rand(5)).astype(np.float32)
+      y_2 = (1e1 * rng.rand(5)).astype(np.float32)
+      y = np.array([y_0, y_1, y_2])
+      y /= y.sum(axis=0)
+      y = y.T  # y.shape = [5, 3]
+      assert_bijective_and_finite(softmax, x, y)
 
 
 class SigmoidCenteredBijectorTest(tf.test.TestCase):
