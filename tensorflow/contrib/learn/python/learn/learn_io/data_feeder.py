@@ -106,7 +106,7 @@ def setup_train_data_feeder(
   Args:
     x: numpy, pandas or Dask matrix or dictionary of aforementioned. Also supports iterables.
     y: numpy, pandas or Dask array or dictionary of aforementioned. Also supports iterables.
-    n_classes: number of classes. Must be None or same type as y. In case, y is dict ( or iterable returns dic)
+    n_classes: number of classes. Must be None or same type as y. In case, y is dict (or iterable returns dic)
       n_classes[key] = n_classes for y[key]
     batch_size: size to split data into parts. Must be >= 1.
     shuffle: Whether to shuffle the inputs.
@@ -182,7 +182,7 @@ def setup_predict_data_feeder(x, batch_size=None):
       If `None`, returns one batch of full size.
 
   Returns:
-    List or iterator ( or dictionary there of) of parts of data to predict on.
+    List or iterator (or dictionary thereof) of parts of data to predict on.
 
   Raises:
     ValueError: if `batch_size` <= 0.
@@ -286,8 +286,8 @@ class DataFeeder(object):
       n_classes: Number of classes (if `None`, pass through indices without
         one-hot conversion).
       batch_size: Mini-batch size to accumulate.
-      input_shape: Shape of the input ( or dictionary of shapes).
-      output_shape: Shape of the output ( or dictionary of shapes).
+      input_shape: Shape of the input (or dictionary of shapes).
+      output_shape: Shape of the output (or dictionary of shapes).
       input_dtype: DType of input (or dictionary of shapes).
       output_dtype: DType of output (or dictionary of shapes.
     """
@@ -526,14 +526,14 @@ class StreamingDataFeeder(DataFeeder):
       batch_size: Mini batch size to accumulate. If set None then assumes iterator to return already batched element.
 
     Attributes:
-      x: input features ( or dictionary of input features).
-      y: input label ( or dictionary of output features).
+      x: input features (or dictionary of input features).
+      y: input label (or dictionary of output features).
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
-      input_shape: shape of the input ( can be dictionary depending on x).
-      output_shape: shape of the output( can be dictionary depending on y).
-      input_dtype: dtype of input ( can be dictionary depending on x).
-      output_dtype: dtype of output ( can be dictionary depending on y).
+      input_shape: shape of the input (can be dictionary depending on x).
+      output_shape: shape of the output (can be dictionary depending on y).
+      input_dtype: dtype of input (can be dictionary depending on x).
+      output_dtype: dtype of output (can be dictionary depending on y).
     """
     # pylint: disable=invalid-name,super-init-not-called
     x_first_el = six.next(x)
