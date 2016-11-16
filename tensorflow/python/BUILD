@@ -1925,6 +1925,8 @@ tf_cuda_library(
 
 tf_py_wrap_cc(
     name = "pywrap_tensorflow",
+    # set linkstatic = 0 so that only apply whole archive to libraries that need to be force linked.
+    linkstatic = 0,
     srcs = ["tensorflow.i"],
     swig_includes = [
         "client/device_lib.i",
@@ -1965,8 +1967,6 @@ tf_py_wrap_cc(
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + tf_additional_lib_deps(),
-    # set linkstatic = 0 so that only apply whole archive to libraries that need to be force linked.
-    linkstatic = 0,
 )
 
 py_library(
