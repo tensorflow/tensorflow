@@ -102,7 +102,6 @@ import sys
 import numpy as np
 import six
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1725,16 +1724,6 @@ def meshgrid(*args, **kwargs):
     return [x * mult_fact for x in output]
 
 
-@ops.RegisterShape("Slice")
-# pylint: disable=invalid-name
-def _DelegateSliceShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op,
-      input_tensors_needed=[2],
-      input_tensors_as_shapes_needed=[1])
-# pylint: enable=invalid-name
-
-
 NEW_AXIS = -1
 SHRINK_AXIS = -2
 
@@ -1779,25 +1768,6 @@ def _compute_size_of_strided_dim(shrink, spec, size):
       return interval_length // stride + remainder
   else:
     return unknown  # unknown because stride is unknown
-
-
-@ops.RegisterShape("Fill")
-def _DelegateFillShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[0], input_tensors_as_shapes_needed=[0])
-
-
-@ops.RegisterShape("Tile")
-def _DelegateTileShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
-
-
-@ops.RegisterShape("TileGrad")
-def _DelegateTileGradShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op,
-      input_tensors_as_shapes_needed=[1],
-      debug_python_shape_fn=_TileGradShape)
 
 
 def _TileGradShape(op):
