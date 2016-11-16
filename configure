@@ -185,7 +185,11 @@ while true; do
   if [ -z "$CUDA_TOOLKIT_PATH" ]; then
     default_cuda_path=/usr/local/cuda
     if is_windows; then
-      default_cuda_path="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
+      if [ -z "$CUDA_PATH" ]; then
+        default_cuda_path="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
+      else
+        default_cuda_path="$(cygpath -m "$CUDA_PATH")"
+      fi
     fi
     read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
     fromuser="1"

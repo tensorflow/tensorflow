@@ -908,7 +908,8 @@ cc_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-    ] + [":stream_executor"],
+        ":stream_executor",
+    ],
 )
 
 cc_library(
@@ -1386,7 +1387,6 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         "//third_party/eigen3",
-    ] + [
         ":stream_executor",
     ],
     alwayslink = 1,
