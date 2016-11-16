@@ -200,7 +200,8 @@ class Experiment(object):
       if self._delay_workers_by_global_step:
         # Wait 5500 global steps for the second worker. Each worker waits more
         # then previous one but with a diminishing number of steps.
-        extra_hooks.append(_GlobalStepWaiterHook(8000*int(math.log(task_id+1))))
+        extra_hooks.append(
+            _GlobalStepWaiterHook(int(8000.0*math.log(task_id+1))))
         delay_secs = 0
       else:
         # Wait 5 secs more for each new worker up to 60 secs.
