@@ -573,126 +573,111 @@ class TestClone(tf.test.TestCase):
       b_new = tf.constant(2., name="b_new")
 
       # case 1
-      c_out = meta_graph.clone(c, "copy", replace={b: b_new})
+      c_out, _ = meta_graph.clone(c, "copy1", replace={b: b_new})
       with tf.Session() as sess:
-        self.assertNear(sess.run(c_out[0]), 4., 1e-6)
+        self.assertNear(sess.run(c_out), 4., 1e-6)
 
       # case 2
-      b_out, c_out = meta_graph.clone([b, c], "copy", replace={b: b_new})
+      copies, _ = meta_graph.clone([b, c], "copy2", replace={b: b_new})
       with tf.Session() as sess:
-        b_out_, c_out_ = sess.run([b_out[0], c_out[0]])
+        b_out_, c_out_ = sess.run(copies)
       self.assertNear(b_out_, 2., 1e-6)
-      self.assertNear(c_out_, 2., 1e-6)
+      self.assertNear(c_out_, 4., 1e-6)
 
       # case 3
-      a_out, c_out = meta_graph.clone([a, c], "copy", replace={b: b_new})
+      copies, _ = meta_graph.clone([a, c], "copy3", replace={b: b_new})
       with tf.Session() as sess:
-        a_out_, c_out_ = sess.run([a_out[0], c_out[0]])
+        a_out_, c_out_ = sess.run(copies)
       self.assertNear(a_out_, 1., 1e-6)
       self.assertNear(c_out_, 4., 1e-6)
 
       # case 4
-      a_out, b_out, c_out = meta_graph.clone([a, b, c], "copy",
-                                             replace={a: a_new})
+      copies, _ = meta_graph.clone([a, b, c], "copy4", replace={a: a_new})
       with tf.Session() as sess:
-        a_out_, b_out_, c_out_ = sess.run([a_out[0], b_out[0], c_out[0]])
+        a_out_, b_out_, c_out_ = sess.run(copies)
       self.assertNear(a_out_, 4., 1e-6)
       self.assertNear(b_out_, 2., 1e-6)
       self.assertNear(c_out_, 4., 1e-6)
 
-      # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-      #                                       tf.get_default_graph())
-      # train_writer.close()
+  def testCloneSplit(self):
+    # a -> b -> c
+    #       \-> d
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.constant(1., name="a")
+      b = tf.exp(a, name="b")
+      c = tf.log(b, name="c")
+      d = tf.neg(b, name="d")
 
-  # def testCloneSplit(self):
-  #   # a -> b -> c
-  #   #       \-> d
-  #   with StochasticGraph() as model:
-  #     a = tf.constant(1., name="as")
-  #     b = tf.exp(a, name="bs")
-  #     c = tf.log(b, name="cs")
-  #     d = tf.neg(b, name="ds")
-  #
-  #   b_new = tf.constant(np.e ** 2, name="bs_new")
-  #   d_new = tf.constant(-np.e ** 2, name="ds_new")
-  #
-  #   # case 1
-  #   d_out = model.get_output(d)
-  #   assert d_out[0] is d
-  #
-  #   # case 2
-  #   c_out, d_out = model.get_output([c, d])
-  #   assert c_out[0] is c
-  #   assert d_out[0] is d
-  #
-  #   # case 3
-  #   c_out, d_out = model.get_output([c, d], inputs={b: b_new})
-  #   with tf.Session() as sess:
-  #     c_out_, d_out_ = sess.run([c_out[0], d_out[0]])
-  #     assert np.abs(c_out_ - 2.) < 1e-8
-  #     assert np.abs(d_out_ + np.e ** 2) < 1e-6
-  #
-  #   # case 4
-  #   c_out = model.get_output(c, inputs={d: d_new})
-  #   assert c_out[0] is c
-  #   with tf.Session() as sess:
-  #     c_out_ = sess.run(c_out[0])
-  #     assert np.abs(c_out_ - 1.) < 1e-6
-  #
-  #     # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-  #     #                                       tf.get_default_graph())
-  #     # train_writer.close()
-  #
-  # def testCloneMerge(self):
-  #   # a -> c -> d
-  #   # b ->/
-  #   with StochasticGraph() as model:
-  #     a = tf.constant(4., name='am')
-  #     b = tf.constant(0., name='bm')
-  #     c = tf.add(a, b, name='cm')
-  #     d = tf.stop_gradient(c, name='dm')
-  #
-  #   a_new = tf.constant(10., name='am_new')
-  #   b_new = tf.constant(1., name='bm_new')
-  #   c_new = tf.constant(-1., name='cm_new')
-  #
-  #   # case 1
-  #   a_out, b_out, c_out, d_out = model.get_output([a, b, c, d],
-  #                                                 inputs={a: a_new})
-  #   with tf.Session() as sess:
-  #     a_out_, b_out_, c_out_, d_out_ = sess.run([a_out[0], b_out[0],
-  #                                                c_out[0], d_out[0]])
-  #     assert np.abs(a_out_ - 10.) < 1e-8
-  #     assert np.abs(b_out_ - 0.) < 1e-8
-  #     assert np.abs(c_out_ - 10.) < 1e-8
-  #     assert np.abs(d_out_ - 10.) < 1e-8
-  #
-  #   # case 2
-  #   a_out, b_out, c_out, d_out = model.get_output([a, b, c, d],
-  #                                                 inputs={b: b_new})
-  #   with tf.Session() as sess:
-  #     a_out_, b_out_, c_out_, d_out_ = sess.run([a_out[0], b_out[0],
-  #                                                c_out[0], d_out[0]])
-  #     assert np.abs(a_out_ - 4.) < 1e-8
-  #     assert np.abs(b_out_ - 1.) < 1e-8
-  #     assert np.abs(c_out_ - 5.) < 1e-8
-  #     assert np.abs(d_out_ - 5.) < 1e-8
-  #
-  #   # case 3
-  #   a_out, b_out, c_out, d_out = model.get_output([a, b, c, d],
-  #                                                 inputs={c: c_new})
-  #   with tf.Session() as sess:
-  #     a_out_, b_out_, c_out_, d_out_ = sess.run([a_out[0], b_out[0],
-  #                                                c_out[0], d_out[0]])
-  #     assert np.abs(a_out_ - 4.) < 1e-8
-  #     assert np.abs(b_out_ - 0.) < 1e-8
-  #     assert np.abs(c_out_ - (-1.)) < 1e-8
-  #     assert np.abs(d_out_ - (-1.)) < 1e-8
-  #
-  #     # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-  #     #                                       tf.get_default_graph())
-  #     # train_writer.close()
-  #
+      b_new = tf.constant(math.e ** 2, name="b_new")
+      d_new = tf.constant(-math.e ** 2, name="d_new")
+
+      # case 1
+      d_out, _ = meta_graph.clone(d, "copy1")
+      assert d_out is not d
+      assert d_out.op.inputs[:] == [b]
+
+      # case 2
+      copies, _ = meta_graph.clone([c, d], "copy2")
+      assert copies[0].op.inputs[:] == [b]
+      assert copies[1].op.inputs[:] == [b]
+
+      # case 3
+      copies, _ = meta_graph.clone([c, d], "copy3", replace={b: b_new})
+      with tf.Session() as sess:
+        c_out_, d_out_ = sess.run(copies)
+      self.assertNear(c_out_, 2., 1e-6)
+      self.assertNear(d_out_, -math.e ** 2, 1e-6)
+
+      # case 4
+      c_out, _ = meta_graph.clone(c, "copy4", replace={d: d_new})
+      assert c_out.op.inputs[:] == [b]
+      with tf.Session() as sess:
+        self.assertNear(sess.run(c_out), 1., 1e-6)
+
+  def testCloneMerge(self):
+    # a -> c -> d
+    # b ->/
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.constant(4., name='a')
+      b = tf.constant(0., name='b')
+      c = tf.add(a, b, name='c')
+      d = tf.stop_gradient(c, name='d')
+
+      a_new = tf.constant(10., name='a_new')
+      b_new = tf.constant(1., name='b_new')
+      c_new = tf.constant(-1., name='c_new')
+
+      # case 1
+      copies, _ = meta_graph.clone([a, b, c, d], "copy1", replace={a: a_new})
+      with tf.Session() as sess:
+        a_out_, b_out_, c_out_, d_out_ = sess.run(copies)
+      self.assertNear(a_out_, 10., 1e-6)
+      self.assertNear(b_out_, 0., 1e-6)
+      self.assertNear(c_out_, 10., 1e-6)
+      self.assertNear(d_out_, 10., 1e-6)
+
+      # case 2
+      copies, _ = meta_graph.clone([a, b, c, d], "copy2", replace={b: b_new})
+      with tf.Session() as sess:
+        a_out_, b_out_, c_out_, d_out_ = sess.run(copies)
+      self.assertNear(a_out_, 4., 1e-6)
+      self.assertNear(b_out_, 1., 1e-6)
+      self.assertNear(c_out_, 5., 1e-6)
+      self.assertNear(d_out_, 5., 1e-6)
+
+      # case 3
+      copies, _ = meta_graph.clone([a, b, c, d], "copy3", replace={c: c_new})
+      assert copies[0].name == "copy3/a:0"
+      assert copies[1].name == "copy3/b:0"
+      with tf.Session() as sess:
+        a_out_, b_out_, c_out_, d_out_ = sess.run(copies)
+      self.assertNear(a_out_, 4., 1e-6)
+      self.assertNear(b_out_, 0., 1e-6)
+      self.assertNear(c_out_, -1., 1e-6)
+      self.assertNear(d_out_, -1., 1e-6)
+
   # def testCloneBridge(self):
   #   # a -> b -> c -> d -> e
   #   #       \  ---  /

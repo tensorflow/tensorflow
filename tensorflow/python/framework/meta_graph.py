@@ -477,7 +477,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
         field = getattr(col_def, kind)
         if field.value and (
             not input_map or
-            sorted([compat.as_str(v) for v in field.value]) !=
+            sorted(set([compat.as_str(v) for v in field.value])) !=
             sorted(input_map)):
           # print(sorted([compat.as_str(v) for v in field.value]))
           # print(sorted(input_map))
@@ -709,7 +709,8 @@ def _node_def_given_ops(from_node_def, op_list, export_scope, unbound_inputs,
   outputs = []
   for op in op_list:
     outputs.extend(op.outputs[:])
-  output_names = set([t.name for t in outputs])
+  output_names = set([t.name[:-2] if t.name[-2:] == ":0" else t.name
+                      for t in outputs])
   for i, v in enumerate(node_def.input):
     if not (node_def.input[i].lstrip("^") in output_names):
       # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
@@ -774,6 +775,7 @@ def export_ops_meta_graph(op_list,
     if not op.name.startswith(export_scope):
       raise ValueError("The Operation (%s) to export is not under "
                        "'export_scope'." % op.name)
+  print("Export op_list:", [i.name for i in op_list])
 
   graph = graph or ops.get_default_graph()
   unbound_inputs = []
@@ -925,7 +927,9 @@ def clone(outputs, to_scope, from_scope="", replace=None):
   seed_tensors = outputs
   if not isinstance(outputs, (list, tuple)):
     seed_tensors = [outputs]
+  seed_tensors_set = set(seed_tensors)
 
+  replace = replace or {}
   for k, v in six.iteritems(replace):
     if not isinstance(k, ops.Tensor) or not isinstance(v, ops.Tensor):
       raise TypeError(
@@ -946,7 +950,8 @@ def clone(outputs, to_scope, from_scope="", replace=None):
   copied_tensors = set()
   for op in backward_ops:
     if any((t in replace or t in copied_tensors) for t in op.inputs) or \
-        any(dep in copied_ops for dep in op.control_inputs):
+        any(dep in copied_ops for dep in op.control_inputs) or \
+        any(t in seed_tensors_set for t in op.outputs):
       copied_ops.add(op)
       copied_tensors.update(set(op.outputs))
 
@@ -954,18 +959,27 @@ def clone(outputs, to_scope, from_scope="", replace=None):
     name = tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
     return re.sub(r"([\^]|^)(.*?)", r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
                   compat.as_str(name))
-  input_map = dict((_unbounded_name(k), v) for k, v in six.iteritems(replace))
+  input_map = {}
   for op in copied_ops:
     for tensor in op.inputs:
-      if not ((tensor in copied_tensors) or (tensor in replace)):
-        input_map[_unbounded_name(tensor)] = tensor
+      if not (tensor in copied_tensors):
+        unbounded_name = _unbounded_name(tensor)
+        if tensor in replace:
+          input_map[unbounded_name] = replace[tensor]
+        else:
+          input_map[unbounded_name] = tensor
   print('input_map:', input_map)
 
   new_ops, var_list = copy_ops_meta_graph(list(copied_ops), from_scope,
                                           to_scope, input_map=input_map)
   new_tensors = []
   for tensor in seed_tensors:
-    new_tensors.append(new_ops[tensor.op].outputs[tensor.value_index])
+    if tensor in replace:
+      new_tensors.append(replace[tensor])
+    elif tensor.op in new_ops:
+      new_tensors.append(new_ops[tensor.op].outputs[tensor.value_index])
+    else:
+      new_tensors.append(tensor)
 
   if len(new_tensors) == 1:
     new_tensors = new_tensors[0]
