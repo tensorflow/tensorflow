@@ -127,7 +127,7 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
 
       # Test input dimensions
       if inputs.get_shape().ndims is not None and (
-          inputs.get_shape().ndims =< 2):
+          inputs.get_shape().ndims < 2):
         raise ValueError("Inputs must have at least two dimensions")
       # Setup of RNN (dimensions, sizes, length, initial state, dtype)
       if not time_major:
