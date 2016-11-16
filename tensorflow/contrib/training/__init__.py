@@ -68,6 +68,13 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.training.python.training.bucket_ops import *
 from tensorflow.contrib.training.python.training.device_setter import *
+from tensorflow.contrib.training.python.training.evaluation import checkpoints_iterator
+from tensorflow.contrib.training.python.training.evaluation import evaluate_once
+from tensorflow.contrib.training.python.training.evaluation import evaluate_repeatedly
+from tensorflow.contrib.training.python.training.evaluation import get_or_create_eval_step
+from tensorflow.contrib.training.python.training.evaluation import StopAfterNEvalsHook
+from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndHook
+from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
 from tensorflow.contrib.training.python.training.failure_tolerator import *
 from tensorflow.contrib.training.python.training.feeder import *
 from tensorflow.contrib.training.python.training.resample import *

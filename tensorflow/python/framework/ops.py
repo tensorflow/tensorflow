@@ -1039,7 +1039,7 @@ class Operation(object):
   def __init__(self, node_def, g, inputs=None, output_types=None,
                control_inputs=None, input_types=None, original_op=None,
                op_def=None):
-    """Creates an `Operation`.
+    r"""Creates an `Operation`.
 
     NOTE: This constructor validates the name of the `Operation` (passed
     as `node_def.name`). Valid `Operation` names match the following
@@ -3932,6 +3932,10 @@ class GraphKeys(object):
   READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
+
+  # Used to count the number of evaluations performed during a single evaluation
+  # run.
+  EVAL_STEP = "eval_step"
   TRAIN_OP = "train_op"
 
   # Key for control flow context.
