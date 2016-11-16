@@ -31,7 +31,7 @@ SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe"
 %PIP_EXE% uninstall -y tensorflow
 
 :: Install the pip package.
-%PIP_EXE% install --upgrade %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\tensorflow-0.11.0rc2_cmake_experimental-py3-none-any.whl
+%PIP_EXE% install --upgrade %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\tensorflow-0.11.0rc2-cp35-cp35m-win_amd64.whl
 
 :: Run all python tests
 ctest -C Release --output-on-failure
