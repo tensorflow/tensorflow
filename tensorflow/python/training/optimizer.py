@@ -52,7 +52,7 @@ class _RefVariableProcessor(_OptimizableVariable):
     self._v = v
 
   def target(self):
-    return self._v.ref()
+    return self._v._ref()  # pylint: disable=protected-access
 
   def update_op(self, optimizer, g):
     if isinstance(g, ops.Tensor):

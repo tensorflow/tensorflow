@@ -193,8 +193,9 @@ def _zero_debias(unbiased_var, value, decay):
       # use the new values of the biased variable and the local step.
       with ops.control_dependencies([update_biased, update_local_step]):
         # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
-        unbiased_ema_delta = (unbiased_var - biased_var.ref() /
-                              (1 - math_ops.pow(1.0 - decay, local_step.ref())))
+        unbiased_ema_delta = (unbiased_var - biased_var.read_value() /
+                              (1 - math_ops.pow(
+                                  1.0 - decay, local_step.read_value())))
 
       return unbiased_ema_delta
 

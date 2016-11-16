@@ -103,7 +103,7 @@ class ControlFlowTest(tf.test.TestCase):
       v = tf.Variable(7)
 
       p = tf.constant(True)
-      v1 = control_flow_ops._SwitchRefOrTensor(v.ref(), p)
+      v1 = control_flow_ops._SwitchRefOrTensor(v._ref(), p)  # pylint: disable=protected-access
       v2 = tf.assign(v1[1], 9)
       tf.global_variables_initializer().run()
       self.assertEqual(9, v2.eval())
@@ -531,7 +531,7 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testWhileWithRefs_1(self):
     with self.test_session() as sess:
-      x = tf.Variable(0).ref()
+      x = tf.Variable(0)._ref()  # pylint: disable=protected-access
       i = tf.constant(0)
       c = lambda i, x: tf.less(i, 100)
 
@@ -1578,7 +1578,7 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testWhileWithRefsWithGradients_1(self):
     with self.test_session() as sess:
-      x = tf.Variable(0).ref()
+      x = tf.Variable(0)._ref()  # pylint: disable=protected-access
       i = tf.constant(0)
       c = lambda i, x: tf.less(i, 10)
 
@@ -1592,7 +1592,7 @@ class ControlFlowTest(tf.test.TestCase):
 
       r = tf.while_loop(c, body, [i, x], parallel_iterations=5)
 
-      grad_ys = [tf.Variable(73).ref()]
+      grad_ys = [tf.Variable(73)._ref()]  # pylint: disable=protected-access
       grad = tf.gradients([r[1]], [x], grad_ys=grad_ys)
 
       tf.global_variables_initializer().run()
@@ -1901,7 +1901,7 @@ class ControlFlowTest(tf.test.TestCase):
       # while asking for c
       real_v = control_flow_ops.with_dependencies(
           name="real_tensor",
-          output_tensor=v.ref(),
+          output_tensor=v._ref(),  # pylint: disable=protected-access
           dependencies=[v.initializer])
       c_val, real_v_val = sess.run([c, real_v])
 
@@ -2150,11 +2150,11 @@ class TupleTest(tf.test.TestCase):
       with self.test_session():
         v1 = tf.Variable([1.0])
         add1 = tf.add(
-            control_flow_ops.with_dependencies([v1.initializer], v1.ref()),
+            control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             2.0)
         v2 = tf.Variable([10.0])
         add2 = tf.add(
-            control_flow_ops.with_dependencies([v2.initializer], v2.ref()),
+            control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             20.0)
         t1, _, t2 = control_flow_ops.tuple([add1, None, add2])
 
@@ -2182,14 +2182,14 @@ class TupleTest(tf.test.TestCase):
             np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(
                 np.float32))
         v1_at_1 = tf.IndexedSlices(
-            control_flow_ops.with_dependencies([v1.initializer], v1.ref()),
+            control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             tf.constant([1]))
 
         v2 = tf.Variable(
             np.array([[0.1, 1.1], [10.1, 11.1], [20.1, 21.1]]).astype(
                 np.float32))
         v2_at_1 = tf.IndexedSlices(
-            control_flow_ops.with_dependencies([v2.initializer], v2.ref()),
+            control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             tf.constant([1]))
 
         st1, st2 = control_flow_ops.tuple([v1_at_1, v2_at_1])

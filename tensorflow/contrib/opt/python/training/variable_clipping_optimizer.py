@@ -104,7 +104,7 @@ class VariableClippingOptimizer(optimizer.Optimizer):
 
   def _clip_dense(self, var):
     with self._maybe_colocate_with(var):
-      updated_var_value = array_ops.identity(var.ref())
+      updated_var_value = var._ref()  # pylint: disable=protected-access
       normalized_var = clip_ops.clip_by_norm(
           updated_var_value, self._max_norm, self._vars_to_clip_dims[var])
       delta = updated_var_value - normalized_var
@@ -121,7 +121,7 @@ class VariableClippingOptimizer(optimizer.Optimizer):
       return self._clip_dense(var)
 
     with ops.colocate_with(var):
-      var_subset = array_ops.gather(var.ref(), grad.indices)
+      var_subset = array_ops.gather(var, grad.indices)
     with self._maybe_colocate_with(var):
       normalized_var_subset = clip_ops.clip_by_norm(
           var_subset, self._max_norm, clip_dims)

@@ -184,7 +184,7 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
       v1_avg = ema.average(v1)
       self.assertEqual([], v1_avg.initializer.control_inputs)
       self.assertEqual([], v1_avg.value().op.control_inputs)
-      self.assertEqual([], v1_avg.ref().op.control_inputs)
+      self.assertEqual([], v1_avg.value().op.control_inputs)
       # We should be able to initialize v1_avg before v0.
       sess.run(v1_avg.initializer)
       sess.run(v0.initializer)
