@@ -641,27 +641,27 @@ class BaseEstimator(
 
   def _check_inputs(self, features, labels, mode):
     if mode in self._features_info:
-      logging.debug('Given features for %s: %s, required signatures: %s.',
+      logging.debug('Given features for mode %s: %s, required signatures: %s.',
                     mode, str(features), str(self._features_info[mode]))
 
       if not tensor_signature.tensors_compatible(features, self._features_info):
-        raise ValueError('Features are incompatible for %s with given information. '
+        raise ValueError('Features for mode %s are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
                          (mode, str(features), str(self._features_info[mode])))
     else:
       self._features_info[mode] = tensor_signature.create_signatures(features)
-      logging.debug('Setting feature info for %s to %s.', mode, str(self._features_info[mode]))
+      logging.debug('Setting feature info for mode %s to %s.', mode, str(self._features_info[mode]))
     if labels is not None:
       if mode in self._labels_info:
         logging.debug('Given labels: %s, required signatures: %s.',
                       str(labels), str(self._labels_info))
         if not tensor_signature.tensors_compatible(labels, self._labels_info[mode]):
-          raise ValueError('Labels are incompatible with given information. '
+          raise ValueError('Labels for mode %s are incompatible with given information. '
                            'Given labels: %s, required signatures: %s.' %
-                           (str(labels), str(self._labels_info[mode])))
+                           (mode, str(labels), str(self._labels_info[mode])))
       else:
         self._labels_info[mode] = tensor_signature.create_signatures(labels)
-        logging.debug('Setting labels for %s info to %s', mode, str(self._labels_info[mode]))
+        logging.debug('Setting labels for mode %s info to %s', mode, str(self._labels_info[mode]))
 
   def _train_model(self,
                    input_fn,
