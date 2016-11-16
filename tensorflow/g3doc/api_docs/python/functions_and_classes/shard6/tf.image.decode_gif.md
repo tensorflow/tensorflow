@@ -10,11 +10,11 @@ convert $src.gif -coalesce $dst.gif
 ##### Args:
 
 
-*  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The GIF-encoded image.
+*  <b>`contents`</b>: An `Output` of type `string`. 0-D.  The GIF-encoded image.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `uint8`.
+  An `Output` of type `uint8`.
   4-D with shape `[num_frames, height, width, 3]`. RGB order
 

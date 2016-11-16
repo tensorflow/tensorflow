@@ -210,7 +210,8 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
@@ -238,13 +239,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -259,13 +260,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `bool`.
-*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`y`</b>: An `Output` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -306,13 +307,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -369,13 +370,13 @@ Returns the truth value of (x >= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -450,13 +451,13 @@ Returns the truth value of (x > y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -495,12 +496,12 @@ Returns the truth value of NOT x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`x`</b>: An `Output` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -532,13 +533,13 @@ Returns the truth value of (x <= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -553,13 +554,13 @@ Returns the truth value of (x < y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -574,13 +575,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -601,12 +602,12 @@ I.e., \\(y = -x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -634,13 +635,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `bool`.
-*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`y`</b>: An `Output` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -684,13 +685,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -705,13 +706,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `bool`.
-*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`y`</b>: An `Output` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -726,13 +727,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -789,13 +790,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -817,13 +818,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `bool`.
-*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`y`</b>: An `Output` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`.
+  An `Output` of type `bool`.
 
 
 - - -
@@ -867,13 +868,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -936,13 +937,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -

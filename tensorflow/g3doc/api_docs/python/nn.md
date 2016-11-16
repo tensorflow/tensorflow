@@ -27,12 +27,12 @@ Computes rectified linear: `max(features, 0)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`features`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `features`.
+  A `Output`. Has the same type as `features`.
 
 
 - - -
@@ -88,12 +88,12 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`features`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `features`.
+  A `Output`. Has the same type as `features`.
 
 
 - - -
@@ -105,12 +105,12 @@ Computes softplus: `log(exp(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`features`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `features`.
+  A `Output`. Has the same type as `features`.
 
 
 - - -
@@ -122,12 +122,12 @@ Computes softsign: `features / (abs(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`features`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `features`.
+  A `Output`. Has the same type as `features`.
 
 
 - - -
@@ -461,8 +461,8 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
-*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`filter`</b>: A `Output`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
     of `input`. Must be in the same order as the dimension specified with format.
@@ -479,7 +479,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
 
 
 - - -
@@ -801,9 +801,9 @@ Our Conv3D implements a form of cross-correlation.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`filter`</b>: A `Output`. Must have the same type as `input`.
     Shape `[filter_depth, filter_height, filter_width, in_channels,
     out_channels]`. `in_channels` must match between `input` and `filter`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
@@ -815,7 +815,7 @@ Our Conv3D implements a form of cross-correlation.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
 
 
 - - -
@@ -939,7 +939,7 @@ The indices in `argmax` are flattened, so that a maximum value at position
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `half`.
     4-D with shape `[batch, height, width, channels]`.  Input to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 4`.
     The size of the window for each dimension of the input tensor.
@@ -953,10 +953,10 @@ The indices in `argmax` are flattened, so that a maximum value at position
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (output, argmax).
+  A tuple of `Output` objects (output, argmax).
 
-*  <b>`output`</b>: A `Tensor`. Has the same type as `input`. The max pooled output tensor.
-*  <b>`argmax`</b>: A `Tensor` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
+*  <b>`output`</b>: A `Output`. Has the same type as `input`. The max pooled output tensor.
+*  <b>`argmax`</b>: A `Output` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
 
 
 - - -
@@ -968,7 +968,7 @@ Performs 3D average pooling on the input.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The size of the window for each dimension of
@@ -982,7 +982,7 @@ Performs 3D average pooling on the input.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
   The average pooled output tensor.
 
 
@@ -995,7 +995,7 @@ Performs 3D max pooling on the input.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The size of the window for each dimension of
@@ -1009,7 +1009,7 @@ Performs 3D max pooling on the input.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. The max pooled output tensor.
+  A `Output`. Has the same type as `input`. The max pooled output tensor.
 
 
 - - -
@@ -1026,7 +1026,7 @@ pooling region.
 ##### Args:
 
 
-*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`value`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
     Pooling ratio for each dimension of `value`, currently only
@@ -1065,11 +1065,11 @@ pooling region.
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
+  A tuple of `Output` objects (output, row_pooling_sequence, col_pooling_sequence).
 
-*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional avg pooling.
-*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
-*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+*  <b>`output`</b>: A `Output`. Has the same type as `value`. output tensor after fractional avg pooling.
+*  <b>`row_pooling_sequence`</b>: An `Output` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: An `Output` of type `int64`. column pooling sequence, needed to calculate gradient.
 
 
 - - -
@@ -1110,7 +1110,7 @@ For more details on fractional max pooling, see this paper:
 ##### Args:
 
 
-*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`value`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
     Pooling ratio for each dimension of `value`, currently only
@@ -1149,11 +1149,11 @@ For more details on fractional max pooling, see this paper:
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
+  A tuple of `Output` objects (output, row_pooling_sequence, col_pooling_sequence).
 
-*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional max pooling.
-*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
-*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+*  <b>`output`</b>: A `Output`. Has the same type as `value`. output tensor after fractional max pooling.
+*  <b>`row_pooling_sequence`</b>: An `Output` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: An `Output` of type `int64`. column pooling sequence, needed to calculate gradient.
 
 
 - - -
@@ -1308,9 +1308,9 @@ negation of the erosion of `-input` by the reflected `filter`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     4-D with shape `[batch, in_height, in_width, depth]`.
-*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`filter`</b>: A `Output`. Must have the same type as `input`.
     3-D with shape `[filter_height, filter_width, depth]`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
     The stride of the sliding window for each dimension of the input
@@ -1324,7 +1324,7 @@ negation of the erosion of `-input` by the reflected `filter`.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
   4-D with shape `[batch, out_height, out_width, depth]`.
 
 
@@ -1438,7 +1438,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `half`.
     4-D.
 *  <b>`depth_radius`</b>: An optional `int`. Defaults to `5`.
     0-D.  Half-width of the 1-D normalization window.
@@ -1451,7 +1451,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
 
 
 - - -
@@ -1584,13 +1584,13 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`t`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `t`. 0-D.
+  A `Output`. Has the same type as `t`. 0-D.
 
 
 - - -
@@ -2827,16 +2827,16 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 ##### Args:
 
 
-*  <b>`predictions`</b>: A `Tensor` of type `float32`.
+*  <b>`predictions`</b>: An `Output` of type `float32`.
     A `batch_size` x `classes` tensor.
-*  <b>`targets`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`targets`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A `batch_size` vector of class ids.
 *  <b>`k`</b>: An `int`. Number of top elements to look at for computing precision.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
+  An `Output` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
 
 
 
@@ -3282,22 +3282,22 @@ Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
-*  <b>`max_value`</b>: A `Tensor` of type `float32`.
-*  <b>`min_features`</b>: A `Tensor` of type `float32`.
+*  <b>`features`</b>: A `Output`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`max_value`</b>: An `Output` of type `float32`.
+*  <b>`min_features`</b>: An `Output` of type `float32`.
     The float value that the lowest quantized value represents.
-*  <b>`max_features`</b>: A `Tensor` of type `float32`.
+*  <b>`max_features`</b>: An `Output` of type `float32`.
     The float value that the highest quantized value represents.
 *  <b>`out_type`</b>: An optional `tf.DType` from: `tf.qint8, tf.quint8, tf.qint16, tf.quint16, tf.qint32`. Defaults to `tf.quint8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (activations, min_activations, max_activations).
+  A tuple of `Output` objects (activations, min_activations, max_activations).
 
-*  <b>`activations`</b>: A `Tensor` of type `out_type`. Has the same output shape as "features".
-*  <b>`min_activations`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized value represents.
-*  <b>`max_activations`</b>: A `Tensor` of type `float32`. The float value that the highest quantized value represents.
+*  <b>`activations`</b>: A `Output` of type `out_type`. Has the same output shape as "features".
+*  <b>`min_activations`</b>: An `Output` of type `float32`. The float value that the lowest quantized value represents.
+*  <b>`max_activations`</b>: An `Output` of type `float32`. The float value that the highest quantized value represents.
 
 
 - - -
@@ -3309,11 +3309,11 @@ Produces the max pool of the input tensor for quantized types.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
     The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
-*  <b>`min_input`</b>: A `Tensor` of type `float32`.
+*  <b>`min_input`</b>: An `Output` of type `float32`.
     The float value that the lowest quantized input value represents.
-*  <b>`max_input`</b>: A `Tensor` of type `float32`.
+*  <b>`max_input`</b>: An `Output` of type `float32`.
     The float value that the highest quantized input value represents.
 *  <b>`ksize`</b>: A list of `ints`.
     The size of the window for each dimension of the input tensor.
@@ -3327,11 +3327,11 @@ Produces the max pool of the input tensor for quantized types.
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (output, min_output, max_output).
+  A tuple of `Output` objects (output, min_output, max_output).
 
-*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
-*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
-*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
+*  <b>`output`</b>: A `Output`. Has the same type as `input`.
+*  <b>`min_output`</b>: An `Output` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: An `Output` of type `float32`. The float value that the highest quantized output value represents.
 
 
 - - -
@@ -3343,11 +3343,11 @@ Produces the average pool of the input tensor for quantized types.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
     4-D with shape `[batch, height, width, channels]`.
-*  <b>`min_input`</b>: A `Tensor` of type `float32`.
+*  <b>`min_input`</b>: An `Output` of type `float32`.
     The float value that the lowest quantized input value represents.
-*  <b>`max_input`</b>: A `Tensor` of type `float32`.
+*  <b>`max_input`</b>: An `Output` of type `float32`.
     The float value that the highest quantized input value represents.
 *  <b>`ksize`</b>: A list of `ints`.
     The size of the window for each dimension of the input tensor.
@@ -3361,11 +3361,11 @@ Produces the average pool of the input tensor for quantized types.
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (output, min_output, max_output).
+  A tuple of `Output` objects (output, min_output, max_output).
 
-*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
-*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
-*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
+*  <b>`output`</b>: A `Output`. Has the same type as `input`.
+*  <b>`min_output`</b>: An `Output` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: An `Output` of type `float32`. The float value that the highest quantized output value represents.
 
 
 
@@ -3446,8 +3446,8 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`filter`</b>: A `Output`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
     of `input`.
@@ -3457,6 +3457,6 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
 
 

@@ -27,13 +27,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -48,13 +48,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -69,13 +69,13 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -116,13 +116,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -215,13 +215,13 @@ If `x` and `y` are reals, this will return the floating-point division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -241,13 +241,13 @@ Python Semantics.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -262,13 +262,13 @@ Returns x // y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -286,13 +286,13 @@ with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -310,13 +310,13 @@ with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -331,13 +331,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -353,15 +353,15 @@ of corresponding 3-element vectors is cross-multiplied independently.
 ##### Args:
 
 
-*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`a`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     A tensor containing 3-element vectors.
-*  <b>`b`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`b`</b>: A `Output`. Must have the same type as `a`.
     Another tensor, of same type and shape as `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `a`.
+  A `Output`. Has the same type as `a`.
   Pairwise cross product of the vectors in `a` and `b`.
 
 
@@ -405,7 +405,8 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
@@ -432,12 +433,12 @@ I.e., \\(y = -x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -473,12 +474,12 @@ I.e., \\(y = 1 / x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -558,12 +559,12 @@ I.e., \\(y = 1 / \sqrt{x}\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -604,12 +605,12 @@ Computes exponential of x element-wise.  \\(y = e^x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -623,12 +624,12 @@ I.e., \\(y = \log_e x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -642,12 +643,12 @@ I.e., \\(y = \log_e (1 + x)\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -659,12 +660,12 @@ Returns element-wise smallest integer in not less than x.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -676,12 +677,12 @@ Returns element-wise largest integer not greater than x.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -696,13 +697,13 @@ Returns the max of x and y (i.e. x > y ? x : y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -717,13 +718,13 @@ Returns the min of x and y (i.e. x < y ? x : y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -735,12 +736,12 @@ Computes cos of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -752,12 +753,12 @@ Computes sin of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -803,12 +804,12 @@ Computes tan of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -820,12 +821,12 @@ Computes acos of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -837,12 +838,12 @@ Computes asin of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -854,12 +855,12 @@ Computes atan of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -871,12 +872,12 @@ Computes the log of the absolute value of `Gamma(x)` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -890,12 +891,12 @@ Computes Psi, the derivative of Lgamma (the log of the absolute value of
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -925,12 +926,12 @@ Computes the complementary error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -945,13 +946,13 @@ Returns (x - y)(x - y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -977,13 +978,13 @@ Gamma function.
 ##### Args:
 
 
-*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`a`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must have the same type as `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `a`.
+  A `Output`. Has the same type as `a`.
 
 
 - - -
@@ -1009,13 +1010,13 @@ Gamma function.
 ##### Args:
 
 
-*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`a`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must have the same type as `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `a`.
+  A `Output`. Has the same type as `a`.
 
 
 - - -
@@ -1033,13 +1034,13 @@ The Hurwitz zeta function is defined as:
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`q`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`q`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -1058,13 +1059,13 @@ where \\(\psi(x)\\) is the digamma function.
 ##### Args:
 
 
-*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`a`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Output`. Must have the same type as `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `a`.
+  A `Output`. Has the same type as `a`.
 
 
 - - -
@@ -1090,14 +1091,14 @@ beta function.
 ##### Args:
 
 
-*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`b`</b>: A `Tensor`. Must have the same type as `a`.
-*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`a`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`b`</b>: A `Output`. Must have the same type as `a`.
+*  <b>`x`</b>: A `Output`. Must have the same type as `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `a`.
+  A `Output`. Has the same type as `a`.
 
 
 
@@ -1133,13 +1134,13 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`diagonal`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is at most 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `diagonal`.
+  A `Output`. Has the same type as `diagonal`.
 
 
 - - -
@@ -1170,13 +1171,13 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is 2, 4, or 6.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. The extracted diagonal.
+  A `Output`. Has the same type as `input`. The extracted diagonal.
 
 
 - - -
@@ -1351,12 +1352,12 @@ which has shape (2, 4, 4)
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Output`. Rank `k`, where `k >= 1`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `diagonal`.
+  A `Output`. Has the same type as `diagonal`.
   Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
 
 
@@ -1398,12 +1399,12 @@ which has shape (2, 4)
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Rank `k` tensor where `k >= 2`.
+*  <b>`input`</b>: A `Output`. Rank `k` tensor where `k >= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
   The extracted diagonal(s) having shape
   `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
 
@@ -1457,18 +1458,18 @@ Useful special cases:
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
-*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
+*  <b>`input`</b>: A `Output`. Rank `k` tensor.
+*  <b>`num_lower`</b>: An `Output` of type `int64`.
     0-D tensor. Number of subdiagonals to keep. If negative, keep entire
     lower triangle.
-*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
+*  <b>`num_upper`</b>: An `Output` of type `int64`.
     0-D tensor. Number of superdiagonals to keep. If negative, keep
     entire upper triangle.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
   Rank `k` tensor of the same shape as input. The extracted banded tensor.
 
 
@@ -1494,14 +1495,14 @@ tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
-*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`input`</b>: A `Output`. Rank `k+1`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Output`. Must have the same type as `input`.
     Rank `k`, where `k >= 1`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Output`. Has the same type as `input`.
   Rank `k+1`, with `output.shape = input.shape`.
 
 
@@ -1545,22 +1546,25 @@ tf.matrix_transpose(x) ==> [[1 4]
 
 - - -
 
-### `tf.matmul(a, b, transpose_a=False, transpose_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
+### `tf.matmul(a, b, transpose_a=False, transpose_b=False, adjoint_a=False, adjoint_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
 
 Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-The inputs must be two-dimensional matrices, with matching inner dimensions,
-possibly after transposition.
+The inputs must be matrices (or tensors of rank > 2, representing batches of
+matrices), with matching inner dimensions, possibly after transposition.
 
 Both matrices must be of the same type. The supported types are:
-`float32`, `float64`, `int32`, `complex64`.
+`float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
 
-Either matrix can be transposed on the fly by setting the corresponding flag
-to `True`. This is `False` by default.
+Either matrix can be transposed or adjointed (conjugated and transposed) on
+the fly by setting one of the corresponding flag to `True`. These are `False`
+by default.
 
 If one or both of the matrices contain a lot of zeros, a more efficient
 multiplication algorithm can be used by setting the corresponding
 `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
+This optimization is only available for plain matrices (rank-2 tensors) with
+datatypes `bfloat16` or `float32`.
 
 For example:
 
@@ -1574,22 +1578,57 @@ b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2]) => [[7. 8.]
                                                          [11. 12.]]
 c = tf.matmul(a, b) => [[58 64]
                         [139 154]]
+
+
+# 3-D tensor `a`
+a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+                                                       [ 4.  5.  6.]],
+                                                      [[ 7.  8.  9.]
+                                                       [10. 11. 12.]]]
+
+# 3-D tensor `b`
+b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+                                                        [15. 16.]
+                                                        [17. 18.]],
+                                                       [[19. 20.]
+                                                        [21. 22.]
+                                                        [23. 24.]]]
+c = tf.matmul(a, b) => [[[ 94 100]
+                         [229 244]],
+                        [[508 532]
+                         [697 730]]]
 ```
 
 ##### Args:
 
 
-*  <b>`a`</b>: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
-*  <b>`b`</b>: `Tensor` with same type as `a`.
+*  <b>`a`</b>: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+    `complex128` and rank > 1.
+*  <b>`b`</b>: `Tensor` with same type and rank as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
+*  <b>`adjoint_a`</b>: If `True`, `a` is conjugated and transposed before
+    multiplication.
+*  <b>`adjoint_b`</b>: If `True`, `b` is conjugated and transposed before
+    multiplication.
 *  <b>`a_is_sparse`</b>: If `True`, `a` is treated as a sparse matrix.
 *  <b>`b_is_sparse`</b>: If `True`, `b` is treated as a sparse matrix.
 *  <b>`name`</b>: Name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of the same type as `a`.
+  A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
+  the product of the corresponding matrices in `a` and `b, e.g. if all
+  transpose or adjoint attributes are `False`:
+
+  output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If transpose_a and adjoint_a, or transpose_b and adjoint_b
+    are both set to True.
 
 
 - - -
@@ -1598,7 +1637,7 @@ c = tf.matmul(a, b) => [[58 64]
 
 Multiplies slices of two tensors in batches.
 
-Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+Multiplies all slices of `Output` `x` and `y` (each slice can be
 viewed as an element of a batch), and arranges the individual results
 in a single output tensor of the same batch size. Each of the
 individual slices can optionally be adjointed (to adjoint a matrix
@@ -1620,9 +1659,9 @@ It is computed as:
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
     3-D or higher with shape `[..., r_x, c_x]`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
     3-D or higher with shape `[..., r_y, c_y]`.
 *  <b>`adj_x`</b>: An optional `bool`. Defaults to `False`.
     If `True`, adjoint the slices of `x`. Defaults to `False`.
@@ -1632,7 +1671,7 @@ It is computed as:
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
   3-D or higher with shape `[..., r_o, c_o]`
 
 
@@ -1650,13 +1689,13 @@ for all input submatrices `[..., :, :]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
     Shape is `[..., M, M]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[...]`.
+  A `Output`. Has the same type as `input`. Shape is `[...]`.
 
 
 - - -
@@ -1680,14 +1719,14 @@ garbage result.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
+  A `Output`. Has the same type as `input`. Shape is `[..., M, M]`.
 
   @compatibility(numpy)
   Equivalent to np.linalg.inv
@@ -1708,13 +1747,13 @@ containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
+  A `Output`. Has the same type as `input`. Shape is `[..., M, M]`.
 
 
 - - -
@@ -1771,9 +1810,9 @@ If `adjoint` is `True` then each output matrix satisfies
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
+*  <b>`matrix`</b>: A `Output`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
     Shape is `[..., M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
+*  <b>`rhs`</b>: A `Output`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
     Boolean indicating whether to solve with `matrix` or its (block-wise)
@@ -1782,7 +1821,7 @@ If `adjoint` is `True` then each output matrix satisfies
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
+  A `Output`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 
 
 - - -
@@ -1810,9 +1849,9 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`matrix`</b>: A `Output`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
+*  <b>`rhs`</b>: A `Output`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
 *  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
     Boolean indicating whether the innermost matrices in `matrix` are
@@ -1829,7 +1868,7 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
+  A `Output`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 
 
 - - -
@@ -2105,7 +2144,8 @@ tf.imag(input) ==> [4.75, 5.75]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+    `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2162,12 +2202,12 @@ dimension of `input`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  An `Output` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most
   dimension of `input` is replaced with its 1D Fourier Transform.
 
@@ -2183,12 +2223,12 @@ dimension of `input`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  An `Output` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most
   dimension of `input` is replaced with its inverse 1D Fourier Transform.
 
@@ -2204,12 +2244,12 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  An `Output` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
     dimensions of `input` are replaced with their 2D Fourier Transform.
 
@@ -2229,12 +2269,12 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  An `Output` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
     dimensions of `input` are replaced with their inverse 2D Fourier Transform.
 
@@ -2254,12 +2294,12 @@ dimensions of `input`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  An `Output` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 3
     dimensions of `input` are replaced with their 3D Fourier Transform.
 
@@ -2279,12 +2319,12 @@ Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  An `Output` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 3
     dimensions of `input` are replaced with their inverse 3D Fourier Transform.
 
@@ -2923,15 +2963,15 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`segment_ids`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -2957,15 +2997,15 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`segment_ids`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -2991,15 +3031,15 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`segment_ids`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -3024,15 +3064,15 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`segment_ids`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -3059,15 +3099,15 @@ values summed.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`segment_ids`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -3100,15 +3140,15 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`segment_ids`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A tensor whose shape is a prefix of `data.shape`.
-*  <b>`num_segments`</b>: A `Tensor` of type `int32`.
+*  <b>`num_segments`</b>: An `Output` of type `int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for the first `segment_ids.rank`
   dimensions, which are replaced with a single dimension which has size
   `num_segments`.
@@ -3154,16 +3194,16 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
-*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
+*  <b>`segment_ids`</b>: An `Output` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -3184,16 +3224,16 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
-*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
+*  <b>`segment_ids`</b>: An `Output` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -3213,16 +3253,16 @@ of segments.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
-*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
+*  <b>`segment_ids`</b>: An `Output` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `data`.
+  A `Output`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
@@ -3245,15 +3285,15 @@ Returns the index with the smallest value across axiss of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`axis`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     int32, 0 <= axis < rank(input).  Describes which axis
     of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `int64`.
+  An `Output` of type `int64`.
 
 
 - - -
@@ -3265,15 +3305,15 @@ Returns the index with the largest value across axiss of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`axis`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
     int32, 0 <= axis < rank(input).  Describes which axis
     of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `int64`.
+  An `Output` of type `int64`.
 
 
 
@@ -3308,17 +3348,17 @@ idx ==> [1, 3, 5]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`x`</b>: A `Output`. 1-D. Values to keep.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`. 1-D. Values to remove.
 *  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (out, idx).
+  A tuple of `Output` objects (out, idx).
 
-*  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`out`</b>: A `Output`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
+*  <b>`idx`</b>: A `Output` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 
 
 - - -
@@ -3396,16 +3436,16 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`x`</b>: A `Output`. 1-D.
 *  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (y, idx).
+  A tuple of `Output` objects (y, idx).
 
-*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
+*  <b>`y`</b>: A `Output`. Has the same type as `x`. 1-D.
+*  <b>`idx`</b>: A `Output` of type `out_idx`. 1-D.
 
 
 
@@ -3503,12 +3543,12 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`. 1-D.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`. 1-D.
+  A `Output`. Has the same type as `x`. 1-D.
 
 
 
@@ -3525,13 +3565,13 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
 - - -
@@ -3566,12 +3606,12 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Output`. Has the same type as `x`.
 
 
