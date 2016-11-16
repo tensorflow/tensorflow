@@ -196,7 +196,7 @@ class Experiment(object):
 
     extra_hooks = []
     if delay_secs is None:
-      task_id = self._estimator.config.task or 0
+      task_id = self._estimator.config.task_id or 0
       if self._delay_workers_by_global_step:
         # Wait 5500 global steps for the second worker. Each worker waits more
         # then previous one but with a diminishing number of steps.
@@ -398,15 +398,15 @@ class Experiment(object):
   def _start_server(self):
     """Creates, starts, and returns a server_lib.Server."""
     config = self._estimator.config
-    if (not config.cluster_spec or not config.job_name or not config.master or
-        config.task is None):
+    if (not config.cluster_spec or not config.task_type or not config.master or
+        config.task_id is None):
       raise ValueError("Could not start server; be sure to specify "
-                       "cluster_spec, job_name, master, and task in "
+                       "cluster_spec, task_type, master, and task in "
                        "RunConfig or set the TF_CONFIG environment variable.")
     server = server_lib.Server(
         config.cluster_spec,
-        job_name=config.job_name,
-        task_index=config.task,
+        job_name=config.task_type,
+        task_index=config.task_id,
         config=config.tf_config,
         start=False)
     server.start()

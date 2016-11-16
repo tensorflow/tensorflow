@@ -191,8 +191,8 @@ def _get_replica_device_setter(config):
       'MutableHashTableOfTensors', 'MutableDenseHashTable'
   ]
 
-  if config.job_name:
-    worker_device = '/job:%s/task:%d' % (config.job_name, config.task)
+  if config.task_type:
+    worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
   else:
     worker_device = '/job:worker'
 
@@ -682,11 +682,11 @@ class BaseEstimator(
       # Stagger startup of worker sessions based on task id.
       sleep_secs = min(
           self._config.training_worker_max_startup_secs,
-          self._config.task *
+          self._config.task_id *
           self._config.training_worker_session_startup_stagger_secs)
       if sleep_secs:
         logging.info('Waiting %d secs before starting task %d.', sleep_secs,
-                     self._config.task)
+                     self._config.task_id)
         time.sleep(sleep_secs)
 
     # Device allocation
