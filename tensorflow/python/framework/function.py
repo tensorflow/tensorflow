@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Python front-end supports for functions."""
+"""Python front-end supports for functions.
+
+NOTE: functions are currently experimental and subject to change!
+"""
 
 from __future__ import absolute_import
 from __future__ import division
