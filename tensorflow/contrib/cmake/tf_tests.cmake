@@ -344,7 +344,6 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/signature_test.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/training_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/tree_utils_test.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/data/sparse_values_to_indices_test.cc"
     )
   endif()
 
