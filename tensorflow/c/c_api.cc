@@ -220,6 +220,10 @@ void* TF_TensorData(const TF_Tensor* t) { return t->buffer->data(); }
 size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
                        size_t dst_len, TF_Status* status) {
   const size_t sz = TF_StringEncodedSize(src_len);
+  if (sz < src_len) {
+    status->status = InvalidArgument("src string is too large to encode");
+    return 0;
+  }
   if (dst_len < sz) {
     status->status =
         InvalidArgument("dst_len (", dst_len, ") too small to encode a ",
@@ -428,10 +432,10 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
     const tensorflow::string& s = srcarray(i);
     size_t consumed =
         TF_StringEncode(s.data(), s.size(), dst, dst_len, &status);
+    CHECK(status.status.ok());
     dst += consumed;
     dst_len -= consumed;
   }
-  CHECK(status.status.ok());
   CHECK_EQ(dst, base + size);
 
   auto dims = src.shape().dim_sizes();
