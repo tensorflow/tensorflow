@@ -71,6 +71,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+    name = "jpeg_turbo_archive",
+    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
+    sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
+    build_file = path_prefix + "jpeg_turbo.BUILD",
+  )
+
+  native.new_http_archive(
     name = "png_archive",
     url = "http://github.com/glennrp/libpng/archive/v1.2.53.zip",
     sha256 = "c35bcc6387495ee6e757507a68ba036d38ad05b415c2553b3debe2a57647a692",
