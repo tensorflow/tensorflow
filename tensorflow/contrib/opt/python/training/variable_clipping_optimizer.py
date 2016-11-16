@@ -42,7 +42,12 @@ class VariableClippingOptimizer(optimizer.Optimizer):
   Multiple instances of `VariableClippingOptimizer` may be chained to specify
   different max norms for different subsets of variables.
 
+  This is more efficient at serving-time than using normalization during
+  embedding lookup, at the expense of more expensive training and fewer
+  guarantees about the norms.
+
   @@__init__
+
   """
 
   def __init__(self,
