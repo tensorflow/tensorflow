@@ -797,7 +797,7 @@ def tf_extension_linkopts():
 def tf_extension_copts():
   return []  # No extension c opts
 
-def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
+def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], linkstatic=1, **kwargs):
   module_name = name.split("/")[-1]
   # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
   # and use that as the name for the rule producing the .so file.
@@ -840,7 +840,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                       "-Wno-write-strings"]
              + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
-      linkstatic=1,
+      linkstatic=linkstatic,
       linkshared=1,
       deps=deps + extra_deps)
   native.genrule(
