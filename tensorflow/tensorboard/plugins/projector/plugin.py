@@ -104,14 +104,6 @@ def _parse_positive_int_param(request, query_params, param_name):
                     'text/plain', 400)
     return -1
 
-_IMGHDR_TO_MIMETYPE = {
-    'bmp': 'image/bmp',
-    'gif': 'image/gif',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png'
-}
-_DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
-
 
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
