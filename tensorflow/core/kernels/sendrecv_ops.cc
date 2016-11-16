@@ -151,7 +151,8 @@ REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_GPU).HostMemory("tensor"), RecvOp);
 
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_SYCL), RecvOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
 #endif
 
 }  // end namespace tensorflow
