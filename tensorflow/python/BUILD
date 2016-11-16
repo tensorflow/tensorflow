@@ -1925,9 +1925,9 @@ tf_cuda_library(
 
 tf_py_wrap_cc(
     name = "pywrap_tensorflow",
+    srcs = ["tensorflow.i"],
     # set linkstatic = 0 so that only apply whole archive to libraries that need to be force linked.
     linkstatic = 0,
-    srcs = ["tensorflow.i"],
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
