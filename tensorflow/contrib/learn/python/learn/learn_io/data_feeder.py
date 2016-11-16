@@ -527,8 +527,10 @@ class StreamingDataFeeder(DataFeeder):
         classes regression values.
       n_classes: indicator of how many classes the corresponding label sample
         has for the purposes of one-hot conversion of label. In case where y is
-        a dictionary, n_classes can be dictionary of how many classes there are
-        in each label in y.
+        a dictionary, n_classes must be dictionary (with same keys as y) of how
+        many classes there are in each label in y. If key is present in y and
+        missing in n_classes, the value is assumed None and no one-hot
+        conversion will be applied to label with that key.
       batch_size: Mini batch size to accumulate samples in one batch. If set
         None then assumes iterator to return already batched element.
 
