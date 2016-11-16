@@ -454,6 +454,25 @@ REGISTER_OP("Ceil")
 Returns element-wise smallest integer in not less than x.
 )doc");
 
+REGISTER_OP("Rint")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns element-wise integer closest to x.
+
+If the result is midway between two representable values,
+the even representable is chosen.
+For example:
+
+```
+rint(-1.5) ==> -2.0
+rint(0.5000001) ==> 1.0
+rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
+```
+)doc");
+
 // Declares cwise binary operations signature: 't, 't -> 't.
 
 #define BINARY_MORE()                              \
