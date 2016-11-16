@@ -117,7 +117,6 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
 
   Raises:
     ValueError: if inputs is not None and has less than three dimensions.
-    ValueError: if inputs is not None and has None in the last dimension.
   """
   with ops.name_scope(name, "dynamic_rnn_decoder",
                       [cell, decoder_fn, inputs, sequence_lengths,
@@ -128,11 +127,8 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
 
       # Test input dimensions
       if inputs.get_shape().ndims is not None and (
-          inputs.get_shape().ndims < 3):
-        raise ValueError("Inputs must have at least three dimensions")
-      if inputs.get_shape()[-1] is None:
-        raise ValueError("Inputs must not be `None` in the feature (3'rd) "
-                         "dimension")
+          inputs.get_shape().ndims =< 2):
+        raise ValueError("Inputs must have at least two dimensions")
       # Setup of RNN (dimensions, sizes, length, initial state, dtype)
       if not time_major:
         # [batch, seq, features] -> [seq, batch, features]
