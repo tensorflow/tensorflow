@@ -493,7 +493,12 @@ Status DirectSession::Run(const RunOptions& run_options,
                           ? run_options.timeout_in_ms()
                           : operation_timeout_in_ms_);
 
-  cancellation_manager_->DeregisterCallback(cancellation_token);
+  if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
+    // The step has been cancelled: make sure we don't attempt to receive the
+    // outputs as this would make it block forever.
+    mutex_lock l(run_state.mu_);
+    run_state.status.Update(errors::Cancelled("Run call was cancelled"));
+  }
 
 #if GOOGLE_CUDA
   if (tracer) {
