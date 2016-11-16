@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/contrib/session_bundle/session_bundle.h"
 #include "tensorflow/contrib/session_bundle/signature.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -168,8 +169,9 @@ Status LoadSavedModelFromLegacySessionBundlePath(
 
   // Build the session-bundle.
   SessionBundle session_bundle;
-  LoadSessionBundleFromPathUsingRunOptions(
-      session_options, run_options, session_bundle_export_dir, &session_bundle);
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, session_bundle_export_dir,
+      &session_bundle));
 
   // Convert the session-bundle to a saved-model-bundle.
   return ConvertSessionBundleToSavedModelBundle(session_bundle,

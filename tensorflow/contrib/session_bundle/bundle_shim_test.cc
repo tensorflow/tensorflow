@@ -345,6 +345,22 @@ TEST(BundleShimTest, InvalidPath) {
   EXPECT_EQ(error::Code::NOT_FOUND, status.code());
 }
 
+// Checks that if loading a session bundle fails, the error is propagated to
+// LoadSessionBundleOrSavedModelBundle().
+TEST(BundleShimTest, LoadSessionBundleError) {
+  const string session_bundle_export_dir =
+      test_util::TestSrcDirPath(kSessionBundlePath);
+  SessionOptions session_options;
+  RunOptions run_options;
+  // Invalid threadpool index to use for session-run calls.
+  run_options.set_inter_op_thread_pool(100);
+  SavedModelBundle saved_model_bundle;
+  EXPECT_FALSE(LoadSessionBundleOrSavedModelBundle(session_options, run_options,
+                                                   session_bundle_export_dir,
+                                                   {"tag"}, &saved_model_bundle)
+                   .ok());
+}
+
 }  // namespace
 }  // namespace internal
 }  // namespace serving
