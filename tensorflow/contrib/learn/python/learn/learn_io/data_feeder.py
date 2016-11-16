@@ -302,7 +302,6 @@ class DataFeeder(object):
     # self.n_classes is not None means we're converting raw target indices to one-hot.
     if n_classes is not None:
       if not y_is_dict:
-        assert (not isinstance(n_classes, dict))
         y_dtype = (np.int64 if n_classes is not None and n_classes > 1 else np.float32)
         self._y = (None if y is None else check_array(y, dtype=y_dtype))
 
