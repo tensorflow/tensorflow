@@ -1455,24 +1455,36 @@ class Softplus(Bijector):
     return nn_ops.softplus(x)
 
   def _inverse_and_inverse_log_det_jacobian(self, y):
-    # The most stable inverse of softplus is not the most direct one.
+    # The most stable inverse of softplus is not the most obvious one.
     # y = softplus(x) = Log[1 + exp{x}], (which means y > 0).
-    # ==> exp{y} = 1 + exp{x}
-    # ==> x = Log[exp{y} - 1]
+    # ==> exp{y} = 1 + exp{x}                                (1)
+    # ==> x = Log[exp{y} - 1]                                (2)
     #       = Log[(exp{y} - 1) / exp{y}] + Log[exp{y}]
     #       = Log[(1 - exp{-y}) / 1] + Log[exp{y}]
-    #       = Log[1 - exp{-y}] + y
-    # Recalling y > 0, you see that this is more stable than Log[exp{y} - 1].
+    #       = Log[1 - exp{-y}] + y                           (3)
+    # (2) is the "obvious" inverse, but (3) is more stable than (2) for large y.
+    # For small y (e.g. y = 1e-10), (3) will become -inf since 1 - exp{-y} will
+    # be zero.  To fix this, we use 1 - exp{-y} approx y for small y > 0.
     #
     # Stable inverse log det jacobian.
     # Y = Log[1 + exp{X}] ==> X = Log[exp{Y} - 1]
     # ==> dX/dY = exp{Y} / (exp{Y} - 1)
     #           = 1 / (1 - exp{-Y}),
-    # which is the most stable for Y > 0.
+    # which is the most stable for large Y > 0.  For small Y, we use
+    # 1 - exp{-Y] approx Y.
     if self.shaper is None:
       raise ValueError("Jacobian cannot be computed with unknown event_ndims")
     _, _, event_dims = self.shaper.get_dims(y)
-    log_one_minus_exp_neg = math_ops.log(1. - math_ops.exp(-y))
+    # eps is smallest positive number such that 1 + eps != 1.
+    eps = np.finfo(y.dtype.base_dtype.as_numpy_dtype).eps
+    # Approximate exp{-y} ~ 1 - y for small y > 0, then use exp{-y} elsewhere.
+    # Note we are careful to never send an NaN through ANY branch of where.
+    # TODO(langmore) replace with -tf.expm1(y) when it exists.
+    one_minus_exp_neg_y = array_ops.where(
+        y < eps,
+        y,
+        1. - math_ops.exp(-y))
+    log_one_minus_exp_neg = math_ops.log(one_minus_exp_neg_y)
     x = y + log_one_minus_exp_neg
     ildj = -math_ops.reduce_sum(
         log_one_minus_exp_neg, reduction_indices=event_dims)

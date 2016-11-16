@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {AnalyticsLogger} from './analyticsLogger';
-import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, PointAccessors3D, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
+import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, DistanceFunction, PointAccessors3D, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
 import {DataProvider, EmbeddingInfo, ServingMode} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
 import {ProtoDataProvider} from './data-provider-proto';
@@ -122,7 +122,7 @@ export class Projector extends ProjectorPolymer implements
     this.bookmarkPanel.initialize(this, this as ProjectorEventContext);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
-    this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
+    this.scopeSubtree(this.$$('#notification-dialog'), true);
     this.setupUIControls();
     this.initializeDataProvider();
   }
@@ -450,8 +450,9 @@ export class Projector extends ProjectorPolymer implements
     const adapter = this.projectorScatterPlotAdapter;
 
     const pointColors = adapter.generatePointColorArray(
-        dataSet, pointColorer, selectedSet, neighbors, hoverIndex,
-        this.get3DLabelMode(), this.getSpriteImageMode());
+        dataSet, pointColorer, this.inspectorPanel.distFunc, selectedSet,
+        neighbors, hoverIndex, this.get3DLabelMode(),
+        this.getSpriteImageMode());
     const pointScaleFactors = adapter.generatePointScaleFactorArray(
         dataSet, selectedSet, neighbors, hoverIndex);
     const labels = adapter.generateVisibleLabelRenderParams(
@@ -585,6 +586,11 @@ export class Projector extends ProjectorPolymer implements
           state.selectedProjection, dimensions.length, accessors);
     }
     this.notifySelectionChanged(state.selectedPoints);
+  }
+
+  notifyDistanceMetricChanged(distMetric: DistanceFunction) {
+    this.updateScatterPlotAttributes();
+    this.scatterPlot.render();
   }
 }
 

@@ -53,7 +53,7 @@ define_reduce_op = _ops.define_reduce_op
 abs = _core.abs_function  # pylint: disable=redefined-builtin
 neg = _core.neg
 sign = _core.sign
-inv = _core.inv
+reciprocal = _core.reciprocal
 square = _core.square
 round = _core.round_function  # pylint: disable=redefined-builtin
 sqrt = _core.sqrt

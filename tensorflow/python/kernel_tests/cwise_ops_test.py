@@ -188,7 +188,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
@@ -231,7 +231,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(x, self._inv, tf.inv)
+    self._compareBoth(x, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(x, np.sqrt, tf.sqrt)
     self._compareBoth(x, self._rsqrt, tf.rsqrt)
@@ -269,7 +269,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
@@ -308,7 +308,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
@@ -372,7 +372,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(y, self._inv, tf.reciprocal)
     self._compareCpu(x, np.square, tf.square)
     self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
@@ -404,7 +404,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(y, self._inv, tf.reciprocal)
     self._compareCpu(x, np.square, tf.square)
     self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
@@ -433,7 +433,7 @@ class UnaryOpTest(tf.test.TestCase):
     shape = (5,)
     dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
-    op_range = [(gen_math_ops._inv_grad, [-2, 2]),
+    op_range = [(gen_math_ops._reciprocal_grad, [-2, 2]),
                 (gen_math_ops._rsqrt_grad, [0.1, 3]),
                 (gen_math_ops._sigmoid_grad, [-2, 2]),
                 (gen_math_ops._sqrt_grad, [0.1, 3]),

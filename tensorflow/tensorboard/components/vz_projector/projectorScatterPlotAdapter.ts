@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, PointAccessors3D} from './data';
+import {DataSet, DistanceFunction, PointAccessors3D} from './data';
 import {NearestEntry} from './knn';
 import {LabelRenderParams} from './renderContext';
+import * as vector from './vector';
 
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
 const LABEL_SCALE_LARGE = 2;
-const LABEL_FILL_COLOR = 0x000000;
-const LABEL_STROKE_COLOR = 0xFFFFFF;
+const LABEL_FILL_COLOR_SELECTED = 0x000000;
+const LABEL_FILL_COLOR_HOVER = 0x000000;
+const LABEL_FILL_COLOR_NEIGHBOR = 0x000000;
+const LABEL_STROKE_COLOR_SELECTED = 0xFFFFFF;
+const LABEL_STROKE_COLOR_HOVER = 0xFFFFFF;
+const LABEL_STROKE_COLOR_NEIGHBOR = 0xFFFFFF;
 
 const POINT_COLOR_UNSELECTED = 0xE3E3E3;
 const POINT_COLOR_NO_SELECTION = 0x7575D9;
@@ -51,6 +56,13 @@ const TRACE_SELECTED_LINEWIDTH = 3;
 const TRACE_DESELECTED_OPACITY = .05;
 
 const SCATTER_PLOT_CUBE_LENGTH = 2;
+
+/** Color scale for nearest neighbors. */
+const NN_COLOR_SCALE =
+    d3.scale.linear<string>()
+        .domain([1, 0.7, 0.4])
+        .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
+        .clamp(true);
 
 /**
  * Interprets projector events and assembes the arrays and commands necessary
@@ -104,6 +116,19 @@ export class ProjectorScatterPlotAdapter {
     return positions;
   }
 
+  private packRgbIntoUint8Array(
+      rgbArray: Uint8Array, labelIndex: number, r: number, g: number,
+      b: number) {
+    rgbArray[labelIndex * 3] = r;
+    rgbArray[labelIndex * 3 + 1] = g;
+    rgbArray[labelIndex * 3 + 2] = b;
+  }
+
+  private styleRgbFromHexColor(hex: number): [number, number, number] {
+    const c = new THREE.Color(hex);
+    return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
+  }
+
   generateVisibleLabelRenderParams(
       ds: DataSet, selectedPointIndices: number[],
       neighborsOfFirstPoint: NearestEntry[],
@@ -118,6 +143,8 @@ export class ProjectorScatterPlotAdapter {
     const visibleLabels = new Uint32Array(n);
     const scale = new Float32Array(n);
     const opacityFlags = new Int8Array(n);
+    const fillColors = new Uint8Array(n * 3);
+    const strokeColors = new Uint8Array(n * 3);
 
     scale.fill(LABEL_SCALE_DEFAULT);
     opacityFlags.fill(1);
@@ -128,16 +155,28 @@ export class ProjectorScatterPlotAdapter {
       visibleLabels[dst] = hoverPointIndex;
       scale[dst] = LABEL_SCALE_LARGE;
       opacityFlags[dst] = 0;
+      const fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_HOVER);
+      this.packRgbIntoUint8Array(
+          fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+      const strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_HOVER);
+      this.packRgbIntoUint8Array(
+          strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[1]);
       ++dst;
     }
 
     // Selected points
     {
       const n = selectedPointIndices.length;
+      const fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_SELECTED);
+      const strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_SELECTED);
       for (let i = 0; i < n; ++i) {
         visibleLabels[dst] = selectedPointIndices[i];
         scale[dst] = LABEL_SCALE_LARGE;
         opacityFlags[dst] = (n === 1) ? 0 : 1;
+        this.packRgbIntoUint8Array(
+            fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+        this.packRgbIntoUint8Array(
+            strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
         ++dst;
       }
     }
@@ -145,14 +184,21 @@ export class ProjectorScatterPlotAdapter {
     // Neighbors
     {
       const n = neighborsOfFirstPoint.length;
+      const fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
+      const strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
       for (let i = 0; i < n; ++i) {
-        visibleLabels[dst++] = neighborsOfFirstPoint[i].index;
+        visibleLabels[dst] = neighborsOfFirstPoint[i].index;
+        this.packRgbIntoUint8Array(
+            fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+        this.packRgbIntoUint8Array(
+            strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+        ++dst;
       }
     }
 
     return new LabelRenderParams(
-        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, LABEL_FILL_COLOR,
-        LABEL_STROKE_COLOR);
+        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, fillColors,
+        strokeColors);
   }
 
   generatePointScaleFactorArray(
@@ -284,9 +330,9 @@ export class ProjectorScatterPlotAdapter {
 
   generatePointColorArray(
       ds: DataSet, legendPointColorer: (index: number) => string,
-      selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[],
-      hoverPointIndex: number, label3dMode: boolean,
-      spriteImageMode: boolean): Float32Array {
+      distFunc: DistanceFunction, selectedPointIndices: number[],
+      neighborsOfFirstPoint: NearestEntry[], hoverPointIndex: number,
+      label3dMode: boolean, spriteImageMode: boolean): Float32Array {
     if (ds == null) {
       return new Float32Array(0);
     }
@@ -351,8 +397,10 @@ export class ProjectorScatterPlotAdapter {
     // Color the neighbors.
     {
       const n = neighborsOfFirstPoint.length;
-      const c = new THREE.Color(POINT_COLOR_SELECTED);
+      let minDist = n > 0 ? neighborsOfFirstPoint[0].dist : 0;
       for (let i = 0; i < n; ++i) {
+        const c = new THREE.Color(
+            dist2color(distFunc, neighborsOfFirstPoint[i].dist, minDist));
         let dst = neighborsOfFirstPoint[i].index * 3;
         colors[dst++] = c.r;
         colors[dst++] = c.g;
@@ -371,4 +419,19 @@ export class ProjectorScatterPlotAdapter {
 
     return colors;
   }
+}
+
+/**
+ * Normalizes the distance so it can be visually encoded with color.
+ * The normalization depends on the distance metric (cosine vs euclidean).
+ */
+export function normalizeDist(
+    distFunc: DistanceFunction, d: number, minDist: number): number {
+  return (distFunc === vector.dist) ? (minDist / d) : (1 - d);
+}
+
+/** Normalizes and encodes the provided distance with color. */
+export function dist2color(
+    distFunc: DistanceFunction, d: number, minDist: number): string {
+  return NN_COLOR_SCALE(normalizeDist(distFunc, d, minDist));
 }

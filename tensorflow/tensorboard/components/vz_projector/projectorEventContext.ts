@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
+import {DataSet, DistanceFunction} from './data';
 import {NearestEntry} from './knn';
 
 export type HoverListener = (index: number) => void;
@@ -38,4 +38,5 @@ export interface ProjectorEventContext {
   registerProjectionChangedListener(listener: ProjectionChangedListener);
   /** Notify listeners that a reprojection occurred. */
   notifyProjectionChanged(dataSet: DataSet);
+  notifyDistanceMetricChanged(distMetric: DistanceFunction);
 }

@@ -99,7 +99,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg_archive//:jpeg",
+        "@jpeg//:jpeg",
     ],
 )
 

@@ -84,7 +84,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
         y = Neg(scope_, x);
         break;
       case INV:
-        y = Inv(scope_, x);
+        y = Reciprocal(scope_, x);
         break;
       case SQUARE:
         y = Square(scope_, x);
@@ -157,7 +157,7 @@ TEST_F(CWiseUnaryGradTest, Neg) {
   TestCWiseGrad(NEG, x_fn, dy_fn, dx_fn);
 }
 
-TEST_F(CWiseUnaryGradTest, Inv) {
+TEST_F(CWiseUnaryGradTest, Reciprocal) {
   auto x_fn = [this](const int i) { return RV({-1, 1, -2, 2, -3, 3, -4, 4}); };
   auto dy_fn = [this](const float x) { return RV({0, -2, 2, -3, 3, -4, 4}); };
   auto dx_fn = [this](const float x, const float dy) {

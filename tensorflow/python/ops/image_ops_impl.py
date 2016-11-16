@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -889,14 +888,6 @@ def adjust_gamma(image, gamma=1, gain=1):
     return adjusted_img
 
 
-@ops.RegisterShape('ResizeBilinear')
-@ops.RegisterShape('ResizeNearestNeighbor')
-@ops.RegisterShape('ResizeBicubic')
-@ops.RegisterShape('ResizeArea')
-def _ResizeShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
 
@@ -1189,22 +1180,3 @@ def adjust_saturation(image, saturation_factor, name=None):
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
-
-
-# TODO(irving): Remove once the C++ RandomCrop op is deprecated.
-@ops.RegisterShape('RandomCrop')
-def _random_crop_shape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape('ExtractGlimpse')
-def _extract_glimpse_shape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape('CropAndResize')
-def _crop_and_resize_shape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[3])

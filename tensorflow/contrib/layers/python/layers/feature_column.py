@@ -162,7 +162,8 @@ class _DeepEmbeddingLookupArguments(
                             "combiner",
                             "dimension",
                             "shared_embedding_name",
-                            "hashed"])):
+                            "hashed",
+                            "max_norm"])):
   """Represents the information needed from a column for embedding lookup.
 
   Used to to compute DNN inputs and weighted sum.
@@ -822,7 +823,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     "_EmbeddingColumn",
     ["sparse_id_column", "dimension", "combiner", "initializer",
      "ckpt_to_load_from", "tensor_name_in_ckpt", "shared_embedding_name",
-     "shared_vocab_size"])):
+     "shared_vocab_size", "max_norm"])):
   """Represents an embedding column.
 
   Args:
@@ -863,7 +864,8 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None,
               shared_embedding_name=None,
-              shared_vocab_size=None):
+              shared_vocab_size=None,
+              max_norm=None):
     if initializer is not None and not callable(initializer):
       raise ValueError("initializer must be callable if specified. "
                        "Embedding of column_name: {}".format(
@@ -882,7 +884,8 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
                                                 initializer, ckpt_to_load_from,
                                                 tensor_name_in_ckpt,
                                                 shared_embedding_name,
-                                                shared_vocab_size)
+                                                shared_vocab_size,
+                                                max_norm)
 
   @property
   def name(self):
@@ -922,7 +925,8 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
         initializer=self.initializer,
         combiner=self.combiner,
         shared_embedding_name=self.shared_embedding_name,
-        hashed=False)
+        hashed=False,
+        max_norm=self.max_norm)
 
   def _checkpoint_path(self):
     if self.ckpt_to_load_from is not None:
@@ -1133,7 +1137,8 @@ class _HashedEmbeddingColumn(collections.namedtuple(
         combiner=self.combiner,
         dimension=self.dimension,
         shared_embedding_name=None,
-        hashed=True)
+        hashed=True,
+        max_norm=None)
 
 
 def hashed_embedding_column(column_name,
