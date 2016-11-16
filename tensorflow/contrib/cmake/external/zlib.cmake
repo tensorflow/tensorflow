@@ -29,7 +29,7 @@ ExternalProject_Add(zlib
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_INSTALL_PREFIX:STRING=${ZLIB_INSTALL}
-	-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
 # put zlib includes in the directory where they are expected

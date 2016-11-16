@@ -1,4 +1,4 @@
-include (ExternalProject)
+include(ExternalProject)
 
 set(farmhash_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/farmhash_archive ${CMAKE_CURRENT_BINARY_DIR}/external/farmhash_archive/util)
 set(farmhash_URL https://github.com/google/farmhash/archive/34c13ddfab0e35422f4c3979f360635a8c050260.zip)
@@ -6,13 +6,11 @@ set(farmhash_HASH SHA256=e3d37a59101f38fd58fb799ed404d630f0eee18bfc2a2433910977c
 set(farmhash_BUILD ${CMAKE_CURRENT_BINARY_DIR}/farmhash/src/farmhash)
 set(farmhash_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/farmhash/install)
 set(farmhash_INCLUDES ${farmhash_BUILD})
-set(farmhash_HEADERS
-    "${farmhash_BUILD}/src/farmhash.h"
-)
+set(farmhash_HEADERS "${farmhash_BUILD}/src/farmhash.h")
+set(farmhash_STATIC_LIBRARIES
+    ${farmhash_INSTALL}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}farmhash${CMAKE_STATIC_LIBRARY_SUFFIX})
 
 if(WIN32)
-  set(farmhash_STATIC_LIBRARIES ${farmhash_INSTALL}/lib/farmhash.lib)
-
   ExternalProject_Add(farmhash
       PREFIX farmhash
       URL ${farmhash_URL}
@@ -26,8 +24,6 @@ if(WIN32)
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
           -DCMAKE_INSTALL_PREFIX:STRING=${farmhash_INSTALL})
 else()
-  set(farmhash_STATIC_LIBRARIES ${farmhash_INSTALL}/lib/libfarmhash.a)
-
   ExternalProject_Add(farmhash
       PREFIX farmhash
       URL ${farmhash_URL}

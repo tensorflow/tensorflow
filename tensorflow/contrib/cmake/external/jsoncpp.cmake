@@ -7,12 +7,8 @@ set(jsoncpp_TAG 4356d9b)
 set(jsoncpp_BUILD ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp/src/jsoncpp/src/lib_json)
 set(jsoncpp_LIBRARIES ${jsoncpp_BUILD}/obj/so/libjsoncpp.so)
 set(jsoncpp_INCLUDES ${jsoncpp_BUILD})
-
-if(WIN32)
-  set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/${CMAKE_BUILD_TYPE}/jsoncpp.lib)
-else()
-  set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/libjsoncpp.a)
-endif()
+set(jsoncpp_STATIC_LIBRARIES
+    ${jsoncpp_BUILD}/${CMAKE_BUILD_TYPE}/${CMAKE_STATIC_LIBRARY_PREFIX}jsoncpp${CMAKE_STATIC_LIBRARY_SUFFIX})
 
 # We only need jsoncpp.h in external/jsoncpp/jsoncpp/jsoncpp.h
 # For the rest, we'll just add the build dir as an include dir.
@@ -30,6 +26,6 @@ ExternalProject_Add(jsoncpp
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-	-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
