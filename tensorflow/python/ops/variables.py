@@ -446,7 +446,18 @@ class Variable(object):
     """
     return self._snapshot
 
-  def ref(self):
+  def read_value(self):
+    """Returns the value of this variable, read in the current context.
+
+    Can be different from value() if it's on another device, with control
+    dependencies, etc.
+
+    Returns:
+      A `Tensor` containing the value of the variable.
+    """
+    return array_ops.identity(self._variable, name="read")
+
+  def _ref(self):
     """Returns a reference to this variable.
 
     You usually do not need to call this method as all ops that need a reference
@@ -461,6 +472,15 @@ class Variable(object):
       A `Tensor` that is a reference to the variable.
     """
     return self._variable
+
+  def set_shape(self, shape):
+    """Overrides the shape for this variable.
+
+    Args:
+      shape: the `TensorShape` representing the overridden shape.
+    """
+    self._ref().set_shape(shape)
+    self.value().set_shape(shape)
 
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
@@ -641,7 +661,7 @@ class Variable(object):
           "Incompatible type conversion requested to type '%s' for variable "
           "of type '%s'" % (dtype.name, v.dtype.name))
     if as_ref:
-      return v.ref()
+      return v._ref()  # pylint: disable=protected-access
     else:
       return v.value()
 

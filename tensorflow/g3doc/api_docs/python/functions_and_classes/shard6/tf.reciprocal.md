@@ -1,4 +1,4 @@
-### `tf.inv(x, name=None)` {#inv}
+### `tf.reciprocal(x, name=None)` {#reciprocal}
 
 Computes the reciprocal of x element-wise.
 

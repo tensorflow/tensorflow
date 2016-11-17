@@ -249,7 +249,15 @@ def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
   # pylint: disable=protected-access
-  return gen_math_ops._inv_grad(y, grad)
+  return gen_math_ops._reciprocal_grad(y, grad)
+
+
+@ops.RegisterGradient("Reciprocal")
+def _ReciprocalGrad(op, grad):
+  """Returns -grad * (1 / x^2)."""
+  y = op.outputs[0]  # y = 1 / x
+  # pylint: disable=protected-access
+  return gen_math_ops._reciprocal_grad(y, grad)
 
 
 @ops.RegisterGradient("InvGrad")
@@ -260,7 +268,18 @@ def _InvGradGrad(op, grad):
     ca = math_ops.conj(op.inputs[0])
     cg = math_ops.conj(grad)
     # pylint: disable=protected-access
-    return cg * -2.0 * b * ca, gen_math_ops._inv_grad(ca, grad)
+    return cg * -2.0 * b * ca, gen_math_ops._reciprocal_grad(ca, grad)
+
+
+@ops.RegisterGradient("ReciprocalGrad")
+def _ReciprocalGradGrad(op, grad):
+  b = op.inputs[1]
+  # op.output[0]: y = -b * conj(a)^2
+  with ops.control_dependencies([grad.op]):
+    ca = math_ops.conj(op.inputs[0])
+    cg = math_ops.conj(grad)
+    # pylint: disable=protected-access
+    return cg * -2.0 * b * ca, gen_math_ops._reciprocal_grad(ca, grad)
 
 
 @ops.RegisterGradient("Square")
@@ -323,7 +342,7 @@ def _LogGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
     x = math_ops.conj(x)
-    return grad * math_ops.inv(x)
+    return grad * math_ops.reciprocal(x)
 
 
 @ops.RegisterGradient("Log1p")
@@ -332,7 +351,7 @@ def _Log1pGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
     x = math_ops.conj(x)
-    return grad * math_ops.inv(1 + x)
+    return grad * math_ops.reciprocal(1 + x)
 
 
 @ops.RegisterGradient("Tanh")
@@ -505,7 +524,7 @@ def _TanGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
     x = math_ops.conj(x)
-    secx = math_ops.inv(math_ops.cos(x))
+    secx = math_ops.reciprocal(math_ops.cos(x))
     secx2 = math_ops.square(secx)
     return grad * secx2
 
@@ -519,7 +538,7 @@ def _AsinGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.sub(one, x2))
-    inv = math_ops.inv(den)
+    inv = math_ops.reciprocal(den)
     return grad * inv
 
 
@@ -532,19 +551,19 @@ def _AcosGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.sub(one, x2))
-    inv = math_ops.inv(den)
+    inv = math_ops.reciprocal(den)
     return -grad * inv
 
 
 @ops.RegisterGradient("Atan")
 def _AtanGrad(op, grad):
-  """Returns grad * 1/ (1 + x^2)"""
+  """Returns grad * 1/ (1 + x^2)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
     x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
-    inv = math_ops.inv(math_ops.add(one, x2))
+    inv = math_ops.reciprocal(math_ops.add(one, x2))
     return grad * inv
 
 
@@ -774,6 +793,12 @@ def _SparseMatMulGrad(op, grad):
 
 @ops.RegisterGradient("Floor")
 def _FloorGrad(_, unused_grad):
+  return [None]
+
+
+@ops.RegisterGradient("Rint")
+def _RintGrad(_, unused_grad):
+  # the gradient of Rint is zero
   return [None]
 
 

@@ -1,4 +1,4 @@
-### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None)` {#embedding_lookup_sparse}
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None, max_norm=None)` {#embedding_lookup_sparse}
 
 Computes embeddings for the given ids and weights.
 
@@ -31,6 +31,8 @@ is the sum of the size of params along dimension 0.
     "mean" is the weighted sum divided by the total weight.
     "sqrtn" is the weighted sum divided by the square root of the sum of the
     squares of the weights.
+*  <b>`max_norm`</b>: If not None, each embedding is normalized to have l2 norm equal
+    to max_norm before combining.
 
 ##### Returns:
 

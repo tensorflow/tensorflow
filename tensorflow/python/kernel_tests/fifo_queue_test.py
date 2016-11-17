@@ -32,7 +32,6 @@ class FIFOQueueTest(tf.test.TestCase):
     with tf.Graph().as_default():
       q = tf.FIFOQueue(10, tf.float32, name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
@@ -46,7 +45,6 @@ class FIFOQueueTest(tf.test.TestCase):
     with tf.Graph().as_default():
       q = tf.FIFOQueue(5, (tf.int32, tf.float32), shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -64,7 +62,6 @@ class FIFOQueueTest(tf.test.TestCase):
                        shapes=(tf.TensorShape([1, 1, 2, 3]),
                                tf.TensorShape([5, 8])), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -1355,7 +1352,6 @@ class FIFOQueueDictTest(tf.test.TestCase):
       q = tf.FIFOQueue(5, (tf.int32, tf.float32), names=("i", "j"),
                        shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -1374,7 +1370,6 @@ class FIFOQueueDictTest(tf.test.TestCase):
                        shapes=(tf.TensorShape([1, 1, 2, 3]),
                                tf.TensorShape([5, 8])), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {

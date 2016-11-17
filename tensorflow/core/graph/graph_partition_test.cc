@@ -70,7 +70,6 @@ void Partition(const GraphDef& graph_def,
   popts.get_incarnation = [](const string& name) {
     return (name[0] - 'A') + 100;
   };
-  popts.control_flow_added = false;
   Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
 

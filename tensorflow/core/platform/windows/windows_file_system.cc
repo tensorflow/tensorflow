@@ -386,7 +386,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   string pattern = translated_dir;
   if (!pattern.empty() && pattern.back() != '\\' && pattern.back() != '/') {
-    pattern += '\\*';
+    pattern += "\\*";
   } else {
     pattern += '*';
   }

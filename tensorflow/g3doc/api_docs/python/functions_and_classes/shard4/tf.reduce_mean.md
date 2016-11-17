@@ -34,3 +34,7 @@ tf.reduce_mean(x, 1) ==> [1.,  2.]
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.mean
+@end_compatibility
+

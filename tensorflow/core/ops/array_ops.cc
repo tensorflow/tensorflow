@@ -1125,6 +1125,10 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 dims: 1-D. Represents the shape of the output tensor.
 value: 0-D (scalar). Value to fill the returned tensor.
+
+@compatibility(numpy)
+Equivalent to np.full
+@end_compatibility
 )doc");
 
 // --------------------------------------------------------------------------

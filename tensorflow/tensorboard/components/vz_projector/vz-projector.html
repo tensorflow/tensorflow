@@ -30,6 +30,8 @@ limitations under the License.
 <link rel="import" href="../paper-dialog/paper-dialog.html">
 <link rel="import" href="../paper-toast/paper-toast.html">
 <link rel="import" href="../paper-styles/typography.html">
+<link rel="import" href="../paper-progress/paper-progress.html">
+<link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
 
 <link rel="import" href="vz-projector-bookmark-panel.html">
 <link rel="import" href="vz-projector-data-panel.html">
@@ -120,10 +122,20 @@ limitations under the License.
   margin-right: 0;
 }
 
-#wrapper-notify-msg {
-  align-items: center;
-  display: flex;
-  justify-content: center;
+#notification-dialog {
+  width: 400px;
+  padding-bottom: 20px;
+}
+
+#notification-dialog paper-button {
+  background: none;
+  text-transform: uppercase;
+}
+
+#notification-dialog paper-progress {
+  --paper-progress-indeterminate-cycle-duration: 1s;
+  --paper-progress-active-color: #880E4F;
+  width: 100%;
 }
 
 #notify-msgs {
@@ -131,12 +143,9 @@ limitations under the License.
 }
 
 .notify-msg {
-  backface-visibility: hidden;
   font-weight: 500;
   margin: 0;
-  opacity: 1;
   padding: 0;
-  transition: opacity 0.3s ease-out, height 0.3s ease-out;
 }
 
 .brush .extent {
@@ -251,8 +260,15 @@ limitations under the License.
   --paper-toast-color: #eeff41;
 }
 </style>
-<paper-dialog id="wrapper-notify-msg" modal>
-  <div id="notify-msgs"></div>
+<paper-dialog id="notification-dialog" modal>
+  <h2 id="notification-title"></h2>
+  <paper-dialog-scrollable>
+    <div id="notify-msgs"></div>
+  </paper-dialog-scrollable>
+  <div><paper-progress class="progress-bar" indeterminate></paper-progress></div>
+  <div class="buttons">
+    <paper-button class="close-button" dialog-confirm autofocus>Close</paper-button>
+  </div>
 </paper-dialog>
 <div id="container">
   <div id="left-pane" class="ink-panel">

@@ -601,6 +601,40 @@ def call_cpp_shape_fn(op,
         "handle_dtypes": [types_pb2.DT_INVALID]
     }
 
+  input_tensors_needed = input_tensors_needed or []
+  input_tensors_as_shapes_needed = input_tensors_as_shapes_needed or []
+
+  while True:
+    res = _call_cpp_shape_fn_impl(op, input_tensors_needed,
+                                  input_tensors_as_shapes_needed,
+                                  debug_python_shape_fn, require_shape_fn)
+    if not isinstance(res, dict):
+      # Handles the case where _call_cpp_shape_fn_impl calls unknown_shape(op).
+      return res
+
+    # See if we need to evaluate some inputs.
+    if not res["inputs_needed"]:
+      return res
+    p = cpp_shape_inference_pb2.CppShapeInferenceInputsNeeded()
+    p = p.FromString(res["inputs_needed"])
+    changed = False
+    for idx in p.input_tensors_needed:
+      if idx not in input_tensors_needed:
+        input_tensors_needed.append(idx)
+        changed = True
+    for idx in p.input_tensors_as_shapes_needed:
+      if idx not in input_tensors_as_shapes_needed:
+        input_tensors_as_shapes_needed.append(idx)
+        changed = True
+    if not changed:
+      return res
+
+
+def _call_cpp_shape_fn_impl(
+    op, input_tensors_needed,
+    input_tensors_as_shapes_needed,
+    debug_python_shape_fn, require_shape_fn):
+  """Core implementaton of call_cpp_shape_fn."""
   node_def_str = op.node_def.SerializeToString()
 
   def tensor_to_inference_result(t):
@@ -614,26 +648,24 @@ def call_cpp_shape_fn(op,
   input_shapes = [tensor_to_inference_result(i) for i in op.inputs]
 
   input_tensors = [None for i in input_shapes]
-  if input_tensors_needed:
-    for idx in input_tensors_needed:
-      v = tensor_util.constant_value(op.inputs[idx])
-      if v is not None:
-        input_tensors[idx] = np.asarray(v)
+  for idx in input_tensors_needed:
+    v = tensor_util.constant_value(op.inputs[idx])
+    if v is not None:
+      input_tensors[idx] = np.asarray(v)
 
   serialized_unknown_shape = (
       tensor_shape.TensorShape(None).as_proto().SerializeToString())
   arr = [serialized_unknown_shape for i in input_shapes]
-  if input_tensors_as_shapes_needed:
-    for idx in input_tensors_as_shapes_needed:
-      s = tensor_util.constant_value_as_shape(op.inputs[idx])
-      if s is not None:
-        arr[idx] = s.as_proto().SerializeToString()
+  for idx in input_tensors_as_shapes_needed:
+    s = tensor_util.constant_value_as_shape(op.inputs[idx])
+    if s is not None:
+      arr[idx] = s.as_proto().SerializeToString()
   input_tensors_as_shapes = arr
 
   missing_shape_fn = False
   try:
     with errors.raise_exception_on_not_ok_status() as status:
-      output_shapes = pywrap_tensorflow.RunCppShapeInference(
+      output = pywrap_tensorflow.RunCppShapeInference(
           node_def_str, input_shapes, input_tensors, input_tensors_as_shapes,
           status)
   except errors.InvalidArgumentError as err:
@@ -647,6 +679,8 @@ def call_cpp_shape_fn(op,
       raise RuntimeError(
           "No C++ shape function registered for standard op: %s" % op.type)
     return unknown_shape(op)
+
+  output_shapes = output[:-1]
 
   # Convert TensorShapeProto values in output_shapes.
   result_protos = [
@@ -675,7 +709,8 @@ def call_cpp_shape_fn(op,
 
   return {"shapes": result,
           "handle_shapes": result_handle_shapes,
-          "handle_dtypes": result_handle_dtypes}
+          "handle_dtypes": result_handle_dtypes,
+          "inputs_needed": output[-1]}
 
 # pylint: disable=protected-access
 ops._set_call_cpp_shape_fn(call_cpp_shape_fn)

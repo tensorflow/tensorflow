@@ -46,3 +46,7 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 
   An 1-D `Tensor` of type `dtype`.
 
+@compatibility(numpy)
+Equivalent to np.arange
+@end_compatibility
+

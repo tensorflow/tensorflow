@@ -281,7 +281,7 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
       logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
       d3.text(metadataPath, (err: any, rawMetadata: string) => {
         if (err) {
-          logging.setModalMessage('Error: ' + err.responseText);
+          logging.setErrorMessage(err.responseText);
           reject(err);
           return;
         }
