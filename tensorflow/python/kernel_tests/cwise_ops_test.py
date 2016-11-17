@@ -188,7 +188,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
@@ -231,7 +231,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(x, self._inv, tf.inv)
+    self._compareBoth(x, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(x, np.sqrt, tf.sqrt)
     self._compareBoth(x, self._rsqrt, tf.rsqrt)
@@ -269,7 +269,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
@@ -308,7 +308,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
@@ -372,7 +372,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(y, self._inv, tf.reciprocal)
     self._compareCpu(x, np.square, tf.square)
     self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
@@ -404,7 +404,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(y, self._inv, tf.reciprocal)
     self._compareCpu(x, np.square, tf.square)
     self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
@@ -433,7 +433,7 @@ class UnaryOpTest(tf.test.TestCase):
     shape = (5,)
     dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
-    op_range = [(gen_math_ops._inv_grad, [-2, 2]),
+    op_range = [(gen_math_ops._reciprocal_grad, [-2, 2]),
                 (gen_math_ops._rsqrt_grad, [0.1, 3]),
                 (gen_math_ops._sigmoid_grad, [-2, 2]),
                 (gen_math_ops._sqrt_grad, [0.1, 3]),
@@ -1778,9 +1778,17 @@ class IsFiniteInfNanTest(tf.test.TestCase):
 
 class RoundingTest(tf.test.TestCase):
 
-  def _compare(self, x, use_gpu):
+  def _compare_values(self, x, y=None):
+    y = np.rint(x) if y is None else np.asarray(y)
+    with self.test_session() as sess:
+      tf_rint = tf.rint(x)
+      np_rint = sess.run(tf_rint)
+    self.assertAllEqual(y, np_rint)
+    self.assertShapeEqual(y, tf_rint)
+
+  def _compare(self, x):
     np_floor, np_ceil = np.floor(x), np.ceil(x)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session() as sess:
       inx = tf.convert_to_tensor(x)
       ofloor, oceil = tf.floor(inx), tf.ceil(inx)
       tf_floor, tf_ceil = sess.run([ofloor, oceil])
@@ -1790,9 +1798,20 @@ class RoundingTest(tf.test.TestCase):
     self.assertShapeEqual(np_ceil, oceil)
 
   def _testDtype(self, dtype):
-    data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)
-    self._compare(data, use_gpu=True)
-    self._compare(data, use_gpu=True)
+    data = (np.arange(-3, 3) / 4.).reshape(1, 3, 2).astype(dtype)
+    self._compare(data)
+    # TODO: rint op is not supported for float16
+    if dtype is np.float16:
+      return
+    self._compare_values(data)
+    x = [0.5, 0.5000001]
+    y = [0.0, 1.0]
+    self._compare_values(x, y=y)
+
+    # numpy example
+    x = [-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]
+    y = [-2., -2., -0.,  0.,  2.,  2.,  2.]
+    self._compare_values(x, y=y)
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64]:

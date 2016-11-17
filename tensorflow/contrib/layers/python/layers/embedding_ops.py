@@ -41,7 +41,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                  combiner=None,
                                  default_id=None,
                                  name=None,
-                                 partition_strategy="div"):
+                                 partition_strategy="div",
+                                 max_norm=None):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
@@ -75,6 +76,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
     name: A name for this operation (optional).
     partition_strategy: A string specifying the partitioning strategy.
         Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+    max_norm: If not None, all embeddings are l2-normalized to max_norm before
+        combining.
 
 
   Returns:
@@ -135,7 +138,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
         sparse_weights,
         combiner=combiner,
         partition_strategy=partition_strategy,
-        name=None if default_id is None else scope)
+        name=None if default_id is None else scope,
+        max_norm=max_norm)
 
     if default_id is None:
       # Broadcast is_row_empty to the same shape as embedding_lookup_result,

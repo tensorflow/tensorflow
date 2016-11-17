@@ -16,18 +16,12 @@ limitations under the License.
 import {DistanceFunction, SpriteAndMetadataInfo, State} from './data';
 import * as knn from './knn';
 import {ProjectorEventContext} from './projectorEventContext';
+import * as adapter from './projectorScatterPlotAdapter';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
-
-/** Color scale for nearest neighbors. */
-const NN_COLOR_SCALE =
-    d3.scale.linear<string>()
-        .domain([1, 0.7, 0.4])
-        .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
-        .clamp(true);
 
 /** Limit the number of search results we show to the user. */
 const LIMIT_RESULTS = 100;
@@ -178,7 +172,7 @@ export class InspectorPanel extends PolymerClass {
     let labelValue = n.append('div').attr('class', 'label-and-value');
     labelValue.append('div')
         .attr('class', 'label')
-        .style('color', d => dist2color(this.distFunc, d.dist, minDist))
+        .style('color', d => adapter.dist2color(this.distFunc, d.dist, minDist))
         .text(d => this.getLabelFromIndex(d.index));
 
     labelValue.append('div')
@@ -192,11 +186,12 @@ export class InspectorPanel extends PolymerClass {
         .style(
             'border-top-color',
             d => {
-              return dist2color(this.distFunc, d.dist, minDist);
+              return adapter.dist2color(this.distFunc, d.dist, minDist);
             })
         .style(
             'width',
-            d => normalizeDist(this.distFunc, d.dist, minDist) * 100 + '%');
+            d => adapter.normalizeDist(this.distFunc, d.dist, minDist) * 100 +
+                '%');
 
     bar.selectAll('.tick')
         .data(d3.range(1, 4))
@@ -233,6 +228,7 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       eucDist.classed('selected', true);
       this.distFunc = vector.dist;
+      this.projectorEventContext.notifyDistanceMetricChanged(this.distFunc);
       let neighbors = projector.dataSet.findNeighbors(
           this.selectedPointIndices[0], this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
@@ -243,6 +239,7 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       cosDist.classed('selected', true);
       this.distFunc = vector.cosDist;
+      this.projectorEventContext.notifyDistanceMetricChanged(this.distFunc);
       let neighbors = projector.dataSet.findNeighbors(
           this.selectedPointIndices[0], this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
@@ -300,21 +297,6 @@ export class InspectorPanel extends PolymerClass {
     });
     this.enableResetFilterButton(false);
   }
-}
-
-/**
- * Normalizes the distance so it can be visually encoded with color.
- * The normalization depends on the distance metric (cosine vs euclidean).
- */
-function normalizeDist(
-    distFunc: DistanceFunction, d: number, minDist: number): number {
-  return distFunc === vector.dist ? minDist / d : 1 - d;
-}
-
-/** Normalizes and encodes the provided distance with color. */
-function dist2color(
-    distFunc: DistanceFunction, d: number, minDist: number): string {
-  return NN_COLOR_SCALE(normalizeDist(distFunc, d, minDist));
 }
 
 document.registerElement(InspectorPanel.prototype.is, InspectorPanel);

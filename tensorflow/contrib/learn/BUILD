@@ -421,6 +421,22 @@ py_test(
 )
 
 py_test(
+    name = "dnn_linear_combined_benchmark_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/dnn_linear_combined_benchmark_test.py"],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain/google/guitar:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "random_forest_test",
     size = "medium",
     srcs = ["python/learn/estimators/random_forest_test.py"],

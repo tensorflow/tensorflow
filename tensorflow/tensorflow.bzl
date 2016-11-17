@@ -41,6 +41,7 @@ def check_version(bazel_version):
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_sycl_tests_tags",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -885,6 +886,20 @@ def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
              shard_count=shard_count,
              additional_deps=additional_deps,
              flaky=flaky)
+
+def sycl_py_test(name, srcs, size="medium", data=[], main=None, args=[],
+                shard_count=1, additional_deps=[], tags=[], flaky=0):
+ test_tags = tags + tf_sycl_tests_tags()
+ tf_py_test(name=name,
+            size=size,
+            srcs=srcs,
+            data=data,
+            main=main,
+            args=args,
+            tags=test_tags,
+            shard_count=shard_count,
+            additional_deps=additional_deps,
+            flaky=flaky)
 
 def py_tests(name,
              srcs,

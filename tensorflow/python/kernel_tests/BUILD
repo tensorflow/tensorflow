@@ -12,6 +12,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "sycl_py_test")
 
 # CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
@@ -277,7 +278,10 @@ tf_py_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
-    tags = ["noasan"],  # http://b/32635055
+    tags = [
+        "manual",  # http://b/32655781
+        "noasan",  # http://b/32635055
+    ],
 )
 
 tf_py_test(
@@ -1360,6 +1364,13 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 20,
     tags = ["nomsan"],  # fails in msan from numpy calls
+)
+
+sycl_py_test(
+    name = "basic_gpu_test",
+    size = "small",
+    srcs = ["basic_gpu_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
 filegroup(

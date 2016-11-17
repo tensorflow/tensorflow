@@ -36,3 +36,7 @@ tf.reduce_sum(x, [0, 1]) ==> 6
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.sum
+@end_compatibility
+

@@ -59,7 +59,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -479,11 +478,6 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
         sparse_tensor.SparseTensor(
             output_inds[i], output_vals[i], output_shapes[i]))
   return sparse_tensors
-
-
-@ops.RegisterShape("SparseToDense")
-def _SparseToDenseShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 def sparse_to_dense(sparse_indices,
@@ -1343,12 +1337,6 @@ def sparse_tensor_dense_matmul(sp_a,
         b=b,
         adjoint_a=adjoint_a,
         adjoint_b=adjoint_b)
-
-
-@ops.RegisterShape("SparseTensorDenseMatMul")
-def _SparseTensorDenseMatMulShape(op):  # pylint: disable=invalid-name
-  # Pass the shape tensor as needed to access it as a constant value
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def sparse_softmax(sp_input, name=None):

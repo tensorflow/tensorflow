@@ -27,45 +27,18 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
+from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
 
-def _get_quantile_based_buckets(feature_values, num_buckets):
-  quantiles = np.percentile(
-      np.array(feature_values), ([100 * (i + 1.) / (num_buckets + 1.)
-                                  for i in range(num_buckets)]))
-  return list(quantiles)
-
-
-def _prepare_iris_data_for_logistic_regression():
-  # Converts iris data to a logistic regression problem.
-  iris = tf.contrib.learn.datasets.load_iris()
-  ids = np.where((iris.target == 0) | (iris.target == 1))
-  iris = tf.contrib.learn.datasets.base.Dataset(data=iris.data[ids],
-                                                target=iris.target[ids])
-  return iris
-
-
-def _iris_input_multiclass_fn():
-  iris = tf.contrib.learn.datasets.load_iris()
-  return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
-
-
-def _iris_input_logistic_fn():
-  iris = _prepare_iris_data_for_logistic_regression()
-  return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[100, 1], dtype=tf.int32)
+def _assert_metrics_in_range(keys, metrics):
+  epsilon = 0.00001  # Added for floating point edge cases.
+  for key in keys:
+    estimator_test_utils.assert_in_range(
+        0.0 - epsilon, 1.0 + epsilon, key, metrics)
 
 
 class DNNLinearCombinedClassifierTest(tf.test.TestCase):
-
-  def _assertMetricRange(self, value):
-    epsilon = 0.00001  # Added for floaing point edge cases.
-    self.assertLessEqual(0.0 - epsilon, value)
-    self.assertGreaterEqual(1.0 + epsilon, value)
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
@@ -82,26 +55,26 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
-    iris = _prepare_iris_data_for_logistic_regression()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
     bucketized_feature = [tf.contrib.layers.bucketized_column(
-        cont_features[0], _get_quantile_based_buckets(iris.data, 10))]
+        cont_features[0], test_data.get_quantile_based_buckets(iris.data, 10))]
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=bucketized_feature,
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
-    self._assertMetricRange(scores['accuracy'])
-    self._assertMetricRange(scores['auc'])
+    classifier.fit(input_fn=test_data.iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_logistic_fn, steps=100)
+    _assert_metrics_in_range(('accuracy', 'auc'), scores)
 
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using Tensor data as input."""
     def _input_fn():
-      iris = _prepare_iris_data_for_logistic_regression()
+      iris = test_data.prepare_iris_data_for_logistic_regression()
       features = {}
       for i in range(4):
         # The following shows how to provide the Tensor data for
@@ -118,13 +91,13 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       labels = tf.reshape(tf.constant(iris.target, dtype=tf.int32), [-1, 1])
       return features, labels
 
-    iris = _prepare_iris_data_for_logistic_regression()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
     cont_features = [tf.contrib.layers.real_valued_column(str(i))
                      for i in range(4)]
     linear_features = [
         tf.contrib.layers.bucketized_column(
-            cont_features[i], _get_quantile_based_buckets(iris.data[:, str(i)],
-                                                          10)) for i in range(4)
+            cont_features[i], test_data.get_quantile_based_buckets(
+                iris.data[:, i], 10)) for i in range(4)
     ]
     linear_features.append(tf.contrib.layers.sparse_column_with_hash_bucket(
         'dummy_sparse_column', hash_bucket_size=100))
@@ -136,8 +109,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=100)
-    self._assertMetricRange(scores['accuracy'])
-    self._assertMetricRange(scores['auc'])
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
@@ -172,8 +143,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
-    self._assertMetricRange(scores['accuracy'])
-    self._assertMetricRange(scores['auc'])
+    _assert_metrics_in_range(('accuracy', 'auc'), scores)
 
   def testMultiClass(self):
     """Tests multi-class classification using matrix data as input.
@@ -186,7 +156,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
     bucketized_features = [
         tf.contrib.layers.bucketized_column(
-            cont_features[0], _get_quantile_based_buckets(iris.data, 10))]
+            cont_features[0],
+            test_data.get_quantile_based_buckets(iris.data, 10))]
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         n_classes=3,
@@ -194,9 +165,10 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
-    self._assertMetricRange(scores['accuracy'])
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    _assert_metrics_in_range(('accuracy',), scores)
 
   def testLoss(self):
     """Tests loss calculation."""
@@ -287,16 +259,17 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
-    self._assertMetricRange(scores['accuracy'])
+    _assert_metrics_in_range(('accuracy',), scores)
 
   def testCustomOptimizerByObject(self):
     """Tests binary classification using matrix data as input."""
-    iris = _prepare_iris_data_for_logistic_regression()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
     bucketized_features = [
         tf.contrib.layers.bucketized_column(
-            cont_features[0], _get_quantile_based_buckets(iris.data, 10))]
+            cont_features[0],
+            test_data.get_quantile_based_buckets(iris.data, 10))]
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=bucketized_features,
@@ -305,18 +278,20 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer=tf.train.AdagradOptimizer(learning_rate=0.1))
 
-    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
-    self._assertMetricRange(scores['accuracy'])
+    classifier.fit(input_fn=test_data.iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_logistic_fn, steps=100)
+    _assert_metrics_in_range(('accuracy',), scores)
 
   def testCustomOptimizerByString(self):
     """Tests binary classification using matrix data as input."""
-    iris = _prepare_iris_data_for_logistic_regression()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
     bucketized_features = [
         tf.contrib.layers.bucketized_column(
-            cont_features[0], _get_quantile_based_buckets(iris.data, 10))]
+            cont_features[0],
+            test_data.get_quantile_based_buckets(iris.data, 10))]
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=bucketized_features,
@@ -325,19 +300,21 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer='Adagrad')
 
-    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
-    self._assertMetricRange(scores['accuracy'])
+    classifier.fit(input_fn=test_data.iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_logistic_fn, steps=100)
+    _assert_metrics_in_range(('accuracy',), scores)
 
   def testCustomOptimizerByFunction(self):
     """Tests binary classification using matrix data as input."""
-    iris = _prepare_iris_data_for_logistic_regression()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)
     ]
     bucketized_features = [
         tf.contrib.layers.bucketized_column(
-            cont_features[0], _get_quantile_based_buckets(iris.data, 10))
+            cont_features[0],
+            test_data.get_quantile_based_buckets(iris.data, 10))
     ]
 
     def _optimizer_exp_decay():
@@ -355,9 +332,10 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer=_optimizer_exp_decay)
 
-    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
-    self._assertMetricRange(scores['accuracy'])
+    classifier.fit(input_fn=test_data.iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_logistic_fn, steps=100)
+    _assert_metrics_in_range(('accuracy',), scores)
 
   def testPredict(self):
     """Tests weight column in evaluation."""
@@ -612,8 +590,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         n_classes=3, dnn_feature_columns=cont_features, dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=1000)
-    classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=1000)
+    classifier.evaluate(input_fn=test_data.iris_input_multiclass_fn, steps=100)
 
     self.assertEquals(3, len(classifier.dnn_bias_))
     self.assertEquals(3, len(classifier.dnn_weights_))
@@ -657,8 +635,9 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_iris_input_logistic_fn, steps=10)
-    scores = regressor.evaluate(input_fn=_iris_input_logistic_fn, steps=1)
+    regressor.fit(input_fn=test_data.iris_input_logistic_fn, steps=10)
+    scores = regressor.evaluate(
+        input_fn=test_data.iris_input_logistic_fn, steps=1)
     self.assertIn('loss', scores.keys())
 
   def testRegression_TensorData(self):

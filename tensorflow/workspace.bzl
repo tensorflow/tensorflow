@@ -17,8 +17,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "3d41a24add9b"
-  eigen_sha256 = "ce91f8db04493096c0f8bd5ebca7f5a295c88874cda99b3e9d99c9ed10154f99"
+  eigen_version = "62bdceacdafa"
+  eigen_sha256 = "c66f4693a0fd1f5c2cf009e01eb49671ce9cbb56874c3d07d3b8928ffc132cec"
 
   native.new_http_archive(
     name = "eigen_archive",
@@ -63,11 +63,19 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
-    name = "jpeg_archive",
-    url = "http://www.ijg.org/files/jpegsrc.v9a.tar.gz",
-    sha256 = "3a753ea48d917945dd54a2d97de388aa06ca2eb1066cbfdc6652036349fe05a7",
-    strip_prefix = "jpeg-9a",
-    build_file = str(Label("//:jpeg.BUILD")),
+    name = "nasm",
+    url = "http://www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
+    sha256 = "00b0891c678c065446ca59bcee64719d0096d54d6886e6e472aeee2e170ae324",
+    strip_prefix = "nasm-2.12.02",
+    build_file = str(Label("//third_party:nasm.BUILD")),
+  )
+
+  native.new_http_archive(
+    name = "jpeg",
+    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
+    sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
+    strip_prefix = "libjpeg-turbo-1.5.1",
+    build_file = str(Label("//third_party:jpeg.BUILD")),
   )
 
   native.new_http_archive(

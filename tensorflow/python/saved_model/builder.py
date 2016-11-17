@@ -190,6 +190,20 @@ class SavedModelBuilder(object):
                         legacy_init_op)
       ops.add_to_collection(constants.LEGACY_INIT_OP_KEY, legacy_init_op)
 
+  def _add_main_op(self, main_op):
+    """Add main op to the SavedModel.
+
+    Args:
+      main_op: Main op to run as part of graph initialization.
+
+    Raises:
+      TypeError if main op is not of type `Operation`.
+    """
+    if main_op is not None:
+      if not isinstance(main_op, ops.Operation):
+        raise TypeError("main_op needs to be an Operation: %r" % main_op)
+      ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
+
   def _maybe_save_assets(self, assets_collection_to_add=None):
     """Saves assets to the meta graph.
 
@@ -253,7 +267,8 @@ class SavedModelBuilder(object):
                      signature_def_map=None,
                      assets_collection=None,
                      legacy_init_op=None,
-                     clear_devices=False):
+                     clear_devices=False,
+                     main_op=None):
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -267,10 +282,11 @@ class SavedModelBuilder(object):
       assets_collection: Assets collection to be saved with SavedModel. Note
           that this collection should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
-      legacy_init_op: Op or group of ops to execute after the restore op upon a
-          load.
+      legacy_init_op: Legacy support for op or group of ops to execute after the
+          restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
+      main_op: Op or group of ops to execute when the graph is loaded.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
@@ -284,8 +300,11 @@ class SavedModelBuilder(object):
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
-    # Add legacy init op to the SavedModel.
-    self._maybe_add_legacy_init_op(legacy_init_op)
+    if main_op is None:
+      # Add legacy init op to the SavedModel.
+      self._maybe_add_legacy_init_op(legacy_init_op)
+    else:
+      self._add_main_op(main_op)
 
     # Initialize a saver to generate a sharded output for all variables in the
     # current scope.
@@ -305,7 +324,8 @@ class SavedModelBuilder(object):
                                    signature_def_map=None,
                                    assets_collection=None,
                                    legacy_init_op=None,
-                                   clear_devices=False):
+                                   clear_devices=False,
+                                   main_op=None):
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -321,10 +341,11 @@ class SavedModelBuilder(object):
       signature_def_map: The map of signature def map to add to the meta graph
         def.
       assets_collection: Assets collection to be saved with SavedModel.
-      legacy_init_op: Op or group of ops to execute after the restore op upon a
-        load.
+      legacy_init_op: Legacy support for op or group of ops to execute after the
+          restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
+      main_op: Op or group of ops to execute when the graph is loaded.
     """
     if self._has_saved_variables:
       raise AssertionError("Variables and assets have already been saved. "
@@ -344,8 +365,11 @@ class SavedModelBuilder(object):
         compat.as_text(variables_dir),
         compat.as_text(constants.VARIABLES_FILENAME))
 
-    # Add legacy init op to the SavedModel.
-    self._maybe_add_legacy_init_op(legacy_init_op)
+    if main_op is None:
+      # Add legacy init op to the SavedModel.
+      self._maybe_add_legacy_init_op(legacy_init_op)
+    else:
+      self._add_main_op(main_op)
 
     # Initialize a saver to generate a sharded output for all variables in the
     # current scope.

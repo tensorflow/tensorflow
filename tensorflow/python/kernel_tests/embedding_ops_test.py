@@ -228,6 +228,26 @@ class EmbeddingLookupTest(tf.test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  def testMaxNorm(self):
+    with self.test_session():
+      embeddings = tf.constant([[2.0]])
+
+      ids = tf.constant([0], dtype=tf.int32)
+      embedding = tf.nn.embedding_lookup([embeddings], ids, max_norm=1.0)
+
+      self.assertAllEqual(embedding.eval(), [[1.0]])
+
+  def testMaxNormNontrivial(self):
+    with self.test_session():
+      embeddings = tf.constant([[2.0, 4.0], [3.0, 1.0]])
+
+      ids = tf.constant([0, 1], dtype=tf.int32)
+      embedding = tf.nn.embedding_lookup([embeddings], ids, max_norm=2.0)
+
+      norms = tf.sqrt(tf.reduce_sum(embeddings * embeddings, axis=1))
+      normalized = embeddings/tf.stack([norms, norms], axis=1)
+      self.assertAllEqual(embedding.eval(), 2 * normalized.eval())
+
   def testSimpleShardedPartitionedVariable(self):
     with self.test_session() as sess:
       num_shards = 2

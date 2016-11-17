@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -356,11 +355,6 @@ def multinomial(logits, num_samples, seed=None, name=None):
                                       seed2=seed2)
 
 
-@ops.RegisterShape("Multinomial")
-def _MultinomialShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
 ops.NotDifferentiable("Multinomial")
 
 
@@ -443,18 +437,4 @@ def random_gamma(shape,
                                         seed2=seed2) / beta
 
 
-@ops.RegisterShape("RandomGamma")
-def _RandomGammaShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
 ops.NotDifferentiable("RandomGamma")
-
-
-@ops.RegisterShape("ParameterizedTruncatedNormal")
-@ops.RegisterShape("TruncatedNormal")
-@ops.RegisterShape("RandomStandardNormal")
-@ops.RegisterShape("RandomUniform")
-@ops.RegisterShape("RandomUniformInt")
-def _RandomShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])

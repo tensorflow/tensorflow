@@ -358,7 +358,7 @@ class GmmAlgorithm(object):
         b = tf.add_n(self._w_mul_x2) / (points_in_k_expanded + MEPS)
         new_covs = []
         for k in range(self._num_classes):
-          mean = self._means.ref()[k, :, :]
+          mean = self._means.value()[k, :, :]
           square_mean = tf.matmul(mean, mean, transpose_a=True)
           new_cov = b[k, :, :] - square_mean + self._min_var
           if self._covariance_type == FULL_COVARIANCE:

@@ -48,17 +48,15 @@ input[type=file] {
 
 .dirs {
   color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  flex-direction: column;
   font-size: 12px;
-  margin: 15px 0;
-  line-height: 20px;
 }
 
-.dir {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.dirs table tr {
+  vertical-align: top;
+}
+
+.dirs table tr td {
+  padding-bottom: 10px;
 }
 
 paper-item {
@@ -255,11 +253,7 @@ paper-dropdown-menu paper-item {
       it unit norm.
     </paper-tooltip>
   </paper-checkbox>
-  <div class="dirs">
-    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
-    <div class="dir">Metadata: <span id="metadata-file"></span></div>
-  </div>
-  <div id="demo-data-buttons-container">
+  <p id="demo-data-buttons-container">
     <span>
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
         Load data from your computer
@@ -272,7 +266,7 @@ paper-dropdown-menu paper-item {
       </paper-tooltip>
       <paper-button id="host-embedding" class="ink-button" onclick="projectorConfigDialog.open()">Publish</paper-button>
     </span>
-  </div>
+  </p>
   <div>
     <paper-dialog id="dataDialog" with-backdrop>
       <h2>Load data from your computer</h2>
@@ -370,6 +364,18 @@ paper-dropdown-menu paper-item {
       </paper-dialog-scrollable>
       <div class="dismiss-dialog-note">Click outside to dismiss.</div>
     </paper-dialog>
+  </div>
+  <div class="dirs">
+    <table>
+      <tr>
+        <td>Checkpoint:</td>
+        <td><span id="checkpoint-file"></span></td>
+      </tr>
+      <tr>
+        <td>Metadata:</td>
+        <td><span id="metadata-file"></span></td>
+      </tr>
+    </table>
   </div>
 </div>
 <!-- Closing global template -->
