@@ -5727,6 +5727,12 @@ var VZ;
 
 <dom-module id="tf-image-loader" assetpath="../tf-image-dashboard/">
   <template>
+    <div id="image-annotation">
+      step [[step]]
+      <template is="dom-if" if="[[wallTime]]">
+        ([[wallTime]])
+      </template>
+    </div>
     <img id="img" src="[[imageUrl]]" on-error="reload">
     <style>
       :host {
@@ -5734,6 +5740,13 @@ var VZ;
         width: 100%;
         height: auto;
         position: relative;
+      }
+
+      #image-annotation {
+        border-left: 4px solid;
+        padding-left: 5px;
+        font-size: 12px;
+        margin: -10px 0 10px 0;
       }
 
       img {
@@ -5751,18 +5764,31 @@ var VZ;
       properties: {
         colorScale: Object,
         imageUrl: String,
+        run: String,
+        step: Number,
+        wallTime: String,
       },
       setVisibleSeries: function(runs) {
         // Do nothing.
       },
       setSeriesData: function(run, data) {
         var last = _.last(data);
-        this.redraw(last.url);
+        this.redraw(last);
+
+        // Update the border color based on the run.
+        this.$$('#image-annotation').style.borderColor = this.colorScale.scale(run);
       },
-      redraw: function(newUrl) {
-        var url = newUrl || this.imageUrl;
+      redraw: function(imageData) {
+        var url = imageData.url || this.imageUrl;
         this.imageUrl = ""; // Force redraw
         this.imageUrl = url;
+
+        // Update the step if the value fetched is a valid number >= 0
+        // (not null, NaN, etc).
+        this.step = imageData.step >= 0 ? imageData.step : this.step;
+        if (imageData.wall_time) {
+          this.wallTime = imageData.wall_time.toString();
+        }
       },
     });
   </script>
@@ -17596,6 +17622,13 @@ paper-dropdown-menu paper-item {
   bottom: 0;
 }
 
+#selector {
+  display: none;
+  height: 100%;
+  position: absolute;
+  width: 100%;
+}
+
 #left-pane {
   display: flex;
   flex-direction: column;
@@ -17810,7 +17843,9 @@ paper-dropdown-menu paper-item {
       </div>
     </div>
     <div class="stage">
-      <div id="scatter"></div>
+      <div id="scatter">
+        <svg id="selector"></svg>
+      </div>
       <vz-projector-metadata-card id="metadata-card"></vz-projector-metadata-card>
       <paper-icon-button raised="" onclick="help3dDialog.open()" icon="help-outline" id="help-3d-icon"></paper-icon-button>
       <paper-tooltip animation-delay="0" for="help-3d-icon">Help with interaction controls.</paper-tooltip>
@@ -18619,7 +18654,7 @@ var TSNE = (function () {
 }());
 exports.TSNE = TSNE;
 
-},{"./sptree":22}],3:[function(require,module,exports){
+},{"./sptree":23}],3:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19182,7 +19217,7 @@ function retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath, spriteMeta
 }
 exports.retrieveSpriteAndMetadataInfo = retrieveSpriteAndMetadataInfo;
 
-},{"./data":7,"./logging":12,"./util":23}],7:[function(require,module,exports){
+},{"./data":7,"./logging":12,"./util":24}],7:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19552,7 +19587,7 @@ function stateGetAccessorDimensions(state) {
 }
 exports.stateGetAccessorDimensions = stateGetAccessorDimensions;
 
-},{"./bh_tsne":2,"./knn":10,"./logging":12,"./util":23,"./vector":24}],8:[function(require,module,exports){
+},{"./bh_tsne":2,"./knn":10,"./logging":12,"./util":24,"./vector":25}],8:[function(require,module,exports){
 
 },{}],9:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
@@ -19905,7 +19940,7 @@ function findKNNofPoint(dataPoints, pointIndex, k, accessor, distance) {
 }
 exports.findKNNofPoint = findKNNofPoint;
 
-},{"./heap":9,"./logging":12,"./util":23,"./vector":24}],11:[function(require,module,exports){
+},{"./heap":9,"./logging":12,"./util":24,"./vector":25}],11:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20495,7 +20530,7 @@ function dist2color(distFunc, d, minDist) {
 }
 exports.dist2color = dist2color;
 
-},{"./renderContext":15,"./vector":24}],15:[function(require,module,exports){
+},{"./renderContext":15,"./vector":25}],15:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20580,8 +20615,8 @@ limitations under the License.
 ==============================================================================*/
 "use strict";
 var renderContext_1 = require('./renderContext');
+var scatterPlotRectangleSelector_1 = require('./scatterPlotRectangleSelector');
 var util = require('./util');
-var vector_1 = require('./vector');
 var BACKGROUND_COLOR = 0xffffff;
 /**
  * The length of the cube (diameter of the circumscribing sphere) where all the
@@ -20626,6 +20661,7 @@ exports.CameraDef = CameraDef;
  */
 var ScatterPlot = (function () {
     function ScatterPlot(container, labelAccessor, projectorEventContext) {
+        var _this = this;
         this.visualizers = [];
         this.onCameraMoveListeners = [];
         this.backgroundColor = BACKGROUND_COLOR;
@@ -20649,6 +20685,7 @@ var ScatterPlot = (function () {
         this.setDimensions(3);
         this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
         this.renderer.render(this.scene, this.camera);
+        this.rectangleSelector = new scatterPlotRectangleSelector_1.ScatterPlotRectangleSelector(this.containerNode, function (boundingBox) { return _this.selectBoundingBox(boundingBox); });
         this.addInteractionListeners();
     }
     ScatterPlot.prototype.addInteractionListeners = function () {
@@ -20795,14 +20832,10 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.onMouseDown = function (e) {
         this.isDragSequence = false;
         this.mouseIsDown = true;
-        // If we are in selection mode, and we have in fact clicked a valid point,
-        // create a sphere so we can select things
         if (this.selecting) {
             this.orbitCameraControls.enabled = false;
+            this.rectangleSelector.onMouseDown(e.offsetX, e.offsetY);
             this.setNearestPointToMouse(e);
-            if (this.nearestPoint) {
-                this.createSelectionSphere();
-            }
         }
         else if (!e.ctrlKey && this.sceneIs3D() &&
             this.orbitCameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
@@ -20823,8 +20856,7 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.onMouseUp = function (e) {
         if (this.selecting) {
             this.orbitCameraControls.enabled = true;
-            this.scene.remove(this.selectionSphere);
-            this.selectionSphere = null;
+            this.rectangleSelector.onMouseUp();
             this.render();
         }
         this.mouseIsDown = false;
@@ -20840,9 +20872,7 @@ var ScatterPlot = (function () {
         this.isDragSequence = this.mouseIsDown;
         // Depending if we're selecting or just navigating, handle accordingly.
         if (this.selecting && this.mouseIsDown) {
-            if (this.selectionSphere) {
-                this.adjustSelectionSphere(e);
-            }
+            this.rectangleSelector.onMouseMove(e.offsetX, e.offsetY);
             this.render();
         }
         else if (!this.mouseIsDown) {
@@ -20875,65 +20905,54 @@ var ScatterPlot = (function () {
             if (!this.selecting) {
                 this.containerNode.style.cursor = 'default';
             }
-            this.scene.remove(this.selectionSphere);
-            this.selectionSphere = null;
             this.render();
         }
+    };
+    /**
+     * Returns a list of indices of points in a bounding box from the picking
+     * texture.
+     * @param boundingBox The bounding box to select from.
+     */
+    ScatterPlot.prototype.getPointIndicesFromPickingTexture = function (boundingBox) {
+        var dpr = window.devicePixelRatio || 1;
+        var x = Math.floor(boundingBox.x * dpr);
+        var y = Math.floor(boundingBox.y * dpr);
+        var width = Math.floor(boundingBox.width * dpr);
+        var height = Math.floor(boundingBox.height * dpr);
+        // Create buffer for reading all of the pixels from the texture.
+        var pixelBuffer = new Uint8Array(width * height * 4);
+        // Read the pixels from the bounding box.
+        this.renderer.readRenderTargetPixels(this.pickingTexture, x, this.pickingTexture.height - y, width, height, pixelBuffer);
+        // Keep a flat list of each point and whether they are selected or not. This
+        // approach is more efficient than using an object keyed by the index.
+        var pointIndicesSelection = new Uint8Array(this.worldSpacePointPositions.length);
+        for (var i = 0; i < width * height; i++) {
+            var id = (pixelBuffer[i * 4] << 16) | (pixelBuffer[i * 4 + 1] << 8) |
+                pixelBuffer[i * 4 + 2];
+            if (id !== 0xffffff && (id < this.dataSet.points.length)) {
+                pointIndicesSelection[id] = 1;
+            }
+        }
+        var pointIndices = [];
+        for (var i = 0; i < pointIndicesSelection.length; i++) {
+            if (pointIndicesSelection[i] === 1) {
+                pointIndices.push(i);
+            }
+        }
+        return pointIndices;
+    };
+    ScatterPlot.prototype.selectBoundingBox = function (boundingBox) {
+        var pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+        this.projectorEventContext.notifySelectionChanged(pointIndices);
     };
     ScatterPlot.prototype.setNearestPointToMouse = function (e) {
         if (this.pickingTexture == null) {
             this.nearestPoint = null;
             return;
         }
-        // Create buffer for reading a single pixel.
-        var pixelBuffer = new Uint8Array(4);
-        var dpr = window.devicePixelRatio || 1;
-        var x = e.offsetX * dpr;
-        var y = e.offsetY * dpr;
-        // Read the pixel under the mouse from the texture.
-        this.renderer.readRenderTargetPixels(this.pickingTexture, x, this.pickingTexture.height - y, 1, 1, pixelBuffer);
-        // Interpret the pixel as an ID.
-        var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
-        this.nearestPoint =
-            (id !== 0xffffff) && (id < this.dataSet.points.length) ? id : null;
-    };
-    /** Returns the squared distance to the mouse for the i-th point. */
-    ScatterPlot.prototype.getDist2ToMouse = function (i, e) {
-        var p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
-        var screenCoords = util.vector3DToScreenCoords(this.camera, this.width, this.height, p);
-        var dpr = window.devicePixelRatio || 1;
-        return vector_1.dist_2D([e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
-    };
-    ScatterPlot.prototype.adjustSelectionSphere = function (e) {
-        var dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
-        this.selectionSphere.scale.set(dist, dist, dist);
-        var selectedPoints = [];
-        var n = this.worldSpacePointPositions.length;
-        for (var i = 0; i < n; ++i) {
-            var p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
-            var distPointToSphereOrigin = this.selectionSphere.position.clone().sub(p).length();
-            if (distPointToSphereOrigin < dist) {
-                selectedPoints.push(i);
-            }
-        }
-        this.projectorEventContext.notifySelectionChanged(selectedPoints);
-    };
-    ScatterPlot.prototype.createSelectionSphere = function () {
-        var geometry = new THREE.SphereGeometry(1, 300, 100);
-        var material = new THREE.MeshPhongMaterial({
-            color: 0x000000,
-            specular: (this.sceneIs3D() && 0xffffff),
-            emissive: 0x000000,
-            shininess: 10,
-            shading: THREE.SmoothShading,
-            opacity: 0.125,
-            transparent: true,
-        });
-        this.selectionSphere = new THREE.Mesh(geometry, material);
-        this.selectionSphere.scale.set(0, 0, 0);
-        var p = util.vector3FromPackedArray(this.worldSpacePointPositions, this.nearestPoint);
-        this.scene.add(this.selectionSphere);
-        this.selectionSphere.position.copy(p);
+        var boundingBox = { x: e.offsetX, y: e.offsetY, width: 1, height: 1 };
+        var pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+        this.nearestPoint = pointIndices[0];
     };
     ScatterPlot.prototype.getLayoutValues = function () {
         this.width = this.containerNode.offsetWidth;
@@ -20948,6 +20967,7 @@ var ScatterPlot = (function () {
         if (axes != null) {
             this.scene.remove(axes);
         }
+        return axes;
     };
     ScatterPlot.prototype.add3dAxis = function () {
         var axes = new THREE.AxisHelper();
@@ -21079,7 +21099,11 @@ var ScatterPlot = (function () {
         this.visualizers.forEach(function (v) {
             v.onPickingRender(rc);
         });
-        this.renderer.render(this.scene, this.camera, this.pickingTexture);
+        {
+            var axes = this.remove3dAxis();
+            this.renderer.render(this.scene, this.camera, this.pickingTexture);
+            this.scene.add(axes);
+        }
         // Render second pass to color buffer, to be displayed on the canvas.
         this.visualizers.forEach(function (v) {
             v.onRender(rc);
@@ -21189,9 +21213,91 @@ var ScatterPlot = (function () {
 }());
 exports.ScatterPlot = ScatterPlot;
 
-},{"./renderContext":15,"./util":23,"./vector":24}],17:[function(require,module,exports){
+},{"./renderContext":15,"./scatterPlotRectangleSelector":17,"./util":24}],17:[function(require,module,exports){
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+"use strict";
+var FILL = '#dddddd';
+var FILL_OPACITY = .2;
+var STROKE = '#aaaaaa';
+var STROKE_WIDTH = 2;
+var STROKE_DASHARRAY = '10 5';
+/**
+ * A class that manages and renders a data selection rectangle.
+ */
+var ScatterPlotRectangleSelector = (function () {
+    /**
+     * @param container The container HTML element that the selection SVG rect
+     *     will be a child of.
+     * @param selectionCallback The callback that accepts a bounding box to be
+     *     called when selection changes. Currently, we only call the callback on
+     *     mouseUp.
+     */
+    function ScatterPlotRectangleSelector(container, selectionCallback) {
+        this.svgElement = d3.select(container).select('#selector');
+        this.rectElement = this.svgElement.append('rect')
+            .style('stroke', STROKE)
+            .style('stroke-dasharray', STROKE_DASHARRAY)
+            .style('stroke-width', STROKE_WIDTH)
+            .style('fill', FILL)
+            .style('fill-opacity', FILL_OPACITY);
+        this.selectionCallback = selectionCallback;
+        this.isMouseDown = false;
+    }
+    ScatterPlotRectangleSelector.prototype.onMouseDown = function (offsetX, offsetY) {
+        this.isMouseDown = true;
+        this.svgElement.style('display', 'block');
+        this.startCoordinates = [offsetX, offsetY];
+        this.lastBoundingBox = {
+            x: this.startCoordinates[0],
+            y: this.startCoordinates[1],
+            width: 1,
+            height: 1
+        };
+    };
+    ScatterPlotRectangleSelector.prototype.onMouseMove = function (offsetX, offsetY) {
+        if (!this.isMouseDown) {
+            return;
+        }
+        this.lastBoundingBox.x = Math.min(offsetX, this.startCoordinates[0]);
+        this.lastBoundingBox.y = Math.max(offsetY, this.startCoordinates[1]);
+        this.lastBoundingBox.width =
+            Math.max(offsetX, this.startCoordinates[0]) - this.lastBoundingBox.x;
+        this.lastBoundingBox.height =
+            this.lastBoundingBox.y - Math.min(offsetY, this.startCoordinates[1]);
+        this.rectElement.attr({
+            x: this.lastBoundingBox.x,
+            y: this.lastBoundingBox.y - this.lastBoundingBox.height,
+            width: this.lastBoundingBox.width,
+            height: this.lastBoundingBox.height
+        });
+    };
+    ScatterPlotRectangleSelector.prototype.onMouseUp = function () {
+        this.isMouseDown = false;
+        this.svgElement.style('display', 'none');
+        this.rectElement.attr('width', 0);
+        this.rectElement.attr('height', 0);
+        this.selectionCallback(this.lastBoundingBox);
+    };
+    return ScatterPlotRectangleSelector;
+}());
+exports.ScatterPlotRectangleSelector = ScatterPlotRectangleSelector;
+
+},{}],18:[function(require,module,exports){
 arguments[4][13][0].apply(exports,arguments)
-},{"dup":13}],18:[function(require,module,exports){
+},{"dup":13}],19:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21465,7 +21571,7 @@ var ScatterPlotVisualizer3DLabels = (function () {
 }());
 exports.ScatterPlotVisualizer3DLabels = ScatterPlotVisualizer3DLabels;
 
-},{"./util":23}],19:[function(require,module,exports){
+},{"./util":24}],20:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21613,7 +21719,7 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
 }());
 exports.ScatterPlotVisualizerCanvasLabels = ScatterPlotVisualizerCanvasLabels;
 
-},{"./label":11,"./renderContext":15,"./util":23}],20:[function(require,module,exports){
+},{"./label":11,"./renderContext":15,"./util":24}],21:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21843,7 +21949,7 @@ var ScatterPlotVisualizerSprites = (function () {
 }());
 exports.ScatterPlotVisualizerSprites = ScatterPlotVisualizerSprites;
 
-},{"./renderContext":15,"./util":23}],21:[function(require,module,exports){
+},{"./renderContext":15,"./util":24}],22:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21975,7 +22081,7 @@ var ScatterPlotVisualizerTraces = (function () {
 }());
 exports.ScatterPlotVisualizerTraces = ScatterPlotVisualizerTraces;
 
-},{"./util":23}],22:[function(require,module,exports){
+},{"./util":24}],23:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22122,7 +22228,7 @@ function fillArray(arr, value) {
     }
 }
 
-},{}],23:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22305,7 +22411,7 @@ function getURLParams(url) {
 }
 exports.getURLParams = getURLParams;
 
-},{"./logging":12}],24:[function(require,module,exports){
+},{"./logging":12}],25:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22393,11 +22499,6 @@ function dist2_2D(a, b) {
     return dX * dX + dY * dY;
 }
 exports.dist2_2D = dist2_2D;
-/** Returns the euclidean distance between 2 2D points. */
-function dist_2D(a, b) {
-    return Math.sqrt(dist2_2D(a, b));
-}
-exports.dist_2D = dist_2D;
 /** Returns the square euclidean distance between two 3D points. */
 function dist2_3D(a, b) {
     var dX = a[0] - b[0];
@@ -22565,7 +22666,7 @@ function transposeTypedArray(r, c, typedArray) {
 }
 exports.transposeTypedArray = transposeTypedArray;
 
-},{"./util":23}],25:[function(require,module,exports){
+},{"./util":24}],26:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -22796,7 +22897,7 @@ var BookmarkPanel = (function (_super) {
 exports.BookmarkPanel = BookmarkPanel;
 document.registerElement(BookmarkPanel.prototype.is, BookmarkPanel);
 
-},{"./logging":12,"./vz-projector-util":32}],26:[function(require,module,exports){
+},{"./logging":12,"./vz-projector-util":33}],27:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23173,7 +23274,7 @@ var DataPanel = (function (_super) {
 exports.DataPanel = DataPanel;
 document.registerElement(DataPanel.prototype.is, DataPanel);
 
-},{"./data-provider":6,"./vz-projector-util":32}],27:[function(require,module,exports){
+},{"./data-provider":6,"./vz-projector-util":33}],28:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23271,7 +23372,7 @@ var ProjectorInput = (function (_super) {
 exports.ProjectorInput = ProjectorInput;
 document.registerElement(ProjectorInput.prototype.is, ProjectorInput);
 
-},{"./vz-projector-util":32}],28:[function(require,module,exports){
+},{"./vz-projector-util":33}],29:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23330,12 +23431,7 @@ var InspectorPanel = (function (_super) {
     /** Updates the nearest neighbors list in the inspector. */
     InspectorPanel.prototype.updateInspectorPane = function (indices, neighbors) {
         this.neighborsOfFirstPoint = neighbors;
-        if (neighbors.length > 0) {
-            this.selectedPointIndices = indices;
-        }
-        else {
-            this.selectedPointIndices = null;
-        }
+        this.selectedPointIndices = indices;
         this.updateFilterButtons(indices.length + neighbors.length);
         this.updateNeighborsList(neighbors);
         if (neighbors.length === 0) {
@@ -23529,7 +23625,7 @@ var InspectorPanel = (function (_super) {
 exports.InspectorPanel = InspectorPanel;
 document.registerElement(InspectorPanel.prototype.is, InspectorPanel);
 
-},{"./projectorScatterPlotAdapter":14,"./vector":24,"./vz-projector-util":32}],29:[function(require,module,exports){
+},{"./projectorScatterPlotAdapter":14,"./vector":25,"./vz-projector-util":33}],30:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23608,7 +23704,7 @@ var Legend = (function (_super) {
 exports.Legend = Legend;
 document.registerElement(Legend.prototype.is, Legend);
 
-},{"./vz-projector-util":32}],30:[function(require,module,exports){
+},{"./vz-projector-util":33}],31:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23686,7 +23782,7 @@ var MetadataCard = (function (_super) {
 exports.MetadataCard = MetadataCard;
 document.registerElement(MetadataCard.prototype.is, MetadataCard);
 
-},{"./vz-projector-util":32}],31:[function(require,module,exports){
+},{"./vz-projector-util":33}],32:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24122,7 +24218,7 @@ var ProjectionsPanel = (function (_super) {
 exports.ProjectionsPanel = ProjectionsPanel;
 document.registerElement(ProjectionsPanel.prototype.is, ProjectionsPanel);
 
-},{"./data":7,"./vector":24,"./vz-projector-util":32}],32:[function(require,module,exports){
+},{"./data":7,"./vector":25,"./vz-projector-util":33}],33:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24143,7 +24239,7 @@ function PolymerElement(spec) {
 }
 exports.PolymerElement = PolymerElement;
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24405,7 +24501,12 @@ var Projector = (function (_super) {
     Projector.prototype.adjustSelectionAndHover = function (selectedPointIndices, hoverIndex) {
         this.notifySelectionChanged(selectedPointIndices);
         this.notifyHoverOverPoint(hoverIndex);
-        this.scatterPlot.setMode(scatterPlot_1.Mode.HOVER);
+        this.setMode(scatterPlot_1.Mode.HOVER);
+    };
+    Projector.prototype.setMode = function (mode) {
+        var selectModeButton = this.querySelector('#selectMode');
+        selectModeButton.active = (mode === scatterPlot_1.Mode.SELECT);
+        this.scatterPlot.setMode(mode);
     };
     Projector.prototype.setCurrentDataSet = function (ds) {
         this.adjustSelectionAndHover([]);
@@ -24432,7 +24533,7 @@ var Projector = (function (_super) {
         });
         var selectModeButton = this.querySelector('#selectMode');
         selectModeButton.addEventListener('click', function (event) {
-            _this.scatterPlot.setMode(selectModeButton.active ? scatterPlot_1.Mode.SELECT : scatterPlot_1.Mode.HOVER);
+            _this.setMode(selectModeButton.active ? scatterPlot_1.Mode.SELECT : scatterPlot_1.Mode.HOVER);
         });
         var nightModeButton = this.querySelector('#nightDayMode');
         nightModeButton.addEventListener('click', function () {
@@ -24615,9 +24716,9 @@ var Projector = (function (_super) {
 exports.Projector = Projector;
 document.registerElement(Projector.prototype.is, Projector);
 
-},{"./analyticsLogger":1,"./data":7,"./data-provider-demo":3,"./data-provider-proto":4,"./data-provider-server":5,"./logging":12,"./projectorScatterPlotAdapter":14,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":18,"./scatterPlotVisualizerCanvasLabels":19,"./scatterPlotVisualizerSprites":20,"./scatterPlotVisualizerTraces":21,"./util":23,"./vz-projector-util":32}],34:[function(require,module,exports){
+},{"./analyticsLogger":1,"./data":7,"./data-provider-demo":3,"./data-provider-proto":4,"./data-provider-server":5,"./logging":12,"./projectorScatterPlotAdapter":14,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":19,"./scatterPlotVisualizerCanvasLabels":20,"./scatterPlotVisualizerSprites":21,"./scatterPlotVisualizerTraces":22,"./util":24,"./vz-projector-util":33}],35:[function(require,module,exports){
 arguments[4][8][0].apply(exports,arguments)
-},{"dup":8}]},{},[34,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33]);
+},{"dup":8}]},{},[35,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34]);
 </script>
 </dom-module>
 </body></html>
