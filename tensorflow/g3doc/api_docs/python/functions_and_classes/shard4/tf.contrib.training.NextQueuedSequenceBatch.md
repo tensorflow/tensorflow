@@ -132,7 +132,7 @@ Returns an op to save the current batch of state `state_name`.
 
 
 *  <b>`state_name`</b>: string, matches a key provided in `initial_states`.
-*  <b>`value`</b>: A `Tensor`.
+*  <b>`value`</b>: An `Output`.
     Its type must match that of `initial_states[state_name].dtype`.
     If we had at input:
 
@@ -177,7 +177,7 @@ are assigned to each split.
 
 ##### Returns:
 
-  An int32 vector `Tensor`.
+  An int32 vector `Output`.
 
 
 - - -
@@ -191,7 +191,7 @@ When an input is split up, the number of splits is equal to:
 
 ##### Returns:
 
-  An int32 vector `Tensor`.
+  An int32 vector `Output`.
 
 
 - - -
@@ -229,7 +229,7 @@ Returns batched state tensors.
 
 ##### Returns:
 
-  A `Tensor`: a batched set of states, either initial states (if this is
+  An `Output`: a batched set of states, either initial states (if this is
   the first run of the given example), or a value as stored during
   a previous iteration via `save_state` control flow.
   Its type is the same as `initial_states["state_name"].dtype`.

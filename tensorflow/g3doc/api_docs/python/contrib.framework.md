@@ -60,22 +60,22 @@ Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 
 ### `tf.contrib.framework.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_sparse_tensor}
 
-Converts value to a `SparseTensor` or `Tensor`.
+Converts value to a `SparseTensor` or `Output`.
 
 ##### Args:
 
 
 *  <b>`value`</b>: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
-    registered `Tensor` conversion function.
+    registered `Output` conversion function.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
-*  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
+*  <b>`name`</b>: Optional name to use if a new `Output` is created.
 *  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
+    `Output` is created.
 
 ##### Returns:
 
-  A `SparseTensor` or `Tensor` based on `value`.
+  A `SparseTensor` or `Output` based on `value`.
 
 ##### Raises:
 
@@ -100,7 +100,7 @@ Returns the appropriate graph to use for the given inputs.
 ##### Args:
 
 
-*  <b>`op_input_list`</b>: A list of inputs to an operation, which may include `Tensor`,
+*  <b>`op_input_list`</b>: A list of inputs to an operation, which may include `Output`,
     `Operation`, and other objects that may be converted to a graph element.
 *  <b>`graph`</b>: (Optional) The explicit graph to use.
 
@@ -140,12 +140,12 @@ See also:  `is_strictly_increasing`
 ##### Args:
 
 
-*  <b>`x`</b>: Numeric `Tensor`.
+*  <b>`x`</b>: Numeric `Output`.
 *  <b>`name`</b>: A name for this operation (optional).  Defaults to "is_non_decreasing"
 
 ##### Returns:
 
-  Boolean `Tensor`, equal to `True` iff `x` is non-decreasing.
+  Boolean `Output`, equal to `True` iff `x` is non-decreasing.
 
 ##### Raises:
 
@@ -168,13 +168,13 @@ See also:  `is_non_decreasing`
 ##### Args:
 
 
-*  <b>`x`</b>: Numeric `Tensor`.
+*  <b>`x`</b>: Numeric `Output`.
 *  <b>`name`</b>: A name for this operation (optional).
     Defaults to "is_strictly_increasing"
 
 ##### Returns:
 
-  Boolean `Tensor`, equal to `True` iff `x` is strictly increasing.
+  Boolean `Output`, equal to `True` iff `x` is strictly increasing.
 
 ##### Raises:
 
@@ -483,12 +483,12 @@ Adds a variable to the `GraphKeys.MODEL_VARIABLES` collection.
 
 ### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
-Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
+Asserts `global_step_tensor` is a scalar int `Variable` or `Output`.
 
 ##### Args:
 
 
-*  <b>`global_step_tensor`</b>: `Tensor` to test.
+*  <b>`global_step_tensor`</b>: `Output` to test.
 
 
 - - -

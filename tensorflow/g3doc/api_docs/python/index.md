@@ -963,6 +963,7 @@
   * [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier)
   * [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor)
   * [`Estimator`](../../api_docs/python/contrib.learn.md#Estimator)
+  * [`Evaluable`](../../api_docs/python/contrib.learn.md#Evaluable)
   * [`evaluate`](../../api_docs/python/contrib.learn.md#evaluate)
   * [`extract_dask_data`](../../api_docs/python/contrib.learn.md#extract_dask_data)
   * [`extract_dask_labels`](../../api_docs/python/contrib.learn.md#extract_dask_labels)
@@ -982,6 +983,7 @@
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
   * [`train`](../../api_docs/python/contrib.learn.md#train)
+  * [`Trainable`](../../api_docs/python/contrib.learn.md#Trainable)
 
 * **[Monitors (contrib)](../../api_docs/python/contrib.learn.monitors.md)**:
   * [`BaseMonitor`](../../api_docs/python/contrib.learn.monitors.md#BaseMonitor)
