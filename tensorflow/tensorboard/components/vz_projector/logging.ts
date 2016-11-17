@@ -34,8 +34,9 @@ export function setDomContainer(domElement: HTMLElement) {
  * @param showCloseButton If true, the dialog will have a close button.
  * @return The id of the message.
  */
-export function setModalMessage(msg: string, id: string = null,
-    title = 'Loading...', showCloseButton = false): string {
+export function setModalMessage(
+    msg: string, id: string = null, title = null,
+    showCloseButton = false): string {
   if (dom == null) {
     console.warn('Can\'t show modal message before the dom is initialized');
     return;
