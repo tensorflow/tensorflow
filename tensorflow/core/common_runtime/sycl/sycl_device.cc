@@ -50,12 +50,8 @@ Allocator *SYCLDevice::GetAllocator(AllocatorAttributes attr) {
 Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
                                        const AllocatorAttributes alloc_attrs,
                                        Tensor *tensor) {
-  AllocatorAttributes attr;
-  attr.set_on_host(true);
-  attr.set_gpu_compatible(true);
-  Allocator *host_alloc = GetAllocator(attr);
   Tensor parsed(tensor_proto.dtype());
-  if (!parsed.FromProto(host_alloc, tensor_proto)) {
+  if (!parsed.FromProto(cpu_allocator_, tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
