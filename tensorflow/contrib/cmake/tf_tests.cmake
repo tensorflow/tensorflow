@@ -149,9 +149,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # int32/int64 mixup
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
-      # missing kernel      
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/conv_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/depthwise_conv_op_test.py"
       # cuda launch failed
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/trace_op_test.py"
