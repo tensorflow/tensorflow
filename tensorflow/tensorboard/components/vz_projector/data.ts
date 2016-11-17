@@ -415,7 +415,8 @@ export type ProjectionType = 'tsne' | 'pca' | 'custom';
 export class Projection {
   constructor(
       public projectionType: ProjectionType,
-      public pointAccessors: PointAccessors3D, public dimensionality: number) {}
+      public pointAccessors: PointAccessors3D, public dimensionality: number,
+      public dataSet: DataSet) {}
 }
 
 export interface ColorOption {

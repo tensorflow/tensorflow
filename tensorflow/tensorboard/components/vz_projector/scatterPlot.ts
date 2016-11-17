@@ -117,13 +117,11 @@ export class ScatterPlot {
   private rectangleSelector: ScatterPlotRectangleSelector;
 
   constructor(
-      container: d3.Selection<any>, labelAccessor: (index: number) => string,
+      container: d3.Selection<any>,
       projectorEventContext: ProjectorEventContext) {
     this.containerNode = container.node() as HTMLElement;
     this.projectorEventContext = projectorEventContext;
     this.getLayoutValues();
-
-    this.labelAccessor = labelAccessor;
 
     this.scene = new THREE.Scene();
     this.renderer =
@@ -457,7 +455,7 @@ export class ScatterPlot {
     return this.dimensionality === 3;
   }
 
-  private remove3dAxis(): THREE.Object3D {
+  private remove3dAxisFromScene(): THREE.Object3D {
     const axes = this.scene.getObjectByName('axes');
     if (axes != null) {
       this.scene.remove(axes);
@@ -481,7 +479,7 @@ export class ScatterPlot {
     const def = this.cameraDef || this.makeDefaultCameraDef(dimensionality);
     this.recreateCamera(def);
 
-    this.remove3dAxis();
+    this.remove3dAxisFromScene();
     if (dimensionality === 3) {
       this.add3dAxis();
     }
@@ -624,9 +622,11 @@ export class ScatterPlot {
     });
 
     {
-      const axes = this.remove3dAxis();
+      const axes = this.remove3dAxisFromScene();
       this.renderer.render(this.scene, this.camera, this.pickingTexture);
-      this.scene.add(axes);
+      if (axes != null) {
+        this.scene.add(axes);
+      }
     }
 
     // Render second pass to color buffer, to be displayed on the canvas.

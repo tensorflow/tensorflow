@@ -21,13 +21,9 @@ import {ProtoDataProvider} from './data-provider-proto';
 import {ServerDataProvider} from './data-provider-server';
 import * as knn from './knn';
 import * as logging from './logging';
-import {HoverListener, ProjectionChangedListener, ProjectorEventContext, SelectionChangedListener} from './projectorEventContext';
+import {DistanceMetricChangedListener, HoverListener, ProjectionChangedListener, ProjectorEventContext, SelectionChangedListener} from './projectorEventContext';
 import {ProjectorScatterPlotAdapter} from './projectorScatterPlotAdapter';
-import {Mode, ScatterPlot} from './scatterPlot';
-import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
-import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLabels';
-import {ScatterPlotVisualizerSprites} from './scatterPlotVisualizerSprites';
-import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
+import {Mode} from './scatterPlot';
 import * as util from './util';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
@@ -69,11 +65,11 @@ export class Projector extends ProjectorPolymer implements
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
   private projectionChangedListeners: ProjectionChangedListener[];
+  private distanceMetricChangedListeners: DistanceMetricChangedListener[];
 
   private originalDataSet: DataSet;
   private dom: d3.Selection<any>;
   private projectorScatterPlotAdapter: ProjectorScatterPlotAdapter;
-  private scatterPlot: ScatterPlot;
   private dim: number;
 
   private dataSetFilterIndices: number[];
@@ -108,6 +104,7 @@ export class Projector extends ProjectorPolymer implements
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
     this.projectionChangedListeners = [];
+    this.distanceMetricChangedListeners = [];
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
     this.dom = d3.select(this);
@@ -133,14 +130,17 @@ export class Projector extends ProjectorPolymer implements
           .metadata[this.selectedLabelOption] as string;
     };
     this.metadataCard.setLabelOption(this.selectedLabelOption);
-    this.scatterPlot.setLabelAccessor(labelAccessor);
-    this.scatterPlot.render();
+    this.projectorScatterPlotAdapter.scatterPlot.setLabelAccessor(
+        labelAccessor);
+    this.projectorScatterPlotAdapter.render();
   }
 
   setSelectedColorOption(colorOption: ColorOption) {
     this.selectedColorOption = colorOption;
-    this.updateScatterPlotAttributes();
-    this.scatterPlot.render();
+    this.projectorScatterPlotAdapter.setLegendPointColorer(
+        this.getLegendPointColorer(colorOption));
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+    this.projectorScatterPlotAdapter.render();
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -153,8 +153,7 @@ export class Projector extends ProjectorPolymer implements
       metadataFile?: string) {
     this.dataSetFilterIndices = null;
     this.originalDataSet = ds;
-    if (this.scatterPlot == null || ds == null) {
-      // We are not ready yet.
+    if (this.projectorScatterPlotAdapter == null || ds == null) {
       return;
     }
     this.normalizeData = this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
@@ -176,8 +175,8 @@ export class Projector extends ProjectorPolymer implements
     // height can grow indefinitely.
     let container = this.dom.select('#container');
     container.style('height', container.property('clientHeight') + 'px');
-    this.scatterPlot.resize();
-    this.scatterPlot.render();
+    this.projectorScatterPlotAdapter.resize();
+    this.projectorScatterPlotAdapter.render();
   }
 
   setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
@@ -203,7 +202,7 @@ export class Projector extends ProjectorPolymer implements
       return this.dataSet.points[localIndex].index;
     });
     this.setCurrentDataSet(this.originalDataSet.getSubset());
-    this.updateScatterPlotPositions();
+    this.projectorScatterPlotAdapter.updateScatterPlotPositions();
     this.dataSetFilterIndices = [];
     this.adjustSelectionAndHover(originalPointIndices);
   }
@@ -247,8 +246,16 @@ export class Projector extends ProjectorPolymer implements
     this.projectionChangedListeners.push(listener);
   }
 
-  notifyProjectionChanged(dataSet: DataSet) {
-    this.projectionChangedListeners.forEach(l => l(dataSet));
+  notifyProjectionChanged(projection: Projection) {
+    this.projectionChangedListeners.forEach(l => l(projection));
+  }
+
+  registerDistanceMetricChangedListener(l: DistanceMetricChangedListener) {
+    this.distanceMetricChangedListeners.push(l);
+  }
+
+  notifyDistanceMetricChanged(distMetric: DistanceFunction) {
+    this.distanceMetricChangedListeners.forEach(l => l(distMetric));
   }
 
   _dataProtoChanged(dataProtoString: string) {
@@ -324,11 +331,6 @@ export class Projector extends ProjectorPolymer implements
     return (label3DModeButton as any).active;
   }
 
-  private getSpriteImageMode(): boolean {
-    return this.dataSet && this.dataSet.spriteAndMetadataInfo &&
-        this.dataSet.spriteAndMetadataInfo.spriteImage != null;
-  }
-
   adjustSelectionAndHover(selectedPointIndices: number[], hoverIndex?: number) {
     this.notifySelectionChanged(selectedPointIndices);
     this.notifyHoverOverPoint(hoverIndex);
@@ -338,8 +340,7 @@ export class Projector extends ProjectorPolymer implements
   private setMode(mode: Mode) {
     let selectModeButton = this.querySelector('#selectMode');
     (selectModeButton as any).active = (mode === Mode.SELECT);
-
-    this.scatterPlot.setMode(mode);
+    this.projectorScatterPlotAdapter.scatterPlot.setMode(mode);
   }
 
   private setCurrentDataSet(ds: DataSet) {
@@ -360,14 +361,15 @@ export class Projector extends ProjectorPolymer implements
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
 
-    this.scatterPlot.setCameraParametersForNextCameraCreation(null, true);
+    this.projectorScatterPlotAdapter.scatterPlot
+        .setCameraParametersForNextCameraCreation(null, true);
   }
 
   private setupUIControls() {
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
-      this.scatterPlot.resetZoom();
-      this.scatterPlot.startOrbitAnimation();
+      this.projectorScatterPlotAdapter.scatterPlot.resetZoom();
+      this.projectorScatterPlotAdapter.scatterPlot.startOrbitAnimation();
     });
 
     let selectModeButton = this.querySelector('#selectMode');
@@ -376,14 +378,13 @@ export class Projector extends ProjectorPolymer implements
     });
     let nightModeButton = this.querySelector('#nightDayMode');
     nightModeButton.addEventListener('click', () => {
-      this.scatterPlot.setDayNightMode((nightModeButton as any).active);
+      this.projectorScatterPlotAdapter.scatterPlot.setDayNightMode(
+          (nightModeButton as any).active);
     });
 
     const labels3DModeButton = this.get3DLabelModeButton();
     labels3DModeButton.addEventListener('click', () => {
-      this.createVisualizers(this.get3DLabelMode());
-      this.updateScatterPlotAttributes();
-      this.scatterPlot.render();
+      this.projectorScatterPlotAdapter.set3DLabelMode(this.get3DLabelMode());
     });
 
     window.addEventListener('resize', () => {
@@ -391,18 +392,19 @@ export class Projector extends ProjectorPolymer implements
       let parentHeight =
           (container.node().parentNode as HTMLElement).clientHeight;
       container.style('height', parentHeight + 'px');
-      this.scatterPlot.resize();
+      this.projectorScatterPlotAdapter.resize();
     });
 
-    this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter();
+    {
+      const labelAccessor = i =>
+          '' + this.dataSet.points[i].metadata[this.selectedLabelOption];
+      this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter(
+          this.getScatterContainer(), this as ProjectorEventContext);
+      this.projectorScatterPlotAdapter.scatterPlot.setLabelAccessor(
+          labelAccessor);
+    }
 
-    this.scatterPlot = new ScatterPlot(
-        this.getScatterContainer(),
-        i => '' + this.dataSet.points[i].metadata[this.selectedLabelOption],
-        this as ProjectorEventContext);
-    this.createVisualizers(false);
-
-    this.scatterPlot.onCameraMove(
+    this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(
         (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) =>
             this.bookmarkPanel.clearStateSelection());
 
@@ -425,73 +427,14 @@ export class Projector extends ProjectorPolymer implements
         hoverText = point.metadata[this.selectedLabelOption].toString();
       }
     }
-    this.updateScatterPlotAttributes();
-    this.scatterPlot.render();
     if (this.selectedPointIndices.length === 0) {
       this.statusBar.style('display', hoverText ? null : 'none');
       this.statusBar.text(hoverText);
     }
   }
 
-  private updateScatterPlotPositions() {
-    if (this.dataSet == null) {
-      return;
-    }
-    if (this.projection == null) {
-      return;
-    }
-    const newPositions =
-        this.projectorScatterPlotAdapter.generatePointPositionArray(
-            this.dataSet, this.projection.pointAccessors);
-    this.scatterPlot.setPointPositions(this.dataSet, newPositions);
-  }
-
-  private updateScatterPlotAttributes() {
-    const dataSet = this.dataSet;
-    const selectedSet = this.selectedPointIndices;
-    const hoverIndex = this.hoverPointIndex;
-    const neighbors = this.neighborsOfFirstPoint;
-    const pointColorer = this.getLegendPointColorer(this.selectedColorOption);
-    const adapter = this.projectorScatterPlotAdapter;
-
-    const pointColors = adapter.generatePointColorArray(
-        dataSet, pointColorer, this.inspectorPanel.distFunc, selectedSet,
-        neighbors, hoverIndex, this.get3DLabelMode(),
-        this.getSpriteImageMode());
-    const pointScaleFactors = adapter.generatePointScaleFactorArray(
-        dataSet, selectedSet, neighbors, hoverIndex);
-    const labels = adapter.generateVisibleLabelRenderParams(
-        dataSet, selectedSet, neighbors, hoverIndex);
-    const traceColors =
-        adapter.generateLineSegmentColorMap(dataSet, pointColorer);
-    const traceOpacities =
-        adapter.generateLineSegmentOpacityArray(dataSet, selectedSet);
-    const traceWidths =
-        adapter.generateLineSegmentWidthArray(dataSet, selectedSet);
-
-    this.scatterPlot.setPointColors(pointColors);
-    this.scatterPlot.setPointScaleFactors(pointScaleFactors);
-    this.scatterPlot.setLabels(labels);
-    this.scatterPlot.setTraceColors(traceColors);
-    this.scatterPlot.setTraceOpacities(traceOpacities);
-    this.scatterPlot.setTraceWidths(traceWidths);
-  }
-
   private getScatterContainer(): d3.Selection<any> {
     return this.dom.select('#scatter');
-  }
-
-  private createVisualizers(inLabels3DMode: boolean) {
-    const scatterPlot = this.scatterPlot;
-    scatterPlot.removeAllVisualizers();
-    if (inLabels3DMode) {
-      scatterPlot.addVisualizer(new ScatterPlotVisualizer3DLabels());
-    } else {
-      scatterPlot.addVisualizer(new ScatterPlotVisualizerSprites());
-      scatterPlot.addVisualizer(
-          new ScatterPlotVisualizerCanvasLabels(this.getScatterContainer()));
-    }
-    scatterPlot.addVisualizer(new ScatterPlotVisualizerTraces());
   }
 
   private onSelectionChanged(
@@ -503,26 +446,18 @@ export class Projector extends ProjectorPolymer implements
         this.selectedPointIndices.length + neighborsOfFirstPoint.length;
     this.statusBar.text(`Selected ${totalNumPoints} points`)
         .style('display', totalNumPoints > 0 ? null : 'none');
-    this.updateScatterPlotAttributes();
-    this.scatterPlot.render();
   }
 
   setProjection(projection: Projection) {
     this.projection = projection;
-    this.scatterPlot.setDimensions(projection.dimensionality);
-    this.analyticsLogger.logProjectionChanged(projection.projectionType);
-    if (this.dataSet.projectionCanBeRendered(projection.projectionType)) {
-      this.updateScatterPlotAttributes();
-      this.notifyProjectionsUpdated();
+    if (projection != null) {
+      this.analyticsLogger.logProjectionChanged(projection.projectionType);
     }
-
-    this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
-    this.notifyProjectionChanged(this.dataSet);
+    this.notifyProjectionChanged(projection);
   }
 
-  notifyProjectionsUpdated() {
-    this.updateScatterPlotPositions();
-    this.scatterPlot.render();
+  notifyProjectionPositionsUpdated() {
+    this.projectorScatterPlotAdapter.notifyProjectionPositionsUpdated();
   }
 
   /**
@@ -547,7 +482,7 @@ export class Projector extends ProjectorPolymer implements
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
     state.filteredPoints = this.dataSetFilterIndices;
-    state.cameraDef = this.scatterPlot.getCameraDef();
+    this.projectorScatterPlotAdapter.populateBookmarkFromUI(state);
     state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
     state.selectedLabelOption = this.selectedLabelOption;
     this.projectionsPanel.populateBookmarkFromUI(state);
@@ -556,6 +491,7 @@ export class Projector extends ProjectorPolymer implements
 
   /** Loads a State object into the world. */
   loadState(state: State) {
+    this.setProjection(null);
     {
       this.projectionsPanel.disablePolymerChangesTriggerReprojection();
       this.resetFilterDataset();
@@ -578,22 +514,16 @@ export class Projector extends ProjectorPolymer implements
     this.inspectorPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
     this.selectedLabelOption = state.selectedLabelOption;
-    this.scatterPlot.setCameraParametersForNextCameraCreation(
-        state.cameraDef, false);
+    this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
     {
       const dimensions = stateGetAccessorDimensions(state);
       const accessors =
           this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
       const projection = new Projection(
-          state.selectedProjection, accessors, dimensions.length);
+          state.selectedProjection, accessors, dimensions.length, this.dataSet);
       this.setProjection(projection);
     }
     this.notifySelectionChanged(state.selectedPoints);
-  }
-
-  notifyDistanceMetricChanged(distMetric: DistanceFunction) {
-    this.updateScatterPlotAttributes();
-    this.scatterPlot.render();
   }
 }
 

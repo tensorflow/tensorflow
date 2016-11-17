@@ -372,13 +372,14 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     const accessors =
         dataSet.getPointAccessors('tsne', [0, 1, this.tSNEis3d ? 2 : null]);
     const dimensionality = this.tSNEis3d ? 3 : 2;
-    const projection = new Projection('tsne', accessors, dimensionality);
+    const projection =
+        new Projection('tsne', accessors, dimensionality, dataSet);
     this.projector.setProjection(projection);
 
     if (!this.dataSet.hasTSNERun) {
       this.runTSNE();
     } else {
-      this.projector.notifyProjectionsUpdated();
+      this.projector.notifyProjectionPositionsUpdated();
     }
   }
 
@@ -390,7 +391,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         (iteration: number) => {
           if (iteration != null) {
             this.iterationLabel.text(iteration);
-            this.projector.notifyProjectionsUpdated();
+            this.projector.notifyProjectionPositionsUpdated();
           } else {
             this.runTsneButton.attr('disabled', null);
             this.stopTsneButton.attr('disabled', true);
@@ -426,7 +427,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
           'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
       const dimensionality = this.pcaIs3d ? 3 : 2;
-      const projection = new Projection('pca', accessors, dimensionality);
+      const projection =
+          new Projection('pca', accessors, dimensionality, this.dataSet);
       this.projector.setProjection(projection);
       let numComponents = Math.min(NUM_PCA_COMPONENTS, this.dataSet.dim[1]);
       this.updateTotalVarianceMessage();
@@ -454,7 +456,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet.projectLinear(yDir, 'linear-y');
 
     const accessors = this.dataSet.getPointAccessors('custom', ['x', 'y']);
-    const projection = new Projection('custom', accessors, 2);
+    const projection = new Projection('custom', accessors, 2, this.dataSet);
     this.projector.setProjection(projection);
   }
 
