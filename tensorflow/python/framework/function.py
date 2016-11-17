@@ -745,7 +745,7 @@ class Defun(object):
   function.
 
   The decorated function must add ops to the default graph and return zero or
-  more `Tensor` objects.  Call the decorator with named arguments, one for each
+  more `Output` objects.  Call the decorator with named arguments, one for each
   argument of the function to decorate, with the expected type of the argument
   as value.
 

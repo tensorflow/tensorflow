@@ -448,8 +448,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
     import_scope: Optional `string`. Name scope into which to import the
       subgraph. If `None`, the graph is imported to the root name scope.
     input_map: A dictionary mapping input names (as strings) in `graph_def` to
-      `Tensor` objects. The values of the named input tensors in the imported
-      graph will be re-mapped to the respective `Tensor` values.
+      `Output` objects. The values of the named input tensors in the imported
+      graph will be re-mapped to the respective `Output` values.
     unbound_inputs_col_name: Collection name for looking up unbound inputs.
 
   Returns:

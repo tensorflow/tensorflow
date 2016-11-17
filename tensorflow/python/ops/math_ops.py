@@ -279,12 +279,12 @@ def abs(x, name=None):
   number.
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+    x: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
       `int64`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+    An `Output` or `SparseTensor` the same size and type as `x` with absolute
       values.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
@@ -322,12 +322,12 @@ def neg(x, name=None):
   I.e., \\(y = -x\\).
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    x: An `Output` or `SparseTensor`. Must be one of the following types:
+      `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+    An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
   """
   with ops.name_scope(name, "Neg", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -346,12 +346,12 @@ def sign(x, name=None):
   For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    x: An `Output` or `SparseTensor`. Must be one of the following types:
+      `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+    An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
   """
   with ops.name_scope(name, "Sign", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -368,12 +368,12 @@ def square(x, name=None):
   I.e., \\(y = x * x = x^2\\).
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    x: An `Output` or `SparseTensor`. Must be one of the following types:
+      `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor`. Has the same type as `x`.
+    An `Output` or `SparseTensor`. Has the same type as `x`.
   """
   with ops.name_scope(name, "Square", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -390,12 +390,12 @@ def sqrt(x, name=None):
   I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `complex64`, `complex128`.
+    x: An `Output` or `SparseTensor`. Must be one of the following types:
+      `half`, `float32`, `float64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+    An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
   """
   with ops.name_scope(name, "Sqrt", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -410,12 +410,12 @@ def erf(x, name=None):
   """Computes the Gauss error function of `x` element-wise.
 
   Args:
-    x: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: An `Output` of `SparseTensor`. Must be one of the following types:
+      `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+    An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
   """
   with ops.name_scope(name, "Erf", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -442,28 +442,28 @@ def complex_abs(x, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `complex64` or `complex128`.
+    x: An `Output` of type `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `float32` or `float64`.
+    An `Output` of type `float32` or `float64`.
   """
   return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
 
 
 def scalar_mul(scalar, x):
-  """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+  """Multiplies a scalar times an `Output` or `IndexedSlices` object.
 
   Intended for use in gradient code which might deal with `IndexedSlices`
   objects, which are easy to multiply by a scalar but more expensive to
   multiply with arbitrary tensors.
 
   Args:
-    scalar: A 0-D scalar `Tensor`. Must have known shape.
-    x: A `Tensor` or `IndexedSlices` to be scaled.
+    scalar: A 0-D scalar `Output`. Must have known shape.
+    x: An `Output` or `IndexedSlices` to be scaled.
 
   Returns:
-    `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+    `scalar * x` of the same type (`Output` or `IndexedSlices`) as `x`.
 
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
@@ -493,14 +493,14 @@ def pow(x, y, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+    x: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
      or `complex128`.
-    y: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+    y: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
      or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`.
+    An `Output`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
     return gen_math_ops._pow(x, y, name=name)
@@ -525,12 +525,12 @@ def complex(real, imag, name=None):
   ```
 
   Args:
-    real: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    imag: A `Tensor`. Must have the same type as `real`.
+    real: An `Output`. Must be one of the following types: `float32`, `float64`.
+    imag: An `Output`. Must have the same type as `real`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `complex64` or `complex128`.
+    An `Output` of type `complex64` or `complex128`.
   """
   real = ops.convert_to_tensor(real, name="real")
   imag = ops.convert_to_tensor(imag, name="imag")
@@ -565,11 +565,11 @@ def real(input, name=None):
   If `input` is already real, it is returned unchanged.
 
   Args:
-    input: A `Tensor`. Must have numeric type.
+    input: An `Output`. Must have numeric type.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `float32` or `float64`.
+    An `Output` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
     real_dtype = input.dtype.real_dtype
@@ -595,12 +595,12 @@ def imag(input, name=None):
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-      `complex128`.
+    input: An `Output`. Must be one of the following types:
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `float32` or `float64`.
+    An `Output` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
@@ -619,11 +619,11 @@ def round(x, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `float32` or `float64`.
+    x: An `Output` of type `float32` or `float64`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of same shape and type as `x`.
+    An `Output` of same shape and type as `x`.
   """
   x = ops.convert_to_tensor(x, name="x")
   if x.dtype.is_integer:
@@ -635,7 +635,7 @@ def round(x, name=None):
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
-  The operation casts `x` (in case of `Tensor`) or `x.values`
+  The operation casts `x` (in case of `Output`) or `x.values`
   (in case of `SparseTensor`) to `dtype`.
 
   For example:
@@ -646,12 +646,12 @@ def cast(x, dtype, name=None):
   ```
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: An `Output` or `SparseTensor`.
     dtype: The destination type.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x`.
+    An `Output` or `SparseTensor` with same shape as `x`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
@@ -681,7 +681,7 @@ def saturate_cast(value, dtype, name=None):
   applies the appropriate clamping before the cast.
 
   Args:
-    value: A `Tensor`.
+    value: An `Output`.
     dtype: The desired output `DType`.
     name: A name for the operation (optional).
 
@@ -710,11 +710,11 @@ def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `float32`.
+    An `Output` or `SparseTensor` with same shape as `x` with type `float32`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
@@ -726,11 +726,11 @@ def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `float64`.
+    An `Output` or `SparseTensor` with same shape as `x` with type `float64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `float64`.
@@ -742,11 +742,11 @@ def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `int32`.
+    An `Output` or `SparseTensor` with same shape as `x` with type `int32`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `int32`.
@@ -758,11 +758,11 @@ def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `int64`.
+    An `Output` or `SparseTensor` with same shape as `x` with type `int64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `int64`.
@@ -774,11 +774,11 @@ def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `bfloat16`.
+    An `Output` or `SparseTensor` with same shape as `x` with type `bfloat16`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `bfloat16`.
@@ -803,7 +803,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   Args:
     func: the operator
     op_name: name of the operator being overridden
-    clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
+    clazz_object: class to override for.  Either `Output` or `SparseTensor`.
   """
 
   def binary_op_wrapper(x, y):
@@ -902,8 +902,8 @@ def truediv(x, y, name=None):
   and `int64` (matching the behavior of Numpy).
 
   Args:
-    x: `Tensor` numerator of numeric type.
-    y: `Tensor` denominator of numeric type.
+    x: `Output` numerator of numeric type.
+    y: `Output` denominator of numeric type.
     name: A name for the operation (optional).
 
   Returns:
@@ -948,8 +948,8 @@ def floordiv(x, y, name=None):
   as well.
 
   Args:
-    x: `Tensor` numerator of real numeric type.
-    y: `Tensor` denominator of real numeric type.
+    x: `Output` numerator of real numeric type.
+    y: `Output` denominator of real numeric type.
     name: A name for the operation (optional).
 
   Returns:
@@ -1059,19 +1059,19 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
   ```
 
   Args:
-    start: A 0-D `Tensor` (scalar). Acts as first entry in the range if
+    start: A 0-D `Output` (scalar). Acts as first entry in the range if
       `limit` is not None; otherwise, acts as range limit and first entry
       defaults to 0.
-    limit: A 0-D `Tensor` (scalar). Upper limit of sequence,
+    limit: A 0-D `Output` (scalar). Upper limit of sequence,
       exclusive. If None, defaults to the value of `start` while the first
       entry of the range defaults to 0.
-    delta: A 0-D `Tensor` (scalar). Number that increments
+    delta: A 0-D `Output` (scalar). Number that increments
       `start`. Defaults to 1.
     dtype: The type of the elements of the resulting tensor.
     name: A name for the operation. Defaults to "range".
 
   Returns:
-    An 1-D `Tensor` of type `dtype`.
+    An 1-D `Output` of type `dtype`.
 
   @compatibility(numpy)
   Equivalent to np.arange
@@ -1648,9 +1648,9 @@ def matmul(a,
   ```
 
   Args:
-    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+    a: `Output` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
       `complex128` and rank > 1.
-    b: `Tensor` with same type and rank as `a`.
+    b: `Output` with same type as `a`.
     transpose_a: If `True`, `a` is transposed before multiplication.
     transpose_b: If `True`, `b` is transposed before multiplication.
     adjoint_a: If `True`, `a` is conjugated and transposed before
@@ -1662,7 +1662,7 @@ def matmul(a,
     name: Name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
+    An `Output` of the same type as `a` and `b` where each inner-most matrix is
     the product of the corresponding matrices in `a` and `b, e.g. if all
     transpose or adjoint attributes are `False`:
 
@@ -1812,11 +1812,11 @@ def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
   Args:
-    inputs: A list of `Tensor` objects, each with same shape and type.
+    inputs: A list of `Output` objects, each with same shape and type.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of same shape and type as the elements of `inputs`.
+    An `Output` of same shape and type as the elements of `inputs`.
 
   Raises:
     ValueError: If `inputs` don't all have same shape and dtype or the shape
@@ -1859,13 +1859,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   ```
 
   Args:
-    inputs: A list of `Tensor` objects, each with same shape and type.
+    inputs: A list of `Output` objects, each with same shape and type.
     shape: Shape of elements of `inputs`.
     tensor_dtype: The type of `inputs`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of same shape and type as the elements of `inputs`.
+    An `Output` of same shape and type as the elements of `inputs`.
 
   Raises:
     ValueError: If `inputs` don't all have same shape and dtype or the shape
@@ -1980,15 +1980,15 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   ```
 
   Args:
-    x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+    x: An `Output`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-       axis: A `Tensor` of type `int32` (default: 0).
+       axis: An `Output` of type `int32` (default: 0).
        reverse: A `bool` (default: False).
        name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `x`.
+    An `Output`. Has the same type as `x`.
   """
   with ops.name_scope(name, "Cumsum", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -2026,15 +2026,15 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   ```
 
   Args:
-    x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+    x: An `Output`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: An `Output` of type `int32` (default: 0).
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `x`.
+    An `Output`. Has the same type as `x`.
   """
   with ops.name_scope(name, "Cumprod", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -2060,11 +2060,11 @@ def conj(x, name=None):
   If `x` is real, it is returned unchanged.
 
   Args:
-    x: `Tensor` to conjugate.  Must have numeric type.
+    x: `Output` to conjugate.  Must have numeric type.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` that is the conjugate of `x` (with the same type).
+    An `Output` that is the conjugate of `x` (with the same type).
 
   Raises:
     TypeError: If `x` is not a numeric tensor.

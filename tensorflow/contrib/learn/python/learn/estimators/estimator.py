@@ -136,8 +136,8 @@ def infer_real_valued_columns_from_input_fn(input_fn):
 
   Args:
     input_fn: Input function returning a tuple of:
-        features - Dictionary of string feature name to `Tensor` or `Tensor`.
-        labels - `Tensor` of label values.
+        features - Dictionary of string feature name to `Output` or `Output`.
+        labels - `Output` of label values.
 
   Returns:
     List of `FeatureColumn` objects.
@@ -463,7 +463,7 @@ class BaseEstimator(
 
     Returns:
       A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+      constructor's `model_fn` returns an `Output` for `predictions` or a `dict`
       of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
       predictions if as_iterable is True.
 
@@ -524,20 +524,20 @@ class BaseEstimator(
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
+        `Output` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
         returns a tuple of (features, labels), where features is a dict of
-        string key to `Tensor` and labels is a `Tensor` that's currently not
+        string key to `Output` and labels is an `Output` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Tensor` that the exported model will take as
+        the raw `Example` strings `Output` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+        signature map, given `Output` of `Example` strings, `dict` of `Output`s
+        for features and `Output` or `dict` of `Output`s for predictions.
       prediction_key: The key for a tensor in the `predictions` dict (output
         from the `model_fn`) to use as the `predictions` input to the
         `signature_fn`. Optional. If `None`, predictions will pass to
@@ -571,8 +571,8 @@ class BaseEstimator(
     Expected to be overriden by sub-classes that require custom support.
 
     Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
-      labels: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
+      labels: `Output` or `dict` of `Output` objects.
 
     Returns:
       A `ModelFnOps` object.
@@ -584,7 +584,7 @@ class BaseEstimator(
     """Method that builds model graph and returns prediction ops.
 
     Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
 
     Returns:
       A `ModelFnOps` object.
@@ -597,8 +597,8 @@ class BaseEstimator(
     Expected to be overriden by sub-classes that require custom support.
 
     Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
-      labels: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
+      labels: `Output` or `dict` of `Output` objects.
       metrics: Dict of metrics to run. If None, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
@@ -628,7 +628,7 @@ class BaseEstimator(
       examples_batch: batch of tf.Example
 
     Returns:
-      features: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
 
     Raises:
       ValueError: If `_features_info` attribute is not available (usually
@@ -943,9 +943,9 @@ class Estimator(BaseEstimator):
     Args:
       model_fn: Model function. Follows the signature:
         * Args:
-          * `features` are single `Tensor` or `dict` of `Tensor`s
+          * `features` are single `Output` or `dict` of `Output`s
                  (depending on data passed to `fit`),
-          * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
+          * `labels` are `Output` or `dict` of `Output`s (for multi-head
                  models). If mode is `ModeKeys.INFER`, `labels=None` will be
                  passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
@@ -961,11 +961,11 @@ class Estimator(BaseEstimator):
 
         Also supports a legacy signature which returns tuple of:
 
-          * predictions: `Tensor`, `SparseTensor` or dictionary of same.
-              Can also be any type that is convertible to a `Tensor` or
+          * predictions: `Output`, `SparseTensor` or dictionary of same.
+              Can also be any type that is convertible to an `Output` or
               `SparseTensor`, or dictionary of same.
-          * loss: Scalar loss `Tensor`.
-          * train_op: Training update `Tensor` or `Operation`.
+          * loss: Scalar loss `Output`.
+          * train_op: Training update `Output` or `Operation`.
 
         Supports next three signatures for the function:
 
@@ -1052,8 +1052,8 @@ class Estimator(BaseEstimator):
     build model.
 
     Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
-      labels: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
+      labels: `Output` or `dict` of `Output` objects.
 
     Returns:
       `ModelFnOps` object.
@@ -1068,8 +1068,8 @@ class Estimator(BaseEstimator):
     build model.
 
     Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
-      labels: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
+      labels: `Output` or `dict` of `Output` objects.
       metrics: Dict of metrics to run. If None, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
@@ -1105,7 +1105,7 @@ class Estimator(BaseEstimator):
     build model.
 
     Args:
-      features: `Tensor` or `dict` of `Tensor` objects.
+      features: `Output` or `dict` of `Output` objects.
 
     Returns:
       `ModelFnOps` object.

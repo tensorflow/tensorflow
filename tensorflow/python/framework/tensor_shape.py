@@ -379,10 +379,10 @@ def as_dimension(value):
 
 
 class TensorShape(object):
-  """Represents the shape of a `Tensor`.
+  """Represents the shape of an `Output`.
 
   A `TensorShape` represents a possibly-partial shape specification for a
-  `Tensor`. It may be one of the following:
+  `Output`. It may be one of the following:
 
   * *Fully-known shape:* has a known number of dimensions and a known size
     for each dimension.
@@ -396,7 +396,7 @@ class TensorShape(object):
   `"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
   for details of shape
   functions and how to register them. Alternatively, the shape may be set
-  explicitly using [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
+  explicitly using [`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape).
 
   @@merge_with
   @@concatenate
