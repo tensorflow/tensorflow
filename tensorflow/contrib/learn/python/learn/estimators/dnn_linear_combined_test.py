@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import tempfile
 
 import numpy as np
@@ -131,15 +132,24 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         tf.contrib.layers.embedding_column(sparse_features[0], dimension=1)
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=sparse_features,
         dnn_feature_columns=embedding_features,
         dnn_hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({})))
+        config=config)
 
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
@@ -945,6 +955,19 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=2e7)
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     regressor = tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[
             language_column,
@@ -955,12 +978,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
             tf.contrib.layers.real_valued_column('age')
         ],
         dnn_hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=1))
+        config=config)
 
     regressor.fit(input_fn=_input_fn, steps=100)
 

@@ -12,7 +12,7 @@ dimension `dim`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`.
+*  <b>`x`</b>: An `Output`.
 *  <b>`dim`</b>: Dimension along which to normalize.  A scalar or a vector of
     integers.
 *  <b>`epsilon`</b>: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
@@ -21,5 +21,5 @@ dimension `dim`.
 
 ##### Returns:
 
-  A `Tensor` with the same shape as `x`.
+  An `Output` with the same shape as `x`.
 

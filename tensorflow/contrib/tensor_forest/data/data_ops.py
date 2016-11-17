@@ -64,7 +64,7 @@ def ParseDataTensorOrDict(data):
   columns, which we turn into a single 2-D tensor.
 
   Args:
-    data: `Tensor` or `dict` of `Tensor` objects.
+    data: `Output` or `dict` of `Output` objects.
 
   Returns:
     A 2-D tensor for input to tensor_forest, a keys tensor for the
@@ -112,7 +112,7 @@ def ParseLabelTensorOrDict(labels):
   Converts sparse tensors to dense ones.
 
   Args:
-    labels: `Tensor` or `dict` of `Tensor` objects.
+    labels: `Output` or `dict` of `Output` objects.
 
   Returns:
     A 2-D tensor for labels/outputs.

@@ -12,14 +12,14 @@ Example-parsing ops.
 ##### Args:
 
 
-*  <b>`json_examples`</b>: A `Tensor` of type `string`.
+*  <b>`json_examples`</b>: An `Output` of type `string`.
     Each string is a JSON object serialized according to the JSON
     mapping of the Example proto.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `string`.
+  An `Output` of type `string`.
   Each string is a binary Example protocol buffer corresponding
   to the respective element of `json_examples`.
 

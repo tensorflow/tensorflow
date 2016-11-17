@@ -13,6 +13,7 @@ BUS_ANY was used.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
 * Renamed Tensor to Output in the Python API. Tensor will be an alias for Output
   until TensorFlow 2.0 is released.
+* Renamed TF_Port to TF_Output in the C API.
 
 # Release 0.11.0
 

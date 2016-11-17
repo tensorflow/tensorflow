@@ -29,7 +29,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 
 ##### Returns:
 
-  A `Tensor` representing the output of the operation.
+  An `Output` representing the output of the operation.
 
 ##### Raises:
 

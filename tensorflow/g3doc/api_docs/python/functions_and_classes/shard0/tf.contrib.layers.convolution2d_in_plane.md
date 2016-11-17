@@ -45,5 +45,5 @@ operations such as image gradients:
 
 ##### Returns:
 
-  A `Tensor` representing the output of the operation.
+  An `Output` representing the output of the operation.
 

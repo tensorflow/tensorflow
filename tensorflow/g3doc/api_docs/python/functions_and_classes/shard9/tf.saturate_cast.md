@@ -9,7 +9,7 @@ applies the appropriate clamping before the cast.
 ##### Args:
 
 
-*  <b>`value`</b>: A `Tensor`.
+*  <b>`value`</b>: An `Output`.
 *  <b>`dtype`</b>: The desired output `DType`.
 *  <b>`name`</b>: A name for the operation (optional).
 

@@ -5,12 +5,12 @@ Casts a tensor to type `int32`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
+*  <b>`x`</b>: An `Output` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` or `SparseTensor` with same shape as `x` with type `int32`.
+  An `Output` or `SparseTensor` with same shape as `x` with type `int32`.
 
 ##### Raises:
 

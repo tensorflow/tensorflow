@@ -366,6 +366,14 @@ inline uint64 HashScalar(const T& key) {
 
 inline uint64 HashScalar(const string& key) { return Hash64(key); }
 
+// If the given shape is a scalar return {1} instead. Otherwise leave it alone.
+TensorShape MaybeVectorizeShape(const TensorShape& shape) {
+  if (shape.dims() == 0) {
+    return TensorShape({1});
+  }
+  return shape;
+}
+
 }  // namespace
 
 // Modeled after densehashtable in https://github.com/sparsehash/sparsehash
@@ -529,6 +537,33 @@ class MutableDenseHashTable final : public LookupInterface {
     Tensor value_buckets_tensor = *value_buckets_.AccessTensor(ctx);
     TF_RETURN_IF_ERROR(ctx->set_output("keys", key_buckets_tensor));
     TF_RETURN_IF_ERROR(ctx->set_output("values", value_buckets_tensor));
+    return Status::OK();
+  }
+
+  Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
+                                          const Tensor& values) override {
+    TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(keys, values));
+    TF_RETURN_IF_ERROR(CheckKeyShape(keys.shape()));
+
+    // The storage format in key_buckets_ and value_buckets_ is always vectors,
+    // even if the inputs are scalars. This is what eventually gets exported
+    // and is expected by the import method as well.
+    TensorShape key_shape = MaybeVectorizeShape(key_shape_);
+    TensorShape value_shape = MaybeVectorizeShape(value_shape_);
+
+    // Compute the final expected shape of the value by starting with the shape
+    // of all keys, removing the dimensions particular to each key and then
+    // appending the shape of a single value.
+    TensorShape expected_value_shape = keys.shape();
+    for (int i = 0; i < key_shape.dims(); ++i) {
+      expected_value_shape.RemoveDim(expected_value_shape.dims() - 1);
+    }
+    expected_value_shape.AppendShape(value_shape);
+    if (values.shape() != expected_value_shape) {
+      return errors::InvalidArgument(
+          "Expected shape ", expected_value_shape.DebugString(),
+          " for value, got ", values.shape().DebugString());
+    }
     return Status::OK();
   }
 
@@ -737,7 +772,7 @@ class LookupTableInsertOp : public OpKernel {
 
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
-    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensors(keys, values));
+    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForInsert(keys, values));
     OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
   }
 };
@@ -797,7 +832,7 @@ class LookupTableImportOp : public OpKernel {
 
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
-    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensors(keys, values));
+    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForImport(keys, values));
     OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
   }
 };

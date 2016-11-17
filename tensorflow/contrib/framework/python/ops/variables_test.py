@@ -172,6 +172,14 @@ class VariablesTest(tf.test.TestCase):
       self.assertEquals([a], tf.contrib.framework.get_variables('A'))
       self.assertEquals([b], tf.contrib.framework.get_variables('B'))
 
+  def testGetVariablesWithScope(self):
+    with self.test_session():
+      with tf.variable_scope('A') as var_scope:
+        a = tf.contrib.framework.variable('a', [5])
+        b = tf.contrib.framework.variable('b', [5])
+      self.assertSetEqual(set([a, b]),
+                          set(tf.contrib.framework.get_variables(var_scope)))
+
   def testGetVariablesSuffix(self):
     with self.test_session():
       with tf.variable_scope('A'):

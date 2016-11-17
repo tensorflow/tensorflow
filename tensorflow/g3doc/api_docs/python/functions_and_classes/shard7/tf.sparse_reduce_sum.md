@@ -3,7 +3,7 @@
 Computes the sum of elements across dimensions of a SparseTensor.
 
 This Op takes a SparseTensor and is the sparse counterpart to
-`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
+`tf.reduce_sum()`.  In particular, this Op also returns a dense `Output`
 instead of a sparse one.
 
 Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
