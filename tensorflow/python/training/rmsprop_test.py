@@ -97,7 +97,7 @@ class RMSPropOptimizerTest(tf.test.TestCase):
             centered=centered)
 
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         mg0 = opt.get_slot(var0, "mg")
         self.assertEqual(mg0 is not None, centered)
@@ -172,7 +172,7 @@ class RMSPropOptimizerTest(tf.test.TestCase):
             epsilon=epsilon,
             centered=centered)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         mg0 = opt.get_slot(var0, "mg")
         self.assertEqual(mg0 is not None, centered)
@@ -230,7 +230,7 @@ class RMSPropOptimizerTest(tf.test.TestCase):
         opt = tf.train.RMSPropOptimizer(
             learning_rate=2.0, decay=0.9, momentum=0.0, epsilon=1.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         rms0 = opt.get_slot(var0, "rms")
         self.assertTrue(rms0 is not None)
@@ -292,7 +292,7 @@ class RMSPropOptimizerTest(tf.test.TestCase):
         opt = tf.train.RMSPropOptimizer(
             learning_rate=2.0, decay=0.9, momentum=0.5, epsilon=1e-5)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         rms0 = opt.get_slot(var0, "rms")
         self.assertTrue(rms0 is not None)

@@ -14,22 +14,28 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
-QueueRunner::QueueRunner() : started_(false) {}
+Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                        std::unique_ptr<QueueRunner>* result) {
+  result->reset(new QueueRunner());
+  return (*result)->Init(queue_runner_def);
+}
 
-QueueRunner::QueueRunner(const QueueRunnerDef& queue_runner_def)
-    : started_(false) {
-  TF_CHECK_OK(Init(queue_runner_def));
+Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
+                        Coordinator* coord,
+                        std::unique_ptr<QueueRunner>* result) {
+  result->reset(new QueueRunner());
+  (*result)->coord_ = coord;
+  return (*result)->Init(queue_runner_def);
 }
 
 Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
-  if (started_.load()) {
-    return Status(error::ALREADY_EXISTS, "QueueRunner is already running.");
-  }
   queue_name_ = queue_runner_def.queue_name();
+  enqueue_op_names_.clear();
   enqueue_op_names_.insert(enqueue_op_names_.end(),
                            queue_runner_def.enqueue_op_name().begin(),
                            queue_runner_def.enqueue_op_name().end());
@@ -47,9 +53,14 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
     }
   }
 
-  thread_pool_.reset(
-      new thread::ThreadPool(Env::Default(), queue_name_, runs_));
-  should_stop_ = false;
+  int nthreads = runs_;
+  if (coord_) {
+    // One more thread to call Stop()
+    nthreads++;
+  }
+  thread_pool_.reset(new thread::ThreadPool(
+      Env::Default(), SanitizeThreadSuffix(queue_name_), nthreads));
+
   return Status::OK();
 }
 
@@ -59,76 +70,104 @@ QueueRunner::~QueueRunner() {
   Join();
 }
 
-Status QueueRunner::Start(Session* sess) {
-  if (runs_ == 0) {
-    return Status(
-        error::INVALID_ARGUMENT,
-        "No enqueue ops to run. You may want to Init the QueueRunner first.");
-  }
-  started_ = true;
+Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
+
+Status QueueRunner::Start(Session* sess, int wait_for) {
+  counter_.reset(new BlockingCounter(runs_));
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
   }
+  if (coord_) {
+    thread_pool_->Schedule(std::bind(&QueueRunner::Stop, this, sess));
+  }
+  // Wait for up to 'wait_for' milliseconds.
+  if (wait_for > 0) {
+    if (!counter_->WaitFor(std::chrono::milliseconds(wait_for))) {
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Queues not fed before the timeout");
+    }
+    // Check the status of the queue runner as well as the result of the enqueue
+    // operations.
+    mutex_lock l(mu_);
+    if (!enqueue_status_.ok()) {
+      return enqueue_status_;
+    } else {
+      return status_;
+    }
+  }
   return Status::OK();
 }
 
-Status QueueRunner::Stop(Session* sess) {
-  should_stop_ = true;
+void QueueRunner::Stop(Session* sess) {
+  DCHECK(coord_ != nullptr);
   if (cancel_op_name_.empty()) {
-    return Status::OK();
-  } else {
-    return sess->Run({}, {}, {cancel_op_name_}, nullptr);
+    return;
   }
+  if (coord_ != nullptr) {
+    coord_->WaitForStop();
+  }
+  UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
 }
 
 Status QueueRunner::Join() {
   thread_pool_.reset();
-  started_ = false;
+  mutex_lock l(mu_);
   return status_;
 }
 
-void QueueRunner::Run(Session* sess, const string& enqueue_op) {
-  bool decremented = false;
-  while (!should_stop_.load()) {
-    auto status = sess->Run({}, {}, {enqueue_op}, nullptr);
-    if (status.ok()) {
-      continue;
-    } else if (queue_closed_exception_types_.count(
-                   static_cast<int>(status.code())) > 0) {
-      mutex_lock l(mu_);
-      runs_--;
-      decremented = true;
-      should_stop_ = true;
+void QueueRunner::UpdateStatus(const Status& status) {
+  {
+    mutex_lock l(mu_);
+    if (!status_.ok() || status.ok() || IsQueueClosed(status)) {
+      return;
+    }
+    status_ = status;
+  }
+  if (coord_) {
+    coord_->ReportStatus(status);
+  }
+}
 
-      // If all enqueue ops have finished, run the close op.
-      if (runs_ == 0 && !close_op_name_.empty()) {
-        auto s = sess->Run({}, {}, {close_op_name_}, nullptr);
-        if (!s.ok() && status_.ok() &&
-            queue_closed_exception_types_.count(static_cast<int>(s.code())) ==
-                0) {
-          status_ = s;
-        }
-      }
-    } else {
-      {
+void QueueRunner::Run(Session* sess, const string& enqueue_op) {
+  bool first_iteration = true;
+  Status status;
+  while (status.ok()) {
+    if (coord_ && coord_->ShouldStop()) {
+      break;
+    }
+    status = sess->Run({}, {}, {enqueue_op}, nullptr);
+    if (first_iteration) {
+      if (!status.ok()) {
         mutex_lock l(mu_);
-        should_stop_ = true;
-        // Only record the first failure status.
-        if (status_.ok()) {
-          status_ = status;
-        }
+        enqueue_status_ = status;
       }
-      // Stop the queue runner immediately to propagate the error to
-      // subsequent queues.
-      Stop(sess);
+      counter_->DecrementCount();
+      first_iteration = false;
     }
   }
-
-  if (!decremented) {
+  bool last_run = false;
+  {
     mutex_lock l(mu_);
     runs_--;
+    last_run = (runs_ == 0);
   }
+
+  if (IsQueueClosed(status)) {
+    if (last_run && !close_op_name_.empty()) {
+      UpdateStatus(sess->Run({}, {}, {close_op_name_}, nullptr));
+    }
+  } else if (!status.ok()) {
+    UpdateStatus(status);
+    if (coord_) {
+      coord_->RequestStop();
+    }
+  }
+}
+
+Status QueueRunner::GetStatus() {
+  mutex_lock l(mu_);
+  return status_;
 }
 
 }  // namespace tensorflow

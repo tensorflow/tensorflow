@@ -147,7 +147,9 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
+                   const std::vector<ShapeHandle>& input_tensors_as_shapes,
+                   const std::vector<ShapeHandle>& input_handle_shapes,
+                   const std::vector<DataType>& input_handle_dtypes);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
@@ -162,7 +164,9 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<ShapeHandle>& input_tensors_as_shapes);
+                   const std::vector<TensorShapeProto>& input_tensors_as_shapes,
+                   const std::vector<TensorShapeProto>& input_handle_shapes,
+                   const std::vector<DataType>& input_handle_dtypes);
 
   ~InferenceContext();
 
@@ -231,12 +235,17 @@ class InferenceContext {
     }
     return s->dims_[idx];
   }
-  int32 Rank(ShapeHandle s) { return s->rank_; }
-  bool RankKnown(ShapeHandle s) { return Rank(s) != kUnknownRank; }
-  inline int64 Value(DimensionOrConstant d) {
+  int32 Rank(ShapeHandle s) const {
+    DCHECK(s.IsSet());
+    return s->rank_;
+  }
+  bool RankKnown(ShapeHandle s) const {
+    return (s.IsSet() && (Rank(s) != kUnknownRank));
+  }
+  inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
-  inline bool ValueKnown(DimensionOrConstant d) {
+  inline bool ValueKnown(DimensionOrConstant d) const {
     return Value(d) != kUnknownDim;
   }
 
@@ -391,48 +400,28 @@ class InferenceContext {
 
   Status construction_status() const { return construction_status_; }
 
-  // Validates the 3 component tensors of a sparse tensor have the proper
-  // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
-  Status ValidateSparseTensor(ShapeHandle indices_shape,
-                              ShapeHandle values_shape,
-                              ShapeHandle shape_shape) {
-    // Validate ranks.
-    ShapeHandle unused_shape;
-    TF_RETURN_IF_ERROR(WithRank(indices_shape, 2, &unused_shape));
-    TF_RETURN_IF_ERROR(WithRank(values_shape, 1, &unused_shape));
-    TF_RETURN_IF_ERROR(WithRank(shape_shape, 1, &unused_shape));
-
-    // Number of elements in indices and values must match.
-    DimensionHandle num_index_elements_dim = Dim(indices_shape, 0);
-    if (ValueKnown(num_index_elements_dim)) {
-      DimensionHandle num_values_elements_dim = Dim(values_shape, 0);
-      if (ValueKnown(num_values_elements_dim)) {
-        int64 num_index_elements = Value(num_index_elements_dim);
-        int64 num_values_elements = Value(num_values_elements_dim);
-        if (num_index_elements != num_values_elements) {
-          return errors::InvalidArgument(
-              "Number of elements in index (", num_index_elements,
-              ") and values (", num_values_elements, ") do not match.");
-        }
-      }
-    }
-
-    // Rank embedded in indices must match shape.
-    DimensionHandle index_rank_dim = Dim(indices_shape, 1);
-    if (ValueKnown(index_rank_dim)) {
-      DimensionHandle shape_rank_dim = Dim(shape_shape, 0);
-      if (ValueKnown(shape_rank_dim)) {
-        int64 index_rank = Value(index_rank_dim);
-        int32 shape_rank = Value(shape_rank_dim);
-        if (index_rank != shape_rank) {
-          return errors::InvalidArgument("Index rank (", index_rank,
-                                         ") and shape rank (", shape_rank,
-                                         ") do not match.");
-        }
-      }
-    }
-
-    return Status::OK();
+  // Methods to propagate shape and dtype on edges of handles. Handles are the
+  // dtype DT_RESOURCE which can be used to access state stored in a
+  // ResourceManager. When ops (such as variables) consume these handles to
+  // produce tensors they might need to know side-information about the shapes
+  // and dtypes of tensors which can be accessed via the handle. These methods
+  // propagate that information. Output handle dtypes and shapes are ignored if
+  // the output tensor is not of type DT_RESOURCE.
+  ShapeHandle input_handle_shape(int idx);
+  DataType input_handle_dtype(int idx) const {
+    return input_handle_dtype_[idx];
+  }
+  void set_output_handle_shape(int idx, ShapeHandle shape) {
+    output_handle_shape_[idx] = shape;
+  }
+  void set_output_handle_dtype(int idx, DataType dtype) {
+    output_handle_dtype_[idx] = dtype;
+  }
+  ShapeHandle output_handle_shape(int idx) const {
+    return output_handle_shape_[idx];
+  }
+  DataType output_handle_dtype(int idx) const {
+    return output_handle_dtype_[idx];
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,
@@ -481,7 +470,8 @@ class InferenceContext {
   void PreInputInit(const OpDef& op_def,
                     const std::vector<const Tensor*>& input_tensors,
                     const std::vector<ShapeHandle>& input_tensors_as_shapes);
-  void PostInputInit();
+  void PostInputInit(const std::vector<ShapeHandle>& input_handle_shapes,
+                     const std::vector<DataType>& input_handle_dtypes);
 
   DimensionHandle GetDimension(const DimensionOrConstant& d);
 
@@ -509,6 +499,11 @@ class InferenceContext {
   // Can have fewer elements than inputs_.
   std::vector<ShapeHandle> input_tensors_as_shapes_;
   std::vector<bool> requested_input_tensor_as_partial_shape_;
+
+  std::vector<ShapeHandle> input_handle_shape_;
+  std::vector<DataType> input_handle_dtype_;
+  std::vector<ShapeHandle> output_handle_shape_;
+  std::vector<DataType> output_handle_dtype_;
 
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;

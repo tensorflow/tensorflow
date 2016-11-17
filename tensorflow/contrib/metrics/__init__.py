@@ -31,7 +31,7 @@ to use the `streaming_mean`:
 ```python
 value = ...
 mean_value, update_op = tf.contrib.metrics.streaming_mean(values)
-sess.run(tf.initialize_local_variables())
+sess.run(tf.local_variables_initializer())
 
 for i in range(number_of_batches):
   print('Mean after batch %d: %f' % (i, update_op.eval())
@@ -50,7 +50,7 @@ In the above example, calling streaming_mean creates a pair of state variables
 that will contain (1) the running sum and (2) the count of the number of samples
 in the sum.  Because the streaming metrics use local variables,
 the Initialization stage is performed by running the op returned
-by `tf.initialize_local_variables()`. It sets the sum and count variables to
+by `tf.local_variables_initializer()`. It sets the sum and count variables to
 zero.
 
 Next, Aggregation is performed by examining the current state of `values`
@@ -71,7 +71,7 @@ accuracy, update_op_acc = tf.contrib.metrics.streaming_accuracy(
 error, update_op_error = tf.contrib.metrics.streaming_mean_absolute_error(
     labels, predictions)
 
-sess.run(tf.initialize_local_variables())
+sess.run(tf.local_variables_initializer())
 for batch in range(num_batches):
   sess.run([update_op_acc, update_op_error])
 
@@ -142,6 +142,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
 from tensorflow.contrib.metrics.python.metrics import *
+# pylint: enable=wildcard-import
 from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion_matrix
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
@@ -176,6 +177,6 @@ from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size
 from tensorflow.contrib.metrics.python.ops.set_ops import set_union
 from tensorflow.python.util.all_util import make_all
-
+# pylint: enable=unused-import,line-too-long
 
 __all__ = make_all(__name__)

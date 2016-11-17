@@ -267,7 +267,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
-        variables.all_variables())
+        variables.global_variables())
 
     with ops.name_scope(None, self._name):
       for grad, var in grads_and_vars:
@@ -332,7 +332,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
         with ops.control_dependencies([update_op]):
           # Sync_op needs to insert tokens to the token queue at the end of the
           # step so the replicas can fetch them to start the next step.
-          tokens = array_ops.fill([self._tokens_per_step], global_step.ref())
+          tokens = array_ops.fill([self._tokens_per_step], global_step)
           sync_op = sync_token_queue.enqueue_many((tokens,))
 
         if self._variable_averages is not None:
@@ -433,8 +433,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
 
     if num_tokens > 0:
       with ops.device(self._global_step.device), ops.name_scope(""):
-        tokens = array_ops.fill([num_tokens],
-                                self._global_step.ref())
+        tokens = array_ops.fill([num_tokens], self._global_step)
         init_tokens = self._sync_token_queue.enqueue_many((tokens,))
     else:
       init_tokens = control_flow_ops.no_op(name="no_init_tokens")
@@ -748,7 +747,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
     # Check staleness. Note that this has to be ref(), otherwise identity will
     # be accessed and it will be old values.
-    local_step = array_ops.slice(self._local_steps.ref(),
+    local_step = array_ops.slice(self._local_steps._ref(),  # pylint: disable=protected-access
                                  array_ops.reshape(self._replica_id, (1,)),
                                  [1],
                                  name="get_local_step")

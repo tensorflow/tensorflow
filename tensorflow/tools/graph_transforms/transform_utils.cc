@@ -64,5 +64,18 @@ void FilterGraphDef(const GraphDef& input_graph_def,
   }
 }
 
+void RemoveAttributes(const GraphDef& input_graph_def,
+                      const std::vector<string>& attributes,
+                      GraphDef* output_graph_def) {
+  output_graph_def->mutable_node()->Clear();
+  for (const NodeDef& node : input_graph_def.node()) {
+    NodeDef* new_node = output_graph_def->mutable_node()->Add();
+    new_node->CopyFrom(node);
+    for (const string& attribute : attributes) {
+      new_node->mutable_attr()->erase(attribute);
+    }
+  }
+}
+
 }  // namespace graph_transforms
 }  // namespace tensorflow

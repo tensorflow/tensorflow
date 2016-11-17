@@ -57,8 +57,8 @@ struct EvaluateParams {
 };
 
 void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
-              int32 end, std::vector<int32>* final_finished_leaves,
-              std::vector<int32>* final_stale) {
+              int32 end, std::unordered_set<int32>* final_finished_leaves,
+              std::unordered_set<int32>* final_stale) {
   const auto leaves = params.leaves.unaligned_flat<int32>();
   const auto node_map = params.node_to_accumulator.unaligned_flat<int32>();
   const auto sums = params.accumulator_sums.tensor<float, 2>();
@@ -77,9 +77,10 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
     simple_philox.reset(new random::SimplePhilox(&rnd_gen));
   }
 
+  std::unordered_set<int32> visited;
   for (int32 i = start; i < end; i++) {
     const int32 leaf = internal::SubtleMustCopy(leaves(i));
-    if (leaf == -1) {
+    if (leaf == -1 || visited.find(leaf) != visited.end()) {
       continue;
     }
     if (!FastBoundsCheck(leaf, node_map.size())) {
@@ -119,11 +120,12 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
     if (finished) {
       finished_leaves.push_back(leaf);
     }
+
+    visited.insert(leaf);
   }
   mutex_lock m(*mutex);
-  final_finished_leaves->insert(final_finished_leaves->end(),
-                                finished_leaves.begin(), finished_leaves.end());
-  final_stale->insert(final_stale->end(), stale.begin(), stale.end());
+  final_finished_leaves->insert(finished_leaves.begin(), finished_leaves.end());
+  final_stale->insert(stale.begin(), stale.end());
 }
 }  // namespace
 
@@ -132,11 +134,9 @@ REGISTER_OP("FinishedNodes")
     .Attr("num_split_after_samples: int")
     .Attr("min_split_samples: int")
     .Attr("dominate_fraction: float = 0.99")
-    // TODO(thomaswc): Test out bootstrap on several datasets, confirm it
-    // works well, make it the default.
     .Attr(
         "dominate_method:"
-        " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'hoeffding'")
+        " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'bootstrap'")
     .Attr("random_seed: int = 0")
     .Input("leaves: int32")
     .Input("node_to_accumulator: int32")
@@ -300,8 +300,8 @@ class FinishedNodes : public OpKernel {
       }
     }
 
-    std::vector<int32> finished_leaves;
-    std::vector<int32> stale;
+    std::unordered_set<int32> finished_leaves;
+    std::unordered_set<int32> stale;
     mutex m;
     // Require at least 100 leaves per thread.  I guess that's about 800 cost
     // per unit.  This isn't well defined.

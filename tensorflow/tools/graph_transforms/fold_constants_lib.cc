@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -136,15 +138,21 @@ Status FoldConstants(const GraphDef& input_graph_def,
                      const std::vector<string>& inputs,
                      const std::vector<string>& outputs,
                      GraphDef* output_graph_def) {
+  // Some older GraphDefs have saved _output_shapes attributes which are out of
+  // date and cause import errors, so clean them up first.
+  GraphDef cleaned_graph_def;
+  RemoveAttributes(input_graph_def, {"_output_shapes"}, &cleaned_graph_def);
   Graph input_graph(OpRegistry::Global());
   ImportGraphDefOptions import_opts;
   TF_RETURN_IF_ERROR(
-      ImportGraphDef(import_opts, input_graph_def, &input_graph, nullptr));
+      ImportGraphDef(import_opts, cleaned_graph_def, &input_graph, nullptr));
   DeviceAttributes device_attributes;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       &input_graph, inputs, outputs, {}, device_attributes));
-  DoConstantFolding(ConstantFoldingOptions(), nullptr, Env::Default(), nullptr,
-                    &input_graph);
+  if (!DoConstantFolding(ConstantFoldingOptions(), nullptr, Env::Default(),
+                         nullptr, &input_graph)) {
+    return errors::InvalidArgument("Constant folding failed");
+  }
   GraphDef folded_graph_def;
   input_graph.ToGraphDef(&folded_graph_def);
   GraphDef send_recvs_replaced;

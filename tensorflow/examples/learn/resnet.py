@@ -132,7 +132,10 @@ def res_net(x, y, activation=tf.nn.relu):
   net = tf.reshape(net, [-1, net_shape[1] * net_shape[2] * net_shape[3]])
 
   target = tf.one_hot(y, depth=10, dtype=tf.float32)
-  return learn.models.logistic_regression(net, target)
+  logits = tf.contrib.layers.fully_connected(net, 10, activation_fn=None)
+  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+  return tf.softmax(logits), loss
+
 
 def res_net_model(x, y):
   prediction, loss = res_net(x, y)

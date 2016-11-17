@@ -99,7 +99,7 @@ sess = tf.Session()
 # The call 'run(product)' thus causes the execution of three ops in the
 # graph: the two constants and matmul.
 #
-# The output of the op is returned in 'result' as a numpy `ndarray` object.
+# The output of the matmul is returned in 'result' as a numpy `ndarray` object.
 result = sess.run(product)
 print(result)
 # ==> [[ 12.]]
@@ -236,7 +236,7 @@ update = tf.assign(state, new_value)
 
 # Variables must be initialized by running an `init` Op after having
 # launched the graph.  We first have to add the `init` Op to the graph.
-init_op = tf.initialize_all_variables()
+init_op = tf.global_variables_initializer()
 
 # Launch the graph and run the ops.
 with tf.Session() as sess:

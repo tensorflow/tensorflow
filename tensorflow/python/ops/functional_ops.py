@@ -30,9 +30,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -301,7 +301,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  if isinstance(elems, ops.SparseTensor):
+  if isinstance(elems, sparse_tensor.SparseTensor):
     raise TypeError(
         "To perform a map on the values of a sparse tensor use either "
         " SparseTensor(input.indices, fn(input.values), input.shape) or "
@@ -597,6 +597,3 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(None)
 
     return output_pack(results_flat)
-
-
-ops.RegisterShape("SymbolicGradient")(common_shapes.call_cpp_shape_fn)

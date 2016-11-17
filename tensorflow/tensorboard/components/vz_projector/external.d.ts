@@ -38,3 +38,14 @@ interface Weblas {
 
 declare let numeric: any;
 declare let weblas: Weblas;
+
+interface AnalyticsEventType {
+  hitType: string;
+  page?: string;
+  eventCategory?: string;
+  eventAction?: string;
+  eventLabel?: string;
+  eventValue?: number;
+}
+
+declare let ga: (command: string, eventObj: AnalyticsEventType) => void;

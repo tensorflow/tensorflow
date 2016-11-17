@@ -31,9 +31,20 @@ InferenceContext::InferenceContext(
     const NodeDef* node_def, const OpDef& op_def,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
-    const std::vector<ShapeHandle>& input_tensors_as_shapes)
+    const std::vector<TensorShapeProto>& input_tensors_as_shapes,
+    const std::vector<TensorShapeProto>& input_handle_shapes,
+    const std::vector<DataType>& input_handle_dtypes)
     : node_def_(*CHECK_NOTNULL(node_def)) {
-  PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
+  std::vector<ShapeHandle> input_tensors_as_shape_handles;
+  for (const TensorShapeProto& p : input_tensors_as_shapes) {
+    ShapeHandle shape;
+    construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
+    if (!construction_status_.ok()) {
+      return;
+    }
+    input_tensors_as_shape_handles.push_back(shape);
+  }
+  PreInputInit(op_def, input_tensors, input_tensors_as_shape_handles);
   if (!construction_status_.ok()) return;
   for (const TensorShapeProto& p : input_shapes) {
     ShapeHandle shape;
@@ -43,19 +54,30 @@ InferenceContext::InferenceContext(
     }
     inputs_.push_back(shape);
   }
-  PostInputInit();
+  std::vector<ShapeHandle> handle_shapes;
+  for (const auto& p : input_handle_shapes) {
+    ShapeHandle shape;
+    construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
+    if (!construction_status_.ok()) {
+      return;
+    }
+    handle_shapes.push_back(shape);
+  }
+  PostInputInit(handle_shapes, input_handle_dtypes);
 }
 
 InferenceContext::InferenceContext(
     const NodeDef* node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
-    const std::vector<ShapeHandle>& input_tensors_as_shapes)
+    const std::vector<ShapeHandle>& input_tensors_as_shapes,
+    const std::vector<ShapeHandle>& input_handle_shapes,
+    const std::vector<DataType>& input_handle_dtypes)
     : node_def_(*CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
-  PostInputInit();
+  PostInputInit(input_handle_shapes, input_handle_dtypes);
 }
 
 InferenceContext::~InferenceContext() {
@@ -124,13 +146,42 @@ void InferenceContext::PreInputInit(
   for (int i = 0; i < num_outputs; ++i) {
     outputs_.push_back(nullptr);
   }
+  output_handle_shape_.reserve(num_outputs);
+  for (int i = 0; i < num_outputs; ++i) {
+    output_handle_shape_.push_back(UnknownShape());
+  }
+  output_handle_dtype_ = std::vector<DataType>(num_outputs, DT_INVALID);
 }
 
-void InferenceContext::PostInputInit() {
+void InferenceContext::PostInputInit(
+    const std::vector<ShapeHandle>& input_handle_shapes,
+    const std::vector<DataType>& input_handle_dtypes) {
   int num_inputs_from_node_def = 0;
   for (const auto& e : input_name_map_) {
     num_inputs_from_node_def =
         std::max(num_inputs_from_node_def, e.second.second);
+  }
+
+  // Allow passing empty shapes/dtypes to avoid changing every single test.
+  if (input_handle_shapes.empty()) {
+    input_handle_shape_.resize(inputs_.size());
+  } else {
+    input_handle_shape_ = input_handle_shapes;
+    if (input_handle_shape_.size() != inputs_.size()) {
+      construction_status_ = errors::InvalidArgument(
+          "Wrong number of handle shapes passed; expected ", inputs_.size(),
+          " got ", input_handle_shape_.size());
+    }
+  }
+  if (input_handle_dtypes.empty()) {
+    input_handle_dtype_ = std::vector<DataType>(inputs_.size(), DT_INVALID);
+  } else {
+    input_handle_dtype_ = input_handle_dtypes;
+    if (input_handle_dtype_.size() != inputs_.size()) {
+      construction_status_ = errors::InvalidArgument(
+          "Wrong number of handle dtypes passed; expected ", inputs_.size(),
+          " got ", input_handle_dtype_.size());
+    }
   }
 
   if (inputs_.size() != num_inputs_from_node_def) {
@@ -735,6 +786,13 @@ Status InferenceContext::AttachContext(const Status& status) {
       "') with input shapes: ", str_util::Join(input_shapes, ", "), ".");
   return Status(status.code(),
                 strings::StrCat(status.error_message(), error_context));
+}
+
+ShapeHandle InferenceContext::input_handle_shape(int idx) {
+  if (!input_handle_shape_[idx].IsSet()) {
+    input_handle_shape_[idx] = UnknownShape();
+  }
+  return input_handle_shape_[idx];
 }
 
 // -----------------------------------------------------------------------------

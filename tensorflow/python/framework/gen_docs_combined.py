@@ -67,12 +67,14 @@ def module_names():
       "tf.contrib.ffmpeg",
       "tf.contrib.framework",
       "tf.contrib.graph_editor",
+      "tf.contrib.integrate",
       "tf.contrib.layers",
       "tf.contrib.learn",
       "tf.contrib.learn.monitors",
       "tf.contrib.losses",
-      "tf.contrib.rnn",
       "tf.contrib.metrics",
+      "tf.contrib.rnn",
+      "tf.contrib.solvers",
       "tf.contrib.training",
       "tf.contrib.util",
   ]
@@ -220,6 +222,7 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
       library("contrib.graph_editor", "Graph Editor (contrib)",
               tf.contrib.graph_editor),
+      library("contrib.integrate", "Integrate (contrib)", tf.contrib.integrate),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.learn.monitors", "Monitors (contrib)",
@@ -252,7 +255,8 @@ EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
                      "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
                      "tf.contrib.framework.assert_global_step",
                      "tf.contrib.framework.get_global_step",
-                     "tf.contrib.learn.NanLossDuringTrainingError"])
+                     "tf.contrib.learn.NanLossDuringTrainingError",
+                     "tf.contrib.layers.stack"])
 
 
 def main(unused_argv):

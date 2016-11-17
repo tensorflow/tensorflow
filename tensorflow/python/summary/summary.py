@@ -15,6 +15,9 @@
 
 """## Generation of summaries.
 
+### Class for writing Summaries
+@@FileWriter
+
 ### Summary Ops
 @@tensor_summary
 @@scalar
@@ -35,10 +38,16 @@ from __future__ import print_function
 
 import re as _re
 
-import six
-
 from google.protobuf import json_format as _json_format
-from tensorflow.core.framework import summary_pb2 as _summary_pb2
+# exports Summary, SummaryDescription, Event, TaggedRunMetadata, SessionLog
+# pylint: disable=unused-import
+from tensorflow.core.framework.summary_pb2 import Summary
+from tensorflow.core.framework.summary_pb2 import SummaryDescription
+from tensorflow.core.util.event_pb2 import Event
+from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.core.util.event_pb2 import TaggedRunMetadata
+# pylint: enable=unused-import
+
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
@@ -47,8 +56,12 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 from tensorflow.python.platform import tf_logging as _logging
-from tensorflow.python.util.all_util import remove_undocumented
+# exports FileWriter
+# pylint: disable=unused-import
+from tensorflow.python.summary.writer.writer import FileWriter
+# pylint: enable=unused-import
 from tensorflow.python.util import compat as _compat
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _collect(val, collections, default_collections):
@@ -60,6 +73,7 @@ def _collect(val, collections, default_collections):
 
 _INVALID_TAG_CHARACTERS = _re.compile(r'[^-/\w\.]')
 
+
 def _clean_tag(name):
   # In the past, the first argument to summary ops was a tag, which allowed
   # arbitrary characters. Now we are changing the first argument to be the node
@@ -67,12 +81,14 @@ def _clean_tag(name):
   # take advantage of the tf name scope system) but risks breaking existing
   # usage, because a much smaller set of characters are allowed in node names.
   # This function replaces all illegal characters with _s, and logs a warning.
+  # It also strips leading slashes from the name.
   if name is not None:
     new_name = _INVALID_TAG_CHARACTERS.sub('_', name)
+    new_name = new_name.lstrip('/')  # Remove leading slashes
     if new_name != name:
-      _logging.warning(
-          'Summary tag name %s has illegal chars; replacing with underscores.' %
-          name)
+      _logging.info(
+          'Summary name %s is illegal; using %s instead.' %
+          (name, new_name))
       name = new_name
   return name
 
@@ -309,9 +325,13 @@ def get_summary_description(node_def):
   if node_def.op != 'TensorSummary':
     raise ValueError("Can't get_summary_description on %s" % node_def.op)
   description_str = _compat.as_str_any(node_def.attr['description'].s)
-  summary_description = _summary_pb2.SummaryDescription()
+  summary_description = SummaryDescription()
   _json_format.Parse(description_str, summary_description)
   return summary_description
 
 
-remove_undocumented(__name__, [])
+_allowed_symbols = [
+    'Summary', 'SummaryDescription', 'Event', 'TaggedRunMetadata', 'SessionLog'
+]
+
+remove_undocumented(__name__, _allowed_symbols)

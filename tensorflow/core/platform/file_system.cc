@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sys/stat.h>
+#include <algorithm>
 #include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -21,18 +22,34 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
 namespace {
 
-constexpr int32 kNumThreads = 8;
+constexpr int kNumThreads = 8;
+
+// Run a function in parallel using a ThreadPool, but skip the ThreadPool
+// on the iOS platform due to its problems with more than a few threads.
+void ForEach(int first, int last, std::function<void(int)> f) {
+#if TARGET_OS_IPHONE
+  for (int i = first; i < last; i++) {
+    f(i);
+  }
+#else
+  int num_threads = std::min(kNumThreads, last - first);
+  thread::ThreadPool threads(Env::Default(), "ForEach", num_threads);
+  for (int i = first; i < last; i++) {
+    threads.Schedule([f, i] { f(i); });
+  }
+#endif
+}
 
 }  // anonymous namespace
 
@@ -44,9 +61,7 @@ string FileSystem::TranslateName(const string& name) const {
 
 Status FileSystem::IsDirectory(const string& name) {
   // Check if path exists.
-  if (!FileExists(name)) {
-    return Status(tensorflow::error::NOT_FOUND, "Path not found");
-  }
+  TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
@@ -60,43 +75,6 @@ RandomAccessFile::~RandomAccessFile() {}
 WritableFile::~WritableFile() {}
 
 FileSystemRegistry::~FileSystemRegistry() {}
-
-void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
-              StringPiece* path) {
-  // 0. Parse scheme
-  // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
-  // TODO(keveman): Allow "+" and "-" in the scheme.
-  if (!strings::Scanner(remaining)
-           .One(strings::Scanner::LETTER)
-           .Many(strings::Scanner::LETTER_DIGIT_DOT)
-           .StopCapture()
-           .OneLiteral("://")
-           .GetResult(&remaining, scheme)) {
-    // If there's no scheme, assume the entire string is a path.
-    scheme->clear();
-    host->clear();
-    *path = remaining;
-    return;
-  }
-
-  // 1. Parse host
-  if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
-    // No path, so the rest of the URI is the host.
-    *host = remaining;
-    path->clear();
-    return;
-  }
-
-  // 2. The rest is the path
-  *path = remaining;
-}
-
-string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
-  if (scheme.empty()) {
-    return path.ToString();
-  }
-  return strings::StrCat(scheme, "://", host, path);
-}
 
 Status FileSystem::GetMatchingPaths(const string& pattern,
                                     std::vector<string>* results) {
@@ -112,7 +90,12 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
   std::deque<string> dir_q;
   dir_q.push_back(dir);
   Status ret;  // Status to return.
-  std::vector<bool> children_dir_status;  // holds is_dir status for children.
+  // children_dir_status holds is_dir status for children. The ints are used
+  // as booleans.
+  // Note: children_dir_status can't be declared as a std::vector<bool>.
+  // std::vector has a specialization for the type bool. std::vector<bool> is
+  // implemented as a bitset and accesses to elements are not atomic.
+  std::vector<int> children_dir_status;
   while (!dir_q.empty()) {
     string current_dir = dir_q.front();
     dir_q.pop_front();
@@ -121,16 +104,12 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
     ret.Update(s);
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
-    thread::ThreadPool* children_threads =
-        new thread::ThreadPool(Env::Default(), "TraverseChildren", kNumThreads);
     children_dir_status.resize(children.size());
-    for (int i = 0; i < children.size(); ++i) {
-      const string child_path = io::JoinPath(current_dir, children[i]);
-      children_threads->Schedule([this, child_path, i, &children_dir_status] {
-        children_dir_status[i] = this->IsDirectory(child_path).ok();
-      });
-    }
-    delete children_threads;
+    ForEach(0, children.size(),
+            [this, &current_dir, &children, &children_dir_status](int i) {
+              const string child_path = io::JoinPath(current_dir, children[i]);
+              children_dir_status[i] = IsDirectory(child_path).ok();
+            });
     for (int i = 0; i < children.size(); ++i) {
       const string child_path = io::JoinPath(current_dir, children[i]);
       // In case the child_path doesn't start with the fixed_prefix then we bail
@@ -162,9 +141,10 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   *undeleted_files = 0;
   *undeleted_dirs = 0;
   // Make sure that dirname exists;
-  if (!FileExists(dirname)) {
+  Status exists_status = FileExists(dirname);
+  if (!exists_status.ok()) {
     (*undeleted_dirs)++;
-    return Status(error::NOT_FOUND, "Directory doesn't exist");
+    return exists_status;
   }
   std::deque<string> dir_q;      // Queue for the BFS
   std::vector<string> dir_list;  // List of all dirs discovered
@@ -218,10 +198,16 @@ Status FileSystem::DeleteRecursively(const string& dirname,
 
 Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   StringPiece scheme, host, remaining_dir;
-  ParseURI(dirname, &scheme, &host, &remaining_dir);
+  io::ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
-  while (!FileExists(CreateURI(scheme, host, remaining_dir)) &&
-         !remaining_dir.empty()) {
+  while (!remaining_dir.empty()) {
+    Status status = FileExists(io::CreateURI(scheme, host, remaining_dir));
+    if (status.ok()) {
+      break;
+    }
+    if (status.code() != error::Code::NOT_FOUND) {
+      return status;
+    }
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));
@@ -236,7 +222,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   string built_path = remaining_dir.ToString();
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
-    TF_RETURN_IF_ERROR(CreateDir(CreateURI(scheme, host, built_path)));
+    TF_RETURN_IF_ERROR(CreateDir(io::CreateURI(scheme, host, built_path)));
   }
   return Status::OK();
 }

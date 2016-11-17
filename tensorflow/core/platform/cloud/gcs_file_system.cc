@@ -44,7 +44,7 @@ constexpr char kGcsUriBase[] = "https://www.googleapis.com/storage/v1/";
 constexpr char kGcsUploadUriBase[] =
     "https://www.googleapis.com/upload/storage/v1/";
 constexpr char kStorageHost[] = "storage.googleapis.com";
-constexpr size_t kBufferSize = 1024 * 1024;  // In bytes.
+constexpr size_t kReadAppendableFileBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;
 // Initial delay before retrying a GCS upload.
 // Subsequent delays can be larger due to exponential back-off.
@@ -81,7 +81,7 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::Internal("bucket and object cannot be null.");
   }
   StringPiece scheme, bucketp, objectp;
-  ParseURI(fname, &scheme, &bucketp, &objectp);
+  io::ParseURI(fname, &scheme, &bucketp, &objectp);
   if (scheme != "gs") {
     return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
                                    fname);
@@ -116,6 +116,26 @@ string MaybeAppendSlash(const string& name) {
 // to be processed correctly: "gs://a/b" + "" should give "gs://a/b/".
 string JoinGcsPath(const string& path, const string& subpath) {
   return strings::StrCat(MaybeAppendSlash(path), subpath);
+}
+
+/// \brief Returns the given paths appending all their subfolders.
+///
+/// For every path X in the list, every subfolder in X is added to the
+/// resulting list.
+/// For example:
+///  - for 'a/b/c/d' it will append 'a', 'a/b' and 'a/b/c'
+///  - for 'a/b/c/' it will append 'a', 'a/b' and 'a/b/c'
+std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
+  std::set<string> result;
+  result.insert(paths.begin(), paths.end());
+  for (const string& path : paths) {
+    StringPiece subpath = io::Dirname(path);
+    while (!subpath.empty()) {
+      result.emplace(subpath.ToString());
+      subpath = io::Dirname(subpath);
+    }
+  }
+  return result;
 }
 
 Status ParseJson(StringPiece json, Json::Value* result) {
@@ -202,35 +222,30 @@ class GcsRandomAccessFile : public RandomAccessFile {
     mutex_lock lock(mu_);
     const bool range_start_included = offset >= buffer_start_offset_;
     const bool range_end_included =
-        offset + n <= buffer_start_offset_ + buffer_content_size_;
-    if (range_start_included && (range_end_included || buffer_reached_eof_)) {
+        offset + n <= buffer_start_offset_ + buffer_.size();
+    if (range_start_included && range_end_included) {
       // The requested range can be filled from the buffer.
       const size_t offset_in_buffer =
-          std::min<uint64>(offset - buffer_start_offset_, buffer_content_size_);
-      const auto copy_size =
-          std::min(n, buffer_content_size_ - offset_in_buffer);
-      std::memcpy(scratch, buffer_.get() + offset_in_buffer, copy_size);
+          std::min<uint64>(offset - buffer_start_offset_, buffer_.size());
+      const auto copy_size = std::min(n, buffer_.size() - offset_in_buffer);
+      std::copy(buffer_.begin() + offset_in_buffer,
+                buffer_.begin() + offset_in_buffer + copy_size, scratch);
       *result = StringPiece(scratch, copy_size);
     } else {
       // Update the buffer content based on the new requested range.
       const size_t desired_buffer_size = n + read_ahead_bytes_;
-      if (n > buffer_size_ || desired_buffer_size > 2 * buffer_size_) {
-        // Re-allocate only if buffer size increased significantly.
-        buffer_.reset(new char[desired_buffer_size]);
-        buffer_size_ = desired_buffer_size;
+      if (n > buffer_.capacity() ||
+          desired_buffer_size > 2 * buffer_.capacity()) {
+        // Re-allocate only if buffer capacity increased significantly.
+        buffer_.reserve(desired_buffer_size);
       }
 
       buffer_start_offset_ = offset;
-      buffer_content_size_ = 0;
-      StringPiece buffer_content;
-      TF_RETURN_IF_ERROR(
-          ReadFromGCS(offset, buffer_size_, &buffer_content, buffer_.get()));
-      buffer_content_size_ = buffer_content.size();
-      buffer_reached_eof_ = buffer_content_size_ < buffer_size_;
+      TF_RETURN_IF_ERROR(LoadBufferFromGCS());
 
       // Set the results.
-      *result = StringPiece(scratch, std::min(buffer_content_size_, n));
-      std::memcpy(scratch, buffer_.get(), result->size());
+      std::memcpy(scratch, buffer_.data(), std::min(buffer_.size(), n));
+      *result = StringPiece(scratch, std::min(buffer_.size(), n));
     }
 
     if (result->size() < n) {
@@ -244,9 +259,9 @@ class GcsRandomAccessFile : public RandomAccessFile {
   }
 
  private:
-  /// A helper function to actually read the data from GCS.
-  Status ReadFromGCS(uint64 offset, size_t n, StringPiece* result,
-                     char* scratch) const {
+  /// A helper function to actually read the data from GCS. This function loads
+  /// buffer_ from GCS based on its current capacity.
+  Status LoadBufferFromGCS() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     string auth_token;
     TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
 
@@ -256,8 +271,9 @@ class GcsRandomAccessFile : public RandomAccessFile {
         request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
                                         "/", request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
+    TF_RETURN_IF_ERROR(request->SetRange(
+        buffer_start_offset_, buffer_start_offset_ + buffer_.capacity() - 1));
+    TF_RETURN_IF_ERROR(request->SetResultBuffer(&buffer_));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                     bucket_, "/", object_);
     return Status::OK();
@@ -272,12 +288,9 @@ class GcsRandomAccessFile : public RandomAccessFile {
   // The buffer-related members need to be mutable, because they are modified
   // by the const Read() method.
   mutable mutex mu_;
-  mutable std::unique_ptr<char[]> buffer_ GUARDED_BY(mu_);
-  mutable size_t buffer_size_ GUARDED_BY(mu_) = 0;
+  mutable std::vector<char> buffer_ GUARDED_BY(mu_);
   // The original file offset of the first byte in the buffer.
   mutable size_t buffer_start_offset_ GUARDED_BY(mu_) = 0;
-  mutable size_t buffer_content_size_ GUARDED_BY(mu_) = 0;
-  mutable bool buffer_reached_eof_ GUARDED_BY(mu_) = false;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -430,7 +443,7 @@ class GcsWritableFile : public WritableFile {
     string auth_token;
     TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
 
-    std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+    std::vector<char> output_buffer;
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
     TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
@@ -440,9 +453,7 @@ class GcsWritableFile : public WritableFile {
     TF_RETURN_IF_ERROR(request->AddHeader("X-Upload-Content-Length",
                                           std::to_string(file_size)));
     TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
-    StringPiece response_piece;
-    TF_RETURN_IF_ERROR(
-        request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+    TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         request->Send(), " when initiating an upload to ", GetGcsPath());
     *session_uri = request->GetResponseHeader("Location");
@@ -600,7 +611,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
                                         std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
-  std::unique_ptr<char[]> buffer(new char[kBufferSize]);
+  std::unique_ptr<char[]> buffer(new char[kReadAppendableFileBufferSize]);
   Status status;
   uint64 offset = 0;
   StringPiece read_chunk;
@@ -610,10 +621,11 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   TF_RETURN_IF_ERROR(GetTmpFilename(&old_content_filename));
   std::ofstream old_content(old_content_filename, std::ofstream::binary);
   while (true) {
-    status = reader->Read(offset, kBufferSize, &read_chunk, buffer.get());
+    status = reader->Read(offset, kReadAppendableFileBufferSize, &read_chunk,
+                          buffer.get());
     if (status.ok()) {
       old_content << read_chunk;
-      offset += kBufferSize;
+      offset += kReadAppendableFileBufferSize;
     } else if (status.code() == error::OUT_OF_RANGE) {
       // Expected, this means we reached EOF.
       old_content << read_chunk;
@@ -649,19 +661,26 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-bool GcsFileSystem::FileExists(const string& fname) {
+Status GcsFileSystem::FileExists(const string& fname) {
   string bucket, object;
-  if (!ParseGcsPath(fname, true, &bucket, &object).ok()) {
-    LOG(ERROR) << "Could not parse GCS file name " << fname;
-    return false;
-  }
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
     bool result;
-    return BucketExists(bucket, &result).ok() && result;
+    TF_RETURN_IF_ERROR(BucketExists(bucket, &result));
+    if (result) {
+      return Status::OK();
+    }
   }
   bool result;
-  return (ObjectExists(bucket, object, &result).ok() && result) ||
-         (FolderExists(fname, &result).ok() && result);
+  TF_RETURN_IF_ERROR(ObjectExists(bucket, object, &result));
+  if (result) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(FolderExists(fname, &result));
+  if (result) {
+    return Status::OK();
+  }
+  return errors::NotFound("The specified path ", fname, " was not found.");
 }
 
 Status GcsFileSystem::ObjectExists(const string& bucket, const string& object,
@@ -695,20 +714,19 @@ Status GcsFileSystem::StatForObject(const string& bucket, const string& object,
   string auth_token;
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
-  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-  StringPiece response_piece;
-
+  std::vector<char> output_buffer;
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
       kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object),
       "?fields=size%2Cupdated")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  TF_RETURN_IF_ERROR(
-      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       request->Send(), " when reading metadata of gs://", bucket, "/", object);
 
+  StringPiece response_piece =
+      StringPiece(output_buffer.data(), output_buffer.size());
   Json::Value root;
   TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
 
@@ -754,14 +772,18 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
     return errors::Internal("'result' cannot be nullptr.");
   }
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 1, &children, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(dirname, 1, &children, true /* recursively */,
+                         true /* include_self_directory_marker */));
   *result = !children.empty();
   return Status::OK();
 }
 
 Status GcsFileSystem::GetChildren(const string& dirname,
                                   std::vector<string>* result) {
-  return GetChildrenBounded(dirname, UINT64_MAX, result, false);
+  return GetChildrenBounded(dirname, UINT64_MAX, result,
+                            false /* recursively */,
+                            false /* include_self_directory_marker */);
 }
 
 Status GcsFileSystem::GetMatchingPaths(const string& pattern,
@@ -776,11 +798,15 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
                                    pattern);
   }
   std::vector<string> all_files;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dir, UINT64_MAX, &all_files, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(dir, UINT64_MAX, &all_files, true /* recursively */,
+                         false /* include_self_directory_marker */));
 
-  // Match all obtained files to the input pattern.
-  for (const auto& f : all_files) {
-    const string& full_path = io::JoinPath(dir, f);
+  const auto& files_and_folders = AddAllSubpaths(all_files);
+
+  // Match all obtained paths to the input pattern.
+  for (const auto& path : files_and_folders) {
+    const string& full_path = io::JoinPath(dir, path);
     if (Env::Default()->MatchPath(full_path, pattern)) {
       results->push_back(full_path);
     }
@@ -791,7 +817,8 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
 Status GcsFileSystem::GetChildrenBounded(const string& dirname,
                                          uint64 max_results,
                                          std::vector<string>* result,
-                                         bool recursive) {
+                                         bool recursive,
+                                         bool include_self_directory_marker) {
   if (!result) {
     return errors::InvalidArgument("'result' cannot be null");
   }
@@ -806,8 +833,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     TF_RETURN_IF_ERROR(
         AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
-    std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-    StringPiece response_piece;
+    std::vector<char> output_buffer;
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
     auto uri = strings::StrCat(kGcsUriBase, "b/", bucket, "/o");
@@ -834,39 +860,41 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     }
     TF_RETURN_IF_ERROR(request->SetUri(uri));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(
-        request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+    TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     Json::Value root;
+    StringPiece response_piece =
+        StringPiece(output_buffer.data(), output_buffer.size());
     TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
     const auto items = root.get("items", Json::Value::null);
-    if (items == Json::Value::null) {
-      // Empty results.
-      return Status::OK();
-    }
-    if (!items.isArray()) {
-      return errors::Internal("Expected an array 'items' in the GCS response.");
-    }
-    for (size_t i = 0; i < items.size(); i++) {
-      const auto item = items.get(i, Json::Value::null);
-      if (!item.isObject()) {
+    if (items != Json::Value::null) {
+      if (!items.isArray()) {
         return errors::Internal(
-            "Unexpected JSON format: 'items' should be a list of objects.");
+            "Expected an array 'items' in the GCS response.");
       }
-      string name;
-      TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
-      // The names should be relative to the 'dirname'. That means the
-      // 'object_prefix', which is part of 'dirname', should be removed from the
-      // beginning of 'name'.
-      StringPiece relative_path(name);
-      if (!relative_path.Consume(object_prefix)) {
-        return errors::Internal(
-            strings::StrCat("Unexpected response: the returned file name ",
-                            name, " doesn't match the prefix ", object_prefix));
-      }
-      result->emplace_back(relative_path.ToString());
-      if (++retrieved_results >= max_results) {
-        return Status::OK();
+      for (size_t i = 0; i < items.size(); i++) {
+        const auto item = items.get(i, Json::Value::null);
+        if (!item.isObject()) {
+          return errors::Internal(
+              "Unexpected JSON format: 'items' should be a list of objects.");
+        }
+        string name;
+        TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
+        // The names should be relative to the 'dirname'. That means the
+        // 'object_prefix', which is part of 'dirname', should be removed from
+        // the beginning of 'name'.
+        StringPiece relative_path(name);
+        if (!relative_path.Consume(object_prefix)) {
+          return errors::Internal(strings::StrCat(
+              "Unexpected response: the returned file name ", name,
+              " doesn't match the prefix ", object_prefix));
+        }
+        if (!relative_path.empty() || include_self_directory_marker) {
+          result->emplace_back(relative_path.ToString());
+        }
+        if (++retrieved_results >= max_results) {
+          return Status::OK();
+        }
       }
     }
     const auto prefixes = root.get("prefixes", Json::Value::null);
@@ -982,7 +1010,9 @@ Status GcsFileSystem::DeleteDir(const string& dirname) {
   // with the corresponding name prefix or if there is exactly one matching
   // object and it is the directory marker. Therefore we need to retrieve
   // at most two children for the prefix to detect if a directory is empty.
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 2, &children, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(dirname, 2, &children, true /* recursively */,
+                         true /* include_self_directory_marker */));
 
   if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
     return errors::FailedPrecondition("Cannot delete a non-empty directory.");
@@ -1015,7 +1045,9 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   }
   // Rename all individual objects in the directory one by one.
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(src, UINT64_MAX, &children, true));
+  TF_RETURN_IF_ERROR(
+      GetChildrenBounded(src, UINT64_MAX, &children, true /* recursively */,
+                         true /* include_self_directory_marker */));
   for (const string& subpath : children) {
     TF_RETURN_IF_ERROR(
         RenameObject(JoinGcsPath(src, subpath), JoinGcsPath(target, subpath)));
@@ -1041,14 +1073,14 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
       request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
-  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-  StringPiece response_piece;
-  TF_RETURN_IF_ERROR(
-      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+  std::vector<char> output_buffer;
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when renaming ", src,
                                   " to ", target);
 
   Json::Value root;
+  StringPiece response_piece =
+      StringPiece(output_buffer.data(), output_buffer.size());
   TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
   bool done;
   TF_RETURN_IF_ERROR(GetBoolValue(root, "done", &done));
@@ -1110,8 +1142,9 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   }
   std::vector<string> all_objects;
   // Get all children in the directory recursively.
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, UINT64_MAX, &all_objects,
-                                        true /* recursive */));
+  TF_RETURN_IF_ERROR(GetChildrenBounded(
+      dirname, UINT64_MAX, &all_objects, true /* recursively */,
+      true /* include_self_directory_marker */));
   for (const string& object : all_objects) {
     const string& full_path = JoinGcsPath(dirname, object);
     // Delete all objects including directory markers for subfolders.

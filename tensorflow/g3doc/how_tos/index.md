@@ -36,6 +36,13 @@ you understand the dataflow graph and debug it.
 [View Tutorial](graph_viz/index.md)
 
 
+## TensorBoard: Embedding Visualization
+
+This tutorial describes how to use the embedding projector in TensorBoard to
+visualize your embeddings.
+
+[View Tutorial](embedding_viz/index.md)
+
 ## Reading Data
 
 This tutorial describes the three main methods of getting data into your

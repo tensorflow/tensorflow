@@ -129,7 +129,7 @@ class BaseSaverBuilder(object):
           validate_shape=restored_shapes is None and
           self.op.get_shape().is_fully_defined())
 
-  def __init__(self, write_version=saver_pb2.SaverDef.V1):
+  def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version
 
   def save_op(self, filename_tensor, saveables):
@@ -899,7 +899,7 @@ class Saver(object):
                builder=None,
                defer_build=False,
                allow_empty=False,
-               write_version=saver_pb2.SaverDef.V1,
+               write_version=saver_pb2.SaverDef.V2,
                pad_step_number=False):
     """Creates a `Saver`.
 
@@ -966,10 +966,10 @@ class Saver(object):
         variables in the graph. Otherwise, construct the saver anyway and make
         it a no-op.
       write_version: controls what format to use when saving checkpoints.  It
-        also affects certain filepath matching logic.  Defaults to V1
-        currently, and will be switched to the more memory-efficient V2 format
-        in the future.  If set to V2, the Saver is still able to restore from
-        old V1 checkpoints.
+        also affects certain filepath matching logic.  The V2 format is the
+        recommended choice: it is much more optimized than V1 in terms of
+        memory required and latency incurred during restore.  Regardless of
+        this flag, the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -1284,11 +1284,10 @@ class Saver(object):
       latest_filename = "checkpoint"
     if self._write_version != saver_pb2.SaverDef.V2:
       logging.warning("*******************************************************")
-      logging.warning("TensorFlow's V1 checkpoint format is deprecated;"
-                      " V2 will become the default shortly after 10/31/2016.")
-      logging.warning("Consider switching to the more efficient V2 format now:")
+      logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
+      logging.warning("Consider switching to the more efficient V2 format:")
       logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
-      logging.warning("to prevent breakage.")
+      logging.warning("now on by default.")
       logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
@@ -1344,7 +1343,8 @@ class Saver(object):
                         filename=None,
                         collection_list=None,
                         as_text=False,
-                        export_scope=None):
+                        export_scope=None,
+                        clear_devices=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1352,6 +1352,8 @@ class Saver(object):
       collection_list: List of string keys to collect.
       as_text: If `True`, writes the meta_graph as an ASCII proto.
       export_scope: Optional `string`. Name scope to remove.
+      clear_devices: Whether or not to clear the device field for an `Operation`
+        or `Tensor` during export.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1362,7 +1364,8 @@ class Saver(object):
         saver_def=self.saver_def,
         collection_list=collection_list,
         as_text=as_text,
-        export_scope=export_scope)
+        export_scope=export_scope,
+        clear_devices=clear_devices)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1378,26 +1381,9 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
-
-    Raises:
-      ValueError: DEPRECATED, do not rely on this Error.  If the given
-        `save_path` does not point to a file.
     """
     if self._is_empty:
       return
-
-    # NOTE(zongheng): checking at the Python layer prevents the underlying
-    # restore Op to handle more than one checkpoint format, potentially.  This
-    # is a DEPRECATED error and might be removed in the future.
-    #
-    # Performs this check only for V1, as the V2 restore op can read either a
-    # V1 ckpt or a V2 ckpt, making this check invalid.
-    if self.saver_def.version == saver_pb2.SaverDef.V1:
-      file_path = _prefix_to_checkpoint_path(save_path, self.saver_def.version)
-      if not file_io.get_matching_files(file_path):
-        raise ValueError("Restore called with invalid save path: %r. "
-                         "File path is: %r" % (save_path, file_path))
-
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
@@ -1414,7 +1400,7 @@ class Saver(object):
                                   export_scope=export_scope)
 
 
-def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
+def _prefix_to_checkpoint_path(prefix, format_version):
   """Returns the pathname of a checkpoint file, given the checkpoint prefix.
 
   For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,
@@ -1559,6 +1545,7 @@ def export_meta_graph(filename=None,
                       as_text=False,
                       graph=None,
                       export_scope=None,
+                      clear_devices=False,
                       **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -1580,6 +1567,8 @@ def export_meta_graph(filename=None,
       the subgraph. The scope name will be striped from the node definitions
       for easy import later into new name scopes. If `None`, the whole graph
       is exported. graph_def and export_scope cannot both be specified.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during export.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1597,6 +1586,7 @@ def export_meta_graph(filename=None,
       as_text=as_text,
       graph=graph,
       export_scope=export_scope,
+      clear_devices=clear_devices,
       **kwargs)
   return meta_graph_def
 

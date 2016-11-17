@@ -23,6 +23,8 @@ import shutil
 import sys
 import tempfile
 
+import six
+
 # Google-internal import(s).
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import analyzer_cli
@@ -30,6 +32,7 @@ from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
 
 
 _DUMP_ROOT_PREFIX = "tfdbg_"
@@ -180,7 +183,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     else:
       feed_dict_lines = []
       for feed_key in request.feed_dict:
-        feed_dict_lines.append(feed_key.name)
+        if isinstance(feed_key, six.string_types):
+          feed_dict_lines.append(feed_key)
+        else:
+          feed_dict_lines.append(feed_key.name)
 
     # TODO(cais): Refactor into its own function.
     help_intro = [
@@ -246,24 +252,60 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """
 
     if request.performed_action == framework.OnRunStartAction.DEBUG_RUN:
-      debug_dump = debug_data.DebugDumpDir(
-          self._dump_root,
-          partition_graphs=request.run_metadata.partition_graphs)
+      partition_graphs = None
+      if request.run_metadata and request.run_metadata.partition_graphs:
+        partition_graphs = request.run_metadata.partition_graphs
+      elif request.client_graph_def:
+        partition_graphs = [request.client_graph_def]
 
-      init_command = "lt"
-      title_color = "green"
-      if self._run_till_filter_pass:
-        if not debug_dump.find(
-            self._tensor_filters[self._run_till_filter_pass], first_n=1):
-          # No dumped tensor passes the filter in this run. Clean up the dump
-          # directory and move on.
-          shutil.rmtree(self._dump_root)
-          return framework.OnRunEndResponse()
-        else:
-          # Some dumped tensor(s) from this run passed the filter.
-          init_command = "lt -f %s" % self._run_till_filter_pass
-          title_color = "red"
-          self._run_till_filter_pass = None
+      debug_dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=partition_graphs)
+
+      if request.tf_error:
+        op_name = request.tf_error.op.name
+
+        # Prepare help introduction for the TensorFlow error that occurred
+        # during the run.
+        help_intro = [
+            "--------------------------------------",
+            "!!! An error occurred during the run !!!",
+            "",
+            "  * Use command \"ni %s\" to see the information about the "
+            "failing op." % op_name,
+            "  * Use command \"li -r %s\" to see the inputs to the "
+            "failing op." % op_name,
+            "  * Use command \"lt\" to view the dumped tensors.",
+            "",
+            "Op name:    " + op_name,
+            "Error type: " + str(type(request.tf_error)),
+            "",
+            "Details:",
+            str(request.tf_error),
+            "",
+            "WARNING: Using client GraphDef due to the error, instead of "
+            "executor GraphDefs.",
+            "--------------------------------------",
+            "",
+        ]
+        init_command = "help"
+        title_color = "red"
+      else:
+        help_intro = None
+        init_command = "lt"
+
+        title_color = "green"
+        if self._run_till_filter_pass:
+          if not debug_dump.find(
+              self._tensor_filters[self._run_till_filter_pass], first_n=1):
+            # No dumped tensor passes the filter in this run. Clean up the dump
+            # directory and move on.
+            shutil.rmtree(self._dump_root)
+            return framework.OnRunEndResponse()
+          else:
+            # Some dumped tensor(s) from this run passed the filter.
+            init_command = "lt -f %s" % self._run_till_filter_pass
+            title_color = "red"
+            self._run_till_filter_pass = None
 
       analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
 
@@ -327,6 +369,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       #    completion contexts and registered command handlers.
 
       title = "run-end: " + self._run_description
+      run_end_cli.set_help_intro(help_intro)
       run_end_cli.run_ui(
           init_command=init_command, title=title, title_color=title_color)
 
@@ -420,11 +463,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._run_call_count = run_call_count
     self._run_description = "run #%d: " % self._run_call_count
 
-    if isinstance(fetches, ops.Tensor) or isinstance(fetches, ops.Operation):
+    if isinstance(fetches, (ops.Tensor, ops.Operation, variables.Variable)):
       self._run_description += "fetch: %s; " % fetches.name
     else:
       # Could be list, tuple, dict or namedtuple.
-      self._run_description += "%d fetch(es)" % len(fetches)
+      self._run_description += "%d fetch(es); " % len(fetches)
 
     if not feed_dict:
       self._run_description += "0 feeds"

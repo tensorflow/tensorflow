@@ -21,6 +21,7 @@ limitations under the License.
 #include <typeinfo>
 #include <unordered_map>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -365,7 +366,13 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name) {
   ResourceHandle result;
   result.set_device(ctx->device()->attributes().name());
-  result.set_container(container);
+  string actual_container;
+  if (!container.empty()) {
+    actual_container = container;
+  } else {
+    actual_container = ctx->resource_manager()->default_container();
+  }
+  result.set_container(actual_container);
   result.set_name(name);
   auto type_index = MakeTypeIndex<T>();
   result.set_hash_code(type_index.hash_code());

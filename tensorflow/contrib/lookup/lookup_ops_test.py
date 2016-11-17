@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 import numpy as np
 import six
 import tensorflow as tf
@@ -296,7 +297,8 @@ class MutableHashTableOpTest(tf.test.TestCase):
       self.assertAllEqual([0, 1, 2], sorted_values)
 
   def testSaveRestore(self):
-    save_path = os.path.join(self.get_temp_dir(), "hash")
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
     with self.test_session(graph=tf.Graph()) as sess:
       v0 = tf.Variable(10.0, name="v0")
@@ -309,7 +311,7 @@ class MutableHashTableOpTest(tf.test.TestCase):
           tf.string, tf.int64, default_val, name="t1", checkpoint=True)
 
       save = tf.train.Saver()
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Check that the parameter nodes have been initialized.
       self.assertEqual(10.0, v0.eval())
@@ -867,7 +869,8 @@ class MutableDenseHashTableOpTest(tf.test.TestCase):
                            [100, 0], [100, 0], [100, 0]], pairs)
 
   def testSaveRestore(self):
-    save_path = os.path.join(self.get_temp_dir(), "hash")
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
     with self.test_session(graph=tf.Graph()) as sess:
       default_value = -1
@@ -922,7 +925,8 @@ class MutableDenseHashTableOpTest(tf.test.TestCase):
       self.assertAllEqual([-1, 0, 1, 2, -1], output.eval())
 
   def testVectorSaveRestore(self):
-    save_path = os.path.join(self.get_temp_dir(), "hash")
+    save_dir = os.path.join(self.get_temp_dir(), "vector_save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
     with self.test_session(graph=tf.Graph()) as sess:
       empty_key = tf.constant([11, 13], tf.int64)

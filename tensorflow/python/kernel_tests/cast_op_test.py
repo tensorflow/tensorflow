@@ -159,7 +159,7 @@ class CastOpTest(tf.test.TestCase):
       x = tf.Variable(5, dtype=tf.float32)
       y = tf.Variable(True, dtype=tf.bool)
       cast = tf.cast(y, x.dtype)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(1.0, sess.run(cast))
 
   def testGradients(self):

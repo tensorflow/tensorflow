@@ -6,13 +6,13 @@ learning models via its high-level
 offers classes you can instantiate to quickly configure common model types such
 as regressors and classifiers:
 
-*   [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier).
+*   [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier):
     Constructs a linear classification model.
-*   [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor).
+*   [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor):
     Constructs a linear regression model.
-*   [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier).
+*   [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier):
     Construct a neural network classification model.
-*   [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor).
+*   [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor):
     Construct a neural network regressions model.
 
 But what if none of `tf.contrib.learn`'s predefined model types meets your
@@ -88,7 +88,7 @@ contains 7 examples on which to make predictions.
 
 The following sections walk through writing the `Estimator` code step by step;
 the [full, final code is available
-here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/abalone.py)
+here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/abalone.py).
 
 ## Loading Abalone CSV Data into TensorFlow Datasets
 
@@ -227,13 +227,13 @@ nn = tf.contrib.learn.Estimator(
     model_fn=model_fn, params=model_params)
 ```
 
-*   `model_fn`. A function object that contains all the aforementioned logic to
+*   `model_fn`: A function object that contains all the aforementioned logic to
     support training, evaluation, and prediction. You are responsible for
     implementing that functionality. The next section, [Constructing the
     `model_fn`](#constructing-modelfn) covers creating a model function in
     detail.
 
-*   `params`. An optional dict of hyperparameters (e.g., learning rate, dropout)
+*   `params`: An optional dict of hyperparameters (e.g., learning rate, dropout)
     that will be passed into the `model_fn`.
 
 NOTE: Just like `tf.contrib.learn`'s predefined regressors and classifiers, the
@@ -280,12 +280,12 @@ def model_fn(features, targets, mode, params):
 
 The `model_fn` must accept three arguments:
 
-*   `features`. A dict containing the features passed to the model via `fit()`,
+*   `features`: A dict containing the features passed to the model via `fit()`,
     `evaluate()`, or `predict()`.
-*   `targets`. A `Tensor` containing the labels passed to the model via `fit()`,
+*   `targets`: A `Tensor` containing the labels passed to the model via `fit()`,
     `evaluate()`, or `predict()`. Will be empty for `predict()` calls, as these
     are the values the model will infer.
-*   `mode`. One of the following
+*   `mode`: One of the following
     [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys) string values
     indicating the context in which the model_fn was invoked:
     *   `tf.contrib.learn.ModeKeys.TRAIN` The `model_fn` was invoked in training
@@ -389,7 +389,7 @@ fully connected layers:
 
 *   `relu6(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
     connected to the previous layer `hidden_layer` with a ReLu 6 activation
-    function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6))
+    function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6)):
 
     ```python
     second_hidden_layer = tf.contrib.layers.relu6(inputs=hidden_layer, num_outputs=20)

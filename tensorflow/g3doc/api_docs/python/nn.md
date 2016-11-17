@@ -218,6 +218,10 @@ Specifically, `y = 1 / (1 + exp(-x))`.
   A Tensor with the same type as `x` if `x.dtype != qint32`
     otherwise the return type is `quint8`.
 
+@compatibility(numpy)
+Equivalent to np.scipy.special.expit
+@end_compatibility
+
 
 - - -
 
@@ -691,7 +695,7 @@ inputs are identical.
 
 - - -
 
-### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', name=None)` {#conv2d_transpose}
+### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', data_format='NHWC', name=None)` {#conv2d_transpose}
 
 The transpose of `conv2d`.
 
@@ -704,7 +708,8 @@ deconvolution.
 
 
 *  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
-    `[batch, height, width, in_channels]`.
+    `[batch, height, width, in_channels]` for `NHWC` data format or
+    `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
     `[height, width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
@@ -714,6 +719,7 @@ deconvolution.
     dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
     See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the returned tensor.
 
 ##### Returns:
@@ -1901,7 +1907,7 @@ tensors.
 
 - - -
 
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True, max_norm=None)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -1944,6 +1950,8 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`validate_indices`</b>: Whether or not to validate gather indices.
+*  <b>`max_norm`</b>: If not None, embedding values are l2-normalized to the value of
+   max_norm.
 
 ##### Returns:
 
@@ -1957,7 +1965,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 - - -
 
-### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None)` {#embedding_lookup_sparse}
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None, max_norm=None)` {#embedding_lookup_sparse}
 
 Computes embeddings for the given ids and weights.
 
@@ -1990,6 +1998,8 @@ is the sum of the size of params along dimension 0.
     "mean" is the weighted sum divided by the total weight.
     "sqrtn" is the weighted sum divided by the square root of the sum of the
     squares of the weights.
+*  <b>`max_norm`</b>: If not None, each embedding is normalized to have l2 norm equal
+    to max_norm before combining.
 
 ##### Returns:
 
@@ -2416,8 +2426,8 @@ while not all(finished):
       time=time + 1, cell_output=output, cell_state=cell_state,
       loop_state=loop_state)
   # Emit zeros and copy forward state for minibatch entries that are finished.
-  state = tf.select(finished, state, next_state)
-  emit = tf.select(finished, tf.zeros_like(emit), emit)
+  state = tf.where(finished, state, next_state)
+  emit = tf.where(finished, tf.zeros_like(emit), emit)
   emit_ta = emit_ta.write(time, emit)
   # If any new minibatch entries are marked as finished, mark these.
   finished = tf.logical_or(finished, next_finished)

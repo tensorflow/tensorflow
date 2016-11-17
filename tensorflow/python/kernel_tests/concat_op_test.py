@@ -74,7 +74,7 @@ class ConcatOpTest(tf.test.TestCase):
       v1 = tf.Variable(p1)
       v2 = tf.Variable(p2)
       c = tf.concat(0, [v1, v2])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = c.eval()
 
     self.assertEqual(result.shape, c.get_shape())
@@ -406,18 +406,6 @@ class ConcatOpTest(tf.test.TestCase):
           ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
         tf.concat(dim, [scalar, scalar, scalar])
 
-  def testConcatGradNumNodes(self):
-    g = tf.Graph()
-    n = 10
-    with g.as_default():
-      x = tf.constant([1, 1])
-      y = tf.concat(0, [x] * n)
-      before = len(g.get_operations())
-      _ = tf.gradients([y], [x], [y])
-      after = len(g.get_operations())
-      self.assertEqual(2 * n + 2, after - before)
-      print("graph = ", [x.name for x in g.get_operations()])
-
   # important as gpu implementation could fail if
   # shared memory is not large for all the inputs
   def testConcatLargeNumberOfTensors(self):
@@ -544,8 +532,10 @@ class ConcatOffsetTest(tf.test.TestCase):
       s0 = tf.constant([2, 3, 5], tf.int32)
       s1 = tf.constant([2, 7, 10], tf.int32)
       off = gen_array_ops._concat_offset(cdim, [s0, s1])
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   r"mismatch: 5 vs. 10"):
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          r"All dimensions except 1 must match. Input 1 has shape \[2 7 10\] "
+          r"and doesn't match input 0 with shape \[2 3 5\]."):
         sess.run(off)
 
 if __name__ == "__main__":

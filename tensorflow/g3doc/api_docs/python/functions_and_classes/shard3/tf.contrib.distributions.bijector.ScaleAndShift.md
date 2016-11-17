@@ -1,25 +1,36 @@
-Bijector which computes Y = g(X; shift, scale) = scale * X + shift.
+Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
+
+`scale` is either a non-zero scalar, or a lower triangular matrix with
+non-zero diagonal.  This means the `Bijector` will be invertible and
+computation of determinant and inverse will be efficient.
+
+As a result, the mean and covariance are transformed:
+
+```
+E[Y] = matmul(scale, E[X])
+Cov[Y] = matmul(scale, matmul(Cov[X], scale, transpose_b=True))
+```
 
 Example Use:
 
 ```python
-# No batch, scalar.
+# No batch, scalar
 mu = 0     # shape=[]
-sigma = 1  # shape=[]
+sigma = 1  # shape=[], treated like a 1x1 matrix.
 b = ScaleAndShift(shift=mu, scale=sigma)
 # b.shaper.batch_ndims == 0
 # b.shaper.event_ndims == 0
 
 # One batch, scalar.
 mu = ...    # shape=[b], b>0
-sigma = ... # shape=[b], b>0
+sigma = ... # shape=[b], b>0, treated like a batch of 1x1 matrices
 b = ScaleAndShift(shift=mu, scale=sigma)
 # b.shaper.batch_ndims == 1
 # b.shaper.event_ndims == 0
 
 # No batch, multivariate.
 mu = ...    # shape=[d],    d>0
-sigma = ... # shape=[d, d], d>0
+sigma = ... # shape=[d, d], d>0, treated like a single dxd matrix.
 b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
 # b.shaper.batch_ndims == 0
 # b.shaper.event_ndims == 1
@@ -42,15 +53,24 @@ b.forward(x) # == x + 1
 
 #### `tf.contrib.distributions.bijector.ScaleAndShift.__init__(shift, scale, event_ndims=0, validate_args=False, name='scale_and_shift')` {#ScaleAndShift.__init__}
 
-Instantiates the `Exp` bijector.
+Instantiates the `ScaleAndShift` bijector.
+
+This `Bijector` is initialized with `scale` and `shift` `Tensors`, giving
+the forward operation:
+
+```Y = g(X) = matmul(scale, X) + shift```
 
 ##### Args:
 
 
-*  <b>`shift`</b>: `Tensor` used to shift input, i.e., `Y = g(X) = scale * X + shift`.
-*  <b>`scale`</b>: `Tensor` used to scale input, i.e., `Y = g(X) = scale * X + shift`.
+*  <b>`shift`</b>: Numeric `Tensor`.
+*  <b>`scale`</b>: Numeric `Tensor` of same `dtype` as `shift`.  If `event_ndims = 0`,
+    `scale` is treated like a `1x1` matrix or a batch thereof.
+    Otherwise, the last two dimensions of `scale` define a matrix.
+    `scale` must have non-negative diagonal entries.  The upper triangular
+    part of `scale` is ignored, effectively making it lower triangular.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
-    associated with a particular draw from the distribution.
+    associated with a particular draw from the distribution.  Must be 0 or 1
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
     for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
@@ -90,6 +110,26 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
+#### `tf.contrib.distributions.bijector.ScaleAndShift.forward_event_shape(input_shape, name='forward_event_shape')` {#ScaleAndShift.forward_event_shape}
+
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
+    passed into `forward` function.
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
+    shape after applying `forward`.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.ScaleAndShift.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
@@ -112,6 +152,48 @@ Returns both the forward_log_det_jacobian.
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.ScaleAndShift.get_forward_event_shape(input_shape)` {#ScaleAndShift.get_forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
+    applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.ScaleAndShift.get_inverse_event_shape(output_shape)` {#ScaleAndShift.get_inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
+    applying `inverse`. Possibly unknown.
 
 
 - - -
@@ -169,6 +251,26 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_event_shape(output_shape, name='inverse_event_shape')` {#ScaleAndShift.inverse_event_shape}
+
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
+    passed into `inverse` function.
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
+    shape after applying `inverse`.
 
 
 - - -

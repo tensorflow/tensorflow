@@ -23,7 +23,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -50,11 +49,12 @@ class _EventGenerator(object):
       yield self.items.pop(0)
 
   def AddScalar(self, tag, wall_time=0, step=0, value=0):
-    event = tf.Event(
+    event = tf.summary.Event(
         wall_time=wall_time,
         step=step,
-        summary=tf.Summary(value=[tf.Summary.Value(tag=tag,
-                                                   simple_value=value)]))
+        summary=tf.Summary(
+            value=[tf.Summary.Value(
+                tag=tag, simple_value=value)]))
     self.AddEvent(event)
 
   def AddHistogram(self,
@@ -75,10 +75,11 @@ class _EventGenerator(object):
                               sum_squares=hsum_squares,
                               bucket_limit=hbucket_limit,
                               bucket=hbucket)
-    event = tf.Event(wall_time=wall_time,
-                     step=step,
-                     summary=tf.Summary(value=[tf.Summary.Value(tag=tag,
-                                                                histo=histo)]))
+    event = tf.summary.Event(
+        wall_time=wall_time,
+        step=step,
+        summary=tf.Summary(value=[tf.Summary.Value(
+            tag=tag, histo=histo)]))
     self.AddEvent(event)
 
   def AddImage(self,
@@ -91,10 +92,11 @@ class _EventGenerator(object):
     image = tf.Summary.Image(encoded_image_string=encoded_image_string,
                              width=width,
                              height=height)
-    event = tf.Event(wall_time=wall_time,
-                     step=step,
-                     summary=tf.Summary(value=[tf.Summary.Value(tag=tag,
-                                                                image=image)]))
+    event = tf.summary.Event(
+        wall_time=wall_time,
+        step=step,
+        summary=tf.Summary(value=[tf.Summary.Value(
+            tag=tag, image=image)]))
     self.AddEvent(event)
 
   def AddAudio(self,
@@ -109,10 +111,11 @@ class _EventGenerator(object):
                              content_type=content_type,
                              sample_rate=sample_rate,
                              length_frames=length_frames)
-    event = tf.Event(wall_time=wall_time,
-                     step=step,
-                     summary=tf.Summary(value=[tf.Summary.Value(tag=tag,
-                                                                audio=audio)]))
+    event = tf.summary.Event(
+        wall_time=wall_time,
+        step=step,
+        summary=tf.Summary(value=[tf.Summary.Value(
+            tag=tag, audio=audio)]))
     self.AddEvent(event)
 
   def AddEvent(self, event):
@@ -328,26 +331,20 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testCompressHistogram_uglyHistogram(self):
     bps = (0, 668, 1587, 3085, 5000, 6915, 8413, 9332, 10000)
-    vals = ea._CompressHistogram(
-        ea.HistogramValue(
-            min=0.0,
-            max=1.0,
-            num=960.0,
-            sum=64.0,
-            sum_squares=64.0,
-            bucket_limit=[
-                0.0,
-                1e-12,
-                0.917246389039776,
-                1.0089710279437536,
-                1.7976931348623157e+308],
-            bucket=[
-                0.0,
-                896.0,
-                0.0,
-                64.0,
-                0.0]),
-        bps)
+    histogram_values = ea.HistogramValue(
+        min=0.0,
+        max=1.0,
+        num=960.0,
+        sum=64.0,
+        sum_squares=64.0,
+        bucket_limit=[
+            0.0, 1e-12, 0.917246389039776, 1.0089710279437536,
+            1.7976931348623157e+308
+        ],
+        bucket=[0.0, 896.0, 0.0, 64.0, 0.0])
+    histogram_event = ea.HistogramEvent(0, 0, histogram_values)
+    compressed_event = ea._CompressHistogram(histogram_event, bps)
+    vals = compressed_event.compressed_histogram_values
     self.assertEquals(tuple(v.basis_point for v in vals), bps)
     self.assertAlmostEqual(vals[0].value, 0.0)
     self.assertAlmostEqual(vals[1].value, 7.157142857142856e-14)
@@ -449,7 +446,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=10, value=20)
-    gen.AddEvent(tf.Event(wall_time=2, step=20, file_version='nots2'))
+    gen.AddEvent(tf.summary.Event(wall_time=2, step=20, file_version='nots2'))
     gen.AddScalar('s3', wall_time=3, step=100, value=1)
     gen.AddHistogram('hst1')
     gen.AddImage('im1')
@@ -483,7 +480,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
 
-    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -504,7 +503,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen, purge_orphaned_data=False)
 
-    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -536,7 +537,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
 
-    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -561,9 +564,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
-    ev1 = tf.Event(wall_time=2, step=0, file_version='brain.Event:1')
+    ev1 = tf.summary.Event(wall_time=2, step=0, file_version='brain.Event:1')
     graph_bytes = graph_pb2.GraphDef().SerializeToString()
-    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_bytes)
+    ev2 = tf.summary.Event(wall_time=3, step=0, graph_def=graph_bytes)
     gen.AddEvent(ev1)
     gen.AddEvent(ev2)
     acc.Reload()
@@ -578,7 +581,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(tf.Event(wall_time=0, step=1, file_version='brain.Event:2'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=0, step=1, file_version='brain.Event:2'))
 
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
@@ -588,8 +593,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddScalar('s2', wall_time=1, step=202, value=20)
     gen.AddScalar('s2', wall_time=1, step=203, value=20)
 
-    slog = SessionLog(status=SessionLog.START)
-    gen.AddEvent(tf.Event(wall_time=2, step=201, session_log=slog))
+    slog = tf.summary.SessionLog(status=tf.summary.SessionLog.START)
+    gen.AddEvent(tf.summary.Event(wall_time=2, step=201, session_log=slog))
     acc.Reload()
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 200])
     self.assertEqual([x.step for x in acc.Scalars('s2')], [])
@@ -598,7 +603,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Test that FirstEventTimestamp() returns wall_time of the first event."""
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(tf.Event(wall_time=10, step=20, file_version='brain.Event:2'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=10, step=20, file_version='brain.Event:2'))
     gen.AddScalar('s1', wall_time=30, step=40, value=20)
     self.assertEqual(acc.FirstEventTimestamp(), 10)
 
@@ -606,7 +613,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Test that Reload() means FirstEventTimestamp() won't load events."""
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=1, step=2, file_version='brain.Event:2'))
 
     acc.Reload()
 
@@ -620,7 +629,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Test that FirstEventTimestamp() doesn't discard the loaded event."""
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
+    gen.AddEvent(
+        tf.summary.Event(
+            wall_time=1, step=2, file_version='brain.Event:2'))
 
     self.assertEqual(acc.FirstEventTimestamp(), 1)
     acc.Reload()

@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {DataSet} from './data';
 import {BoundingBox, CollisionGrid} from './label';
-import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {CameraType, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
+import * as util from './util';
 
 const MAX_LABELS_ON_SCREEN = 10000;
+const LABEL_STROKE_WIDTH = 3;
+const LABEL_FILL_WIDTH = 6;
 
 /**
  * Creates and maintains a 2d canvas on top of the GL canvas. All labels, when
@@ -27,11 +29,10 @@ const MAX_LABELS_ON_SCREEN = 10000;
  */
 export class ScatterPlotVisualizerCanvasLabels implements
     ScatterPlotVisualizer {
-  private dataSet: DataSet;
+  private worldSpacePointPositions: Float32Array;
   private gc: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private labelsActive: boolean = true;
-  private sceneIs3D: boolean = true;
 
   constructor(container: d3.Selection<any>) {
     this.canvas = container.append('canvas').node() as HTMLCanvasElement;
@@ -52,14 +53,8 @@ export class ScatterPlotVisualizerCanvasLabels implements
       return;
     }
 
-    let strokeStylePrefix: string;
-    let fillStylePrefix: string;
-    {
-      const ls = new THREE.Color(rc.labels.strokeColor).multiplyScalar(255);
-      const lc = new THREE.Color(rc.labels.fillColor).multiplyScalar(255);
-      strokeStylePrefix = 'rgba(' + ls.r + ',' + ls.g + ',' + ls.b + ',';
-      fillStylePrefix = 'rgba(' + lc.r + ',' + lc.g + ',' + lc.b + ',';
-    }
+    const lrc = rc.labels;
+    const sceneIs3D: boolean = (rc.cameraType === CameraType.Perspective);
 
     const labelHeight = parseInt(this.gc.font, 10);
     const dpr = window.devicePixelRatio;
@@ -72,40 +67,44 @@ export class ScatterPlotVisualizerCanvasLabels implements
       grid = new CollisionGrid(bb, pixw / 25, pixh / 50);
     }
 
-    let opacityMap = d3.scale.pow().exponent(Math.E)
-      .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
-      .range([0.1, 1]);
+    let opacityMap =
+        d3.scale.pow()
+            .exponent(Math.E)
+            .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
+            .range([0.1, 1]);
 
     const camPos = rc.camera.position;
     const camToTarget = camPos.clone().sub(rc.cameraTarget);
+    let camToPoint = new THREE.Vector3();
 
-    this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
+    this.gc.miterLimit = 2;
 
     // Have extra space between neighboring labels. Don't pack too tightly.
     const labelMargin = 2;
     // Shift the label to the right of the point circle.
     const xShift = 4;
 
-    const n = Math.min(MAX_LABELS_ON_SCREEN, rc.labels.pointIndices.length);
+    const n = Math.min(MAX_LABELS_ON_SCREEN, lrc.pointIndices.length);
     for (let i = 0; i < n; ++i) {
-      const index = rc.labels.pointIndices[i];
-      const point = getProjectedPointFromIndex(this.dataSet, index);
+      const index = lrc.pointIndices[i];
+      const point =
+          util.vector3FromPackedArray(this.worldSpacePointPositions, index);
 
       // discard points that are behind the camera
-      const camToPoint = camPos.clone().sub(point);
+      camToPoint.copy(camPos).sub(point);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
 
-      let [x, y] = vector3DToScreenCoords(
+      let [x, y] = util.vector3DToScreenCoords(
           rc.camera, rc.screenWidth, rc.screenHeight, point);
       x += xShift;
 
       // Computing the width of the font is expensive,
       // so we assume width of 1 at first. Then, if the label doesn't
       // conflict with other labels, we measure the actual width.
-      const textBoundingBox = {
+      const textBoundingBox: BoundingBox = {
         loX: x - labelMargin,
         hiX: x + 1 + labelMargin,
         loY: y - labelHeight / 2 - labelMargin,
@@ -114,29 +113,37 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
       if (grid.insert(textBoundingBox, true)) {
         const text = rc.labelAccessor(index);
-        const fontSize =
-            rc.labels.defaultFontSize * rc.labels.scaleFactors[i] * dpr;
+        const fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
         this.gc.font = fontSize + 'px roboto';
 
         // Now, check with properly computed width.
         textBoundingBox.hiX += this.gc.measureText(text).width - 1;
         if (grid.insert(textBoundingBox)) {
           let opacity = 1;
-          if (this.sceneIs3D && (rc.labels.useSceneOpacityFlags[i] === 1)) {
+          if (sceneIs3D && (lrc.useSceneOpacityFlags[i] === 1)) {
             opacity = opacityMap(camToPoint.length());
           }
-          this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
-          this.gc.fillStyle = fillStylePrefix + opacity + ')';
+          this.gc.fillStyle =
+              this.styleStringFromPackedRgba(lrc.fillColors, i, opacity);
+          this.gc.strokeStyle =
+              this.styleStringFromPackedRgba(lrc.strokeColors, i, opacity);
+          this.gc.lineWidth = LABEL_STROKE_WIDTH;
           this.gc.strokeText(text, x, y);
+          this.gc.lineWidth = LABEL_FILL_WIDTH;
           this.gc.fillText(text, x, y);
         }
       }
     }
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
-    this.labelsActive = (spriteImage == null);
-    this.dataSet = dataSet;
+  private styleStringFromPackedRgba(
+      packedRgbaArray: Uint8Array, colorIndex: number,
+      opacity: number): string {
+    const offset = colorIndex * 3;
+    const r = packedRgbaArray[offset];
+    const g = packedRgbaArray[offset + 1];
+    const b = packedRgbaArray[offset + 2];
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
   }
 
   onResize(newWidth: number, newHeight: number) {
@@ -147,16 +154,14 @@ export class ScatterPlotVisualizerCanvasLabels implements
         .style({width: newWidth + 'px', height: newHeight + 'px'});
   }
 
-  onRecreateScene(
-      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
-    this.sceneIs3D = sceneIs3D;
-  }
-
-  removeAllFromScene(scene: THREE.Scene) {
+  dispose() {
     this.removeAllLabels();
+    this.canvas = null;
+    this.gc = null;
   }
 
-  onUpdate() {
+  onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
+    this.worldSpacePointPositions = newPositions;
     this.removeAllLabels();
   }
 
@@ -169,6 +174,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
     this.makeLabels(rc);
   }
 
+  setScene(scene: THREE.Scene) {}
   onPickingRender(renderContext: RenderContext) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

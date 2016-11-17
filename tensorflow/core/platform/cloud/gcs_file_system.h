@@ -51,7 +51,7 @@ class GcsFileSystem : public FileSystem {
       const string& filename,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
 
   Status Stat(const string& fname, FileStatistics* stat) override;
 
@@ -91,8 +91,17 @@ class GcsFileSystem : public FileSystem {
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
   Status FolderExists(const string& dirname, bool* result);
 
+  /// \brief Internal version of GetChildren with more knobs.
+  ///
+  /// If 'recursively' is true, returns all objects in all subfolders.
+  /// Otherwise only returns the immediate children in the directory.
+  ///
+  /// If 'include_self_directory_marker' is true and there is a GCS directory
+  /// marker at the path 'dir', GetChildrenBound will return an empty string
+  /// as one of the children that represents this marker.
   Status GetChildrenBounded(const string& dir, uint64 max_results,
-                            std::vector<string>* result, bool recursively);
+                            std::vector<string>* result, bool recursively,
+                            bool include_self_directory_marker);
   /// Retrieves file statistics assuming fname points to a GCS object.
   Status StatForObject(const string& bucket, const string& object,
                        FileStatistics* stat);

@@ -159,7 +159,7 @@ def main(_):
 
   # The variables below hold all the trainable weights. They are passed an
   # initial value which will be assigned when we call:
-  # {tf.initialize_all_variables().run()}
+  # {tf.global_variables_initializer().run()}
   conv1_weights = tf.Variable(
       tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
                           stddev=0.1,
@@ -283,7 +283,7 @@ def main(_):
   start_time = time.time()
   with tf.Session() as sess:
     # Run all the initializers to prepare the trainable parameters.
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     print('Initialized!')
     # Loop through training steps.
     for step in xrange(int(num_epochs * train_size) // BATCH_SIZE):
@@ -296,11 +296,13 @@ def main(_):
       # node in the graph it should be fed to.
       feed_dict = {train_data_node: batch_data,
                    train_labels_node: batch_labels}
-      # Run the graph and fetch some of the nodes.
-      _, l, lr, predictions = sess.run(
-          [optimizer, loss, learning_rate, train_prediction],
-          feed_dict=feed_dict)
+      # Run the optimizer to update weights.
+      sess.run(optimizer, feed_dict=feed_dict)
+      # print some extra information once reach the evaluation frequency
       if step % EVAL_FREQUENCY == 0:
+        # fetch some extra nodes' data
+        l, lr, predictions = sess.run([loss, learning_rate, train_prediction],
+                                      feed_dict=feed_dict)
         elapsed_time = time.time() - start_time
         start_time = time.time()
         print('Step %d (epoch %.2f), %.1f ms' %

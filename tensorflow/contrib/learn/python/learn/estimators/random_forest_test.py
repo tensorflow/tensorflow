@@ -34,10 +34,10 @@ class TensorForestTrainerTests(tf.test.TestCase):
 
     iris = tf.contrib.learn.datasets.load_iris()
     data = iris.data.astype(np.float32)
-    target = iris.target.astype(np.float32)
+    labels = iris.target.astype(np.float32)
 
-    classifier.fit(x=data, y=target, steps=100, batch_size=50)
-    classifier.evaluate(x=data, y=target, steps=10)
+    classifier.fit(x=data, y=labels, steps=100, batch_size=50)
+    classifier.evaluate(x=data, y=labels, steps=10)
 
   def testClassificationTrainingLoss(self):
     """Tests multi-class classification using matrix data as input."""
@@ -49,11 +49,11 @@ class TensorForestTrainerTests(tf.test.TestCase):
 
     iris = tf.contrib.learn.datasets.load_iris()
     data = iris.data.astype(np.float32)
-    target = iris.target.astype(np.float32)
+    labels = iris.target.astype(np.float32)
 
     monitors = [tf.contrib.learn.TensorForestLossHook(10)]
-    classifier.fit(x=data, y=target, steps=100, monitors=monitors)
-    classifier.evaluate(x=data, y=target, steps=10)
+    classifier.fit(x=data, y=labels, steps=100, monitors=monitors)
+    classifier.evaluate(x=data, y=labels, steps=10)
 
   def testRegression(self):
     """Tests multi-class classification using matrix data as input."""
@@ -66,10 +66,10 @@ class TensorForestTrainerTests(tf.test.TestCase):
 
     boston = tf.contrib.learn.datasets.load_boston()
     data = boston.data.astype(np.float32)
-    target = boston.target.astype(np.float32)
+    labels = boston.target.astype(np.float32)
 
-    regressor.fit(x=data, y=target, steps=100, batch_size=50)
-    regressor.evaluate(x=data, y=target, steps=10)
+    regressor.fit(x=data, y=labels, steps=100, batch_size=50)
+    regressor.evaluate(x=data, y=labels, steps=10)
 
 
 if __name__ == '__main__':

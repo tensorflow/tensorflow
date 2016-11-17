@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
 from tensorflow.contrib.util import loader
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -315,8 +314,3 @@ def _cudnn_rnn_backward(op, *grad):
       rnn_mode=op.get_attr("rnn_mode"),
       input_mode=op.get_attr("input_mode"),
       direction=op.get_attr("direction"))
-
-
-ops.RegisterShape("CudnnRNNParamsSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)

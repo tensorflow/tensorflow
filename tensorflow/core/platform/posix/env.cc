@@ -120,7 +120,8 @@ class PosixEnv : public Env {
                                                       symbol);
   }
 
-  string FormatLibraryFileName(const string& name, const string& version) {
+  string FormatLibraryFileName(const string& name,
+                               const string& version) override {
     return tensorflow::internal::FormatLibraryFileName(name, version);
   }
 };

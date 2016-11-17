@@ -23,15 +23,18 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
 def embedding_lookup(params, ids, partition_strategy="mod", name=None,
-                     validate_indices=True):
+                     validate_indices=True, max_norm=None):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
@@ -71,6 +74,8 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       is `"mod"`.
     name: A name for the operation (optional).
     validate_indices: Whether or not to validate gather indices.
+    max_norm: If not None, embedding values are l2-normalized to the value of
+     max_norm.
 
   Returns:
     A `Tensor` with the same type as the tensors in `params`.
@@ -84,13 +89,26 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
+  def maybe_normalize(x):
+    if max_norm is not None:
+      if x.get_shape().ndims is not None:
+        ndims = x.get_shape().ndims
+      else:
+        ndims = array_ops.size(array_ops.shape(x))
+      return clip_ops.clip_by_norm(x, max_norm, axes=list(range(1, ndims)))
+    return x
   with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
     np = len(params)  # Number of partitions
     params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
       with ops.colocate_with(params[0]):
-        return array_ops.gather(params[0], ids, name=name,
-                                validate_indices=validate_indices)
+        # TODO(apassos): implement the sharded version as well.
+        if isinstance(params[0], resource_variable_ops.ResourceVariable):
+          ret = params[0].sparse_read(ids, name=name)
+        else:
+          ret = array_ops.gather(params[0], ids, name=name,
+                                 validate_indices=validate_indices)
+      return maybe_normalize(ret)
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
@@ -174,13 +192,14 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       # Normally the reshape is sufficient, but setting shape explicitly
       # teaches shape inference that params[1:].get_shape() matters.
       ret.set_shape(ids.get_shape().concatenate(element_shape))
-      return ret
+      return maybe_normalize(ret)
 
 
 def embedding_lookup_sparse(params, sp_ids, sp_weights,
                             partition_strategy="mod",
                             name=None,
-                            combiner=None):
+                            combiner=None,
+                            max_norm=None):
   """Computes embeddings for the given ids and weights.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -210,6 +229,8 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       "mean" is the weighted sum divided by the total weight.
       "sqrtn" is the weighted sum divided by the square root of the sum of the
       squares of the weights.
+    max_norm: If not None, each embedding is normalized to have l2 norm equal
+      to max_norm before combining.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -257,11 +278,11 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
-  if not isinstance(sp_ids, ops.SparseTensor):
+  if not isinstance(sp_ids, sparse_tensor.SparseTensor):
     raise TypeError("sp_ids must be SparseTensor")
   ignore_weights = sp_weights is None
   if not ignore_weights:
-    if not isinstance(sp_weights, ops.SparseTensor):
+    if not isinstance(sp_weights, sparse_tensor.SparseTensor):
       raise TypeError("sp_weights must be either None or SparseTensor")
     sp_ids.values.get_shape().assert_is_compatible_with(
         sp_weights.values.get_shape())
@@ -285,7 +306,7 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       idx = None
 
     embeddings = embedding_lookup(
-        params, ids, partition_strategy=partition_strategy)
+        params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
     if not ignore_weights:
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:

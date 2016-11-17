@@ -40,6 +40,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
@@ -77,7 +78,8 @@ def get_summary_writer(logdir):
 
 
 def _make_saver(graph, keep_checkpoint_max=5):
-  vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
+  vars_to_save = (graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
+                  graph.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
   if vars_to_save:
     return tf_saver.Saver(vars_to_save,
                           sharded=True,
@@ -595,7 +597,7 @@ def _get_first_op_from_collection(collection_name):
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is None and variables.all_variables():
+  if saver is None and variables.global_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
@@ -613,7 +615,7 @@ def _get_local_init_op():
   local_init_op = _get_first_op_from_collection(
       ops.GraphKeys.LOCAL_INIT_OP)
   if local_init_op is None:
-    op_list = [variables.initialize_local_variables(),
+    op_list = [variables.local_variables_initializer(),
                data_flow_ops.initialize_all_tables()]
     if op_list:
       local_init_op = control_flow_ops.group(*op_list)
@@ -728,7 +730,7 @@ def evaluate(graph,
     if not initialized:
       logging.warning('Failed to initialize from %s.', checkpoint_path)
       # TODO(ipolosukhin): This should be failing, but old code relies on that.
-      session.run(variables.initialize_all_variables())
+      session.run(variables.global_variables_initializer())
       if checkpoint_path:
         _restore_from_checkpoint(session, graph, checkpoint_path, saver)
 
@@ -846,14 +848,16 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
     raise ValueError('feed_dicts is invalid: %s.' % feed_dicts)
 
   graph = contrib_ops.get_graph_from_inputs(output_dict.values())
-
   with graph.as_default() as g:
     with tf_session.Session('') as session:
+      session.run(
+          resources.initialize_resources(resources.shared_resources() +
+                                         resources.local_resources()))
       if restore_checkpoint_path:
         _restore_from_checkpoint(session, g, restore_checkpoint_path)
       else:
-        session.run(variables.initialize_all_variables())
-      session.run(variables.initialize_local_variables())
+        session.run(variables.global_variables_initializer())
+      session.run(variables.local_variables_initializer())
       session.run(data_flow_ops.initialize_all_tables())
       coord = coordinator.Coordinator()
       threads = None

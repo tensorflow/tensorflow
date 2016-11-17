@@ -132,8 +132,8 @@ class Env {
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
-  /// Returns true iff the named file exists.
-  bool FileExists(const string& fname);
+  /// Returns OK if the named path exists and NOT_FOUND otherwise.
+  Status FileExists(const string& fname);
 
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".
@@ -373,6 +373,10 @@ Status WriteBinaryProto(Env* env, const string& fname,
 /// and store into `*proto`.
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
+
+/// Write the text representation of "proto" to the named file.
+Status WriteTextProto(Env* env, const string& fname,
+                      const ::tensorflow::protobuf::Message& proto);
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.

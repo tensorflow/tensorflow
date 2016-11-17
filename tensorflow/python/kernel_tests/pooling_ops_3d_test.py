@@ -70,6 +70,15 @@ class PoolingTest(tf.test.TestCase):
                        padding="SAME",
                        expected=expected_output)
 
+  def testAvgPool3dSamePaddingDifferentStrides(self):
+    expected_output = [1.5, 4.5, 7.5, 17.5, 20.5, 23.5, 33.5, 36.5, 39.5]
+    self._VerifyValues(tf.nn.avg_pool3d,
+                       input_sizes=[1, 5, 8, 1, 1],
+                       window=(1, 2, 3),
+                       strides=(2, 3, 1),
+                       padding="SAME",
+                       expected=expected_output)
+
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]
     self._VerifyValues(tf.nn.max_pool3d,
@@ -85,6 +94,15 @@ class PoolingTest(tf.test.TestCase):
                        input_sizes=[1, 2, 2, 3, 3],
                        window=(2, 2, 2),
                        strides=(2, 2, 2),
+                       padding="SAME",
+                       expected=expected_output)
+
+  def testMaxPool3dSamePaddingDifferentStrides(self):
+    expected_output = [2., 5., 8., 18., 21., 24., 34., 37., 40.]
+    self._VerifyValues(tf.nn.max_pool3d,
+                       input_sizes=[1, 5, 8, 1, 1],
+                       window=(1, 2, 3),
+                       strides=(2, 3, 1),
                        padding="SAME",
                        expected=expected_output)
 

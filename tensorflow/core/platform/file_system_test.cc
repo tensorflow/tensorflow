@@ -31,10 +31,13 @@ static const char* const kPrefix = "ipfs://solarsystem";
 // cannot have children further.
 class InterPlanetaryFileSystem : public NullFileSystem {
  public:
-  bool FileExists(const string& fname) override {
+  Status FileExists(const string& fname) override {
     string parsed_path;
     ParsePath(fname, &parsed_path);
-    return BodyExists(parsed_path);
+    if (BodyExists(parsed_path)) {
+      return Status::OK();
+    }
+    return Status(tensorflow::error::NOT_FOUND, "File does not exist");
   }
 
   // Adds the dir to the parent's children list and creates an entry for itself.
@@ -112,7 +115,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
 
   void ParsePath(const string& name, string* parsed_path) {
     StringPiece scheme, host, path;
-    ParseURI(name, &scheme, &host, &path);
+    io::ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
     path.Consume("/");

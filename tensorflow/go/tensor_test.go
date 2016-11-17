@@ -77,10 +77,7 @@ func TestNewTensor(t *testing.T) {
 		// Test that encode and decode gives the same value. We skip arrays because
 		// they're returned as slices.
 		if reflect.TypeOf(test.value).Kind() != reflect.Array {
-			cTensor := tensor.c()
-			gotTensor := newTensorFromC(cTensor)
-			deleteCTensor(cTensor)
-			got := gotTensor.Value()
+			got := tensor.Value()
 			if !reflect.DeepEqual(test.value, got) {
 				t.Errorf("encode/decode: got %v, want %v", got, test.value)
 			}

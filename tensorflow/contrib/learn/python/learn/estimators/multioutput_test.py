@@ -37,7 +37,7 @@ class MultiOutputTest(tf.test.TestCase):
     y = np.array([np.pi * np.sin(x).ravel(), np.pi * np.cos(x).ravel()]).T
     regressor = learn.LinearRegressor(
         feature_columns=learn.infer_real_valued_columns_from_input(x),
-        target_dimension=2)
+        label_dimension=2)
     regressor.fit(x, y, steps=100)
     score = mean_squared_error(np.array(list(regressor.predict(x))), y)
     self.assertLess(score, 10, "Failed with score = {0}".format(score))

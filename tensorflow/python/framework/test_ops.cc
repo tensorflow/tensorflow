@@ -26,9 +26,14 @@ REGISTER_OP("KernelLabel")
     .Output("result: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("GraphDefVersion").Output("version: int32").SetIsStateful();
+REGISTER_OP("GraphDefVersion")
+    .Output("version: int32")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("Old").Deprecated(8, "For reasons");
+REGISTER_OP("Old")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Deprecated(8, "For reasons");
 
 REGISTER_RESOURCE_HANDLE_OP(StubResource);
 
@@ -43,6 +48,12 @@ REGISTER_OP("ResourceCreateOp")
 
 REGISTER_OP("ResourceUsingOp")
     .Input("resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TestStringOutput")
+    .Input("input: float")
+    .Output("output1: float")
+    .Output("output2: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
 namespace {

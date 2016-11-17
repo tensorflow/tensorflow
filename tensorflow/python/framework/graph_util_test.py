@@ -25,8 +25,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
-from tensorflow.python.ops import state_ops
 
 
 # Utility device function to use for testing
@@ -40,17 +40,23 @@ class DeviceFunctionsTest(tf.test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
-      var_0 = state_ops.variable_op([1], dtype=dtypes.float32)
-
+      var_0 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+          name="var_0", container="", shared_name="")
       with g.device(test_device_func_pin_variable_to_cpu):
-        var_1 = state_ops.variable_op([1], dtype=dtypes.float32)
-      var_2 = state_ops.variable_op([1], dtype=dtypes.float32)
-      var_3 = state_ops.variable_op([1], dtype=dtypes.float32)
+        var_1 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+            name="var_1", container="", shared_name="")
+      var_2 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+          name="var_2", container="", shared_name="")
+      var_3 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+          name="var_3", container="", shared_name="")
       with g.device(test_device_func_pin_variable_to_cpu):
-        var_4 = state_ops.variable_op([1], dtype=dtypes.float32)
+        var_4 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+            name="var_4", container="", shared_name="")
         with g.device("/device:GPU:0"):
-          var_5 = state_ops.variable_op([1], dtype=dtypes.float32)
-        var_6 = state_ops.variable_op([1], dtype=dtypes.float32)
+          var_5 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+              name="var_5", container="", shared_name="")
+        var_6 = gen_state_ops._variable(shape=[1], dtype=dtypes.float32, 
+            name="var_6", container="", shared_name="")
 
     self.assertDeviceEqual(var_0.device, None)
     self.assertDeviceEqual(var_1.device, "/device:CPU:0")
@@ -167,7 +173,7 @@ class DeviceFunctionsTest(tf.test.TestCase):
 
         # Then initialize the unused variable, and get another
         # constant_graph_def when variable_names_whitelist is not set.
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         constant_graph_def_without_variable_whitelist = (
             graph_util.convert_variables_to_constants(
                 sess, variable_graph_def, ["output_node"]))

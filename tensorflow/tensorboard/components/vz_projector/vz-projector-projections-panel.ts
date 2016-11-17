@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {DataSet, SpriteAndMetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {Vector} from './vector';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
+
+const NUM_PCA_COMPONENTS = 10;
 
 // tslint:disable-next-line
 export let ProjectionsPanelPolymer = PolymerElement({
@@ -29,7 +32,7 @@ export let ProjectionsPanelPolymer = PolymerElement({
     tSNEis3d:
         {type: Boolean, value: true, observer: '_tsneDimensionToggleObserver'},
     // PCA projection.
-    pcaComponents: {type: Array, value: d3.range(0, 10)},
+    pcaComponents: Array,
     pcaX: {type: Number, value: 0, observer: 'showPCAIfEnabled'},
     pcaY: {type: Number, value: 1, observer: 'showPCAIfEnabled'},
     pcaZ: {type: Number, value: 2, observer: 'showPCAIfEnabled'},
@@ -44,12 +47,16 @@ export let ProjectionsPanelPolymer = PolymerElement({
 type InputControlName = 'xLeft' | 'xRight' | 'yUp' | 'yDown';
 
 type CentroidResult = {
-  centroid?: number[]; numMatches?: number;
+  centroid?: Vector;
+  numMatches?: number;
 };
 
 type Centroids = {
-  [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
-  yDown: number[];
+  [key: string]: Vector;
+  xLeft: Vector;
+  xRight: Vector;
+  yUp: Vector;
+  yDown: Vector;
 };
 
 /**
@@ -57,6 +64,11 @@ type Centroids = {
  */
 export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private projector: Projector;
+  private pcaComponents: Array<{
+    id: number,
+    componentNumber: number,
+    percVariance: string
+  }>;
   private currentProjection: Projection;
   private polymerChangesTriggerReprojection: boolean;
   private dataSet: DataSet;
@@ -133,7 +145,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.polymerChangesTriggerReprojection = true;
   }
 
-  private updateTSNEPerplexityFromUIChange() {
+  private updateTSNEPerplexityFromSliderChange() {
     if (this.perplexitySlider) {
       this.perplexity = +this.perplexitySlider.value;
     }
@@ -161,8 +173,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
     this.perplexitySlider.value = this.perplexity.toString();
     this.perplexitySlider.addEventListener(
-        'change', () => this.updateTSNEPerplexityFromUIChange());
-    this.updateTSNEPerplexityFromUIChange();
+        'change', () => this.updateTSNEPerplexityFromSliderChange());
+    this.updateTSNEPerplexityFromSliderChange();
 
     this.learningRateInput.addEventListener(
         'change', () => this.updateTSNELearningRateFromUIChange());
@@ -217,7 +229,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.computeAllCentroids();
 
     this.setZDropdownEnabled(this.pcaIs3d);
-    this.updateTSNEPerplexityFromUIChange();
+    this.updateTSNEPerplexityFromSliderChange();
     this.updateTSNELearningRateFromUIChange();
     if (this.iterationLabel) {
       this.iterationLabel.text(bookmark.tSNEIteration.toString());
@@ -284,6 +296,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet = dataSet;
     this.originalDataSet = originalDataSet;
     this.dim = dim;
+    let perplexity =
+        Math.max(5, Math.ceil(Math.sqrt(dataSet.points.length) / 4));
+    this.perplexitySlider.value = perplexity.toString();
+    this.updateTSNEPerplexityFromSliderChange();
     this.clearCentroids();
 
     this.dom.select('#tsne-sampling')
@@ -302,10 +318,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.beginProjection(this.currentProjection);
   }
 
-  metadataChanged(metadata: MetadataInfo) {
+  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo) {
     // Project by options for custom projections.
     let searchByMetadataIndex = -1;
-    this.searchByMetadataOptions = metadata.stats.map((stats, i) => {
+    this.searchByMetadataOptions = spriteAndMetadata.stats.map((stats, i) => {
       // Make the default label by the first non-numeric column.
       if (!stats.isNumeric && searchByMetadataIndex === -1) {
         searchByMetadataIndex = i;
@@ -394,6 +410,17 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     }
   }
 
+  private updateTotalVarianceMessage() {
+    let variances = this.dataSet.fracVariancesExplained;
+    let totalVariance = variances[this.pcaX] + variances[this.pcaY];
+    let msg = 'Total variance described: ';
+    if (this.pcaIs3d) {
+      totalVariance += variances[this.pcaZ];
+    }
+    msg += (totalVariance * 100).toFixed(1) + '%.';
+    this.dom.select('#total-variance').html(msg);
+  }
+
   private showPCA() {
     if (this.dataSet == null) {
       return;
@@ -404,6 +431,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
           'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
       this.projector.setProjection('pca', this.pcaIs3d ? 3 : 2, accessors);
+      let numComponents = Math.min(NUM_PCA_COMPONENTS, this.dataSet.dim[1]);
+      this.updateTotalVarianceMessage();
+      this.pcaComponents = d3.range(0, numComponents).map(i => {
+        let fracVariance = this.dataSet.fracVariancesExplained[i];
+        return {
+          id: i,
+          componentNumber: i + 1,
+          percVariance: (fracVariance * 100).toFixed(1)
+        };
+      });
     });
   }
 
@@ -507,10 +544,6 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   getTsneSampleSize() {
     return SAMPLE_SIZE.toLocaleString();
-  }
-
-  _addOne(value: number) {
-    return value + 1;
   }
 }
 

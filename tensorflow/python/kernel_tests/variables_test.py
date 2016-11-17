@@ -24,8 +24,8 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 
 
@@ -49,7 +49,7 @@ class VariablesTestCase(tf.test.TestCase):
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         var1.eval()
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertAllClose(0.0, var0.eval())
       self.assertAllClose(1.1, var1.eval())
@@ -75,7 +75,7 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual([3, 6], depdep.get_shape())
       self.assertEqual([3, 6], depdep.get_shape())
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertAllClose(rnd.eval(), dep.eval())
       self.assertAllClose(rnd.eval() + dep.eval() + 2.0,
@@ -95,7 +95,7 @@ class VariablesTestCase(tf.test.TestCase):
       plus_one = var.assign_add(1.0)
       minus_one = var.assign_sub(2.0)
       four = var.assign(4.0)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose(0.0, var.eval())
 
       self.assertAllClose(1.0, plus_one.eval())
@@ -113,7 +113,7 @@ class VariablesTestCase(tf.test.TestCase):
       var = tf.Variable(zero)
       count_up_to = var.count_up_to(3)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(0, var.eval())
 
       self.assertEqual(0, count_up_to.eval())
@@ -152,7 +152,7 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual([c.op], d.op.control_inputs)
       self.assertEqual([], var_x.initializer.control_inputs)
       self.assertEqual([], var_x.value().op.control_inputs)
-      self.assertEqual([], var_x.ref().op.control_inputs)
+      self.assertEqual([], var_x._ref().op.control_inputs)  # pylint: disable=protected-access
       self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
 
   def testControlFlow(self):
@@ -193,7 +193,7 @@ class VariablesTestCase(tf.test.TestCase):
     with self.test_session():
       var_x = tf.Variable(2.0)
       var_y = tf.Variable(3.0)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose(2.0, var_x.eval())
       self.assertAllClose(3.0, var_y.eval())
       self.assertAllClose(5.0, tf.add(var_x, var_y).eval())
@@ -204,7 +204,7 @@ class VariablesTestCase(tf.test.TestCase):
       zero_size_const = tf.ones([2, 0])
       variable_mul = tf.matmul(zero_size_const, zero_size_var)
       const_mul = tf.matmul(zero_size_const, zero_size_const, transpose_b=True)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       variable_output = variable_mul.eval()
       self.assertAllClose(const_mul.eval(), variable_output)
       self.assertAllClose([[0., 0.], [0., 0.]], variable_output)
@@ -229,8 +229,8 @@ class VariablesTestCase(tf.test.TestCase):
       var_t = tf.Variable(
           2.0, trainable=True,
           collections=[tf.GraphKeys.TRAINABLE_VARIABLES,
-                       tf.GraphKeys.VARIABLES])
-      self.assertEqual([var_x, var_y, var_z, var_t], tf.all_variables())
+                       tf.GraphKeys.GLOBAL_VARIABLES])
+      self.assertEqual([var_x, var_y, var_z, var_t], tf.global_variables())
       self.assertEqual([var_x, var_z, var_t], tf.trainable_variables())
 
   def testOperators(self):
@@ -269,7 +269,7 @@ class VariablesTestCase(tf.test.TestCase):
       var_t = tf.Variable(rnd)
       slice_v = var_t[2, 0:0]
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose([2.0], add.eval())
       self.assertAllClose([3.0], radd.eval())
       self.assertAllClose([1.0], sub.eval())
@@ -302,7 +302,7 @@ class VariablesTestCase(tf.test.TestCase):
   def testSession(self):
     with self.test_session() as sess:
       var = tf.Variable([1, 12])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose([1, 12], sess.run(var))
 
   def testDevicePlacement(self):
@@ -310,7 +310,7 @@ class VariablesTestCase(tf.test.TestCase):
       with tf.device("/cpu:0"):
         var = tf.Variable([1, 12])
       init_value = var.initialized_value()
-      init_op = tf.initialize_all_variables()
+      init_op = tf.global_variables_initializer()
       self.assertEqual(var.op.device, init_value.device)
       self.assertEqual(var.op.device, init_op.device)
       sess.run(init_op)
@@ -348,7 +348,7 @@ class VariablesTestCase(tf.test.TestCase):
 
       with self.assertRaises(tf.errors.FailedPreconditionError):
         v2.eval()
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
 
   def testInitializerFunctionDevicePlacement(self):
@@ -385,7 +385,7 @@ class IsInitializedTest(tf.test.TestCase):
       _ = v, w
       uninited = tf.report_uninitialized_variables()
       self.assertAllEqual(np.array([b"v", b"w"]), sess.run(uninited))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(0, sess.run(uninited).size)
 
   def testVariableList(self):
@@ -411,7 +411,7 @@ class IsInitializedTest(tf.test.TestCase):
       a = tf.Variable(tf.zeros([0, 2]))
       b = tf.Variable(tf.ones([2, 2]))
       objective = tf.reduce_sum(b + tf.matmul(a, a, transpose_a=True))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       do_opt = tf.train.GradientDescentOptimizer(0.1).minimize(objective)
       sess.run([do_opt])
       self.assertAllClose([[0.9, 0.9], [0.9, 0.9]], b.eval())
@@ -431,7 +431,7 @@ class ObsoleteIsInitializedTest(tf.test.TestCase):
       inited = tf.assert_variables_initialized()
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         sess.run(inited)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       sess.run(inited)
 
   def testVariableList(self):
@@ -535,7 +535,8 @@ class VariableContainerTest(tf.test.TestCase):
         v1 = tf.Variable([1])
         with tf.container("l2"):
           v2 = tf.Variable([2])
-          special_v = state_ops.variable_op([1], tf.float32, container="l3")
+          special_v = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+              name="VariableInL3", container="l3", shared_name="")
         v3 = tf.Variable([3])
       v4 = tf.Variable([4])
     self.assertEqual(tf.compat.as_bytes(""), v0.op.get_attr("container"))

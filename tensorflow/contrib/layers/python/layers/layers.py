@@ -31,6 +31,7 @@ from tensorflow.contrib.layers.python.layers import utils
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
@@ -257,7 +258,7 @@ def _fused_batch_norm(
     gamma_collections = utils.get_variable_collections(variables_collections,
                                                        'gamma')
     gamma_initializer = param_initializers.get('gamma',
-                                               init_ops.ones_initializer)
+                                               init_ops.ones_initializer())
     gamma = variables.model_variable(
         'gamma',
         shape=params_shape,
@@ -282,7 +283,7 @@ def _fused_batch_norm(
     moving_variance_collections = utils.get_variable_collections(
         variables_collections, 'moving_variance')
     moving_variance_initializer = param_initializers.get(
-        'moving_variance', init_ops.ones_initializer)
+        'moving_variance', init_ops.ones_initializer())
     moving_variance = variables.model_variable(
         'moving_variance',
         shape=params_shape,
@@ -319,9 +320,9 @@ def _fused_batch_norm(
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
@@ -331,9 +332,9 @@ def _fused_batch_norm(
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
         update_mean, update_variance = utils.smart_cond(is_training,
                                                         _delay_updates,
@@ -504,7 +505,7 @@ def batch_norm(
       gamma_collections = utils.get_variable_collections(variables_collections,
                                                          'gamma')
       gamma_initializer = param_initializers.get('gamma',
-                                                 init_ops.ones_initializer)
+                                                 init_ops.ones_initializer())
       gamma = variables.model_variable('gamma',
                                        shape=params_shape,
                                        dtype=dtype,
@@ -533,7 +534,7 @@ def batch_norm(
       moving_variance_collections = utils.get_variable_collections(
           variables_collections, 'moving_variance')
       moving_variance_initializer = param_initializers.get(
-          'moving_variance', init_ops.ones_initializer)
+          'moving_variance', init_ops.ones_initializer())
       moving_variance = variables.model_variable(
           'moving_variance',
           shape=params_shape,
@@ -563,9 +564,9 @@ def batch_norm(
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies([update_moving_mean,
                                          update_moving_variance]):
             return array_ops.identity(mean), array_ops.identity(variance)
@@ -576,9 +577,9 @@ def batch_norm(
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay)
+              moving_mean, mean, decay, zero_debias=False)
           update_moving_variance = moving_averages.assign_moving_average(
-              moving_variance, variance, decay)
+              moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
 
         update_mean, update_variance = utils.smart_cond(is_training,
@@ -1217,7 +1218,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
     TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
   """
   with ops.name_scope(scope, 'InnerFlatten', [inputs, new_rank]) as sc:
-    if isinstance(inputs, ops.SparseTensor):
+    if isinstance(inputs, sparse_tensor.SparseTensor):
       flattened = _sparse_inner_flatten(inputs, new_rank)
     else:
       inputs = ops.convert_to_tensor(inputs)
@@ -1370,7 +1371,7 @@ def layer_norm(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -1405,12 +1406,13 @@ def layer_norm(inputs,
     if scale:
       gamma_collections = utils.get_variable_collections(variables_collections,
                                                          'gamma')
-      gamma = variables.model_variable('gamma',
-                                       shape=params_shape,
-                                       dtype=dtype,
-                                       initializer=init_ops.ones_initializer,
-                                       collections=gamma_collections,
-                                       trainable=trainable)
+      gamma = variables.model_variable(
+          'gamma',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=init_ops.ones_initializer(),
+          collections=gamma_collections,
+          trainable=trainable)
     # Calculate the moments on the last axis (layer activations).
     mean, variance = nn.moments(inputs, axis, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
@@ -1970,7 +1972,7 @@ def legacy_fully_connected(x,
     dtype = x.dtype.base_dtype
 
     weight_collections = set(list(weight_collections or []) +
-                             [ops.GraphKeys.VARIABLES])
+                             [ops.GraphKeys.GLOBAL_VARIABLES])
     w = variable_scope.get_variable('weights',
                                     shape=[num_input_units, num_output_units],
                                     dtype=dtype,
@@ -1984,7 +1986,7 @@ def legacy_fully_connected(x,
 
     if bias_init is not None:
       bias_collections = set(list(bias_collections or []) +
-                             [ops.GraphKeys.VARIABLES])
+                             [ops.GraphKeys.GLOBAL_VARIABLES])
       b = variable_scope.get_variable('bias',
                                       shape=[num_output_units],
                                       dtype=dtype,

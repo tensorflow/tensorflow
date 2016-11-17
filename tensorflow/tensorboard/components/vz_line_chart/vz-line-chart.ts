@@ -259,27 +259,35 @@ module VZ {
           dataset: null,
         };
 
-        let centerBBox: SVGRect =
-            (<any>this.gridlines.content().node()).getBBox();
-        let points = plot.datasets().map(
-            (dataset) => this.findClosestPoint(target, dataset));
-        let pointsToCircle = points.filter(
-            (p) => p != null &&
-                Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
-        let pts: any = pointsComponent.content().selectAll('.point').data(
-            pointsToCircle,
-            (p: VZ.ChartHelpers.Point) => p.dataset.metadata().name);
-        if (points.length !== 0) {
-          pts.enter().append('circle').classed('point', true);
-          pts.attr('r', VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
+
+        let bbox: SVGRect = (<any>this.gridlines.content().node()).getBBox();
+
+        // pts is the closets point to the tooltip for each dataset
+        let pts = plot.datasets()
+                      .map((dataset) => this.findClosestPoint(target, dataset))
+                      .filter(x => x != null);
+        let intersectsBBox = Plottable.Utils.DOM.intersectsBBox;
+        // We draw tooltips for points that are NaN, or are currently visible
+        let ptsForTooltips = pts.filter(
+            (p) => intersectsBBox(p.x, p.y, bbox) || isNaN(p.datum.scalar));
+        // Only draw little indicator circles for the non-NaN points
+        let ptsToCircle = ptsForTooltips.filter((p) => !isNaN(p.datum.scalar));
+
+        let ptsSelection: any =
+            pointsComponent.content().selectAll('.point').data(
+                ptsToCircle,
+                (p: VZ.ChartHelpers.Point) => p.dataset.metadata().name);
+        if (pts.length !== 0) {
+          ptsSelection.enter().append('circle').classed('point', true);
+          ptsSelection.attr('r', VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
               .attr('cx', (p) => p.x)
               .attr('cy', (p) => p.y)
               .style('stroke', 'none')
               .attr(
                   'fill',
                   (p) => this.colorScale.scale(p.dataset.metadata().name));
-          pts.exit().remove();
-          this.drawTooltips(points, target);
+          ptsSelection.exit().remove();
+          this.drawTooltips(ptsForTooltips, target);
         } else {
           hideTooltips();
         }
@@ -313,6 +321,8 @@ module VZ {
         points =
             _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset))
                 .reverse();
+      } else if (this.tooltipSortingMethod === 'nearest') {
+        points = _.sortBy(points, dist);
       } else {
         // The 'default' sorting method maintains the order of names passed to
         // setVisibleSeries(). However we reverse that order when defining the
@@ -328,7 +338,6 @@ module VZ {
                      .append('tr');
       // Grey out the point if any of the following are true:
       // - The cursor is outside of the x-extent of the dataset
-      // - The point is rendered above or below the screen
       // - The point's y value is NaN
       rows.classed('distant', (d) => {
         let firstPoint = d.dataset.data()[0];
@@ -337,9 +346,7 @@ module VZ {
             this.xScale.scale(this.xAccessor(firstPoint, 0, d.dataset));
         let lastX = this.xScale.scale(this.xAccessor(lastPoint, 0, d.dataset));
         let s = this.smoothingEnabled ? d.datum.smoothed : d.datum.scalar;
-        let yD = this.yScale.domain();
-        return target.x < firstX || target.x > lastX || s < yD[0] ||
-            s > yD[1] || isNaN(s);
+        return target.x < firstX || target.x > lastX || isNaN(s);
       });
       rows.classed('closest', (p) => dist(p) === closestDist);
       // It is a bit hacky that we are manually applying the width to the swatch

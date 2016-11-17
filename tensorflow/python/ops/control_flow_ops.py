@@ -76,10 +76,10 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import control_flow_pb2
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -165,7 +165,7 @@ def _Identity(data, name=None):
     else:
       return array_ops.identity(data, name=name)
   else:
-    if not isinstance(data, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(data, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(data))
     values = _Identity(data.values, name=name)
     indices = array_ops.identity(data.indices, name="indices")
@@ -176,7 +176,7 @@ def _Identity(data, name=None):
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
       dense_shape = array_ops.identity(data.shape, name="dense_shape")
-      return ops.SparseTensor(indices, values, dense_shape)
+      return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
 def _NextIteration(data, name=None):
@@ -187,7 +187,7 @@ def _NextIteration(data, name=None):
     else:
       return next_iteration(data, name=name)
   else:
-    if not isinstance(data, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(data, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(data))
     values = _NextIteration(data.values, name=name)
     indices = next_iteration(data.indices, name="indices")
@@ -198,7 +198,7 @@ def _NextIteration(data, name=None):
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
       dense_shape = next_iteration(data.shape, name="dense_shape")
-      return ops.SparseTensor(indices, values, dense_shape)
+      return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
 def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
@@ -233,7 +233,7 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
       result.set_shape(data.get_shape())
     return result
   else:
-    if not isinstance(data, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(data, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(data))
     values = _Enter(data.values, frame_name, is_constant,
                     parallel_iterations=parallel_iterations,
@@ -255,7 +255,7 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
                           parallel_iterations, name="dense_shape")
       if use_input_shape:
         dense_shape.set_shape(data.shape.get_shape())
-      return ops.SparseTensor(indices, values, dense_shape)
+      return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
 def exit(data, name=None):
@@ -277,7 +277,7 @@ def exit(data, name=None):
     else:
       return gen_control_flow_ops._exit(data, name)
   else:
-    if not isinstance(data, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(data, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(data))
     values = exit(data.values, name=name)
     indices = gen_control_flow_ops._exit(data.indices, name="indices")
@@ -288,7 +288,7 @@ def exit(data, name=None):
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
       dense_shape = gen_control_flow_ops._exit(data.shape, name)
-      return ops.SparseTensor(indices, values, dense_shape)
+      return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
 def switch(data, pred, dtype=None, name=None):
@@ -317,7 +317,7 @@ def switch(data, pred, dtype=None, name=None):
     if isinstance(data, ops.Tensor):
       return gen_control_flow_ops._switch(data, pred, name=name)
     else:
-      if not isinstance(data, (ops.IndexedSlices, ops.SparseTensor)):
+      if not isinstance(data, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
         raise TypeError("Type %s not supported" % type(data))
       val, ind = data.values, data.indices
       val_f, val_t = gen_control_flow_ops._switch(val, pred, name=name)
@@ -335,8 +335,8 @@ def switch(data, pred, dtype=None, name=None):
         dense_shape = data.shape
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
             data.shape, pred, name="dense_shape")
-        return (ops.SparseTensor(ind_f, val_f, dense_shape_f),
-                ops.SparseTensor(ind_t, val_t, dense_shape_t))
+        return (sparse_tensor.SparseTensor(ind_f, val_f, dense_shape_f),
+                sparse_tensor.SparseTensor(ind_t, val_t, dense_shape_t))
 
 
 def _SwitchRefOrTensor(data, pred, name="Switch"):
@@ -418,14 +418,15 @@ def merge(inputs, name=None):
         return gen_control_flow_ops._ref_merge(inputs, name)
       else:
         return gen_control_flow_ops._merge(inputs, name)
-    elif all([isinstance(v, ops.SparseTensor) for v in inputs]):
+    elif all([isinstance(v, sparse_tensor.SparseTensor) for v in inputs]):
       # Only handle the case when all inputs are SparseTensor.
       values, _ = merge([inp.values for inp in inputs], name=name)
       indices, chosen_index = gen_control_flow_ops._merge(
           [inp.indices for inp in inputs], name="indices")
       dense_shape, _ = gen_control_flow_ops._merge(
           [inp.shape for inp in inputs], name="dense_shape")
-      return ops.SparseTensor(indices, values, dense_shape), chosen_index
+      return (sparse_tensor.SparseTensor(indices, values, dense_shape),
+              chosen_index)
     else:
       # For now convert all the inputs as IndexedSlices.
       inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
@@ -533,7 +534,7 @@ def _SetShapeInvariants(input_vars, enter_vars, shapes):
             % (inp.name, inp.get_shape(), shape))
       var.set_shape(shape)
     else:
-      if not isinstance(var, (ops.IndexedSlices, ops.SparseTensor)):
+      if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
         raise TypeError("Type %s not supported" % type(var))
       if isinstance(var, ops.IndexedSlices):
         if not _ShapeLessThanOrEqual(inp.values.get_shape(), shape):
@@ -584,7 +585,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
           "argument of tf.while_loop or set_shape() on the loop variables."
           % (merge_var.name, m_shape, n_shape))
   else:
-    if not isinstance(var, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(var))
     if isinstance(var, ops.IndexedSlices):
       m_values_shape = merge_var.values.get_shape()
@@ -645,8 +646,8 @@ def _AddNextAndBackEdge(m, v):
       if v.dense_shape is None:
         raise ValueError("Must have dense shape: %s" % v.name)
       m.dense_shape.op._update_input(1, v.dense_shape)
-  elif isinstance(m, ops.SparseTensor):
-    if not isinstance(v, ops.SparseTensor):
+  elif isinstance(m, sparse_tensor.SparseTensor):
+    if not isinstance(v, sparse_tensor.SparseTensor):
       raise ValueError("Must be a sparse tensor: %s" % v.name)
     v = _NextIteration(v)
     # pylint: disable=protected-access
@@ -1180,11 +1181,11 @@ class ControlFlowState(object):
     if IsLoopSwitch(op): return None
     dead_branch = IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt is None:
+    grad_state = self._map.get(forward_ctxt)
+    if grad_state is None:
       # op is not in a while loop that is part of gradients().
       return ZerosLikeOutsideLoop(op, index)
     op_ctxt = op._get_control_flow_context()
-    grad_state = self._map.get(forward_ctxt)
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
     shape = val.get_shape()
     if shape.is_fully_defined():
@@ -1687,7 +1688,7 @@ class CondContext(ControlFlowContext):
           # Use pivot as the proxy for this op.
           real_v = with_dependencies([v], self._pivot)
         else:
-          if isinstance(v, (ops.IndexedSlices, ops.SparseTensor)):
+          if isinstance(v, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
             values = self._ProcessOutputTensor(v.values)
             indices = self._ProcessOutputTensor(v.indices)
             if isinstance(v, ops.IndexedSlices):
@@ -1697,7 +1698,7 @@ class CondContext(ControlFlowContext):
               real_v = ops.IndexedSlices(values, indices, dense_shape)
             else:
               dense_shape = self._ProcessOutputTensor(v.shape)
-              real_v = ops.SparseTensor(indices, values, dense_shape)
+              real_v = sparse_tensor.SparseTensor(indices, values, dense_shape)
           else:
             real_v = self._ProcessOutputTensor(v)
         result.append(real_v)
@@ -1791,8 +1792,8 @@ def cond(pred, fn1, fn2, name=None):
     for x, y in zip(res_f, res_t):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
-              (isinstance(x, ops.SparseTensor) and
-               isinstance(y, ops.SparseTensor)) or
+              (isinstance(x, sparse_tensor.SparseTensor) and
+               isinstance(y, sparse_tensor.SparseTensor)) or
               (isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)))
       val_x = x if isinstance(x, ops.Tensor) else x.values
       val_y = y if isinstance(y, ops.Tensor) else y.values
@@ -1959,7 +1960,9 @@ class WhileContext(ControlFlowContext):
       context_def.pivot_name = ops.strip_name_scope(
           self._pivot.name, export_scope)
       if self._loop_exits:
-        context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
+        context_def.loop_exit_names.extend(
+            [ops.strip_name_scope(l.name, export_scope)
+             for l in self._loop_exits])
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_proto(
               export_scope=export_scope))
@@ -2354,7 +2357,7 @@ class WhileContext(ControlFlowContext):
         self._values.add(x.indices.name)
         if isinstance(x, ops.IndexedSlices):
           dense_shape = x.dense_shape
-        elif isinstance(x, ops.SparseTensor):
+        elif isinstance(x, sparse_tensor.SparseTensor):
           dense_shape = x.shape
         else:
           raise TypeError("Type %s not supported" % type(x))
@@ -2485,7 +2488,7 @@ class WhileContext(ControlFlowContext):
       if isinstance(e, ops.Tensor):
         xs = [e]
       else:
-        if not isinstance(e, (ops.IndexedSlices, ops.SparseTensor)):
+        if not isinstance(e, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
           raise TypeError("Type %s not supported" % type(e))
         xs = [e.values, e.indices]
         shape = e.dense_shape if isinstance(e, ops.IndexedSlices) else e.shape
@@ -2568,6 +2571,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       `Tensor`, and `TensorArray` objects.
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel.
+      It must be a positive integer.
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     name: Optional name prefix for the returned tensors.
@@ -2621,6 +2625,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       raise TypeError("cond must be callable.")
     if not callable(body):
       raise TypeError("body must be callable.")
+    if parallel_iterations < 1:
+      raise TypeError("parallel_iterations must be a positive integer.")
 
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)
@@ -3000,68 +3006,6 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       case_seq = _build_case()
 
     return case_seq
-
-
-ops.RegisterShape("Enter")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Exit")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("NextIteration")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefEnter")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefExit")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefNextIteration")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ControlTrigger")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("NoOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Abort")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("LoopCond")
-def _LoopCondShape(op):
-  """Shape function for the LoopCond op."""
-  return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
-
-
-ops.RegisterShape("Merge")(common_shapes.call_cpp_shape_fn)
-
-
-def _MergeShape(op):
-  """Shape function for the Merge op.
-
-  The Merge op takes many inputs of arbitrary shapes, and produces a
-  first output that is one of those inputs, and a second scalar
-  output.
-
-  If all input shapes are known and have the same rank, the output
-  shape must have that rank, otherwise the output shape is unknown.
-  Each output dimension is specified only if that dimension in all
-  inputs are the same.
-
-  Args:
-    op: A Merge Operation.
-
-  Returns:
-    A single-element list containing the Shape of the Merge op.
-
-  """
-  output_shape = op.inputs[0].get_shape()
-  if output_shape.dims is None:
-    return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
-  else:
-    for input_ in op.inputs[1:]:
-      input_shape = input_.get_shape()
-      if input_shape.dims is None or input_shape.ndims != output_shape.ndims:
-        return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
-      else:
-        output_shape = tensor_shape.TensorShape(
-            [input_dim.value if input_dim.value == output_dim.value else None
-             for input_dim, output_dim in zip(input_shape.dims,
-                                              output_shape.dims)])
-    return [output_shape, tensor_shape.scalar()]
-
-ops.RegisterShape("RefMerge")(_MergeShape)
-
-
-ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,

@@ -38,10 +38,10 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session():
       mu = [0.0, 0.1, 0.2]
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
-        prior = st.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
+      with st.value_type(st.SampleValue()):
+        prior = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
         likelihood = st.StochasticTensor(
-            distributions.Normal, mu=prior, sigma=sigma)
+            distributions.Normal(mu=prior, sigma=sigma))
         self.assertTrue(prior.distribution.is_reparameterized)
         self.assertTrue(likelihood.distribution.is_reparameterized)
 
@@ -76,11 +76,10 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session() as sess:
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
-        prior = st.StochasticTensor(NormalNotParam, mu=mu, sigma=sigma)
-        likelihood = st.StochasticTensor(
-            NormalNotParam, mu=prior, sigma=sigma)
-        prior_2 = st.StochasticTensor(NormalNotParam, mu=mu, sigma=sigma)
+      with st.value_type(st.SampleValue()):
+        prior = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
+        likelihood = st.StochasticTensor(NormalNotParam(mu=prior, sigma=sigma))
+        prior_2 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
 
       loss = tf.square(tf.identity(likelihood) - mu)
       part_loss = tf.square(tf.identity(prior) - mu)
@@ -154,10 +153,8 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session():
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
-        dt = st.StochasticTensor(NormalNotParam,
-                                 mu=mu,
-                                 sigma=sigma,
+      with st.value_type(st.SampleValue()):
+        dt = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma),
                                  loss_fn=None)
         self.assertEqual(None, dt.loss(tf.constant([2.0])))
 
@@ -165,9 +162,9 @@ class TestSurrogateLosses(tf.test.TestCase):
     with self.test_session() as sess:
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
-      with st.value_type(st.SampleAndReshapeValue()):
-        dt1 = st.StochasticTensor(NormalNotParam, mu=mu, sigma=sigma)
-        dt2 = st.StochasticTensor(NormalNotParam, mu=mu, sigma=sigma)
+      with st.value_type(st.SampleValue()):
+        dt1 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
+        dt2 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
         loss = tf.square(tf.identity(dt1)) + 10. + dt2
 
         sl_all = sg.surrogate_loss([loss])
@@ -186,8 +183,8 @@ class TestSurrogateLosses(tf.test.TestCase):
 class StochasticDependenciesMapTest(tf.test.TestCase):
 
   def testBuildsMapOfUpstreamNodes(self):
-    dt1 = st.StochasticTensor(distributions.Normal, mu=0., sigma=1.)
-    dt2 = st.StochasticTensor(distributions.Normal, mu=0., sigma=1.)
+    dt1 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
+    dt2 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
     out1 = dt1.value() + 1.
     out2 = dt2.value() + 2.
     x = out1 + out2
@@ -197,11 +194,11 @@ class StochasticDependenciesMapTest(tf.test.TestCase):
     self.assertEqual(dep_map[dt2], set([x, y]))
 
   def testHandlesStackedStochasticNodes(self):
-    dt1 = st.StochasticTensor(distributions.Normal, mu=0., sigma=1.)
+    dt1 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
     out1 = dt1.value() + 1.
-    dt2 = st.StochasticTensor(distributions.Normal, mu=out1, sigma=1.)
+    dt2 = st.StochasticTensor(distributions.Normal(mu=out1, sigma=1.))
     x = dt2.value() + 2.
-    dt3 = st.StochasticTensor(distributions.Normal, mu=0., sigma=1.)
+    dt3 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
     y = dt3.value() * 3.
     dep_map = sg._stochastic_dependencies_map([x, y])
     self.assertEqual(dep_map[dt1], set([x]))
@@ -209,10 +206,10 @@ class StochasticDependenciesMapTest(tf.test.TestCase):
     self.assertEqual(dep_map[dt3], set([y]))
 
   def testTraversesControlInputs(self):
-    dt1 = st.StochasticTensor(distributions.Normal, mu=0., sigma=1.)
+    dt1 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
     logits = dt1.value() * 3.
-    dt2 = st.StochasticTensor(distributions.Bernoulli, logits=logits)
-    dt3 = st.StochasticTensor(distributions.Normal, mu=0., sigma=1.)
+    dt2 = st.StochasticTensor(distributions.Bernoulli(logits=logits))
+    dt3 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
     x = dt3.value()
     y = tf.ones((2, 2)) * 4.
     z = tf.ones((2, 2)) * 3.

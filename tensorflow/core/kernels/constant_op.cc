@@ -16,6 +16,9 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #define EIGEN_USE_THREADS
+#if TENSORFLOW_USE_SYCL
+#define EIGEN_USE_SYCL
+#endif
 
 #include "tensorflow/core/kernels/constant_op.h"
 
@@ -50,6 +53,15 @@ void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
 ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 #if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                                      \
@@ -215,6 +227,7 @@ REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
+REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")

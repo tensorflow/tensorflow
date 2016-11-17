@@ -55,9 +55,6 @@ limitations under the License.
   top: 60px;
   max-height: 50vh;
 }
-paper-button {
-  border: 1px solid #ccc;
-}
 
 #save-container {
   text-align: center;
@@ -127,10 +124,9 @@ paper-textarea {
       BOOKMARKS ([[savedStates.length]])
       <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
       <paper-tooltip animation-delay="0" position="top" offset="0">
-        The bookmarks drawer allows you to bookmark a set of views into the
-        projection, saving camera position, selected points, as well as any
-        highlighting you may have. You can then download the file to save it
-        permanently, and later upload it to again view your bookmarks.
+        Open this drawer to save a set of views of the projection, including
+        selected points. A file containing the bookmarks can then be saved and
+        later loaded to view them.
       </paper-tooltip>
     </div>
     <div id="icon-container">
@@ -185,13 +181,14 @@ paper-textarea {
       <div id="action-buttons-container">
         <paper-icon-button
             class="upload-download-icon-button"
-            icon="file-download"
-            title="Download bookmarks"
+            icon="save"
+            title="Save bookmarks"
+            disabled="[[!hasStates]]"
             on-tap="_downloadFile"></paper-icon-button>
         <paper-icon-button
             class="upload-download-icon-button"
             icon="file-upload"
-            title="Upload bookmarks"
+            title="Load bookmarks"
             on-tap="_uploadFile"></paper-icon-button>
         <paper-icon-button
             class="add-icon-button ink-fab"

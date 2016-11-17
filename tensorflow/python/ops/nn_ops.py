@@ -23,7 +23,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -1173,12 +1172,6 @@ def bias_add(value, bias, data_format=None, name=None):
     return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
 
 
-ops.RegisterShape("BiasAddV1")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BiasAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BiasAddGradV1")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BiasAddGrad")(common_shapes.call_cpp_shape_fn)
-
-
 # pylint: disable=protected-access
 def bias_add_v1(value, bias, name=None):
   """Adds `bias` to `value`.
@@ -1564,12 +1557,6 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
       return cost
 
 
-ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SoftmaxCrossEntropyWithLogits")(
-    common_shapes.call_cpp_shape_fn)
-
-
 def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the average pooling on the input.
 
@@ -1630,167 +1617,6 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
-ops.RegisterShape("Relu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Relu6")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Elu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Softplus")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Softsign")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReluGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Relu6Grad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("EluGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SoftplusGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SoftsignGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("L2Loss")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LRN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LRNGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Softmax")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LogSoftmax")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InTopK")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TopK")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("TopKV2")
-def _TopKV2Shape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("BatchNormWithGlobalNormalization")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FusedBatchNorm")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FusedBatchNormGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DepthwiseConv2dNative")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPool")(common_shapes.call_cpp_shape_fn)
-
-
-def _CommonFusedConvCalculations(op, has_resize):
-  """Shape function for Fused*Conv2D ops."""
-  # The bilinear resize shape calculation.
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  if has_resize:
-    unused_size_shape = op.inputs[1].get_shape().merge_with([2])
-    size = tensor_util.constant_value(op.inputs[1])
-    if size is not None:
-      height = size[0]
-      width = size[1]
-    else:
-      height = None
-      width = None
-    resized_shape = tensor_shape.TensorShape(
-        [input_shape[0], height, width, input_shape[3]])
-    paddings_index = 2
-    filter_index = 3
-  else:
-    resized_shape = input_shape
-    paddings_index = 1
-    filter_index = 2
-
-  # Calculates the effect of the padding.
-  paddings_shape = op.inputs[paddings_index].get_shape().with_rank(2)
-  resized_shape = resized_shape.with_rank(paddings_shape[0].value)
-  paddings_shape = paddings_shape.merge_with(
-      tensor_shape.matrix(resized_shape.ndims, 2))
-  paddings = tensor_util.constant_value(op.inputs[paddings_index])
-  if paddings is None:
-    padded_shape = tensor_shape.unknown_shape(ndims=resized_shape.ndims)
-  else:
-    output_dims = []
-    for i, dim in enumerate(resized_shape.dims):
-      if paddings[i, 0] < 0 or paddings[i, 1] < 0:
-        raise ValueError("paddings must be non-negative")
-      output_dims.append(dim + paddings[i, 0] + paddings[i, 1])
-    padded_shape = tensor_shape.TensorShape(output_dims)
-
-  # Finally work out the convolution's effect.
-  filter_shape = op.inputs[filter_index].get_shape().with_rank(4)
-
-  batch_size = padded_shape[0]
-  in_rows = padded_shape[1]
-  in_cols = padded_shape[2]
-
-  filter_rows = filter_shape[0]
-  filter_cols = filter_shape[1]
-  depth_out = filter_shape[3]
-  # Check that the input depths are compatible.
-  padded_shape[3].assert_is_compatible_with(filter_shape[2])
-
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
-
-  if stride_b != 1 or stride_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "strides in the batch and depth dimensions.")
-  # TODO(mrry,shlens): Raise an error if the stride would cause
-  # information in the input to be ignored. This will require a change
-  # in the kernel implementation.
-  padding = op.get_attr("padding")
-  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
-                                                            filter_rows,
-                                                            filter_cols,
-                                                            stride_r,
-                                                            stride_c,
-                                                            padding)
-
-  output_shape = [batch_size, out_rows, out_cols, depth_out]
-  return [tensor_shape.TensorShape(output_shape)]
-
-
-@ops.RegisterShape("FusedResizeAndPadConv2D")
-def _FusedResizeAndPadConv2DShape(op):
-  """Shape function for FusedResizeAndPadConv2D op."""
-  return _CommonFusedConvCalculations(op, True)
-
-
-@ops.RegisterShape("FusedPadConv2D")
-def _FusedPadConv2DShape(op):
-  """Shape function for FusedResizeAndPadConv2D op."""
-  return _CommonFusedConvCalculations(op, False)
-
-
-ops.RegisterShape("MaxPoolWithArgmax")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("AvgPoolGrad")
-def _AvgPoolGradShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-ops.RegisterShape("FractionalMaxPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FractionalAvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FractionalMaxPoolGrad")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("FractionalAvgPoolGrad")
-def _fractional_avg_pool_grad_shape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("Conv2DBackpropFilter")
-def _Conv2DBackpropFilterShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("Conv2DBackpropInput")
-def _Conv2DBackpropInputShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-@ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
-def _DepthwiseConv2dNativeBackpropFilterShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-@ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
-def _DepthwiseConv2dNativeBackpropInputShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
-
-
-ops.RegisterShape("MaxPoolGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPoolGradWithArgmax")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterStatistics("Conv2D", "flops")
 def _calc_conv_flops(graph, node):
   """Calculates the compute resources needed for Conv2D."""
@@ -1809,24 +1635,6 @@ def _calc_conv_flops(graph, node):
                                filter_width * 2))
 
 
-@ops.RegisterStatistics("Conv2D", "weight_parameters")
-def _calc_conv_weight_params(graph, node):
-  """Calculates the on-disk size of the weights for Conv2D."""
-  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  input_shape.assert_is_fully_defined()
-  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                            node.input[1])
-  filter_shape.assert_is_fully_defined()
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  filter_height = int(filter_shape[0])
-  filter_width = int(filter_shape[1])
-  filter_in_depth = int(filter_shape[2])
-  filter_out_depth = int(filter_shape[3])
-  return ops.OpStats("weight_parameters", (filter_height * filter_width *
-                                           filter_in_depth * filter_out_depth))
-
-
 @ops.RegisterStatistics("DepthwiseConv2dNative", "flops")
 def _calc_depthwise_conv_flops(graph, node):
   """Calculates the compute resources needed for DepthwiseConv2dNative."""
@@ -1843,36 +1651,6 @@ def _calc_depthwise_conv_flops(graph, node):
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
-@ops.RegisterStatistics("DepthwiseConv2dNative", "weight_parameters")
-def _calc_depthwise_conv_weight_params(graph, node):
-  """Calculates the on-disk size of the weights for DepthwiseConv2dNative."""
-  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  input_shape.assert_is_fully_defined()
-  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                            node.input[1])
-  filter_shape.assert_is_fully_defined()
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  filter_height = int(filter_shape[0])
-  filter_width = int(filter_shape[1])
-  filter_in_depth = int(filter_shape[2])
-  filter_channel_multiplier = int(filter_shape[3])
-  return ops.OpStats("weight_parameters", (filter_height * filter_width *
-                                           filter_in_depth *
-                                           filter_channel_multiplier))
-
-
-ops.RegisterShape("Conv3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPool3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AvgPool3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropFilter")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropInput")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropFilterV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Conv3DBackpropInputV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AvgPool3DGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MaxPool3DGrad")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterStatistics("BiasAdd", "flops")
 def _calc_bias_add_flops(graph, node):
   """Calculates the computing needed for BiasAdd."""
@@ -1880,15 +1658,6 @@ def _calc_bias_add_flops(graph, node):
   input_shape.assert_is_fully_defined()
   input_count = np.prod(input_shape.as_list())
   return ops.OpStats("flops", input_count)
-
-
-@ops.RegisterStatistics("BiasAdd", "weight_parameters")
-def _calc_bias_add_weight_params(graph, node):
-  """Calculates the on-disk weight parameters for BiasAdd."""
-  bias_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[1])
-  bias_shape.assert_is_fully_defined()
-  bias_count = np.prod(bias_shape.as_list())
-  return ops.OpStats("weight_parameters", bias_count)
 
 
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
@@ -2091,11 +1860,6 @@ def conv1d(value, filters, stride, padding,
     return array_ops.squeeze(result, [spatial_start_dim])
 
 
-ops.RegisterShape("Dilation2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Dilation2DBackpropInput")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Dilation2DBackpropFilter")(common_shapes.call_cpp_shape_fn)
-
-
 @ops.RegisterStatistics("Dilation2D", "flops")
 def _calc_dilation2d_flops(graph, node):
   """Calculates the compute resources needed for Dilation2D."""
@@ -2110,19 +1874,6 @@ def _calc_dilation2d_flops(graph, node):
   filter_width = int(filter_shape[1])
   output_count = np.prod(output_shape.as_list())
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
-
-
-@ops.RegisterStatistics("Dilation2D", "weight_parameters")
-def _calc_dilation2d_weight_params(graph, node):
-  """Calculates the on-disk size of the weights for Dilation2D."""
-  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
-                                                            node.input[1])
-  filter_shape.assert_is_fully_defined()
-  filter_height = int(filter_shape[0])
-  filter_width = int(filter_shape[1])
-  filter_depth = int(filter_shape[2])
-  return ops.OpStats("weight_parameters",
-                     (filter_height * filter_width * filter_depth))
 
 
 def erosion2d(value, kernel, strides, rates, padding, name=None):
@@ -2180,15 +1931,5 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                                               rates=rates,
                                               padding=padding,
                                               name=name))
-
-
-ops.RegisterShape("QuantizedAvgPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedBiasAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedConv2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedMaxPool")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedRelu")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedRelu6")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizedReluX")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QuantizeDownAndShrinkRange")(common_shapes.call_cpp_shape_fn)
 
 # pylint: enable=invalid-name

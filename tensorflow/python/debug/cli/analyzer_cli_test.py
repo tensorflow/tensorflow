@@ -505,6 +505,48 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertIn(4, out.annotations)
     self.assertIn(5, out.annotations)
 
+  def testPrintTensorHighlightingRanges(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0", "--ranges", "[-inf, 0.0]"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\": "
+        "Highlighted([-inf, 0.0]): 1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+    self.assertIn(5, out.annotations)
+    self.assertEqual([(8, 11, "bold")], out.font_attr_segs[5])
+
+    out = self._registry.dispatch_command(
+        "print_tensor",
+        ["simple_mul_add/matmul:0", "--ranges", "[[-inf, -5.5], [5.5, inf]]"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\": "
+        "Highlighted([[-inf, -5.5], [5.5, inf]]): "
+        "1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+    self.assertIn(5, out.annotations)
+    self.assertEqual([(9, 11, "bold")], out.font_attr_segs[4])
+    self.assertNotIn(5, out.font_attr_segs)
+
   def testPrintTensorWithSlicing(self):
     out = self._registry.dispatch_command(
         "print_tensor", ["simple_mul_add/matmul:0[1, :]"],
@@ -666,8 +708,6 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
   def testPrintLargeTensorWithoutAllOption(self):
     out = self._registry.dispatch_command(
         "print_tensor", ["large_tensors/x:0"], screen_info={"cols": 80})
-
-    print(out.lines)  # DEBUG
 
     # Assert that ellipses are present in the tensor value printout.
     self.assertIn("...,", out.lines[4])

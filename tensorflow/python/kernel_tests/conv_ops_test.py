@@ -1234,7 +1234,7 @@ class Conv2DBenchmark(tf.test.Benchmark):
         x = tf.contrib.layers.convolution2d(x, num_outputs, [1, kernel_w])
       outputs = x
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       num_iterations = 4
       for iter_index in xrange(num_iterations):
         start = time.time()

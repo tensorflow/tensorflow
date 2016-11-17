@@ -1,10 +1,8 @@
-### `tf.initialize_all_variables()` {#initialize_all_variables}
+### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
 
-Returns an Op that initializes all variables.
+See `tf.global_variables_initializer`. (deprecated)
 
-This is just a shortcut for `initialize_variables(all_variables())`
-
-##### Returns:
-
-  An Op that initializes all variables in the graph.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.global_variables_initializer` instead.
 

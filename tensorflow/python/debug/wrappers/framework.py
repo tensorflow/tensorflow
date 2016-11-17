@@ -116,6 +116,7 @@ import abc
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug import debug_utils
+from tensorflow.python.framework import errors
 
 
 # Helper function.
@@ -253,13 +254,22 @@ class OnRunEndRequest(object):
   The callback is invoked immediately before the wrapped run() call ends.
   """
 
-  def __init__(self, performed_action, run_metadata=None):
+  def __init__(self,
+               performed_action,
+               run_metadata=None,
+               client_graph_def=None,
+               tf_error=None):
     """Constructor for OnRunEndRequest.
 
     Args:
       performed_action: (OnRunStartAction) Actually-performed action by the
         debug-wrapper session.
       run_metadata: run_metadata output from the run() call (if any).
+      client_graph_def: (GraphDef) GraphDef from the client side, i.e., from
+        the python front end of TensorFlow. Can be obtained with
+        session.graph.as_graph_def().
+      tf_error: (errors.OpError subtypes) TensorFlow OpError that occurred
+        during the run (if any).
     """
 
     _check_type(performed_action, str)
@@ -268,6 +278,8 @@ class OnRunEndRequest(object):
     if run_metadata is not None:
       _check_type(run_metadata, config_pb2.RunMetadata)
     self.run_metadata = run_metadata
+    self.client_graph_def = client_graph_def
+    self.tf_error = tf_error
 
 
 class OnRunEndResponse(object):
@@ -367,16 +379,24 @@ class BaseDebugWrapperSession(session.SessionInterface):
       self._decorate_run_options(decorated_run_options,
                                  run_start_resp.debug_urls)
 
-      # Invoke the run() method of the wrapped Session.
-      retvals = self._sess.run(
-          fetches,
-          feed_dict=feed_dict,
-          options=decorated_run_options,
-          run_metadata=run_metadata)
+      # Invoke the run() method of the wrapped Session. Catch any TensorFlow
+      # runtime errors.
+      tf_error = None
+      try:
+        retvals = self._sess.run(fetches,
+                                 feed_dict=feed_dict,
+                                 options=decorated_run_options,
+                                 run_metadata=run_metadata)
+      except errors.OpError as op_error:
+        tf_error = op_error
+        retvals = op_error
 
-      # Prepare arg for the on-run-end callback.
       run_end_req = OnRunEndRequest(
-          run_start_resp.action, run_metadata=run_metadata)
+          run_start_resp.action,
+          run_metadata=run_metadata,
+          client_graph_def=self._sess.graph.as_graph_def(),
+          tf_error=tf_error)
+
     elif run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN:
       # Invoke run() method of the wrapped session.
       retvals = self._sess.run(

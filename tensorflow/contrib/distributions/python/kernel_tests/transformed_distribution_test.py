@@ -70,8 +70,10 @@ class TransformedDistributionTest(tf.test.TestCase):
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
       # sample
-      sample = log_normal.sample_n(100000, seed=235)
+      sample = log_normal.sample(100000, seed=235)
+      self.assertAllEqual([], log_normal.get_event_shape())
       with self.test_session(graph=g):
+        self.assertAllEqual([], log_normal.event_shape().eval())
         self.assertAllClose(sp_dist.mean(), np.mean(sample.eval()),
                             atol=0.0, rtol=0.05)
 
@@ -98,7 +100,7 @@ class TransformedDistributionTest(tf.test.TestCase):
           distribution=distributions.Normal(mu=mu, sigma=sigma),
           bijector=bijectors.Exp(event_ndims=0))
 
-      sample = log_normal.sample_n(1)
+      sample = log_normal.sample(1)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_pdf(sample)])
       self.assertAllClose(
           stats.lognorm.logpdf(sample_val, s=sigma,
@@ -113,7 +115,7 @@ class TransformedDistributionTest(tf.test.TestCase):
           bijector=_ChooseLocation(loc=[-100., 100.]))
       z = [-1, +1, -1, -1, +1]
       self.assertAllClose(
-          np.sign(conditional_normal.sample_n(
+          np.sign(conditional_normal.sample(
               5, bijector_kwargs={"z": z}).eval()), z)
 
   def testShapeChangingBijector(self):
@@ -132,6 +134,8 @@ class TransformedDistributionTest(tf.test.TestCase):
                           multi_logit_normal.log_prob(y).eval())
       self.assertAllClose([1, 2, 3, 2],
                           tf.shape(multi_logit_normal.sample([1, 2, 3])).eval())
+      self.assertAllEqual([2], multi_logit_normal.get_event_shape())
+      self.assertAllEqual([2], multi_logit_normal.event_shape().eval())
 
 
 if __name__ == "__main__":

@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.1)
 # Project
 project(tensorflow C CXX)
 
+# Set C++14 as standard for the whole project
+set(CMAKE_CXX_STANDARD 14)
+
 # Actual source is the ../../.. directory
 get_filename_component(tf_contrib_source_dir ${tensorflow_SOURCE_DIR} PATH)
 get_filename_component(tf_tf_source_dir ${tf_contrib_source_dir} PATH)
@@ -22,7 +25,8 @@ option(tensorflow_BUILD_CC_EXAMPLE "Build the C++ tutorial example" ON)
 option(tensorflow_BUILD_PYTHON_BINDINGS "Build the Python bindings" ON)
 option(tensorflow_BUILD_ALL_KERNELS "Build all OpKernels" ON)
 option(tensorflow_BUILD_CONTRIB_KERNELS "Build OpKernels from tensorflow/contrib/..." ON)
-
+option(tensorflow_BUILD_CC_TESTS "Build cc unit tests " OFF)
+option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 
 #Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option for
 # targets that link ${CMAKE_THREAD_LIBS_INIT}.
@@ -74,6 +78,9 @@ include(jsoncpp)
 include(farmhash)
 include(highwayhash)
 include(protobuf)
+if (tensorflow_BUILD_CC_TESTS)
+  include(googletest)
+endif()
 
 set(tensorflow_EXTERNAL_LIBRARIES
     ${zlib_STATIC_LIBRARIES}
@@ -95,6 +102,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     highwayhash_copy_headers_to_destination
     protobuf
     eigen
+    gemmlowp
 )
 
 include_directories(
@@ -193,11 +201,14 @@ include(tf_core_kernels.cmake)
 if(tensorflow_ENABLE_GRPC_SUPPORT)
   include(tf_core_distributed_runtime.cmake)
 endif()
-
 include(tf_cc_ops.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
+  include(tf_label_image_example.cmake)
 endif()
 if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tf_python.cmake)
+endif()
+if (tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
+  include(tf_tests.cmake)
 endif()

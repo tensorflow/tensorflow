@@ -131,5 +131,8 @@ static Graph* PTruncatedNormalOneTail(int num_batches, int samples_per_batch) {
 BM_PTruncatedNormalDev(cpu, 1000, 1000);
 BM_PTruncatedNormalDev_2SD(cpu, 10000, 100);
 BM_PTruncatedNormalDev_OneTail(cpu, 10000, 100);
+BM_PTruncatedNormalDev(gpu, 1000, 1000);
+BM_PTruncatedNormalDev_2SD(gpu, 10000, 100);
+BM_PTruncatedNormalDev_OneTail(gpu, 10000, 100);
 
 }  // namespace tensorflow

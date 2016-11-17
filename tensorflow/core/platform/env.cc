@@ -70,7 +70,7 @@ Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   StringPiece scheme, host, path;
-  ParseURI(fname, &scheme, &host, &path);
+  io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
@@ -117,11 +117,9 @@ Status Env::NewAppendableFile(const string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-bool Env::FileExists(const string& fname) {
+Status Env::FileExists(const string& fname) {
   FileSystem* fs;
-  if (!GetFileSystemForFile(fname, &fs).ok()) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
 }
 
@@ -311,6 +309,19 @@ Status ReadBinaryProto(Env* env, const string& fname,
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
   return Status::OK();
+}
+
+Status WriteTextProto(Env* env, const string& fname,
+                      const ::tensorflow::protobuf::Message& proto) {
+#if !defined(TENSORFLOW_LITE_PROTOS)
+  string serialized;
+  if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &serialized)) {
+    return errors::FailedPrecondition("Unable to convert proto to text.");
+  }
+  return WriteStringToFile(env, fname, serialized);
+#else
+  return errors::Unimplemented("Can't write text protos with protolite.");
+#endif
 }
 
 Status ReadTextProto(Env* env, const string& fname,

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, ColumnStats, MetadataInfo} from './data';
-import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-provider';
+import {ColorOption, ColumnStats, SpriteAndMetadataInfo} from './data';
+import {ProjectorConfig, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -51,7 +51,7 @@ export class DataPanel extends DataPanelPolymer {
   private tensorNames: {name: string, shape: number[]}[];
   private runNames: string[];
   private projector: Projector;
-  private checkpointInfo: CheckpointInfo;
+  private projectorConfig: ProjectorConfig;
   private colorLegendRenderInfo: ColorLegendRenderInfo;
 
   ready() {
@@ -86,13 +86,21 @@ export class DataPanel extends DataPanelPolymer {
     return isSeparator ? 'separator' : null;
   }
 
-  metadataChanged(metadata: MetadataInfo, metadataFile: string) {
-    this.updateMetadataUI(metadata.stats, metadataFile);
+  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo,
+      metadataFile: string) {
+    this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
+  }
+
+  private addWordBreaks(longString: string): string {
+    if (longString == null) {
+      return '';
+    }
+    return longString.replace(/([\/=-_,])/g, '$1<wbr>');
   }
 
   private updateMetadataUI(columnStats: ColumnStats[], metadataFile: string) {
     this.dom.select('#metadata-file')
-        .text(metadataFile)
+        .html(this.addWordBreaks(metadataFile))
         .attr('title', metadataFile);
     // Label by options.
     let labelIndex = -1;
@@ -143,7 +151,9 @@ export class DataPanel extends DataPanelPolymer {
               }
               let desc = stats.tooManyUniqueValues ?
                   'gradient' :
-                  stats.uniqueEntries.length + ' colors';
+                  stats.uniqueEntries.length +
+                      ((stats.uniqueEntries.length > 20) ? ' non-unique' : '') +
+                      ' colors';
               return {name: stats.name, desc, map, items, thresholds};
             });
     if (metadataColorOption.length > 0) {
@@ -166,32 +176,28 @@ export class DataPanel extends DataPanelPolymer {
     this.dataProvider.retrieveTensor(
         this.selectedRun, this.selectedTensor, ds => {
       let metadataFile =
-          this.checkpointInfo.tensors[this.selectedTensor].metadataFile;
-      if (metadataFile) {
-        this.dataProvider.retrieveMetadata(
-            this.selectedRun, this.selectedTensor, metadata => {
-              this.projector.updateDataSet(ds, metadata, metadataFile);
-            });
-      } else {
-        this.projector.updateDataSet(ds);
-      }
+          this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
+      this.dataProvider.retrieveSpriteAndMetadata(this.selectedRun,
+          this.selectedTensor, metadata => {
+        this.projector.updateDataSet(ds, metadata, metadataFile);
+      });
     });
     this.projector.setSelectedTensor(
-        this.selectedRun, this.checkpointInfo.tensors[this.selectedTensor]);
+        this.selectedRun, this.getEmbeddingInfoByName(this.selectedTensor));
   }
 
   _selectedRunChanged() {
-    this.dataProvider.retrieveCheckpointInfo(this.selectedRun, info => {
-      this.checkpointInfo = info;
+    this.dataProvider.retrieveProjectorConfig(this.selectedRun, info => {
+      this.projectorConfig = info;
       let names =
-          Object.keys(this.checkpointInfo.tensors)
+          this.projectorConfig.embeddings.map(e => e.tensorName)
               .filter(name => {
-                let shape = this.checkpointInfo.tensors[name].shape;
+                let shape = this.getEmbeddingInfoByName(name).tensorShape;
                 return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
               })
               .sort((a, b) => {
-                let sizeA = this.checkpointInfo.tensors[a].shape[0];
-                let sizeB = this.checkpointInfo.tensors[b].shape[0];
+                let sizeA = this.getEmbeddingInfoByName(a).tensorShape[0];
+                let sizeB = this.getEmbeddingInfoByName(b).tensorShape[0];
                 if (sizeA === sizeB) {
                   // If the same dimension, sort alphabetically by tensor
                   // name.
@@ -201,11 +207,16 @@ export class DataPanel extends DataPanelPolymer {
                 return sizeB - sizeA;
               });
       this.tensorNames = names.map(name => {
-        return {name, shape: this.checkpointInfo.tensors[name].shape};
+        return {
+          name,
+          shape: this.getEmbeddingInfoByName(name).tensorShape
+        };
       });
+      let wordBreakablePath =
+          this.addWordBreaks(this.projectorConfig.modelCheckpointPath);
       this.dom.select('#checkpoint-file')
-          .text(this.checkpointInfo.checkpointFile)
-          .attr('title', this.checkpointInfo.checkpointFile);
+          .html(wordBreakablePath)
+          .attr('title', this.projectorConfig.modelCheckpointPath);
       this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
         if (this.selectedTensor === defaultTensor) {
           // Explicitly call the observer. Polymer won't call it if the previous
@@ -269,6 +280,15 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
+  private getEmbeddingInfoByName(tensorName: string): EmbeddingInfo {
+    for (let i = 0; i < this.projectorConfig.embeddings.length; i++) {
+      let e = this.projectorConfig.embeddings[i];
+      if (e.tensorName === tensorName) {
+        return e;
+      }
+    }
+  }
+
   private setupUploadButtons() {
     // Show and setup the upload button.
     let fileInput = this.dom.select('#file');
@@ -285,7 +305,7 @@ export class DataPanel extends DataPanelPolymer {
       fileReader.readAsText(file);
     });
 
-    let uploadButton = this.dom.select('#upload');
+    let uploadButton = this.dom.select('#upload-tensors');
     uploadButton.on(
         'click', () => { (fileInput.node() as HTMLInputElement).click(); });
 
@@ -308,6 +328,81 @@ export class DataPanel extends DataPanelPolymer {
     uploadMetadataButton.on('click', () => {
       (fileMetadataInput.node() as HTMLInputElement).click();
     });
+
+    if (this.projector.servingMode === 'demo') {
+      (this.$$('#demo-data-buttons-container') as HTMLElement).style.display =
+          'block';
+
+      // Fill out the projector config.
+      let projectorConfigTemplate =
+          this.$$('#projector-config-template') as HTMLTextAreaElement;
+      let projectorConfigTemplateJson: ProjectorConfig = {
+        embeddings: [{
+          tensorName: 'My tensor',
+          tensorShape: [1000, 50],
+          tensorPath: 'https://gist.github.com/.../tensors.tsv',
+          metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
+        }],
+      };
+      this.setProjectorConfigTemplateJson(
+          projectorConfigTemplate, projectorConfigTemplateJson);
+
+      // Set up optional field checkboxes.
+      let spriteFieldCheckbox = this.$$('#config-sprite-checkbox');
+      spriteFieldCheckbox.addEventListener('change', () => {
+        if ((spriteFieldCheckbox as any).checked) {
+          projectorConfigTemplateJson.embeddings[0].sprite = {
+            imagePath: 'https://github.com/.../optional.sprite.png',
+            singleImageDim: [32, 32]
+          };
+        } else {
+          delete projectorConfigTemplateJson.embeddings[0].sprite;
+        }
+        this.setProjectorConfigTemplateJson(
+            projectorConfigTemplate, projectorConfigTemplateJson);
+      });
+      let bookmarksFieldCheckbox = this.$$('#config-bookmarks-checkbox');
+      bookmarksFieldCheckbox.addEventListener('change', () => {
+        if ((bookmarksFieldCheckbox as any).checked) {
+          projectorConfigTemplateJson.embeddings[0].bookmarksPath =
+              'https://gist.github.com/.../bookmarks.txt';
+        } else {
+          delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
+        }
+        this.setProjectorConfigTemplateJson(
+            projectorConfigTemplate, projectorConfigTemplateJson);
+      });
+      let metadataFieldCheckbox = this.$$('#config-metadata-checkbox');
+      metadataFieldCheckbox.addEventListener('change', () => {
+        if ((metadataFieldCheckbox as any).checked) {
+          projectorConfigTemplateJson.embeddings[0].metadataPath =
+              'https://gist.github.com/.../optional.metadata.tsv';
+        } else {
+          delete projectorConfigTemplateJson.embeddings[0].metadataPath;
+        }
+        this.setProjectorConfigTemplateJson(
+            projectorConfigTemplate, projectorConfigTemplateJson);
+      });
+
+      // Update the link and the readonly shareable URL.
+      let projectorConfigUrlInput = this.$$('#projector-config-url');
+      let projectorConfigDemoUrlInput = this.$$('#projector-share-url');
+      let projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
+      projectorConfigUrlInput.addEventListener('input', () => {
+        let projectorDemoUrl = location.protocol + '//' + location.host +
+            location.pathname + '?config=' +
+            (projectorConfigUrlInput as any).value;
+
+        (projectorConfigDemoUrlInput as any).value = projectorDemoUrl;
+        (projectorConfigDemoUrlLink as any).href = projectorDemoUrl;
+      });
+    }
+  }
+
+  private setProjectorConfigTemplateJson(
+      projectorConfigTemplate: HTMLTextAreaElement, config: ProjectorConfig) {
+    projectorConfigTemplate.value =
+        JSON.stringify(config, null, /** replacer */ 2 /** white space */);
   }
 
   _getNumTensorsLabel(): string {

@@ -33,7 +33,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       with tf.name_scope('outer'):
         im = tf.summary.scalar('inner', i)
       summary_str = s.run(im)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summary_str)
     values = summary.value
     self.assertEqual(len(values), 1)
@@ -45,10 +45,10 @@ class ScalarSummaryTest(tf.test.TestCase):
       c = tf.constant(42.0)
       v = tf.Variable(c)
       ss = tf.summary.scalar('summary', v)
-      init = tf.initialize_all_variables()
+      init = tf.global_variables_initializer()
       s.run(init)
       summ_str = s.run(ss)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summ_str)
     self.assertEqual(len(summary.value), 1)
     value = summary.value[0]
@@ -61,7 +61,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       with tf.name_scope('outer'):
         im = tf.summary.image('inner', i, max_outputs=3)
       summary_str = s.run(im)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summary_str)
     values = summary.value
     self.assertEqual(len(values), 3)
@@ -75,7 +75,7 @@ class ScalarSummaryTest(tf.test.TestCase):
       with tf.name_scope('outer'):
         summ_op = tf.summary.histogram('inner', i)
       summary_str = s.run(summ_op)
-    summary = tf.Summary()
+    summary = tf.summary.Summary()
     summary.ParseFromString(summary_str)
     self.assertEqual(len(summary.value), 1)
     self.assertEqual(summary.value[0].tag, 'outer/inner')
@@ -87,6 +87,9 @@ class ScalarSummaryTest(tf.test.TestCase):
 
     s2 = tf.summary.scalar('name with many $#illegal^: characters!', c)
     self.assertEqual(s2.op.name, 'name_with_many___illegal___characters_')
+
+    s3 = tf.summary.scalar('/name/with/leading/slash', c)
+    self.assertEqual(s3.op.name, 'name/with/leading/slash')
 
 
 if __name__ == '__main__':

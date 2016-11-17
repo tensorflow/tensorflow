@@ -95,6 +95,13 @@ const PARAMS = {
    */
   maxControlDegree: 4,
   /**
+   * Maximum in (for outbound bridge paths) or out (for inbound bridge paths)
+   * degree of a node allowed for a bridge path to be rendered to it from a
+   * subhierarchy of nodes. Having a max prevents having too many nodes emanate
+   * from a subhierarchy and crowding up.
+   */
+  maxBridgePathDegree: 4,
+  /**
    * Types patterns for predefined out-extract nodes, which are
    * sink-like nodes that will be extracted from the main graph.
    */
@@ -478,14 +485,12 @@ export class RenderGraphInfo {
           [renderNodeInfo.inAnnotations, childRenderInfo.inAnnotations] :
           [renderNodeInfo.outAnnotations, childRenderInfo.outAnnotations];
 
-      // Do not render a bridge path to a node if the node is extracted into the
-      // auxiliary graph for having a high degree. If we are not sure now,
-      // default to not rendering a bridge path.
-      let isOtherHighDegree = true;
-      if (otherRenderInfo) {
-        isOtherHighDegree = inbound ? otherRenderInfo.isOutExtract :
-                                      otherRenderInfo.isInExtract;
-      }
+      // Don't render a bridge path if the other node has in or out degree above
+      // a threshold, lest bridge paths emanating out of a metagraph crowd up,
+      // as was the case for the Fatcat LSTM lstm_1 > lstm_1 metagraph.
+      let otherDegreeCount =
+          (inbound ? otherCounts.out : otherCounts.in)[otherName];
+      let isOtherHighDegree = otherDegreeCount > PARAMS.maxBridgePathDegree;
 
       // The adjoining render metaedge info from the parent's coreGraph, if any.
       // It will either be a Metaedge involving this node directly, if it

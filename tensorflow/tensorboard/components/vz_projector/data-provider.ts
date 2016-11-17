@@ -13,32 +13,50 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColumnStats, DataPoint, DataSet, MetadataInfo, PointMetadata, State} from './data';
+import {ColumnStats, DataPoint, DataSet, SpriteAndMetadataInfo, PointMetadata, State} from './data';
 import * as logging from './logging';
 import {runAsyncTask} from './util';
 
 /** Maximum number of colors supported in the color map. */
-const NUM_COLORS_COLOR_MAP = 20;
+const NUM_COLORS_COLOR_MAP = 50;
+const MAX_SPRITE_IMAGE_SIZE_PX = 8192;
 
 export const METADATA_MSG_ID = 'metadata';
 export const TENSORS_MSG_ID = 'tensors';
 
-/** Information associated with a tensor. */
-export interface TensorInfo {
-  /** Name of the tensor. */
-  name: string;
-  /** The shape of the tensor. */
-  shape: [number, number];
-  /** The path to the metadata file associated with the tensor. */
-  metadataFile: string;
-  /** The path to the bookmarks file associated with the tensor. */
-  bookmarksFile: string;
+/** Matches the json format of `projector_config.proto` */
+export interface SpriteMetadata {
+  imagePath: string;
+  singleImageDim: [number, number];
 }
 
-/** Information for the model checkpoint. */
-export interface CheckpointInfo {
-  tensors: {[name: string]: TensorInfo};
-  checkpointFile: string;
+/** Matches the json format of `projector_config.proto` */
+export interface EmbeddingInfo {
+  /** Name of the tensor. */
+  tensorName: string;
+  /** The shape of the tensor. */
+  tensorShape: [number, number];
+  /**
+   * The path to the tensors TSV file. If empty, it is assumed that the tensor
+   * is stored in the checkpoint file.
+   */
+  tensorPath?: string;
+  /** The path to the metadata file associated with the tensor. */
+  metadataPath?: string;
+  /** The path to the bookmarks file associated with the tensor. */
+  bookmarksPath?: string;
+  sprite?: SpriteMetadata;
+}
+
+/**
+ * Matches the json format of `projector_config.proto`
+ * This should be kept in sync with the code in vz-projector-data-panel which
+ * holds a template for users to build a projector config JSON object from the
+ * projector UI.
+ */
+export interface ProjectorConfig {
+  embeddings: EmbeddingInfo[];
+  modelCheckpointPath?: string;
 }
 
 export type ServingMode = 'demo' | 'server' | 'proto';
@@ -49,19 +67,21 @@ export interface DataProvider {
   retrieveRuns(callback: (runs: string[]) => void): void;
 
   /**
-   * Returns info about the checkpoint: number of tensors, their shapes,
+   * Returns the projector configuration: number of tensors, their shapes,
    * and their associated metadata files.
    */
-  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void;
+  retrieveProjectorConfig(run: string,
+      callback: (d: ProjectorConfig) => void): void;
 
   /** Fetches and returns the tensor with the specified name. */
-  retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void);
+  retrieveTensor(run: string, tensorName: string,
+      callback: (ds: DataSet) => void);
 
   /**
    * Fetches the metadata for the specified tensor.
    */
-  retrieveMetadata(run: string, tensorName: string,
-      callback: (r: MetadataInfo) => void): void;
+  retrieveSpriteAndMetadata(run: string, tensorName: string,
+      callback: (r: SpriteAndMetadataInfo) => void): void;
 
   /**
    * Returns the name of the tensor that should be fetched by default.
@@ -82,7 +102,7 @@ export function parseRawTensors(
 }
 
 export function parseRawMetadata(
-    contents: string, callback: (r: MetadataInfo) => void) {
+    contents: string, callback: (r: SpriteAndMetadataInfo) => void) {
   parseMetadata(contents).then(result => callback(result));
 }
 
@@ -104,14 +124,13 @@ export function parseTensors(
         vector: null,
         index: data.length,
         projections: null,
-        projectedPoint: null
       };
       // If the first label is not a number, take it as the label.
       if (isNaN(row[0] as any) || numDim === row.length - 1) {
         dataPoint.metadata['label'] = row[0];
-        dataPoint.vector = row.slice(1).map(Number);
+        dataPoint.vector = new Float32Array(row.slice(1).map(Number));
       } else {
-        dataPoint.vector = row.map(Number);
+        dataPoint.vector = new Float32Array(row.map(Number));
       }
       data.push(dataPoint);
       if (numDim == null) {
@@ -129,6 +148,29 @@ export function parseTensors(
       }
     });
     return data;
+  }, TENSORS_MSG_ID).then(dataPoints => {
+    logging.setModalMessage(null, TENSORS_MSG_ID);
+    return dataPoints;
+  });
+}
+
+/** Parses a tsv text file. */
+export function parseTensorsFromFloat32Array(data: Float32Array,
+    dim: number): Promise<DataPoint[]> {
+  return runAsyncTask('Parsing tensors...', () => {
+    let N = data.length / dim;
+    let dataPoints: DataPoint[] = [];
+    let offset = 0;
+    for (let i = 0; i < N; ++i) {
+      dataPoints.push({
+        metadata: {},
+        vector: data.subarray(offset, offset + dim),
+        index: i,
+        projections: null,
+      });
+      offset += dim;
+    }
+    return dataPoints;
   }, TENSORS_MSG_ID).then(dataPoints => {
     logging.setModalMessage(null, TENSORS_MSG_ID);
     return dataPoints;
@@ -188,7 +230,7 @@ export function analyzeMetadata(
   return columnStats;
 }
 
-export function parseMetadata(content: string): Promise<MetadataInfo> {
+export function parseMetadata(content: string): Promise<SpriteAndMetadataInfo> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
     let hasHeader = lines[0].indexOf('\t') >= 0;
@@ -214,7 +256,7 @@ export function parseMetadata(content: string): Promise<MetadataInfo> {
     return {
       stats: analyzeMetadata(columnNames, pointsMetadata),
       pointsInfo: pointsMetadata
-    } as MetadataInfo;
+    } as SpriteAndMetadataInfo;
   }, METADATA_MSG_ID).then(metadata => {
     logging.setModalMessage(null, METADATA_MSG_ID);
     return metadata;
@@ -227,5 +269,50 @@ export function fetchImage(url: string): Promise<HTMLImageElement> {
     image.onload = () => resolve(image);
     image.onerror = (err) => reject(err);
     image.src = url;
+  });
+}
+
+export function retrieveSpriteAndMetadataInfo(metadataPath: string,
+    spriteImagePath: string, spriteMetadata: SpriteMetadata,
+    callback: (r: SpriteAndMetadataInfo) => void) {
+  let metadataPromise: Promise<SpriteAndMetadataInfo> = Promise.resolve({});
+  if (metadataPath) {
+    metadataPromise = new Promise<SpriteAndMetadataInfo>((resolve, reject) => {
+      logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
+      d3.text(metadataPath, (err: any, rawMetadata: string) => {
+        if (err) {
+          logging.setErrorMessage(err.responseText);
+          reject(err);
+          return;
+        }
+        resolve(parseMetadata(rawMetadata));
+      });
+    });
+  }
+  let spriteMsgId = null;
+  let spritesPromise: Promise<HTMLImageElement> = null;
+  if (spriteImagePath) {
+    spriteMsgId = logging.setModalMessage('Fetching sprite image...');
+    spritesPromise = fetchImage(spriteImagePath);
+  }
+
+  // Fetch the metadata and the image in parallel.
+  Promise.all([metadataPromise, spritesPromise]).then(values => {
+    if (spriteMsgId) {
+      logging.setModalMessage(null, spriteMsgId);
+    }
+    let [metadata, spriteImage] = values;
+
+    if (spriteImage && (spriteImage.height > MAX_SPRITE_IMAGE_SIZE_PX ||
+                        spriteImage.width > MAX_SPRITE_IMAGE_SIZE_PX)) {
+      logging.setModalMessage(
+          `Error: Sprite image of dimensions ${spriteImage.width}px x ` +
+          `${spriteImage.height}px exceeds maximum dimensions ` +
+          `${MAX_SPRITE_IMAGE_SIZE_PX}px x ${MAX_SPRITE_IMAGE_SIZE_PX}px`);
+    } else {
+      metadata.spriteImage = spriteImage;
+      metadata.spriteMetadata = spriteMetadata;
+      callback(metadata);
+    }
   });
 }

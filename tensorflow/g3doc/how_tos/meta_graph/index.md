@@ -64,7 +64,7 @@ to and from `MetaGraphDef`, the Python class must implement `to_proto()` and
     """Returns a `Variable` object created from `variable_def`."""
     return Variable(variable_def=variable_def, import_scope=import_scope)
 
-  ops.register_proto_function(ops.GraphKeys.VARIABLES,
+  ops.register_proto_function(ops.GraphKeys.GLOBAL_VARIABLES,
                               proto_type=variable_pb2.VariableDef,
                               to_proto=Variable.to_proto,
                               from_proto=Variable.from_proto)
@@ -198,7 +198,7 @@ Here are some of the typical usage models:
     logits = tf.matmul(hidden2, weights) + biases
     tf.add_to_collection("logits", logits)
 
-  init_all_op = tf.initialize_all_variables()
+  init_all_op = tf.global_variables_initializer()
 
   with tf.Session() as sess:
     # Initializes all the variables.
@@ -207,7 +207,7 @@ Here are some of the typical usage models:
     sess.run(logits)
     # Creates a saver.
     saver0 = tf.train.Saver()
-    saver0.save(sess, saver0_ckpt)
+    saver0.save(sess, 'my-save-dir/my-model-10000')
     # Generates MetaGraphDef.
     saver0.export_meta_graph('my-save-dir/my-model-10000.meta')
   ```

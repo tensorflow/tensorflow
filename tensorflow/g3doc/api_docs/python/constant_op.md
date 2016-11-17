@@ -155,6 +155,11 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 *  <b>`dims`</b>: A `Tensor` of type `int32`.
     1-D. Represents the shape of the output tensor.
 *  <b>`value`</b>: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
+
+    @compatibility(numpy)
+    Equivalent to np.full
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -302,6 +307,10 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 
   An 1-D `Tensor` of type `dtype`.
 
+@compatibility(numpy)
+Equivalent to np.arange
+@end_compatibility
+
 
 
 ## Random Tensors
@@ -353,7 +362,7 @@ the [Variables How To](../../how_tos/variables/index.md).
 # Use random uniform values in [0, 1) as the initializer for a variable of shape
 # [2, 3]. The default type is float32.
 var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 sess = tf.Session()
 sess.run(init)
