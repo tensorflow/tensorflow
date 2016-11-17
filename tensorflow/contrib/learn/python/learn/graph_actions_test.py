@@ -101,10 +101,9 @@ class GraphActionsTest(tf.test.TestCase):
     learn.graph_actions.clear_summary_writers()
 
   def _assert_summaries(
-      self, output_dir, expected_summaries=None, expected_graphs=None,
+      self, output_dir, writer, expected_summaries=None, expected_graphs=None,
       expected_meta_graphs=None,
       expected_session_logs=None):
-    writer = learn.graph_actions.get_summary_writer(output_dir)
     self.assertTrue(isinstance(writer, testing.FakeSummaryWriter))
     writer.assert_summaries(
         self, expected_logdir=output_dir, expected_graph=tf.get_default_graph(),
@@ -129,7 +128,8 @@ class GraphActionsTest(tf.test.TestCase):
 
   # TODO(ptucker): Test lock, multi-threaded access?
   def test_summary_writer(self):
-    self._assert_summaries('log/dir/0')
+    writer = learn.graph_actions.get_summary_writer('log/dir/0')
+    self._assert_summaries('log/dir/0', writer)
     self.assertTrue(
         learn.graph_actions.get_summary_writer('log/dir/0') is
         learn.graph_actions.get_summary_writer('log/dir/0'))
@@ -148,7 +148,7 @@ class GraphActionsTest(tf.test.TestCase):
     This includes a regular variable, local variable, and fake table.
 
     Returns:
-      Tuple of 3 `Tensor` objects, 2 input and 1 output.
+      Tuple of 3 `Output` objects, 2 input and 1 output.
     """
     tf.contrib.framework.create_global_step()
     in0 = tf.Variable(1.0)
@@ -255,21 +255,23 @@ class GraphActionsTest(tf.test.TestCase):
   def test_evaluate(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, max_steps=1)
       self.assertEqual(({'a': 6.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 6.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
       feeder = _Feeder(in0, 3)
       results = learn.graph_actions.evaluate(
@@ -278,14 +280,15 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(3, feeder.step)
       self.assertEqual(({'a': 25.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 25.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 25.0}},
           expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn_with_exhaustion(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       feeder = _Feeder(in0, 2)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
@@ -293,21 +296,21 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(2, feeder.step)
       self.assertEqual(({'a': 15.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 15.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 15.0}},
           expected_session_logs=[])
 
   def test_evaluate_with_saver(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
       tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
-
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, max_steps=1)
       self.assertEqual(({'a': 6.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 6.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
 
   def test_train_invalid_args(self):
@@ -353,7 +356,8 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      self._assert_summaries(self._output_dir)
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
@@ -363,7 +367,7 @@ class GraphActionsTest(tf.test.TestCase):
           steps=1)
       meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(2.0, loss)
-      self._assert_summaries(self._output_dir, expected_graphs=[g],
+      self._assert_summaries(self._output_dir, writer, expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def])
       self._assert_ckpt(self._output_dir, True)
 
@@ -455,7 +459,8 @@ class GraphActionsTest(tf.test.TestCase):
       train_op = tf.group(
           tf.assign_add(tf.contrib.framework.get_global_step(), 1),
           tf.assign_add(loss_var, -1.0))
-      self._assert_summaries(self._output_dir)
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
@@ -465,7 +470,7 @@ class GraphActionsTest(tf.test.TestCase):
           steps=6)
       meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(4.0, loss)
-      self._assert_summaries(self._output_dir, expected_graphs=[g],
+      self._assert_summaries(self._output_dir, writer, expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def])
       self._assert_ckpt(self._output_dir, True)
 
@@ -475,7 +480,8 @@ class GraphActionsTest(tf.test.TestCase):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
       tf.summary.scalar('loss', loss_op)
-      self._assert_summaries(self._output_dir)
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
@@ -485,7 +491,7 @@ class GraphActionsTest(tf.test.TestCase):
           steps=1)
       meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(2.0, loss)
-      self._assert_summaries(self._output_dir,
+      self._assert_summaries(self._output_dir, writer,
                              expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def],
                              expected_summaries={1: {'loss': 2.0}})
@@ -561,7 +567,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
     This includes a regular variable, local variable, and fake table.
 
     Returns:
-      Tuple of 3 `Tensor` objects, 2 input and 1 output.
+      Tuple of 3 `Output` objects, 2 input and 1 output.
     """
     tf.contrib.framework.create_global_step()
     in0 = tf.Variable(1.0)

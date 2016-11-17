@@ -34,8 +34,9 @@ export function setDomContainer(domElement: HTMLElement) {
  * @param showCloseButton If true, the dialog will have a close button.
  * @return The id of the message.
  */
-export function setModalMessage(msg: string, id: string = null,
-    title = 'Loading...', showCloseButton = false): string {
+export function setModalMessage(
+    msg: string, id: string = null, title = null,
+    showCloseButton = false): string {
   if (dom == null) {
     console.warn('Can\'t show modal message before the dom is initialized');
     return;
@@ -46,8 +47,9 @@ export function setModalMessage(msg: string, id: string = null,
   let dialog = dom.querySelector('#notification-dialog') as any;
   dialog.querySelector('.close-button').style.display =
       showCloseButton ? null : 'none';
-  dialog.querySelector('.progress-bar').style.display =
-      showCloseButton ? 'none' : null;
+  let spinner = dialog.querySelector('.progress');
+  spinner.style.display = showCloseButton ? 'none' : null;
+  spinner.active = showCloseButton ? null : true;
   dialog.querySelector('#notification-title').innerHTML = title;
   let msgsContainer = dialog.querySelector('#notify-msgs') as HTMLElement;
   let divId = `notify-msg-${id}`;

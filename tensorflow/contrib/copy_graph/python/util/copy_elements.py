@@ -122,7 +122,7 @@ def copy_op_to_graph(org_instance, to_graph, variables,
       The copied `Operation` from `to_graph`.
 
   Raises:
-      TypeError: If `org_instance` is not an `Operation` or `Tensor`.
+      TypeError: If `org_instance` is not an `Operation` or `Output`.
   """
 
   #The name of the new instance

@@ -102,7 +102,6 @@ import sys
 import numpy as np
 import six
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -173,13 +172,13 @@ def shape(input, name=None, out_type=dtypes.int32):
   ```
 
   Args:
-    input: A `Tensor` or `SparseTensor`.
+    input: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
     out_type: (Optional) The specified output type of the operation
       (`int32` or `int64`). Defaults to `tf.int32`.
 
   Returns:
-    A `Tensor` of type `out_type`.
+    An `Output` of type `out_type`.
   """
   return shape_internal(input, name, optimize=True, out_type=out_type)
 
@@ -189,14 +188,14 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   """Returns the shape of a tensor.
 
   Args:
-    input: A `Tensor` or `SparseTensor`.
+    input: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the shape as a constant when possible.
     out_type: (Optional) The specified output type of the operation
       (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `out_type`.
+    An `Output` of type `out_type`.
 
   """
   with ops.name_scope(name, "Shape", [input]) as name:
@@ -226,13 +225,13 @@ def size(input, name=None, out_type=dtypes.int32):
   ```
 
   Args:
-    input: A `Tensor` or `SparseTensor`.
+    input: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
     out_type: (Optional) The specified output type of the operation
       (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `out_type`. Defaults to tf.int32.
+    An `Output` of type `out_type`. Defaults to tf.int32.
   """
   return size_internal(input, name, optimize=True, out_type=out_type)
 
@@ -242,14 +241,14 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   """Returns the size of a tensor.
 
   Args:
-    input: A `Tensor` or `SparseTensor`.
+    input: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the size as a constant when possible.
     out_type: (Optional) The specified output type of the operation
       (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `out_type`.
+    An `Output` of type `out_type`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(
@@ -283,11 +282,11 @@ def rank(input, name=None):
   element of the tensor. Rank is also known as "order", "degree", or "ndims."
 
   Args:
-    input: A `Tensor` or `SparseTensor`.
+    input: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `int32`.
+    An `Output` of type `int32`.
 
   @compatibility(numpy)
   Equivalent to np.ndim
@@ -301,12 +300,12 @@ def rank_internal(input, name=None, optimize=True):
   """Returns the rank of a tensor.
 
   Args:
-    input: A `Tensor` or `SparseTensor`.
+    input: An `Output` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the rank as a constant when possible.
 
   Returns:
-    A `Tensor` of type `int32`.
+    An `Output` of type `int32`.
   """
   with ops.name_scope(name, "Rank", [input]) as name:
     if isinstance(
@@ -321,7 +320,7 @@ def rank_internal(input, name=None, optimize=True):
 
 
 def _SliceHelper(tensor, slice_spec, var=None):
-  """Overload for Tensor.__getitem__.
+  """Overload for Output.__getitem__.
 
   This operation extracts the specified region from the tensor.
   The notation is similar to NumPy with the restriction that
@@ -358,7 +357,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
 
   Args:
     tensor: An ops.Tensor object.
-    slice_spec: The arguments to Tensor.__getitem__.
+    slice_spec: The arguments to Output.__getitem__.
     var: In the case of variable slice assignment, the Variable
       object to slice (i.e. tensor is the read-only view of this
       variable).
@@ -473,13 +472,13 @@ def slice(input_, begin, size, name=None):
   ```
 
   Args:
-    input_: A `Tensor`.
-    begin: An `int32` or `int64` `Tensor`.
-    size: An `int32` or `int64` `Tensor`.
+    input_: An `Output`.
+    begin: An `int32` or `int64` `Output`.
+    size: An `int32` or `int64` `Output`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` the same type as `input`.
+    An `Output` the same type as `input`.
   """
   return gen_array_ops._slice(input_, begin, size, name=name)
 
@@ -562,10 +561,10 @@ def strided_slice(input_,
   ```
 
   Args:
-    input_: A `Tensor`.
-    begin: An `int32` or `int64` `Tensor`.
-    end: An `int32` or `int64` `Tensor`.
-    strides: An `int32` or `int64` `Tensor`.
+    input_: An `Output`.
+    begin: An `int32` or `int64` `Output`.
+    end: An `int32` or `int64` `Output`.
+    strides: An `int32` or `int64` `Output`.
     begin_mask: An `int32` mask.
     end_mask: An `int32` mask.
     ellipsis_mask: An `int32` mask.
@@ -575,7 +574,7 @@ def strided_slice(input_,
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` the same type as `input`.
+    An `Output` the same type as `input`.
   """
   op = gen_array_ops.strided_slice(
       input=input_,
@@ -618,7 +617,7 @@ def _SliceHelperVar(var, slice_spec):
   This allows creating a sub-tensor from part of the current contents
   of a variable.
   See
-  [`Tensor.__getitem__`](../../api_docs/python/framework.md#Tensor.__getitem__)
+  [`Output.__getitem__`](../../api_docs/python/framework.md#Output.__getitem__)
   for detailed examples of slicing.
 
   This function in addition also allows assignment to a sliced range.
@@ -643,7 +642,7 @@ def _SliceHelperVar(var, slice_spec):
 
   Args:
     var: An `ops.Variable` object.
-    slice_spec: The arguments to `Tensor.__getitem__`.
+    slice_spec: The arguments to `Output.__getitem__`.
 
   Returns:
     The appropriate slice of "tensor", based on "slice_spec".
@@ -687,13 +686,13 @@ def stack(values, axis=0, name="stack"):
       tf.stack([x, y, z]) = np.asarray([x, y, z])
 
   Args:
-    values: A list of `Tensor` objects with the same shape and type.
+    values: A list of `Output` objects with the same shape and type.
     axis: An `int`. The axis to stack along. Defaults to the first dimension.
       Supports negative indexes.
     name: A name for this operation (optional).
 
   Returns:
-    output: A stacked `Tensor` with the same type as `values`.
+    output: A stacked `Output` with the same type as `values`.
 
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
@@ -741,13 +740,13 @@ def pack(values, axis=0, name="pack"):
       tf.pack([x, y, z]) = np.asarray([x, y, z])
 
   Args:
-    values: A list of `Tensor` objects with the same shape and type.
+    values: A list of `Output` objects with the same shape and type.
     axis: An `int`. The axis to pack along. Defaults to the first dimension.
       Supports negative indexes.
     name: A name for this operation (optional).
 
   Returns:
-    output: A packed `Tensor` with the same type as `values`.
+    output: A packed `Output` with the same type as `values`.
 
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
@@ -765,7 +764,7 @@ def _autopacking_helper(list_or_tuple, dtype, name):
     name: A name for the returned tensor.
 
   Returns:
-    A `tf.Tensor` with value equivalent to `list_or_tuple`.
+    A `tf.Output` with value equivalent to `list_or_tuple`.
   """
   must_pack = False
   converted_elems = []
@@ -806,7 +805,7 @@ def _get_dtype_from_nested_lists(list_or_tuple):
 
   Args:
     list_or_tuple: A list or tuple representing an object that can be
-      converted to a `tf.Tensor`.
+      converted to a `tf.Output`.
 
   Returns:
     The dtype of any tensor-like object in `list_or_tuple`, or `None` if no
@@ -865,7 +864,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
       tf.unstack(x, n) = list(x)
 
   Args:
-    value: A rank `R > 0` `Tensor` to be unstacked.
+    value: A rank `R > 0` `Output` to be unstacked.
     num: An `int`. The length of the dimension `axis`. Automatically inferred
       if `None` (the default).
     axis: An `int`. The axis to unstack along. Defaults to the first
@@ -873,7 +872,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
     name: A name for the operation (optional).
 
   Returns:
-    The list of `Tensor` objects unstacked from `value`.
+    The list of `Output` objects unstacked from `value`.
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
@@ -916,7 +915,7 @@ def unpack(value, num=None, axis=0, name="unpack"):
       tf.unpack(x, n) = list(x)
 
   Args:
-    value: A rank `R > 0` `Tensor` to be unpacked.
+    value: A rank `R > 0` `Output` to be unpacked.
     num: An `int`. The length of the dimension `axis`. Automatically inferred
       if `None` (the default).
     axis: An `int`. The axis to unpack along. Defaults to the first
@@ -924,7 +923,7 @@ def unpack(value, num=None, axis=0, name="unpack"):
     name: A name for the operation (optional).
 
   Returns:
-    The list of `Tensor` objects unpacked from `value`.
+    The list of `Output` objects unpacked from `value`.
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
@@ -980,12 +979,12 @@ def concat(concat_dim, values, name="concat"):
   ```
 
   Args:
-    concat_dim: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
-    values: A list of `Tensor` objects or a single `Tensor`.
+    concat_dim: 0-D `int32` `Output`.  Dimension along which to concatenate.
+    values: A list of `Output` objects or a single `Output`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` resulting from concatenation of the input tensors.
+    An `Output` resulting from concatenation of the input tensors.
   """
   if not isinstance(values, (list, tuple)):
     values = [values]
@@ -1145,14 +1144,14 @@ def split(split_dim, num_split, value, name="split"):
   ```
 
   Args:
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+    split_dim: A 0-D `int32` `Output`. The dimension along which to split.
       Must be in the range `[0, rank(value))`.
     num_split: A Python integer. The number of ways to split.
-    value: The `Tensor` to split.
+    value: The `Output` to split.
     name: A name for the operation (optional).
 
   Returns:
-    `num_split` `Tensor` objects resulting from splitting `value`.
+    `num_split` `Output` objects resulting from splitting `value`.
   """
   return gen_array_ops._split(split_dim=split_dim,
                               num_split=num_split,
@@ -1186,20 +1185,20 @@ def split_v(value, size_splits, split_dim=0, num=None, name="split_v"):
   ```
 
   Args:
-    value: The `Tensor` to split.
+    value: The `Output` to split.
     size_splits: Either an integer indicating the number of splits along
       split_dim or a 1-D Tensor containing the sizes of each output tensor
       along split_dim. If an integer then it must evenly divide
       value.shape[split_dim]; otherwise the sum of sizes along the split
       dimension must match that of the input.
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+    split_dim: A 0-D `int32` `Output`. The dimension along which to split.
       Must be in the range `[0, rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
          inferred from the shape of size_splits.
     name: A name for the operation (optional).
 
   Returns:
-    `len(size_splits)` `Tensor` objects resulting from splitting `value`.
+    `len(size_splits)` `Output` objects resulting from splitting `value`.
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
@@ -1260,12 +1259,12 @@ def transpose(a, perm=None, name="transpose"):
   ```
 
   Args:
-    a: A `Tensor`.
+    a: An `Output`.
     perm: A permutation of the dimensions of `a`.
     name: A name for the operation (optional).
 
   Returns:
-    A transposed `Tensor`.
+    A transposed `Output`.
   """
   with ops.name_scope(name, "transpose", [a]) as name:
     if perm is None:
@@ -1302,11 +1301,11 @@ def matrix_transpose(a, name="matrix_transpose"):
   ```
 
   Args:
-    a: A `Tensor` with `rank >= 2`.
+    a: An `Output` with `rank >= 2`.
     name: A name for the operation (optional).
 
   Returns:
-    A transposed batch matrix `Tensor`.
+    A transposed batch matrix `Output`.
 
   Raises:
     ValueError:  If `a` is determined statically to have `rank < 2`.
@@ -1348,12 +1347,12 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   ```
 
   Args:
-    shape: Either a list of integers, or a 1-D `Tensor` of type `int32`.
-    dtype: The type of an element in the resulting `Tensor`.
+    shape: Either a list of integers, or a 1-D `Output` of type `int32`.
+    dtype: The type of an element in the resulting `Output`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` with all elements set to zero.
+    An `Output` with all elements set to zero.
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "zeros", [shape]) as name:
@@ -1383,15 +1382,15 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   ```
 
   Args:
-    tensor: A `Tensor`.
-    dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
+    tensor: An `Output`.
+    dtype: A type for the returned `Output`. Must be `float32`, `float64`,
     `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
     and encode it as a constant.
 
   Returns:
-    A `Tensor` with all elements set to zero.
+    An `Output` with all elements set to zero.
   """
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
@@ -1418,8 +1417,8 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   ```
 
   Args:
-    tensor: A `Tensor`.
-    dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
+    tensor: An `Output`.
+    dtype: A type for the returned `Output`. Must be `float32`, `float64`,
       `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, `complex128` or
       `bool`.
     name: A name for the operation (optional).
@@ -1427,7 +1426,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
     and encode it as a constant.
 
   Returns:
-    A `Tensor` with all elements set to 1.
+    An `Output` with all elements set to 1.
   """
   with ops.name_scope(name, "ones_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
@@ -1452,12 +1451,12 @@ def ones(shape, dtype=dtypes.float32, name=None):
   ```
 
   Args:
-    shape: Either a list of integers, or a 1-D `Tensor` of type `int32`.
-    dtype: The type of an element in the resulting `Tensor`.
+    shape: Either a list of integers, or a 1-D `Output` of type `int32`.
+    dtype: The type of an element in the resulting `Output`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` with all elements set to 1.
+    An `Output` with all elements set to 1.
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
@@ -1477,7 +1476,7 @@ def placeholder(dtype, shape=None, name=None):
 
   **Important**: This tensor will produce an error if evaluated. Its value must
   be fed using the `feed_dict` optional argument to `Session.run()`,
-  `Tensor.eval()`, or `Operation.run()`.
+  `Output.eval()`, or `Operation.run()`.
 
   For example:
 
@@ -1499,7 +1498,7 @@ def placeholder(dtype, shape=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` that may be used as a handle for feeding a value, but not
+    An `Output` that may be used as a handle for feeding a value, but not
     evaluated directly.
   """
   shape = tensor_shape.as_shape(shape)
@@ -1517,7 +1516,7 @@ def placeholder(dtype, shape=None, name=None):
 
 # pylint: disable=redefined-outer-name
 def _normalize_sparse_shape(shape, name):
-  """Takes numpy array or Tensor or None and returns either None or Tensor."""
+  """Takes numpy array or Tensor or None and returns either None or Output."""
   if shape is None: return None
   if not isinstance(shape, ops.Tensor):
     for el in shape:
@@ -1531,7 +1530,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
 
   **Important**: This sparse tensor will produce an error if evaluated.
   Its value must be fed using the `feed_dict` optional argument to
-  `Session.run()`, `Tensor.eval()`, or `Operation.run()`.
+  `Session.run()`, `Output.eval()`, or `Operation.run()`.
 
   For example:
 
@@ -1621,13 +1620,13 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
   ```
 
   Args:
-    tensor: A `Tensor`.
-    paddings: A `Tensor` of type `int32`.
+    tensor: An `Output`.
+    paddings: An `Output` of type `int32`.
     mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `tensor`.
+    An `Output`. Has the same type as `tensor`.
 
   Raises:
     ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
@@ -1684,12 +1683,12 @@ def meshgrid(*args, **kwargs):
   ```
 
   Args:
-    *args: `Tensor`s with rank 1
+    *args: `Output`s with rank 1
     indexing: Either 'xy' or 'ij' (optional, default: 'xy')
     name: A name for the operation (optional).
 
   Returns:
-    outputs: A list of N `Tensor`s with rank N
+    outputs: A list of N `Output`s with rank N
   """
 
   indexing = kwargs.pop("indexing", "xy")
@@ -1723,16 +1722,6 @@ def meshgrid(*args, **kwargs):
     # TODO: improve performance with a broadcast
     mult_fact = ones(shapes, output_dtype)
     return [x * mult_fact for x in output]
-
-
-@ops.RegisterShape("Slice")
-# pylint: disable=invalid-name
-def _DelegateSliceShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op,
-      input_tensors_needed=[2],
-      input_tensors_as_shapes_needed=[1])
-# pylint: enable=invalid-name
 
 
 NEW_AXIS = -1
@@ -1779,25 +1768,6 @@ def _compute_size_of_strided_dim(shrink, spec, size):
       return interval_length // stride + remainder
   else:
     return unknown  # unknown because stride is unknown
-
-
-@ops.RegisterShape("Fill")
-def _DelegateFillShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op, input_tensors_needed=[0], input_tensors_as_shapes_needed=[0])
-
-
-@ops.RegisterShape("Tile")
-def _DelegateTileShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
-
-
-@ops.RegisterShape("TileGrad")
-def _DelegateTileGradShape(op):
-  return common_shapes.call_cpp_shape_fn(
-      op,
-      input_tensors_as_shapes_needed=[1],
-      debug_python_shape_fn=_TileGradShape)
 
 
 def _TileGradShape(op):
@@ -1871,7 +1841,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
     name: A name for the operation (optional).
 
   Returns:
-    A dense `Tensor` with rank `R - 1`, where R is the rank of the
+    A dense `Output` with rank `R - 1`, where R is the rank of the
     `SparseTensor` inputs `hypothesis` and `truth`.
 
   Raises:
@@ -2133,7 +2103,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
   ```
 
   Args:
-    indices: A `Tensor` of indices.
+    indices: An `Output` of indices.
     depth: A scalar defining the depth of the one hot dimension.
     on_value: A scalar defining the value to fill in output when `indices[j]
       = i`. (default: 1)
@@ -2264,7 +2234,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   ```
 
   Args:
-    input: A `Tensor`. The `input` to squeeze.
+    input: An `Output`. The `input` to squeeze.
     axis: An optional list of `ints`. Defaults to `[]`.
       If specified, only squeezes the dimensions listed. The dimension
       index starts at 0. It is an error to squeeze a dimension that is not 1.
@@ -2272,7 +2242,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
     squeeze_dims: Deprecated keyword argument that is now axis.
 
   Returns:
-    A `Tensor`. Has the same type as `input`.
+    An `Output`. Has the same type as `input`.
     Contains the same data as `input`, but has one or more dimensions of
     size 1 removed.
 
@@ -2315,7 +2285,7 @@ def where(condition, x=None, y=None, name=None):
   `x` and `y`.
 
   Args:
-    condition: A `Tensor` of type `bool`
+    condition: An `Output` of type `bool`
     x: A Tensor which may have the same shape as `condition`. If `condition` is
       rank 1, `x` may have higher rank, but its first dimension must match the
       size of `condition`.
@@ -2323,8 +2293,8 @@ def where(condition, x=None, y=None, name=None):
     name: A name of the operation (optional)
 
   Returns:
-    A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
-    A `Tensor` with shape `(num_true, dim_size(condition))`.
+    An `Output` with the same type and shape as `x`, `y` if they are non-None.
+    An `Output` with shape `(num_true, dim_size(condition))`.
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.

@@ -35,8 +35,8 @@ def my_model(features, target):
   CUDNN 6.5 V2 from NVIDIA need to be installed beforehand.
 
   Args:
-    features: `Tensor` of input features.
-    target: `Tensor` of targets.
+    features: `Output` of input features.
+    target: `Output` of targets.
 
   Returns:
     Tuple of predictions, loss and training op.

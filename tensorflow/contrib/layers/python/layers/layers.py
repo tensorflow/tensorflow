@@ -106,7 +106,7 @@ def avg_pool2d(inputs,
     scope: Optional scope for name_scope.
 
   Returns:
-    A `Tensor` representing the results of the pooling operation.
+    An `Output` representing the results of the pooling operation.
 
   Raises:
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
@@ -202,7 +202,7 @@ def _fused_batch_norm(
     scope: Optional scope for `variable_scope`.
 
   Returns:
-    A `Tensor` representing the output of the operation.
+    An `Output` representing the output of the operation.
 
   Raises:
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
@@ -309,7 +309,7 @@ def _fused_batch_norm(
                                                _fused_batch_norm_training,
                                                _fused_batch_norm_inference)
 
-    # If `is_training` doesn't have a constant value, because it is a `Tensor`,
+    # If `is_training` doesn't have a constant value, because it is an `Output`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
     # `need_updates` will be true.
     is_training_value = utils.constant_value(is_training)
@@ -431,7 +431,7 @@ def batch_norm(
     scope: Optional scope for `variable_scope`.
 
   Returns:
-    A `Tensor` representing the output of the operation.
+    An `Output` representing the output of the operation.
 
   Raises:
     ValueError: if `batch_weights` is not None and `fused` is True.
@@ -545,7 +545,7 @@ def batch_norm(
     finally:
       variable_scope.get_variable_scope().set_partitioner(partitioner)
 
-    # If `is_training` doesn't have a constant value, because it is a `Tensor`,
+    # If `is_training` doesn't have a constant value, because it is an `Output`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
     # `needs_moments` will be true.
     is_training_value = utils.constant_value(is_training)
@@ -703,7 +703,7 @@ def convolution(inputs,
 
   `convolution` creates a variable called `weights`, representing the
   convolutional kernel, that is convolved (actually cross-correlated) with the
-  `inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
+  `inputs` to produce an `Output` of activations. If a `normalizer_fn` is
   provided (such as `batch_norm`), it is then applied. Otherwise, if
   `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
   variable would be created and added the activations. Finally, if
@@ -893,7 +893,7 @@ def convolution2d_in_plane(
     scope: Optional scope for `variable_scope`.
 
   Returns:
-    A `Tensor` representing the output of the operation.
+    An `Output` representing the output of the operation.
   """
   with variable_scope.variable_scope(
       scope, 'ConvInPlane', [inputs], reuse=reuse) as sc:
@@ -963,7 +963,7 @@ def convolution2d_transpose(
   second variable called 'biases' is added to the result of the operation.
 
   Args:
-    inputs: A 4-D `Tensor` of type `float` and shape
+    inputs: A 4-D `Output` of type `float` and shape
       `[batch, height, width, in_channels]` for `NHWC` data format or
       `[batch, in_channels, height, width]` for `NCHW` data format.
     num_outputs: integer, the number of output filters.
@@ -1102,11 +1102,11 @@ def dropout(inputs,
 
   Args:
     inputs: the tensor to pass to the nn.dropout op.
-    keep_prob: A scalar `Tensor` with the same type as x. The probability
+    keep_prob: A scalar `Output` with the same type as x. The probability
       that each element is kept.
-    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+    noise_shape: A 1-D `Output` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
-    is_training: A bool `Tensor` indicating whether or not the model
+    is_training: A bool `Output` indicating whether or not the model
       is in training mode. If so, dropout is applied and values scaled.
       Otherwise, inputs is returned.
     outputs_collections: collection to add the outputs.
@@ -1206,16 +1206,16 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   rank of `inputs`.
 
   Args:
-    inputs: a `Tensor` or `SparseTensor`.
-    new_rank: the desired rank of the returned `Tensor` or `SparseTensor`.
+    inputs: an `Output` or `SparseTensor`.
+    new_rank: the desired rank of the returned `Output` or `SparseTensor`.
     output_collections: collection to which the outputs will be added.
     scope: optional scope for `name_scope`.
   Returns:
-    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    An `Output` or `SparseTensor` conataining the same values as `inputs`, but
     with innermost dimensions flattened to obtain rank `new_rank`.
 
   Raises:
-    TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
+    TypeError: `inputs` is not an `Output` or `SparseTensor`.
   """
   with ops.name_scope(scope, 'InnerFlatten', [inputs, new_rank]) as sc:
     if isinstance(inputs, sparse_tensor.SparseTensor):
@@ -1245,7 +1245,7 @@ def fully_connected(inputs,
 
   `fully_connected` creates a variable called `weights`, representing a fully
   connected weight matrix, which is multiplied by the `inputs` to produce a
-  `Tensor` of hidden units. If a `normalizer_fn` is provided (such as
+  `Output` of hidden units. If a `normalizer_fn` is provided (such as
   `batch_norm`), it is then applied. Otherwise, if `normalizer_fn` is
   None and a `biases_initializer` is provided then a `biases` variable would be
   created and added the hidden units. Finally, if `activation_fn` is not `None`,
@@ -1284,7 +1284,7 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
+  if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
   with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
                                      reuse=reuse) as sc:
@@ -1295,9 +1295,6 @@ def fully_connected(inputs,
 
     static_shape = inputs_shape.as_list()
     static_shape[-1] = num_outputs
-
-    out_shape = array_ops.unpack(array_ops.shape(inputs))
-    out_shape[-1] = num_outputs
 
     weights_shape = [num_input_units, num_outputs]
     weights_collections = utils.get_variable_collections(
@@ -1310,6 +1307,8 @@ def fully_connected(inputs,
                                        collections=weights_collections,
                                        trainable=trainable)
     if len(static_shape) > 2:
+      out_shape = array_ops.unpack(array_ops.shape(inputs))
+      out_shape[-1] = num_outputs
       # Reshape inputs
       inputs = array_ops.reshape(inputs, [-1, num_input_units])
     outputs = standard_ops.matmul(inputs, weights)
@@ -1374,7 +1373,7 @@ def layer_norm(inputs,
     scope: Optional scope for `variable_scope`.
 
   Returns:
-    A `Tensor` representing the output of the operation.
+    An `Output` representing the output of the operation.
 
   Raises:
     ValueError: if rank or last dimension of `inputs` is undefined.
@@ -1455,7 +1454,7 @@ def max_pool2d(inputs,
     scope: Optional scope for name_scope.
 
   Returns:
-    A `Tensor` representing the results of the pooling operation.
+    An `Output` representing the results of the pooling operation.
 
   Raises:
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
@@ -1522,7 +1521,7 @@ def pool(inputs,
     scope: Optional scope for name_scope.
 
   Returns:
-    A `Tensor` representing the results of the pooling operation.
+    An `Output` representing the results of the pooling operation.
 
   Raises:
     ValueError: if arguments are invalid.
@@ -1608,7 +1607,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
   layers are called with `scope='stack'`.
 
   Args:
-    inputs: A `Tensor` suitable for layer.
+    inputs: An `Output` suitable for layer.
     repetitions: Int, number of repetitions.
     layer: A layer with arguments `(inputs, *args, **kwargs)`
     *args: Extra args for the layer.
@@ -1698,7 +1697,7 @@ def separable_convolution2d(
     scope: Optional scope for variable_scope.
 
   Returns:
-    A `Tensor` representing the output of the operation.
+    An `Output` representing the output of the operation.
   """
   with variable_scope.variable_scope(
       scope, 'SeparableConv2d', [inputs], reuse=reuse) as sc:
@@ -1771,11 +1770,11 @@ def softmax(logits, scope=None):
   needs to have a specified number of elements (number of classes).
 
   Args:
-    logits: N-dimensional `Tensor` with logits, where N > 1.
+    logits: N-dimensional `Output` with logits, where N > 1.
     scope: Optional scope for variable_scope.
 
   Returns:
-    a `Tensor` with same shape and type as logits.
+    an `Output` with same shape and type as logits.
   """
   # TODO(jrru): Add axis argument which defaults to last dimension.
   with variable_scope.variable_scope(scope, 'softmax', [logits]):
@@ -1809,13 +1808,13 @@ def stack(inputs, layer, stack_args, **kwargs):
   layers are called with `scope='stack'`.
 
   Args:
-    inputs: A `Tensor` suitable for layer.
+    inputs: An `Output` suitable for layer.
     layer: A layer with arguments `(inputs, *args, **kwargs)`
     stack_args: A list/tuple of parameters for each call of layer.
     **kwargs: Extra kwargs for the layer.
 
   Returns:
-    a `Tensor` result of applying the stacked layers.
+    an `Output` result of applying the stacked layers.
 
   Raises:
     ValueError: if the op is unknown or wrong.
@@ -1849,13 +1848,13 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
   Note that the rank of `input` must be known.
 
   Args:
-    inputs: A `Tensor` of arbitrary size.
+    inputs: An `Output` of arbitrary size.
     dim: The dimension along which the input is normalized.
     epsilon: A small value to add to the inputs to avoid dividing by zero.
     scope: Optional scope for variable_scope.
 
   Returns:
-    The normalized `Tensor`.
+    The normalized `Output`.
 
   Raises:
     ValueError: If dim is smaller than the number of dimensions in 'inputs'.
@@ -1931,7 +1930,7 @@ def legacy_fully_connected(x,
   collection.
 
   Args:
-    x: The input `Tensor`.
+    x: The input `Output`.
     num_output_units: The size of the output.
     activation_fn: activation function, default set to None to skip it and
       maintain a linear activation.

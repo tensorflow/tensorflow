@@ -14,7 +14,7 @@ Instructions for updating:
     target: Deprecated alias for `labels`.
 
   Returns:
-    A `Tensor` of same shape as logits and target representing the loss values
+    An `Output` of same shape as logits and target representing the loss values
       across the batch.
 
   Raises:

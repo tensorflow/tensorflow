@@ -235,14 +235,14 @@ def _cuda_symlink_files(cpu_value, cuda_version, cudnn_version):
   elif cpu_value == "Windows":
     return struct(
         cuda_lib_path = "lib",
-        cuda_rt_lib = "lib/cudart%s.dll" % cuda_ext,
-        cuda_rt_lib_static = "lib/cudart_static.lib",
-        cuda_blas_lib = "lib/cublas%s.dll" % cuda_ext,
-        cuda_dnn_lib = "lib/cudnn%s.dll" % cudnn_ext,
-        cuda_dnn_lib_alt = "cudnn%s.dll" % cudnn_ext,
-        cuda_rand_lib = "lib/curand%s.dll" % cuda_ext,
-        cuda_fft_lib = "lib/cufft%s.dll" % cuda_ext,
-        cuda_cupti_lib = "extras/CUPTI/lib/cupti%s.dll" % cuda_ext)
+        cuda_rt_lib = "lib/x64/cudart%s.lib" % cuda_ext,
+        cuda_rt_lib_static = "lib/x64/cudart_static.lib",
+        cuda_blas_lib = "lib/x64/cublas%s.lib" % cuda_ext,
+        cuda_dnn_lib = "lib/x64/cudnn%s.lib" % cudnn_ext,
+        cuda_dnn_lib_alt = "cudnn%s.lib" % cudnn_ext,
+        cuda_rand_lib = "lib/x64/curand%s.lib" % cuda_ext,
+        cuda_fft_lib = "lib/x64/cufft%s.lib" % cuda_ext,
+        cuda_cupti_lib = "extras/CUPTI/libx64/cupti%s.lib" % cuda_ext)
   else:
     auto_configure_fail("Not supported CPU value %s" % cpu_value)
 

@@ -275,7 +275,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
           '  Expected {}; got {}.'.format(i, expected_activations,
                                           actual_activations))
 
-
+# TODO(jamieas): move all tests below to a benchmark test.
 class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
   """Learning tests for dymanic RNN Estimators."""
 
@@ -313,6 +313,8 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
+        input_keep_probability=0.9,
+        output_keep_probability=0.9,
         config=config)
 
     train_input_fn = get_sin_input_fn(

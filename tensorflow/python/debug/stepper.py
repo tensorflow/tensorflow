@@ -382,7 +382,7 @@ class NodeStepper(object):
         # Determine whether the input is feedable. Reference-type tensors,
         # e.g., Variables, should not be fed, because they can change.
         if isinstance(inp, ops.Tensor):
-          is_inp_ref = inp.dtype.is_ref_dtype
+          is_inp_ref = inp.dtype._is_ref_dtype   # pylint: disable=protected-access
           can_feed = self._sess.graph.is_feedable(inp) and not is_inp_ref
         else:
           is_inp_ref = False

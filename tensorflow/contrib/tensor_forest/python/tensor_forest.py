@@ -118,19 +118,8 @@ class ForestHParams(object):
         self.num_splits_to_consider or
         max(10, int(math.ceil(math.sqrt(self.num_features)))))
 
-    # max_fertile_nodes doesn't effect performance, only training speed.
-    # We therefore set it primarily based upon space considerations.
-    # Each fertile node takes up num_splits_to_consider times as much
-    # as space as a non-fertile node.  We want the fertile nodes to in
-    # total only take up as much space as the non-fertile nodes, so
-    num_fertile = int(math.ceil(self.max_nodes / self.num_splits_to_consider))
-    # But always use at least 1000 accumulate slots.
-    num_fertile = max(num_fertile, 1000)
-    self.max_fertile_nodes = self.max_fertile_nodes or num_fertile
-    # But it also never needs to be larger than the number of leaves,
-    # which is max_nodes / 2.
-    self.max_fertile_nodes = min(self.max_fertile_nodes,
-                                 int(math.ceil(self.max_nodes / 2.0)))
+    self.max_fertile_nodes = (self.max_fertile_nodes or
+                              int(math.ceil(self.max_nodes / 2.0)))
 
     # We have num_splits_to_consider slots to fill, and we want to spend
     # approximately split_after_samples samples initializing them.

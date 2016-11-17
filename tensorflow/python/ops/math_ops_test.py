@@ -40,7 +40,17 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = math_ops.reduce_sum(x).eval()
       self.assertEqual(y_tf, 21)
 
-  def testReduceExplicitDims(self):
+  def testReduceExplicitAxes(self):
+    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      for axis in (0, -2, (0, 0), (0, -2)):
+        self.assertAllEqual(math_ops.reduce_sum(x, axis=axis).eval(), [5, 7, 9])
+      for axis in (1, -1, (1, 1), (1, -1)):
+        self.assertAllEqual(math_ops.reduce_sum(x, axis=axis).eval(), [6, 15])
+      for axis in (None, (0, 1), (-1, -2), (-2, -1, 0, 1)):
+        self.assertEqual(math_ops.reduce_sum(x, axis=axis).eval(), 21)
+
+  def testReduceInvalidAxis(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
     with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
@@ -66,7 +76,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = y_tf.eval()
         self.assertAllClose(y_tf_np, y_np)
- 
+
   def testReductionIndices2(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
