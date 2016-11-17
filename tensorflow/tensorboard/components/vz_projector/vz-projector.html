@@ -30,7 +30,7 @@ limitations under the License.
 <link rel="import" href="../paper-dialog/paper-dialog.html">
 <link rel="import" href="../paper-toast/paper-toast.html">
 <link rel="import" href="../paper-styles/typography.html">
-<link rel="import" href="../paper-progress/paper-progress.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
 <link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
 
 <link rel="import" href="vz-projector-bookmark-panel.html">
@@ -139,10 +139,9 @@ limitations under the License.
   text-transform: uppercase;
 }
 
-#notification-dialog paper-progress {
-  --paper-progress-indeterminate-cycle-duration: 1s;
-  --paper-progress-active-color: #880E4F;
-  width: 100%;
+#notification-dialog .progress {
+  --paper-spinner-color: #880E4F;
+  --paper-spinner-stroke-width: 2px;
 }
 
 #notify-msgs {
@@ -272,7 +271,7 @@ limitations under the License.
   <paper-dialog-scrollable>
     <div id="notify-msgs"></div>
   </paper-dialog-scrollable>
-  <div><paper-progress class="progress-bar" indeterminate></paper-progress></div>
+  <div style="text-align: center;"><paper-spinner-lite active class="progress"></paper-spinner-lite></div>
   <div class="buttons">
     <paper-button class="close-button" dialog-confirm autofocus>Close</paper-button>
   </div>

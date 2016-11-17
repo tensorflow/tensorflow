@@ -46,8 +46,9 @@ export function setModalMessage(msg: string, id: string = null,
   let dialog = dom.querySelector('#notification-dialog') as any;
   dialog.querySelector('.close-button').style.display =
       showCloseButton ? null : 'none';
-  dialog.querySelector('.progress-bar').style.display =
-      showCloseButton ? 'none' : null;
+  let spinner = dialog.querySelector('.progress');
+  spinner.style.display = showCloseButton ? 'none' : null;
+  spinner.active = showCloseButton ? null : true;
   dialog.querySelector('#notification-title').innerHTML = title;
   let msgsContainer = dialog.querySelector('#notify-msgs') as HTMLElement;
   let divId = `notify-msg-${id}`;
