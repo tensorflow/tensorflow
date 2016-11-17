@@ -838,7 +838,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # step so the replicas can fetch them to start the next step.
           # Note that ref() is used to avoid reading from the identity with old
           # the step.
-          tokens = array_ops.fill([self._tokens_per_step], global_step.ref())
+          tokens = array_ops.fill([self._tokens_per_step], global_step._ref())  # pylint: disable=protected-access
           sync_op = sync_token_queue.enqueue_many((tokens,))
 
         if self._variable_averages is not None:
