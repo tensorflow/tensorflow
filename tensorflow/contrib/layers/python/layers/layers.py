@@ -1284,7 +1284,7 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
+  if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
   with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
                                      reuse=reuse) as sc:
