@@ -40,13 +40,16 @@ set /p ENV_NAME=<uuid.txt
 %CONDA_EXE% create --name %ENV_NAME% numpy
 %ACTIVATE_EXE% %ENV_NAME%
 
+
+:: Since there are no wildcards in windows command prompt, use dark magic to get the wheel file name.
+DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
+set /p WHEEL_FILENAME=<wheel_filename_file
+del wheel_filename_file
+
 :: Install the pip package.
-%PIP_EXE% install --upgrade %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\tensorflow-0.11.0rc2_cmake_experimental-py3-none-any.whl
-if %errorlevel% neq 0 exit /b %errorlevel%
+%PIP_EXE% install --upgrade %WHEEL_FILENAME%
 
-:: Run all python tests
-ctest -C Release --output-on-failure
-if %errorlevel% neq 0 exit /b %errorlevel%
-
+:: Run all python tests if the installation succeeded.
+if %errorlevel% eq 0 ctest -C Release --output-on-failure
 %DEACTIVATE_EXE%
 %CONDA_EXE% env remove %ENV_NAME%
