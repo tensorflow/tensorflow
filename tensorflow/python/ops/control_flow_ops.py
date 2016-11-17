@@ -160,7 +160,7 @@ def _Identity(data, name=None):
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype:
+    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_array_ops._ref_identity(data, name=name)
     else:
       return array_ops.identity(data, name=name)
@@ -182,7 +182,7 @@ def _Identity(data, name=None):
 def _NextIteration(data, name=None):
   data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype:
+    if data.dtype._is_ref_dtype:   # pylint: disable=protected-access
       return ref_next_iteration(data, name=name)
     else:
       return next_iteration(data, name=name)
@@ -223,7 +223,7 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype and use_ref:
+    if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
       result = ref_enter(data, frame_name, is_constant, parallel_iterations,
                          name=name)
     else:
@@ -272,7 +272,7 @@ def exit(data, name=None):
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype:
+    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_control_flow_ops._ref_exit(data, name)
     else:
       return gen_control_flow_ops._exit(data, name)
@@ -378,7 +378,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   # created within ops.colocate_with(data) to ignore the existing stack.
   with ops.colocate_with(data, ignore_existing=True):
     if isinstance(data, ops.Tensor):
-      if data.dtype.is_ref_dtype:
+      if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
         return ref_switch(data, pred, name=name)
     return switch(data, pred, name=name)
 
@@ -414,7 +414,7 @@ def merge(inputs, name=None):
     inputs = [ops.convert_to_tensor_or_indexed_slices(inp, as_ref=True)
               for inp in inputs]
     if all([isinstance(v, ops.Tensor) for v in inputs]):
-      if all([v.dtype.is_ref_dtype for v in inputs]):
+      if all([v.dtype._is_ref_dtype for v in inputs]):  # pylint: disable=protected-access
         return gen_control_flow_ops._ref_merge(inputs, name)
       else:
         return gen_control_flow_ops._merge(inputs, name)
