@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
-#include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/contrib/session_bundle/session_bundle.h"
 #include "tensorflow/contrib/session_bundle/signature.h"
@@ -62,7 +61,7 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
                            kRegressInputs, &signature_def);
     AddOutputToSignatureDef(regression_signature.output().tensor_name(),
                             kRegressOutputs, &signature_def);
-    (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
+    (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
         signature_def;
     return Status::OK();
   } else if (default_signature.type_case() ==
@@ -77,7 +76,7 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
                             kClassifyOutputClasses, &signature_def);
     AddOutputToSignatureDef(classification_signature.scores().tensor_name(),
                             kClassifyOutputScores, &signature_def);
-    (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
+    (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
         signature_def;
     return Status::OK();
   }
@@ -124,7 +123,7 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
   }
   // Add the `default` key to the signature def map of the meta graph def and
   // map it to the constructed signature def.
-  (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
+  (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
       signature_def;
   return Status::OK();
 }

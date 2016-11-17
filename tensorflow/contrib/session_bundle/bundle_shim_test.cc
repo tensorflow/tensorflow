@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
-#include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -146,7 +145,7 @@ TEST(BundleShimTest, DefaultSignatureRegression) {
   ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
-      meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
                              .find(kRegressInputs)
                              ->second.name());
@@ -174,7 +173,7 @@ TEST(BundleShimTest, DefaultSignatureClassification) {
   ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
-      meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
                              .find(kClassifyInputs)
                              ->second.name());
@@ -261,7 +260,7 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
   ConvertNamedSignaturesToSignatureDef(signatures, &meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
-      meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
   EXPECT_EQ(
       "foo-input",
       actual_signature_def->second.inputs().find("foo-input")->second.name());
@@ -322,7 +321,7 @@ TEST(BundleShimTest, BasicExportSessionBundle) {
   const string session_bundle_export_dir =
       test_util::TestSrcDirPath(kSessionBundlePath);
   LoadAndValidateSavedModelBundle(session_bundle_export_dir, {"tag"},
-                                  kDefaultSignatureDefKey);
+                                  kDefaultServingSignatureDefKey);
 }
 
 // Checks a basic load for half plus two for SavedModelBundle.
