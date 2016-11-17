@@ -57,6 +57,7 @@ filegroup(
         "@paper_radio_group//:paper_radio_group",
         "@paper_ripple//:paper_ripple",
         "@paper_slider//:paper_slider",
+        "@paper_spinner//:paper_spinner",
         "@paper_styles//:paper_styles",
         "@paper_tabs//:paper_tabs",
         "@paper_toast//:paper_toast",
