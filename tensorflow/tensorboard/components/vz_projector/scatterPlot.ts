@@ -16,9 +16,10 @@ limitations under the License.
 import {DataSet} from './data';
 import {ProjectorEventContext} from './projectorEventContext';
 import {CameraType, LabelRenderParams, RenderContext} from './renderContext';
+import {BoundingBox, ScatterPlotRectangleSelector} from './scatterPlotRectangleSelector';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import * as util from './util';
-import {dist_2D, Point2D, Point3D} from './vector';
+import {Point2D, Point3D} from './vector';
 
 const BACKGROUND_COLOR = 0xffffff;
 
@@ -93,7 +94,6 @@ export class ScatterPlot {
   private scene: THREE.Scene;
   private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
-  private selectionSphere: THREE.Mesh;
 
   private cameraDef: CameraDef = null;
   private camera: THREE.Camera;
@@ -114,6 +114,7 @@ export class ScatterPlot {
   private nearestPoint: number;
   private mouseIsDown = false;
   private isDragSequence = false;
+  private rectangleSelector: ScatterPlotRectangleSelector;
 
   constructor(
       container: d3.Selection<any>, labelAccessor: (index: number) => string,
@@ -136,6 +137,9 @@ export class ScatterPlot {
     this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
     this.renderer.render(this.scene, this.camera);
 
+    this.rectangleSelector = new ScatterPlotRectangleSelector(
+        this.containerNode,
+        (boundingBox: BoundingBox) => this.selectBoundingBox(boundingBox));
     this.addInteractionListeners();
   }
 
@@ -300,14 +304,10 @@ export class ScatterPlot {
   private onMouseDown(e: MouseEvent) {
     this.isDragSequence = false;
     this.mouseIsDown = true;
-    // If we are in selection mode, and we have in fact clicked a valid point,
-    // create a sphere so we can select things
     if (this.selecting) {
       this.orbitCameraControls.enabled = false;
+      this.rectangleSelector.onMouseDown(e.offsetX, e.offsetY);
       this.setNearestPointToMouse(e);
-      if (this.nearestPoint) {
-        this.createSelectionSphere();
-      }
     } else if (
         !e.ctrlKey && this.sceneIs3D() &&
         this.orbitCameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
@@ -329,8 +329,7 @@ export class ScatterPlot {
   private onMouseUp(e: any) {
     if (this.selecting) {
       this.orbitCameraControls.enabled = true;
-      this.scene.remove(this.selectionSphere);
-      this.selectionSphere = null;
+      this.rectangleSelector.onMouseUp();
       this.render();
     }
     this.mouseIsDown = false;
@@ -347,9 +346,7 @@ export class ScatterPlot {
     this.isDragSequence = this.mouseIsDown;
     // Depending if we're selecting or just navigating, handle accordingly.
     if (this.selecting && this.mouseIsDown) {
-      if (this.selectionSphere) {
-        this.adjustSelectionSphere(e);
-      }
+      this.rectangleSelector.onMouseMove(e.offsetX, e.offsetY);
       this.render();
     } else if (!this.mouseIsDown) {
       this.setNearestPointToMouse(e);
@@ -385,10 +382,56 @@ export class ScatterPlot {
       if (!this.selecting) {
         this.containerNode.style.cursor = 'default';
       }
-      this.scene.remove(this.selectionSphere);
-      this.selectionSphere = null;
       this.render();
     }
+  }
+
+  /**
+   * Returns a list of indices of points in a bounding box from the picking
+   * texture.
+   * @param boundingBox The bounding box to select from.
+   */
+  private getPointIndicesFromPickingTexture(boundingBox: BoundingBox):
+      number[] {
+    const dpr = window.devicePixelRatio || 1;
+    const x = Math.floor(boundingBox.x * dpr);
+    const y = Math.floor(boundingBox.y * dpr);
+    const width = Math.floor(boundingBox.width * dpr);
+    const height = Math.floor(boundingBox.height * dpr);
+
+    // Create buffer for reading all of the pixels from the texture.
+    let pixelBuffer = new Uint8Array(width * height * 4);
+
+    // Read the pixels from the bounding box.
+    this.renderer.readRenderTargetPixels(
+        this.pickingTexture, x, this.pickingTexture.height - y, width, height,
+        pixelBuffer);
+
+    // Keep a flat list of each point and whether they are selected or not. This
+    // approach is more efficient than using an object keyed by the index.
+    let pointIndicesSelection =
+        new Uint8Array(this.worldSpacePointPositions.length);
+    for (let i = 0; i < width * height; i++) {
+      const id = (pixelBuffer[i * 4] << 16) | (pixelBuffer[i * 4 + 1] << 8) |
+          pixelBuffer[i * 4 + 2];
+      if (id !== 0xffffff && (id < this.dataSet.points.length)) {
+        pointIndicesSelection[id] = 1;
+      }
+    }
+    let pointIndices: number[] = [];
+    for (let i = 0; i < pointIndicesSelection.length; i++) {
+      if (pointIndicesSelection[i] === 1) {
+        pointIndices.push(i);
+      }
+    }
+
+    return pointIndices;
+  }
+
+
+  private selectBoundingBox(boundingBox: BoundingBox) {
+    let pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+    this.projectorEventContext.notifySelectionChanged(pointIndices);
   }
 
   private setNearestPointToMouse(e: MouseEvent) {
@@ -397,65 +440,11 @@ export class ScatterPlot {
       return;
     }
 
-    // Create buffer for reading a single pixel.
-    let pixelBuffer = new Uint8Array(4);
-    const dpr = window.devicePixelRatio || 1;
-    const x = e.offsetX * dpr;
-    const y = e.offsetY * dpr;
-    // Read the pixel under the mouse from the texture.
-    this.renderer.readRenderTargetPixels(
-        this.pickingTexture, x, this.pickingTexture.height - y, 1, 1,
-        pixelBuffer);
-    // Interpret the pixel as an ID.
-    const id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
-    this.nearestPoint =
-        (id !== 0xffffff) && (id < this.dataSet.points.length) ? id : null;
-  }
+    let boundingBox:
+        BoundingBox = {x: e.offsetX, y: e.offsetY, width: 1, height: 1};
 
-  /** Returns the squared distance to the mouse for the i-th point. */
-  private getDist2ToMouse(i: number, e: MouseEvent): number {
-    const p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
-    const screenCoords =
-        util.vector3DToScreenCoords(this.camera, this.width, this.height, p);
-    const dpr = window.devicePixelRatio || 1;
-    return dist_2D(
-        [e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
-  }
-
-  private adjustSelectionSphere(e: MouseEvent) {
-    const dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
-    this.selectionSphere.scale.set(dist, dist, dist);
-    const selectedPoints: number[] = [];
-    const n = this.worldSpacePointPositions.length;
-    for (let i = 0; i < n; ++i) {
-      const p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
-      const distPointToSphereOrigin =
-          this.selectionSphere.position.clone().sub(p).length();
-      if (distPointToSphereOrigin < dist) {
-        selectedPoints.push(i);
-      }
-    }
-    this.projectorEventContext.notifySelectionChanged(selectedPoints);
-  }
-
-  private createSelectionSphere() {
-    let geometry = new THREE.SphereGeometry(1, 300, 100);
-    let material = new THREE.MeshPhongMaterial({
-      color: 0x000000,
-      specular:
-          (this.sceneIs3D() && 0xffffff),  // In 2d, make sphere look flat.
-      emissive: 0x000000,
-      shininess: 10,
-      shading: THREE.SmoothShading,
-      opacity: 0.125,
-      transparent: true,
-    });
-    this.selectionSphere = new THREE.Mesh(geometry, material);
-    this.selectionSphere.scale.set(0, 0, 0);
-    const p = util.vector3FromPackedArray(
-        this.worldSpacePointPositions, this.nearestPoint);
-    this.scene.add(this.selectionSphere);
-    this.selectionSphere.position.copy(p);
+    let pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+    this.nearestPoint = pointIndices[0];
   }
 
   private getLayoutValues(): Point2D {
