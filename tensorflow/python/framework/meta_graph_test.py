@@ -25,6 +25,7 @@ import shutil
 from itertools import permutations
 
 import tensorflow as tf
+import numpy as np
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import function
@@ -481,11 +482,13 @@ class TestGetBackwardTensors(tf.test.TestCase):
           truth = [a.op]
         else:
           truth = []
-        assert meta_graph._get_backward_ops(seed_tensors) == truth
+        self.assertTrue(meta_graph._get_backward_ops(seed_tensors) == truth)
 
-    assert meta_graph._get_backward_ops([c], as_inputs=[b]) == [c.op]
-    assert meta_graph._get_backward_ops([b, c], as_inputs=[b]) == [c.op]
-    assert meta_graph._get_backward_ops([a, c], as_inputs=[b]) == [a.op, c.op]
+    self.assertTrue(meta_graph._get_backward_ops([c], as_inputs=[b]) == [c.op])
+    self.assertTrue(
+      meta_graph._get_backward_ops([b, c], as_inputs=[b]) == [c.op])
+    self.assertTrue(
+      meta_graph._get_backward_ops([a, c], as_inputs=[b]) == [a.op, c.op])
 
 
   def testGetBackwardOpsSplit(self):
@@ -495,14 +498,17 @@ class TestGetBackwardTensors(tf.test.TestCase):
     b = tf.exp(a)
     c = tf.log(b)
     d = tf.neg(b)
-    assert meta_graph._get_backward_ops([d]) == [a.op, b.op, d.op]
-    assert meta_graph._get_backward_ops([c]) == [a.op, b.op, c.op]
-    assert meta_graph._get_backward_ops([c, d]) == [a.op, b.op, c.op, d.op]
-    assert meta_graph._get_backward_ops([b, d]) == [a.op, b.op, d.op]
-    assert meta_graph._get_backward_ops([a, d]) == [a.op, b.op, d.op]
+    self.assertTrue(meta_graph._get_backward_ops([d]) == [a.op, b.op, d.op])
+    self.assertTrue(meta_graph._get_backward_ops([c]) == [a.op, b.op, c.op])
+    self.assertTrue(
+      meta_graph._get_backward_ops([c, d]) == [a.op, b.op, c.op, d.op])
+    self.assertTrue(meta_graph._get_backward_ops([b, d]) == [a.op, b.op, d.op])
+    self.assertTrue(meta_graph._get_backward_ops([a, d]) == [a.op, b.op, d.op])
 
-    assert meta_graph._get_backward_ops([c, d], as_inputs=[b]) == [c.op, d.op]
-    assert meta_graph._get_backward_ops([c], as_inputs=[d]) == [a.op, b.op, c.op]
+    self.assertTrue(
+      meta_graph._get_backward_ops([c, d], as_inputs=[b]) == [c.op, d.op])
+    self.assertTrue(
+      meta_graph._get_backward_ops([c], as_inputs=[d]) == [a.op, b.op, c.op])
 
 
   def testGetBackwardOpsMerge(self):
@@ -512,9 +518,11 @@ class TestGetBackwardTensors(tf.test.TestCase):
     b = tf.constant(0, dtype=tf.int32)
     c = tf.reduce_sum(a, reduction_indices=b)
     d = tf.stop_gradient(c)
-    assert meta_graph._get_backward_ops([d]) == [a.op, b.op, c.op, d.op]
-    assert meta_graph._get_backward_ops([d], as_inputs=[c]) == [d.op]
-    assert meta_graph._get_backward_ops([d], as_inputs=[a]) == [b.op, c.op, d.op]
+    self.assertTrue(
+      meta_graph._get_backward_ops([d]) == [a.op, b.op, c.op, d.op])
+    self.assertTrue(meta_graph._get_backward_ops([d], as_inputs=[c]) == [d.op])
+    self.assertTrue(
+      meta_graph._get_backward_ops([d], as_inputs=[a]) == [b.op, c.op, d.op])
 
 
   def testGetBackwardOpsBridge(self):
@@ -525,10 +533,11 @@ class TestGetBackwardTensors(tf.test.TestCase):
     c = tf.cast(b, tf.float32)
     d = tf.tile(c, b)
     e = tf.tanh(d)
-    assert meta_graph._get_backward_ops([e]) == [a.op, b.op, c.op, d.op, e.op]
-    assert meta_graph._get_backward_ops([c]) == [a.op, b.op, c.op]
-    assert meta_graph._get_backward_ops([e], as_inputs=[c]) == [
-      a.op, b.op, d.op, e.op]
+    self.assertTrue(
+      meta_graph._get_backward_ops([e]) == [a.op, b.op, c.op, d.op, e.op])
+    self.assertTrue(meta_graph._get_backward_ops([c]) == [a.op, b.op, c.op])
+    self.assertTrue(meta_graph._get_backward_ops([e], as_inputs=[c]) ==
+                    [a.op, b.op, d.op, e.op])
 
 
   def testGetBackwardOpsControlDeps(self):
@@ -544,19 +553,19 @@ class TestGetBackwardTensors(tf.test.TestCase):
       e = tf.placeholder(tf.float32, name='e')
     with tf.control_dependencies([e, d]):
       f = tf.placeholder(tf.float32, name='f')
-    assert meta_graph._get_backward_ops([f]) == [
-      a.op, b.op, c.op, d.op, e.op, f.op]
-    assert meta_graph._get_backward_ops([d, f]) == [
-      c.op, d.op, a.op, b.op, e.op, f.op]
+    self.assertTrue(meta_graph._get_backward_ops([f]) ==
+                    [a.op, b.op, c.op, d.op, e.op, f.op])
+    self.assertTrue(meta_graph._get_backward_ops([d, f]) ==
+                    [c.op, d.op, a.op, b.op, e.op, f.op])
 
-    assert meta_graph._get_backward_ops([f], as_inputs=[b]) == [
-      a.op, b.op, c.op, d.op, e.op, f.op]
-    assert meta_graph._get_backward_ops([f], as_inputs=[b, c]) == [
-      a.op, b.op, d.op, e.op, f.op]
-    assert meta_graph._get_backward_ops([f], as_inputs=[d, e]) == [
-      a.op, b.op, c.op, d.op, e.op, f.op]
-    assert meta_graph._get_backward_ops([d, f], as_inputs=[b]) == [
-      c.op, d.op, a.op, b.op, e.op, f.op]
+    self.assertTrue(meta_graph._get_backward_ops([f], as_inputs=[b]) ==
+                    [a.op, b.op, c.op, d.op, e.op, f.op])
+    self.assertTrue(meta_graph._get_backward_ops([f], as_inputs=[b, c]) ==
+                    [a.op, b.op, d.op, e.op, f.op])
+    self.assertTrue(meta_graph._get_backward_ops([f], as_inputs=[d, e]) ==
+                    [a.op, b.op, c.op, d.op, e.op, f.op])
+    self.assertTrue(meta_graph._get_backward_ops([d, f], as_inputs=[b]) ==
+                    [c.op, d.op, a.op, b.op, e.op, f.op])
 
 
 class TestClone(tf.test.TestCase):
@@ -614,13 +623,13 @@ class TestClone(tf.test.TestCase):
 
       # case 1
       d_out, _ = meta_graph.clone(d, "copy1")
-      assert d_out is not d
-      assert d_out.op.inputs[:] == [b]
+      self.assertTrue(d_out.name == "copy1/d:0")
+      self.assertTrue(d_out.op.inputs[:] == [b])
 
       # case 2
       copies, _ = meta_graph.clone([c, d], "copy2")
-      assert copies[0].op.inputs[:] == [b]
-      assert copies[1].op.inputs[:] == [b]
+      self.assertTrue(copies[0].op.inputs[:] == [b])
+      self.assertTrue(copies[1].op.inputs[:] == [b])
 
       # case 3
       copies, _ = meta_graph.clone([c, d], "copy3", replace={b: b_new})
@@ -631,7 +640,7 @@ class TestClone(tf.test.TestCase):
 
       # case 4
       c_out, _ = meta_graph.clone(c, "copy4", replace={d: d_new})
-      assert c_out.op.inputs[:] == [b]
+      self.assertTrue(c_out.op.inputs[:] == [b])
       with tf.Session() as sess:
         self.assertNear(sess.run(c_out), 1., 1e-6)
 
@@ -678,100 +687,94 @@ class TestClone(tf.test.TestCase):
       self.assertNear(c_out_, -1., 1e-6)
       self.assertNear(d_out_, -1., 1e-6)
 
-  # def testCloneBridge(self):
-  #   # a -> b -> c -> d -> e
-  #   #       \  ---  /
-  #   with StochasticGraph() as model:
-  #     a = tf.constant([2], dtype=tf.int32, name='ag')
-  #     b = tf.identity(a, name='bg')
-  #     c = tf.neg(b, name='cg')
-  #     d = tf.tile(c, b, name='dg')
-  #     e = tf.square(d, name='eg')
-  #
-  #   a_new = tf.constant([3], dtype=tf.int32, name='ag_new')
-  #   b_new = tf.constant([4], dtype=tf.int32, name='bg_new')
-  #   c_new = tf.constant([5], dtype=tf.int32, name='cg_new')
-  #   d_new = tf.constant([5, 5, 5], name='dg_new')
-  #
-  #   # case 1
-  #   d_out, e_out = model.get_output([d, e], inputs={a: a_new, c: c_new})
-  #   with tf.Session() as sess:
-  #     d_out_, e_out_ = \
-  #       sess.run([d_out[0], e_out[0]])
-  #     assert (np.abs(d_out_ - np.array([5, 5, 5])).all() < 1e-8)
-  #     assert (np.abs(e_out_ - np.array([25, 25, 25])).all() < 1e-8)
-  #
-  #   # case 2
-  #   c_out, e_out = model.get_output([c, e], inputs={a: a_new, b: b_new,
-  #                                                   d: d_new})
-  #   with tf.Session() as sess:
-  #     c_out_, e_out_ = sess.run([c_out[0], e_out[0]])
-  #
-  #     assert np.abs(c_out_ - (-4)).all() < 1e-8
-  #     assert (np.abs(e_out_ - np.array([25, 25, 25])).all() < 1e-8)
-  #
-  #     # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-  #     #                                       tf.get_default_graph())
-  #     # train_writer.close()
-  #
-  # def testCloneOneToManyOp(self):
-  #   # tf.unpack
-  #   # a -.---- a0
-  #   #     \ -- a1
-  #   #      \ - a2 -> c
-  #   # b ----------- /
-  #   with StochasticGraph() as model:
-  #     a = tf.zeros([3, 2, 1, 4], name="ao")
-  #     a0, a1, a2 = tf.unpack(a, axis=0)
-  #     b = tf.ones([2, 4, 1], name="bo")
-  #     c = tf.batch_matmul(a2, b, name="co")
-  #
-  #   a1_new = tf.ones([2, 1, 4], name="a1_new")
-  #   a_new = tf.ones([3, 2, 1, 4], name="ao_new")
-  #   a2_new = tf.ones([2, 1, 4], name="a2_new") * 2
-  #
-  #   # case 1
-  #   a2_out, c_out = model.get_output([a2, c], inputs={a1: a1_new})
-  #   assert a2_out[0] is a2
-  #   assert c_out[0] is c
-  #
-  #   # case 2
-  #   a0_out, a2_out, c_out = model.get_output([a0, a2, c],
-  #                                            inputs={a: a_new, a2: a2_new})
-  #   with tf.Session() as sess:
-  #     a0_out_, a2_out_, c_out_ = sess.run(
-  #       [a0_out[0], a2_out[0], c_out[0]])
-  #     assert np.abs(a0_out_ - np.ones([2, 1, 4])).max() < 1e-8
-  #     assert np.abs(a2_out_ - np.ones([2, 1, 4]) * 2).max() < 1e-8
-  #     assert np.abs(c_out_ - np.array([[8, 8]]).T).max() < 1e-8
-  #
-  #     # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-  #     #                                       tf.get_default_graph())
-  #     # train_writer.close()
-  #
-  # def testClonePlaceholderFeed(self):
-  #   # a -> c -> c0
-  #   # b - /    /
-  #   #  \ ---- /
-  #   with StochasticGraph() as model:
-  #     a = tf.placeholder(tf.float32, name='ap')
-  #     b = tf.placeholder(tf.int32, name='bp')
-  #     c = tf.expand_dims(a, b, name='cp')
-  #     c0 = tf.split(b, 1, c)[0]
-  #
-  #   b_new = tf.placeholder(tf.int32, name='bp_new')
-  #   c0_out = model.get_output(c0, inputs={b: b_new})
-  #   with tf.Session() as sess:
-  #     with pytest.raises(tf.errors.InvalidArgumentError):
-  #       sess.run(c0_out[0], feed_dict={a: np.ones([2, 3]), b: 0})
-  #     c0_out_ = sess.run(c0_out[0], feed_dict={a: np.ones([2, 3]),
-  #                                              b_new: 0})
-  #     assert np.abs(c0_out_ - np.ones([2, 3])).max() < 1e-8
-  #
-  #     # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-  #     #                                       tf.get_default_graph())
-  #     # train_writer.close()
-  #
+  def testCloneBridge(self):
+    # a -> b -> c -> d -> e
+    #       \  ---  /
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.constant([2], dtype=tf.int32, name='a')
+      b = tf.identity(a, name='b')
+      c = tf.neg(b, name='c')
+      d = tf.tile(c, b, name='d')
+      e = tf.square(d, name='e')
+
+      a_new = tf.constant([3], dtype=tf.int32, name='a_new')
+      b_new = tf.constant([4], dtype=tf.int32, name='b_new')
+      c_new = tf.constant([5], dtype=tf.int32, name='c_new')
+      d_new = tf.constant([5, 5, 5], name='d_new')
+
+      # case 1
+      copies, _ = meta_graph.clone([d, e], "copy1",
+                                   replace={a: a_new, c: c_new})
+      with tf.Session() as sess:
+        d_out_, e_out_ = sess.run(copies)
+      self.assertAllClose(d_out_, np.array([5, 5, 5]))
+      self.assertAllClose(e_out_, np.array([25, 25, 25]))
+
+      # case 2
+      copies, _ = meta_graph.clone([c, e], "copy2",
+                                   replace={a: a_new, b: b_new, d: d_new})
+      with tf.Session() as sess:
+        c_out_, e_out_ = sess.run(copies)
+      self.assertAllClose(c_out_, [-4])
+      self.assertAllClose(e_out_, np.array([25, 25, 25]))
+
+  def testCloneOneToManyOp(self):
+    # tf.unpack
+    # a -.---- a0
+    #     \ -- a1
+    #      \ - a2 -> c
+    # b ----------- /
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.zeros([3, 2, 1, 4], name="a")
+      a0, a1, a2 = tf.unpack(a, axis=0)
+      b = tf.ones([2, 4, 1], name="b")
+      c = tf.batch_matmul(a2, b, name="c")
+
+      a1_new = tf.ones([2, 1, 4], name="a1_new")
+      a_new = tf.ones([3, 2, 1, 4], name="a_new")
+      a2_new = tf.ones([2, 1, 4], name="a2_new") * 2
+
+      # case 1
+      copies, _ = meta_graph.clone([a2, c], "copy1", replace={a1: a1_new})
+      a2_out, c_out = copies
+      self.assertTrue(a2_out.name == "copy1/unpack:2")
+      self.assertTrue(c_out.name == "copy1/c:0")
+
+      # case 2
+      copies, _ = meta_graph.clone([a0, a2, c], "copy2",
+                                   replace={a: a_new, a2: a2_new})
+      with tf.Session() as sess:
+        a0_out_, a2_out_, c_out_ = sess.run(copies)
+      self.assertAllClose(a0_out_, np.ones([2, 1, 4]))
+      self.assertAllClose(a2_out_, np.ones([2, 1, 4]) * 2)
+      self.assertAllClose(c_out_, np.array([[[8]], [[8]]]))
+
+  def testClonePlaceholderFeed(self):
+    # a -> c -> c0
+    # b - /    /
+    #  \ ---- /
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.placeholder(tf.float32, name='a')
+      b = tf.placeholder(tf.int32, name='b')
+      c = tf.expand_dims(a, b, name='c')
+      c0 = tf.split(b, 1, c)[0]
+
+      b_new = tf.placeholder(tf.int32, name='b_new')
+      c0_out, _ = meta_graph.clone(c0, "copy", replace={b: b_new})
+      with tf.Session() as sess:
+        with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                     ""):
+          sess.run(c0_out, feed_dict={a: np.ones([2, 3]), b: 0})
+        c0_out_ = sess.run(c0_out, feed_dict={a: np.ones([2, 3]),
+                                              b_new: 0})
+      self.assertAllClose(c0_out_, np.ones([2, 3]))
+
+      train_writer = tf.train.SummaryWriter('/tmp/zhusuan', g)
+      train_writer.close()
+
   # def testCloneControlDeps(self):
   #   # a -> b ---> e -----
   #   # c -> d --- /       \
