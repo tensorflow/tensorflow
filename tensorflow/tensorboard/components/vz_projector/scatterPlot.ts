@@ -53,9 +53,9 @@ export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
 /** Supported modes of interaction. */
-export enum Mode {
-  SELECT,
-  HOVER
+export enum MouseMode {
+  AREA_SELECT,
+  CAMERA_AND_CLICK_SELECT
 }
 
 /** Defines a camera, suitable for serialization. */
@@ -85,7 +85,7 @@ export class ScatterPlot {
   private height: number;
   private width: number;
 
-  private mode: Mode;
+  private mouseMode: MouseMode;
   private backgroundColor: number = BACKGROUND_COLOR;
 
   private dimensionality: number = 3;
@@ -376,7 +376,7 @@ export class ScatterPlot {
 
     // If shift is released, stop selecting
     if (e.keyCode === SHIFT_KEY) {
-      this.selecting = (this.getMode() === Mode.SELECT);
+      this.selecting = (this.getMouseMode() === MouseMode.AREA_SELECT);
       if (!this.selecting) {
         this.containerNode.style.cursor = 'default';
       }
@@ -644,9 +644,9 @@ export class ScatterPlot {
     });
   }
 
-  setMode(mode: Mode) {
-    this.mode = mode;
-    if (mode === Mode.SELECT) {
+  setMouseMode(mouseMode: MouseMode) {
+    this.mouseMode = mouseMode;
+    if (mouseMode === MouseMode.AREA_SELECT) {
       this.selecting = true;
       this.containerNode.style.cursor = 'crosshair';
     } else {
@@ -683,8 +683,8 @@ export class ScatterPlot {
     this.traceWidths = widths;
   }
 
-  getMode(): Mode {
-    return this.mode;
+  getMouseMode(): MouseMode {
+    return this.mouseMode;
   }
 
   resetZoom() {
