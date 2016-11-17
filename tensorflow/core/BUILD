@@ -1386,8 +1386,8 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "//third_party/eigen3",
         ":stream_executor",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
