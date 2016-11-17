@@ -165,6 +165,9 @@ def tf_copts():
               "//tensorflow:windows": [
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
+                "/DPLATFORM_WINDOWS",
+                "/DEIGEN_HAS_C99_MATH",
+                "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
@@ -417,7 +420,7 @@ def _cuda_copts():
         "@local_config_cuda//cuda:using_nvcc": (
             common_cuda_opts +
             [
-                "-nvcc_options=relaxed-constexpr",
+                "-nvcc_options=expt-relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
@@ -443,7 +446,7 @@ def _cuda_copts():
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                           **kwargs):
-  copts = copts + _cuda_copts() + if_cuda(cuda_copts)
+  copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
 
   native.cc_library(
       srcs = srcs,
