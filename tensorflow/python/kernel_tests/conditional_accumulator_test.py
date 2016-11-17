@@ -408,7 +408,7 @@ class ConditionalAccumulatorTest(tf.test.TestCase):
       self.assertEqual([elems_ave], return_array)
 
   def _blocking_takeg(self, sess, takeg_op):
-    with self.assertRaisesOpError("TakeGrad operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(takeg_op)
 
   def testAccumulatorCancel(self):

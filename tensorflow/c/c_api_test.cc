@@ -273,14 +273,14 @@ TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
-  TF_Port add_inputs[2] = {{l, 0}, {r, 0}};
+  TF_Output add_inputs[2] = {{l, 0}, {r, 0}};
   TF_AddInputList(desc, add_inputs, 2);
   return TF_FinishOperation(desc, s);
 }
 
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", "neg");
-  TF_Port neg_input = {n, 0};
+  TF_Output neg_input = {n, 0};
   TF_AddInput(desc, neg_input);
   return TF_FinishOperation(desc, s);
 }
@@ -401,7 +401,7 @@ TEST(CAPI, SetShape) {
 
   TF_Operation* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_Port feed_out_0 = TF_Port{feed, 0};
+  TF_Output feed_out_0 = TF_Output{feed, 0};
   int num_dims;
 
   // Fetch the shape, it should be completely unknown.
@@ -462,7 +462,7 @@ TEST(CAPI, SetShape) {
   // Test for a scalar.
   TF_Operation* three = ScalarConst(3, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_Port three_out_0 = TF_Port{three, 0};
+  TF_Output three_out_0 = TF_Output{three, 0};
 
   num_dims = TF_GraphGetTensorNumDims(graph, three_out_0, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -488,11 +488,11 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string("Placeholder"), string(TF_OperationOpType(feed)));
   EXPECT_EQ(string(""), string(TF_OperationDevice(feed)));
   EXPECT_EQ(1, TF_OperationNumOutputs(feed));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{feed, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{feed, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(feed, "output", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(0, TF_OperationNumInputs(feed));
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
+  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Output{feed, 0}));
   EXPECT_EQ(0, TF_OperationNumControlInputs(feed));
   EXPECT_EQ(0, TF_OperationNumControlOutputs(feed));
 
@@ -521,21 +521,21 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string("AddN"), string(TF_OperationOpType(add)));
   EXPECT_EQ(string(""), string(TF_OperationDevice(add)));
   EXPECT_EQ(1, TF_OperationNumOutputs(add));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{add, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(add, "sum", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(2, TF_OperationNumInputs(add));
   EXPECT_EQ(2, TF_OperationInputListLength(add, "inputs", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 0}));
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 1}));
-  TF_Port add_in_0 = TF_OperationInput(TF_Port{add, 0});
+  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Input{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Input{add, 1}));
+  TF_Output add_in_0 = TF_OperationInput(TF_Input{add, 0});
   EXPECT_EQ(feed, add_in_0.oper);
   EXPECT_EQ(0, add_in_0.index);
-  TF_Port add_in_1 = TF_OperationInput(TF_Port{add, 1});
+  TF_Output add_in_1 = TF_OperationInput(TF_Input{add, 1});
   EXPECT_EQ(three, add_in_1.oper);
   EXPECT_EQ(0, add_in_1.index);
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{add, 0}));
+  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Output{add, 0}));
   EXPECT_EQ(0, TF_OperationNumControlInputs(add));
   EXPECT_EQ(0, TF_OperationNumControlOutputs(add));
 
@@ -545,16 +545,17 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(attr_value.i(), 2);
 
   // Placeholder oper now has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
-  TF_Port feed_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{feed, 0}, &feed_port, 1));
+  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Output{feed, 0}));
+  TF_Input feed_port;
+  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Output{feed, 0}, &feed_port, 1));
   EXPECT_EQ(add, feed_port.oper);
   EXPECT_EQ(0, feed_port.index);
 
   // The scalar const oper also has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{three, 0}));
-  TF_Port three_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{three, 0}, &three_port, 1));
+  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Output{three, 0}));
+  TF_Input three_port;
+  EXPECT_EQ(1,
+            TF_OperationOutputConsumers(TF_Output{three, 0}, &three_port, 1));
   EXPECT_EQ(add, three_port.oper);
   EXPECT_EQ(1, three_port.index);
 
@@ -713,7 +714,7 @@ class CSession {
     DeleteInputValues();
     inputs_.clear();
     for (const auto& p : inputs) {
-      inputs_.emplace_back(TF_Port{p.first, 0});
+      inputs_.emplace_back(TF_Output{p.first, 0});
       input_values_.emplace_back(p.second);
     }
   }
@@ -722,7 +723,7 @@ class CSession {
     ResetOutputValues();
     outputs_.clear();
     for (TF_Operation* o : outputs) {
-      outputs_.emplace_back(TF_Port{o, 0});
+      outputs_.emplace_back(TF_Output{o, 0});
     }
   }
 
@@ -741,11 +742,11 @@ class CSession {
     ResetOutputValues();
     output_values_.resize(outputs_.size(), nullptr);
 
-    const TF_Port* inputs_ptr = inputs_.empty() ? nullptr : &inputs_[0];
+    const TF_Output* inputs_ptr = inputs_.empty() ? nullptr : &inputs_[0];
     TF_Tensor* const* input_values_ptr =
         input_values_.empty() ? nullptr : &input_values_[0];
 
-    const TF_Port* outputs_ptr = outputs_.empty() ? nullptr : &outputs_[0];
+    const TF_Output* outputs_ptr = outputs_.empty() ? nullptr : &outputs_[0];
     TF_Tensor** output_values_ptr =
         output_values_.empty() ? nullptr : &output_values_[0];
 
@@ -788,9 +789,9 @@ class CSession {
   }
 
   TF_Session* session_;
-  std::vector<TF_Port> inputs_;
+  std::vector<TF_Output> inputs_;
   std::vector<TF_Tensor*> input_values_;
-  std::vector<TF_Port> outputs_;
+  std::vector<TF_Output> outputs_;
   std::vector<TF_Tensor*> output_values_;
   std::vector<TF_Operation*> targets_;
 };
@@ -863,7 +864,7 @@ TEST(CAPI, ColocateWith) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
-  TF_Port inputs[] = {{feed, 0}, {constant, 0}};
+  TF_Output inputs[] = {{feed, 0}, {constant, 0}};
   TF_AddInputList(desc, inputs, TF_ARRAYSIZE(inputs));
   TF_ColocateWith(desc, feed);
   TF_Operation* add = TF_FinishOperation(desc, s);

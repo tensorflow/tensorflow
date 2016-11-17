@@ -9,7 +9,7 @@ get all the tensors which are input or output of an op in the graph.
 
 ##### Returns:
 
-  A list of `tf.Tensor`.
+  A list of `tf.Output`.
 
 ##### Raises:
 

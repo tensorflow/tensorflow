@@ -245,7 +245,7 @@ def _MaybeColocateWith(inputs):
   """A context manager for (maybe) colocating with a list of input tensors.
 
   Args:
-    inputs: A list of `Tensor` or `Operation` objects.
+    inputs: A list of `Output` or `Operation` objects.
 
   Returns:
     A context manager.
@@ -607,7 +607,7 @@ class OpDefLibrary(object):
             assert False, "Unreachable"
 
         if input_arg.is_ref:
-          if not all(x.is_ref_dtype for x in types):
+          if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
                 "Input '%s' of '%s' Op requires l-value input" %
                 (input_name, op_type_name))
@@ -741,7 +741,7 @@ class OpDefLibrary(object):
           types = [arg.type]
           output_structure.append(None)
         if arg.is_ref:
-          types = [dtypes.as_dtype(x).as_ref for x in types]
+          types = [dtypes.as_dtype(x)._as_ref for x in types]  # pylint: disable=protected-access
         output_types.extend(types)
 
       if keywords:

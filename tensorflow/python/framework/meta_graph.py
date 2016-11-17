@@ -34,6 +34,7 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
@@ -351,8 +352,13 @@ def create_meta_graph_def(meta_info_def=None,
   # Creates a MetaGraphDef proto.
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   # Adds meta_info_def.
-  if meta_info_def:
-    meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
+  if not meta_info_def:
+    meta_info_def = meta_graph_pb2.MetaGraphDef.MetaInfoDef()
+
+  # Set the tf version strings to the current tf build.
+  meta_info_def.tensorflow_version = versions.__version__
+  meta_info_def.tensorflow_git_version = versions.__git_version__
+  meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
 
   # Adds graph_def or the default.
   if not graph_def:
@@ -448,8 +454,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
     import_scope: Optional `string`. Name scope into which to import the
       subgraph. If `None`, the graph is imported to the root name scope.
     input_map: A dictionary mapping input names (as strings) in `graph_def` to
-      `Tensor` objects. The values of the named input tensors in the imported
-      graph will be re-mapped to the respective `Tensor` values.
+      `Output` objects. The values of the named input tensors in the imported
+      graph will be re-mapped to the respective `Output` values.
     unbound_inputs_col_name: Collection name for looking up unbound inputs.
 
   Returns:

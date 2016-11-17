@@ -76,11 +76,8 @@ export class InspectorPanel extends PolymerClass {
   private updateInspectorPane(
       indices: number[], neighbors: knn.NearestEntry[]) {
     this.neighborsOfFirstPoint = neighbors;
-    if (neighbors.length > 0) {
-      this.selectedPointIndices = indices;
-    } else {
-      this.selectedPointIndices = null;
-    }
+    this.selectedPointIndices = indices;
+
     this.updateFilterButtons(indices.length + neighbors.length);
     this.updateNeighborsList(neighbors);
     if (neighbors.length === 0) {

@@ -22,6 +22,8 @@ Train and evaluate TensorFlow models.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
 @@ModeKeys
 @@DNNClassifier
 @@DNNRegressor

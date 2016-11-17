@@ -48,11 +48,11 @@ tf.pack(tensors, axis=axis)
 ##### Args:
 
 
-*  <b>`concat_dim`</b>: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
-*  <b>`values`</b>: A list of `Tensor` objects or a single `Tensor`.
+*  <b>`concat_dim`</b>: 0-D `int32` `Output`.  Dimension along which to concatenate.
+*  <b>`values`</b>: A list of `Output` objects or a single `Output`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` resulting from concatenation of the input tensors.
+  An `Output` resulting from concatenation of the input tensors.
 

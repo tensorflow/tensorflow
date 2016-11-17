@@ -5727,6 +5727,12 @@ var VZ;
 
 <dom-module id="tf-image-loader" assetpath="../tf-image-dashboard/">
   <template>
+    <div id="image-annotation">
+      step [[step]]
+      <template is="dom-if" if="[[wallTime]]">
+        ([[wallTime]])
+      </template>
+    </div>
     <img id="img" src="[[imageUrl]]" on-error="reload">
     <style>
       :host {
@@ -5734,6 +5740,13 @@ var VZ;
         width: 100%;
         height: auto;
         position: relative;
+      }
+
+      #image-annotation {
+        border-left: 4px solid;
+        padding-left: 5px;
+        font-size: 12px;
+        margin: -10px 0 10px 0;
       }
 
       img {
@@ -5751,18 +5764,31 @@ var VZ;
       properties: {
         colorScale: Object,
         imageUrl: String,
+        run: String,
+        step: Number,
+        wallTime: String,
       },
       setVisibleSeries: function(runs) {
         // Do nothing.
       },
       setSeriesData: function(run, data) {
         var last = _.last(data);
-        this.redraw(last.url);
+        this.redraw(last);
+
+        // Update the border color based on the run.
+        this.$$('#image-annotation').style.borderColor = this.colorScale.scale(run);
       },
-      redraw: function(newUrl) {
-        var url = newUrl || this.imageUrl;
+      redraw: function(imageData) {
+        var url = imageData.url || this.imageUrl;
         this.imageUrl = ""; // Force redraw
         this.imageUrl = url;
+
+        // Update the step if the value fetched is a valid number >= 0
+        // (not null, NaN, etc).
+        this.step = imageData.step >= 0 ? imageData.step : this.step;
+        if (imageData.wall_time) {
+          this.wallTime = imageData.wall_time.toString();
+        }
       },
     });
   </script>
@@ -16373,7 +16399,7 @@ paper-icon-button[active] {
 }
 
 h4 {
-  margin: 36px 0 10px 0;
+  margin: 30px 0 10px 0;
 }
 
 .dismiss-dialog-note {
@@ -16593,8 +16619,7 @@ paper-textarea {
 </template>
 
 </template>
-</dom-module><link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
-<dom-module id="vz-projector-data-panel" assetpath="../vz-projector/">
+</dom-module><dom-module id="vz-projector-data-panel" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16612,17 +16637,15 @@ input[type=file] {
 
 .dirs {
   color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  flex-direction: column;
   font-size: 12px;
-  margin: 15px 0;
-  line-height: 20px;
 }
 
-.dir {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.dirs table tr {
+  vertical-align: top;
+}
+
+.dirs table tr td {
+  padding-bottom: 10px;
 }
 
 paper-item {
@@ -16665,6 +16688,7 @@ paper-dropdown-menu paper-item {
 
 #projector-config-template {
   --paper-input-container-input: {
+    line-height: 13px;
     font-family: monospace;
     font-size: 12px;
   };
@@ -16686,7 +16710,7 @@ paper-dropdown-menu paper-item {
 }
 
 .projector-config-options {
-  margin-top: 24px;
+  margin-top: 12px;
 }
 
 .projector-config-dialog-container {
@@ -16708,10 +16732,48 @@ paper-dropdown-menu paper-item {
 .upload-step {
   display: flex;
   justify-content: space-between;
+  margin-bottom: 6px;
 }
 
 .upload-step paper-button {
   margin-left: 30px;
+}
+
+.step-label {
+  color: rgb(38, 180, 226);
+}
+
+.scrollable-container {
+  margin-top: 0;
+  min-width: 400px;
+}
+
+#projectorConfigDialog p {
+  margin: 8px 0 8px;
+}
+
+.data-step {
+  margin-top: 40px;
+}
+
+.data-step-contents {
+  display: table;
+  width: 100%;
+}
+
+.data-step-contents-contents {
+  display: table-cell;
+  margin-top: 6px;
+}
+
+.data-step-contents-upload {
+  display: table-cell;
+  text-align: right;
+  vertical-align: bottom;
+}
+
+#demo-data-buttons-container {
+  display: none;
 }
 
 </style>
@@ -16780,12 +16842,12 @@ paper-dropdown-menu paper-item {
       it unit norm.
     </paper-tooltip>
   </paper-checkbox>
-  <div>
+  <p id="demo-data-buttons-container">
     <span>
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds="">
-        Upload data from your computer
+        Load data from your computer
       </paper-tooltip>
-      <paper-button id="upload" title="Upload data" class="ink-button" onclick="dataDialog.open()">Upload data</paper-button>
+      <paper-button id="upload" class="ink-button" onclick="dataDialog.open()">Load data</paper-button>
     </span>
     <span>
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds="">
@@ -16793,49 +16855,53 @@ paper-dropdown-menu paper-item {
       </paper-tooltip>
       <paper-button id="host-embedding" class="ink-button" onclick="projectorConfigDialog.open()">Publish</paper-button>
     </span>
-  </div>
-  <div class="dirs">
-    <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
-    <div class="dir">Metadata: <span id="metadata-file"></span></div>
-  </div>
+  </p>
   <div>
     <paper-dialog id="dataDialog" with-backdrop="">
-      <h2>Upload data from your computer</h2>
-      <paper-dialog-scrollable>
+      <h2>Load data from your computer</h2>
+      <paper-dialog-scrollable class="scrollable-container">
         <div class="data-step">
           <div class="upload-step">
-            <div><b>Step 1: Upload a TSV file of vectors.</b></div>
             <div>
-              <paper-button id="upload-tensors" title="Upload a TSV tensor file">Upload</paper-button>
+                <b><span class="step-label">Step 1:</span> Load a TSV file of vectors.</b>
+            </div>
+          </div>
+          <div class="data-step-contents">
+            <div class="data-step-contents-contents">
+              Example of 3 vectors with dimension 4:
+              <div class="code">
+                0.1<span class="delimiter">\t</span>0.2<span class="delimiter">\t</span>0.5<span class="delimiter">\t</span>0.9<br>
+                0.2<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>5.0<span class="delimiter">\t</span>0.2<br>
+                0.4<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>7.0<span class="delimiter">\t</span>0.8
+              </div>
+            </div>
+            <div class="data-step-contents-upload">
+              <paper-button id="upload-tensors" title="Choose a TSV tensor file">Choose file</paper-button>
               <input type="file" id="file" name="file">
             </div>
           </div>
-          Example of 3 vectors with dimension 4:
-          <div class="code">
-            0.1<span class="delimiter">\t</span>0.2<span class="delimiter">\t</span>0.5<span class="delimiter">\t</span>0.9<br>
-            0.2<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>5.0<span class="delimiter">\t</span>0.2<br>
-            0.4<span class="delimiter">\t</span>0.1<span class="delimiter">\t</span>7.0<span class="delimiter">\t</span>0.8
-          </div>
-          <p>
-
-          </p>
         </div>
-        <div style="height: 60px;"></div>
         <div class="data-step">
           <div class="upload-step">
-            <div><b>Step 2 (optional): Upload a TSV file of metadata.</b></div>
             <div>
-              <paper-button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload</paper-button>
-              <input type="file" id="file-metadata" name="file-metadata">
+                <span class="step-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
             </div>
           </div>
-          Example of 3 data points and 2 columns.<br>
-          Note that the first row is a header.
-          <div class="code">
-            <b>Pokémon<span class="delimiter">\t</span>Species</b><br>
-            Wartortle<span class="delimiter">\t</span>Turtle<br>
-            Venusaur<span class="delimiter">\t</span>Seed<br>
-            Charmeleon<span class="delimiter">\t</span>Flame
+          <div class="data-step-contents">
+            <div class="data-step-contents-contents">
+              Example of 3 data points and 2 columns.<br>
+              <i>Note: the first row is a header.</i>
+              <div class="code">
+                <b>Pokémon<span class="delimiter">\t</span>Species</b><br>
+                Wartortle<span class="delimiter">\t</span>Turtle<br>
+                Venusaur<span class="delimiter">\t</span>Seed<br>
+                Charmeleon<span class="delimiter">\t</span>Flame
+              </div>
+            </div>
+            <div class="data-step-contents-upload">
+              <paper-button id="upload-metadata" title="Choose a TSV metadata file" class="ink-button">Choose file</paper-button>
+              <input type="file" id="file-metadata" name="file-metadata">
+            </div>
           </div>
         </div>
       </paper-dialog-scrollable>
@@ -16843,22 +16909,22 @@ paper-dropdown-menu paper-item {
     </paper-dialog>
     <paper-dialog id="projectorConfigDialog" with-backdrop="">
       <h2>Publish your embedding visualization and data</h2>
-      <paper-dialog-scrollable>
+      <paper-dialog-scrollable class="scrollable-container">
         <div>
           <p>
             If you'd like to share your visualization with the world, follow these simple steps.
             See <a target="_blank" href="https://www.tensorflow.org/versions/master/how_tos/embedding_viz/index.md">this tutorial</a> for more.
           </p>
-          <h4>Step 1: Make your data public.</h4>
+          <h4><span class="step-label">Step 1:</span> Make data public</h4>
           <p>
-            Host your tensors, metadata (optional), sprite image (optional), and bookmarks (optional) TSV files <i>publicly</i> on the web.
+            Host tensors, metadata, sprite image, and bookmarks TSV files <i>publicly</i> on the web.
           </p>
           <p>
             One option is using a <a target="_blank" href="https://gist.github.com/">github gist</a>.
           </p>
         </div>
         <div>
-          <h4>Step 2: Fill out the projector config from the template below.</h4>
+          <h4><span class="step-label">Step 2:</span> Projector config</h4>
           <div class="projector-config-options">
             <i>Optional:</i>
             <div class="config-checkbox">
@@ -16874,8 +16940,8 @@ paper-dropdown-menu paper-item {
         </div>
         <paper-textarea id="projector-config-template" label="template_projector_config.json"></paper-textarea>
         <div>
-          <h4>Step 3: Host the projector config and paste the URL below.</h4>
-          After you have hosted the projector config JSON file you build above, paste the URL to the config below.
+          <h4><span class="step-label">Step 3:</span> Host projector config</h4>
+          After you have hosted the projector config JSON file you built above, paste the URL to the config below.
         </div>
         <paper-input id="projector-config-url" label="Path to projector config"></paper-input>
         <paper-input id="projector-share-url" label="Your shareable URL" readonly=""></paper-input>
@@ -16887,6 +16953,18 @@ paper-dropdown-menu paper-item {
       </paper-dialog-scrollable>
       <div class="dismiss-dialog-note">Click outside to dismiss.</div>
     </paper-dialog>
+  </div>
+  <div class="dirs">
+    <table>
+      <tbody><tr>
+        <td>Checkpoint:</td>
+        <td><span id="checkpoint-file"></span></td>
+      </tr>
+      <tr>
+        <td>Metadata:</td>
+        <td><span id="metadata-file"></span></td>
+      </tr>
+    </tbody></table>
   </div>
 </div>
 
@@ -17501,6 +17579,7 @@ paper-dropdown-menu paper-item {
 <link rel="import" href="../iron-icons/image-icons.html">
 <link rel="import" href="../paper-toast/paper-toast.html">
 <link rel="import" href="../paper-styles/typography.html">
+<link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
 
 <dom-module id="vz-projector" assetpath="../vz-projector/">
 <template>
@@ -17543,6 +17622,13 @@ paper-dropdown-menu paper-item {
   bottom: 0;
 }
 
+#selector {
+  display: none;
+  height: 100%;
+  position: absolute;
+  width: 100%;
+}
+
 #left-pane {
   display: flex;
   flex-direction: column;
@@ -17583,10 +17669,20 @@ paper-dropdown-menu paper-item {
   margin-right: 0;
 }
 
-#wrapper-notify-msg {
-  align-items: center;
-  display: flex;
-  justify-content: center;
+#notification-dialog {
+  width: 400px;
+  padding-bottom: 20px;
+}
+
+#notification-dialog paper-button {
+  background: none;
+  text-transform: uppercase;
+}
+
+#notification-dialog paper-progress {
+  --paper-progress-indeterminate-cycle-duration: 1s;
+  --paper-progress-active-color: #880E4F;
+  width: 100%;
 }
 
 #notify-msgs {
@@ -17594,12 +17690,9 @@ paper-dropdown-menu paper-item {
 }
 
 .notify-msg {
-  backface-visibility: hidden;
   font-weight: 500;
   margin: 0;
-  opacity: 1;
   padding: 0;
-  transition: opacity 0.3s ease-out, height 0.3s ease-out;
 }
 
 .brush .extent {
@@ -17714,8 +17807,15 @@ paper-dropdown-menu paper-item {
   --paper-toast-color: #eeff41;
 }
 </style>
-<paper-dialog id="wrapper-notify-msg" modal="">
-  <div id="notify-msgs"></div>
+<paper-dialog id="notification-dialog" modal="">
+  <h2 id="notification-title"></h2>
+  <paper-dialog-scrollable>
+    <div id="notify-msgs"></div>
+  </paper-dialog-scrollable>
+  <div><paper-progress class="progress-bar" indeterminate=""></paper-progress></div>
+  <div class="buttons">
+    <paper-button class="close-button" dialog-confirm="" autofocus="">Close</paper-button>
+  </div>
 </paper-dialog>
 <div id="container">
   <div id="left-pane" class="ink-panel">
@@ -17743,7 +17843,9 @@ paper-dropdown-menu paper-item {
       </div>
     </div>
     <div class="stage">
-      <div id="scatter"></div>
+      <div id="scatter">
+        <svg id="selector"></svg>
+      </div>
       <vz-projector-metadata-card id="metadata-card"></vz-projector-metadata-card>
       <paper-icon-button raised="" onclick="help3dDialog.open()" icon="help-outline" id="help-3d-icon"></paper-icon-button>
       <paper-tooltip animation-delay="0" for="help-3d-icon">Help with interaction controls.</paper-tooltip>
@@ -17779,7 +17881,7 @@ paper-dropdown-menu paper-item {
 <template>
   <tf-no-data-warning data-type="projector" show-warning="[[dataNotFound]]"></tf-no-data-warning>
   <template is="dom-if" if="[[!dataNotFound]]">
-    <vz-projector id="projector" route-prefix="[[routePrefix]]" serving-mode="server"></vz-projector>
+    <vz-projector id="projector" route-prefix="[[routePrefix]]" serving-mode="server" page-view-logging="" event-logging=""></vz-projector>
   </template>
 </template>
 <script>
@@ -18096,6 +18198,46 @@ var TF;
   </script>
   
   <script>(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+"use strict";
+var AnalyticsLogger = (function () {
+    /**
+     * Constructs an event logger using Google Analytics. It assumes there is a
+     * Google Analytics script added to the page elsewhere. If there is no such
+     * script, the logger acts as a no-op.
+     *
+     * @param pageViewLogging Whether to log page views.
+     * @param eventLogging Whether to log user interaction.
+     */
+    function AnalyticsLogger(pageViewLogging, eventLogging) {
+        if (typeof ga === 'undefined' || ga == null) {
+            this.eventLogging = false;
+            this.pageViewLogging = false;
+            return;
+        }
+        this.eventLogging = eventLogging;
+        this.pageViewLogging = pageViewLogging;
+    }
+    AnalyticsLogger.prototype.logPageView = function (pageTitle) {
+        if (this.pageViewLogging) {
+            // Always send a page view.
+            ga('send', { hitType: 'pageview', page: "/v/" + pageTitle });
+        }
+    };
+    AnalyticsLogger.prototype.logProjectionChanged = function (projection) {
+        if (this.eventLogging) {
+            ga('send', {
+                hitType: 'event',
+                eventCategory: 'Projection',
+                eventAction: 'click',
+                eventLabel: projection
+            });
+        }
+    };
+    return AnalyticsLogger;
+}());
+exports.AnalyticsLogger = AnalyticsLogger;
+
+},{}],2:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18512,7 +18654,7 @@ var TSNE = (function () {
 }());
 exports.TSNE = TSNE;
 
-},{"./sptree":21}],2:[function(require,module,exports){
+},{"./sptree":23}],3:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18555,7 +18697,7 @@ var DemoDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching projector config...');
         d3.json(this.projectorConfigPath, function (err, projectorConfig) {
             if (err) {
-                logging.setModalMessage('Error: ' + err.responseText);
+                logging.setErrorMessage(err.responseText);
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18574,7 +18716,7 @@ var DemoDataProvider = (function () {
         logging.setModalMessage('Fetching tensors...', data_provider_1.TENSORS_MSG_ID);
         d3.text(url, function (error, dataString) {
             if (error) {
-                logging.setModalMessage('Error: ' + error.responseText);
+                logging.setErrorMessage(error.responseText);
                 return;
             }
             dataProvider.parseTensors(dataString, separator).then(function (points) {
@@ -18595,7 +18737,7 @@ var DemoDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching bookmarks...');
         d3.json(embedding.bookmarksPath, function (err, bookmarks) {
             if (err) {
-                logging.setModalMessage('Error: ' + err.responseText);
+                logging.setErrorMessage(err.responseText);
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18606,7 +18748,7 @@ var DemoDataProvider = (function () {
 }());
 exports.DemoDataProvider = DemoDataProvider;
 
-},{"./data":6,"./data-provider":5,"./logging":11}],3:[function(require,module,exports){
+},{"./data":7,"./data-provider":6,"./logging":12}],4:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18688,7 +18830,7 @@ var ProtoDataProvider = (function () {
 }());
 exports.ProtoDataProvider = ProtoDataProvider;
 
-},{"./data":6,"./data-provider":5}],4:[function(require,module,exports){
+},{"./data":7,"./data-provider":6}],5:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18736,7 +18878,7 @@ var ServerDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching runs...');
         d3.json(this.routePrefix + "/runs", function (err, runs) {
             if (err) {
-                logging.setModalMessage('Error: ' + err.responseText);
+                logging.setErrorMessage(err.responseText);
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18752,7 +18894,7 @@ var ServerDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching projector config...');
         d3.json(this.routePrefix + "/info?run=" + run, function (err, config) {
             if (err) {
-                logging.setModalMessage('Error: ' + err.responseText);
+                logging.setErrorMessage(err.responseText);
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18788,7 +18930,7 @@ var ServerDataProvider = (function () {
             });
         };
         xhr.onerror = function () {
-            logging.setModalMessage('Error: ' + xhr.responseText);
+            logging.setErrorMessage(xhr.responseText);
         };
         xhr.send(null);
     };
@@ -18836,7 +18978,7 @@ var ServerDataProvider = (function () {
 }());
 exports.ServerDataProvider = ServerDataProvider;
 
-},{"./data":6,"./data-provider":5,"./logging":11}],5:[function(require,module,exports){
+},{"./data":7,"./data-provider":6,"./logging":12}],6:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19040,7 +19182,7 @@ function retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath, spriteMeta
             logging.setModalMessage('Fetching metadata...', exports.METADATA_MSG_ID);
             d3.text(metadataPath, function (err, rawMetadata) {
                 if (err) {
-                    logging.setModalMessage('Error: ' + err.responseText);
+                    logging.setErrorMessage(err.responseText);
                     reject(err);
                     return;
                 }
@@ -19075,7 +19217,7 @@ function retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath, spriteMeta
 }
 exports.retrieveSpriteAndMetadataInfo = retrieveSpriteAndMetadataInfo;
 
-},{"./data":6,"./logging":11,"./util":22}],6:[function(require,module,exports){
+},{"./data":7,"./logging":12,"./util":24}],7:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19445,9 +19587,9 @@ function stateGetAccessorDimensions(state) {
 }
 exports.stateGetAccessorDimensions = stateGetAccessorDimensions;
 
-},{"./bh_tsne":1,"./knn":9,"./logging":11,"./util":22,"./vector":23}],7:[function(require,module,exports){
+},{"./bh_tsne":2,"./knn":10,"./logging":12,"./util":24,"./vector":25}],8:[function(require,module,exports){
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19582,7 +19724,7 @@ var KMin = (function () {
 }());
 exports.KMin = KMin;
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19798,7 +19940,7 @@ function findKNNofPoint(dataPoints, pointIndex, k, accessor, distance) {
 }
 exports.findKNNofPoint = findKNNofPoint;
 
-},{"./heap":8,"./logging":11,"./util":22,"./vector":23}],10:[function(require,module,exports){
+},{"./heap":9,"./logging":12,"./util":24,"./vector":25}],11:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19928,7 +20070,7 @@ var CollisionGrid = (function () {
 }());
 exports.CollisionGrid = CollisionGrid;
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19946,11 +20088,6 @@ limitations under the License.
 "use strict";
 /** Duration in ms for showing warning messages to the user */
 var WARNING_DURATION_MS = 10000;
-/**
- * Animation duration for the user message which should be +20ms more than the
- * `transition` css property in `.notify-msg` in `vz-projector.html`.
- */
-var MSG_ANIMATION_DURATION_MSEC = 300 + 20;
 var dom = null;
 var msgId = 0;
 var numActiveMessages = 0;
@@ -19964,10 +20101,14 @@ exports.setDomContainer = setDomContainer;
  * @param msg The message shown to the user. If null, the message is removed.
  * @param id The id of an existing message. If no id is provided, a unique id
  *     is assigned.
+ * @param title The title of the notification.
+ * @param showCloseButton If true, the dialog will have a close button.
  * @return The id of the message.
  */
-function setModalMessage(msg, id) {
+function setModalMessage(msg, id, title, showCloseButton) {
     if (id === void 0) { id = null; }
+    if (title === void 0) { title = 'Loading...'; }
+    if (showCloseButton === void 0) { showCloseButton = false; }
     if (dom == null) {
         console.warn('Can\'t show modal message before the dom is initialized');
         return;
@@ -19975,10 +20116,15 @@ function setModalMessage(msg, id) {
     if (id == null) {
         id = (msgId++).toString();
     }
-    var dialog = dom.querySelector('#wrapper-notify-msg');
-    var msgsContainer = dom.querySelector('#notify-msgs');
+    var dialog = dom.querySelector('#notification-dialog');
+    dialog.querySelector('.close-button').style.display =
+        showCloseButton ? null : 'none';
+    dialog.querySelector('.progress-bar').style.display =
+        showCloseButton ? 'none' : null;
+    dialog.querySelector('#notification-title').innerHTML = title;
+    var msgsContainer = dialog.querySelector('#notify-msgs');
     var divId = "notify-msg-" + id;
-    var msgDiv = d3.select(dom.querySelector('#' + divId));
+    var msgDiv = d3.select(dialog.querySelector('#' + divId));
     var exists = msgDiv.size() > 0;
     if (!exists) {
         msgDiv = d3.select(msgsContainer).insert('div', ':first-child')
@@ -19991,9 +20137,7 @@ function setModalMessage(msg, id) {
         if (numActiveMessages === 0) {
             dialog.close();
         }
-        msgDiv.style('opacity', 0);
-        msgDiv.style('height', 0);
-        setTimeout(function () { return msgDiv.remove(); }, MSG_ANIMATION_DURATION_MSEC);
+        msgDiv.remove();
     }
     else {
         msgDiv.text(msg);
@@ -20002,6 +20146,10 @@ function setModalMessage(msg, id) {
     return id;
 }
 exports.setModalMessage = setModalMessage;
+function setErrorMessage(errMsg) {
+    setModalMessage(errMsg, null, 'Error', true);
+}
+exports.setErrorMessage = setErrorMessage;
 /**
  * Shows a warning message to the user for a certain amount of time.
  */
@@ -20012,23 +20160,6 @@ function setWarningMessage(msg) {
     toast.open();
 }
 exports.setWarningMessage = setWarningMessage;
-
-},{}],12:[function(require,module,exports){
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-"use strict";
 
 },{}],13:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
@@ -20046,12 +20177,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 "use strict";
+
+},{}],14:[function(require,module,exports){
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+"use strict";
 var renderContext_1 = require('./renderContext');
+var vector = require('./vector');
 var LABEL_FONT_SIZE = 10;
 var LABEL_SCALE_DEFAULT = 1.0;
 var LABEL_SCALE_LARGE = 2;
-var LABEL_FILL_COLOR = 0x000000;
-var LABEL_STROKE_COLOR = 0xFFFFFF;
+var LABEL_FILL_COLOR_SELECTED = 0x000000;
+var LABEL_FILL_COLOR_HOVER = 0x000000;
+var LABEL_FILL_COLOR_NEIGHBOR = 0x000000;
+var LABEL_STROKE_COLOR_SELECTED = 0xFFFFFF;
+var LABEL_STROKE_COLOR_HOVER = 0xFFFFFF;
+var LABEL_STROKE_COLOR_NEIGHBOR = 0xFFFFFF;
 var POINT_COLOR_UNSELECTED = 0xE3E3E3;
 var POINT_COLOR_NO_SELECTION = 0x7575D9;
 var POINT_COLOR_SELECTED = 0xFA6666;
@@ -20074,6 +20227,11 @@ var TRACE_SELECTED_OPACITY = .9;
 var TRACE_SELECTED_LINEWIDTH = 3;
 var TRACE_DESELECTED_OPACITY = .05;
 var SCATTER_PLOT_CUBE_LENGTH = 2;
+/** Color scale for nearest neighbors. */
+var NN_COLOR_SCALE = d3.scale.linear()
+    .domain([1, 0.7, 0.4])
+    .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
+    .clamp(true);
 /**
  * Interprets projector events and assembes the arrays and commands necessary
  * to use the ScatterPlot to render the current projected data set.
@@ -20117,6 +20275,15 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         return positions;
     };
+    ProjectorScatterPlotAdapter.prototype.packRgbIntoUint8Array = function (rgbArray, labelIndex, r, g, b) {
+        rgbArray[labelIndex * 3] = r;
+        rgbArray[labelIndex * 3 + 1] = g;
+        rgbArray[labelIndex * 3 + 2] = b;
+    };
+    ProjectorScatterPlotAdapter.prototype.styleRgbFromHexColor = function (hex) {
+        var c = new THREE.Color(hex);
+        return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
+    };
     ProjectorScatterPlotAdapter.prototype.generateVisibleLabelRenderParams = function (ds, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex) {
         if (ds == null) {
             return null;
@@ -20126,6 +20293,8 @@ var ProjectorScatterPlotAdapter = (function () {
         var visibleLabels = new Uint32Array(n);
         var scale = new Float32Array(n);
         var opacityFlags = new Int8Array(n);
+        var fillColors = new Uint8Array(n * 3);
+        var strokeColors = new Uint8Array(n * 3);
         scale.fill(LABEL_SCALE_DEFAULT);
         opacityFlags.fill(1);
         var dst = 0;
@@ -20133,26 +20302,39 @@ var ProjectorScatterPlotAdapter = (function () {
             visibleLabels[dst] = hoverPointIndex;
             scale[dst] = LABEL_SCALE_LARGE;
             opacityFlags[dst] = 0;
+            var fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_HOVER);
+            this.packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+            var strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_HOVER);
+            this.packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[1]);
             ++dst;
         }
         // Selected points
         {
             var n_1 = selectedPointIndices.length;
+            var fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_SELECTED);
+            var strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_SELECTED);
             for (var i = 0; i < n_1; ++i) {
                 visibleLabels[dst] = selectedPointIndices[i];
                 scale[dst] = LABEL_SCALE_LARGE;
                 opacityFlags[dst] = (n_1 === 1) ? 0 : 1;
+                this.packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+                this.packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
                 ++dst;
             }
         }
         // Neighbors
         {
             var n_2 = neighborsOfFirstPoint.length;
+            var fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
+            var strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
             for (var i = 0; i < n_2; ++i) {
-                visibleLabels[dst++] = neighborsOfFirstPoint[i].index;
+                visibleLabels[dst] = neighborsOfFirstPoint[i].index;
+                this.packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+                this.packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+                ++dst;
             }
         }
-        return new renderContext_1.LabelRenderParams(visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, LABEL_FILL_COLOR, LABEL_STROKE_COLOR);
+        return new renderContext_1.LabelRenderParams(visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, fillColors, strokeColors);
     };
     ProjectorScatterPlotAdapter.prototype.generatePointScaleFactorArray = function (ds, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex) {
         if (ds == null) {
@@ -20252,7 +20434,7 @@ var ProjectorScatterPlotAdapter = (function () {
         var rgb = d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
         return new THREE.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255);
     };
-    ProjectorScatterPlotAdapter.prototype.generatePointColorArray = function (ds, legendPointColorer, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex, label3dMode, spriteImageMode) {
+    ProjectorScatterPlotAdapter.prototype.generatePointColorArray = function (ds, legendPointColorer, distFunc, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex, label3dMode, spriteImageMode) {
         if (ds == null) {
             return new Float32Array(0);
         }
@@ -20312,8 +20494,9 @@ var ProjectorScatterPlotAdapter = (function () {
         // Color the neighbors.
         {
             var n = neighborsOfFirstPoint.length;
-            var c = new THREE.Color(POINT_COLOR_SELECTED);
+            var minDist = n > 0 ? neighborsOfFirstPoint[0].dist : 0;
             for (var i = 0; i < n; ++i) {
+                var c = new THREE.Color(dist2color(distFunc, neighborsOfFirstPoint[i].dist, minDist));
                 var dst = neighborsOfFirstPoint[i].index * 3;
                 colors[dst++] = c.r;
                 colors[dst++] = c.g;
@@ -20333,8 +20516,21 @@ var ProjectorScatterPlotAdapter = (function () {
     return ProjectorScatterPlotAdapter;
 }());
 exports.ProjectorScatterPlotAdapter = ProjectorScatterPlotAdapter;
+/**
+ * Normalizes the distance so it can be visually encoded with color.
+ * The normalization depends on the distance metric (cosine vs euclidean).
+ */
+function normalizeDist(distFunc, d, minDist) {
+    return (distFunc === vector.dist) ? (minDist / d) : (1 - d);
+}
+exports.normalizeDist = normalizeDist;
+/** Normalizes and encodes the provided distance with color. */
+function dist2color(distFunc, d, minDist) {
+    return NN_COLOR_SCALE(normalizeDist(distFunc, d, minDist));
+}
+exports.dist2color = dist2color;
 
-},{"./renderContext":14}],14:[function(require,module,exports){
+},{"./renderContext":15,"./vector":25}],15:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20355,13 +20551,13 @@ limitations under the License.
  * rendered next to them.
  */
 var LabelRenderParams = (function () {
-    function LabelRenderParams(pointIndices, scaleFactors, useSceneOpacityFlags, defaultFontSize, fillColor, strokeColor) {
+    function LabelRenderParams(pointIndices, scaleFactors, useSceneOpacityFlags, defaultFontSize, fillColors, strokeColors) {
         this.pointIndices = pointIndices;
         this.scaleFactors = scaleFactors;
         this.useSceneOpacityFlags = useSceneOpacityFlags;
         this.defaultFontSize = defaultFontSize;
-        this.fillColor = fillColor;
-        this.strokeColor = strokeColor;
+        this.fillColors = fillColors;
+        this.strokeColors = strokeColors;
     }
     return LabelRenderParams;
 }());
@@ -20402,7 +20598,7 @@ var RenderContext = (function () {
 }());
 exports.RenderContext = RenderContext;
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20419,8 +20615,8 @@ limitations under the License.
 ==============================================================================*/
 "use strict";
 var renderContext_1 = require('./renderContext');
+var scatterPlotRectangleSelector_1 = require('./scatterPlotRectangleSelector');
 var util = require('./util');
-var vector_1 = require('./vector');
 var BACKGROUND_COLOR = 0xffffff;
 /**
  * The length of the cube (diameter of the circumscribing sphere) where all the
@@ -20465,6 +20661,7 @@ exports.CameraDef = CameraDef;
  */
 var ScatterPlot = (function () {
     function ScatterPlot(container, labelAccessor, projectorEventContext) {
+        var _this = this;
         this.visualizers = [];
         this.onCameraMoveListeners = [];
         this.backgroundColor = BACKGROUND_COLOR;
@@ -20488,6 +20685,7 @@ var ScatterPlot = (function () {
         this.setDimensions(3);
         this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
         this.renderer.render(this.scene, this.camera);
+        this.rectangleSelector = new scatterPlotRectangleSelector_1.ScatterPlotRectangleSelector(this.containerNode, function (boundingBox) { return _this.selectBoundingBox(boundingBox); });
         this.addInteractionListeners();
     }
     ScatterPlot.prototype.addInteractionListeners = function () {
@@ -20634,14 +20832,10 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.onMouseDown = function (e) {
         this.isDragSequence = false;
         this.mouseIsDown = true;
-        // If we are in selection mode, and we have in fact clicked a valid point,
-        // create a sphere so we can select things
         if (this.selecting) {
             this.orbitCameraControls.enabled = false;
+            this.rectangleSelector.onMouseDown(e.offsetX, e.offsetY);
             this.setNearestPointToMouse(e);
-            if (this.nearestPoint) {
-                this.createSelectionSphere();
-            }
         }
         else if (!e.ctrlKey && this.sceneIs3D() &&
             this.orbitCameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
@@ -20662,8 +20856,7 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.onMouseUp = function (e) {
         if (this.selecting) {
             this.orbitCameraControls.enabled = true;
-            this.scene.remove(this.selectionSphere);
-            this.selectionSphere = null;
+            this.rectangleSelector.onMouseUp();
             this.render();
         }
         this.mouseIsDown = false;
@@ -20679,9 +20872,7 @@ var ScatterPlot = (function () {
         this.isDragSequence = this.mouseIsDown;
         // Depending if we're selecting or just navigating, handle accordingly.
         if (this.selecting && this.mouseIsDown) {
-            if (this.selectionSphere) {
-                this.adjustSelectionSphere(e);
-            }
+            this.rectangleSelector.onMouseMove(e.offsetX, e.offsetY);
             this.render();
         }
         else if (!this.mouseIsDown) {
@@ -20714,65 +20905,54 @@ var ScatterPlot = (function () {
             if (!this.selecting) {
                 this.containerNode.style.cursor = 'default';
             }
-            this.scene.remove(this.selectionSphere);
-            this.selectionSphere = null;
             this.render();
         }
+    };
+    /**
+     * Returns a list of indices of points in a bounding box from the picking
+     * texture.
+     * @param boundingBox The bounding box to select from.
+     */
+    ScatterPlot.prototype.getPointIndicesFromPickingTexture = function (boundingBox) {
+        var dpr = window.devicePixelRatio || 1;
+        var x = Math.floor(boundingBox.x * dpr);
+        var y = Math.floor(boundingBox.y * dpr);
+        var width = Math.floor(boundingBox.width * dpr);
+        var height = Math.floor(boundingBox.height * dpr);
+        // Create buffer for reading all of the pixels from the texture.
+        var pixelBuffer = new Uint8Array(width * height * 4);
+        // Read the pixels from the bounding box.
+        this.renderer.readRenderTargetPixels(this.pickingTexture, x, this.pickingTexture.height - y, width, height, pixelBuffer);
+        // Keep a flat list of each point and whether they are selected or not. This
+        // approach is more efficient than using an object keyed by the index.
+        var pointIndicesSelection = new Uint8Array(this.worldSpacePointPositions.length);
+        for (var i = 0; i < width * height; i++) {
+            var id = (pixelBuffer[i * 4] << 16) | (pixelBuffer[i * 4 + 1] << 8) |
+                pixelBuffer[i * 4 + 2];
+            if (id !== 0xffffff && (id < this.dataSet.points.length)) {
+                pointIndicesSelection[id] = 1;
+            }
+        }
+        var pointIndices = [];
+        for (var i = 0; i < pointIndicesSelection.length; i++) {
+            if (pointIndicesSelection[i] === 1) {
+                pointIndices.push(i);
+            }
+        }
+        return pointIndices;
+    };
+    ScatterPlot.prototype.selectBoundingBox = function (boundingBox) {
+        var pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+        this.projectorEventContext.notifySelectionChanged(pointIndices);
     };
     ScatterPlot.prototype.setNearestPointToMouse = function (e) {
         if (this.pickingTexture == null) {
             this.nearestPoint = null;
             return;
         }
-        // Create buffer for reading a single pixel.
-        var pixelBuffer = new Uint8Array(4);
-        var dpr = window.devicePixelRatio || 1;
-        var x = e.offsetX * dpr;
-        var y = e.offsetY * dpr;
-        // Read the pixel under the mouse from the texture.
-        this.renderer.readRenderTargetPixels(this.pickingTexture, x, this.pickingTexture.height - y, 1, 1, pixelBuffer);
-        // Interpret the pixel as an ID.
-        var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
-        this.nearestPoint =
-            (id !== 0xffffff) && (id < this.dataSet.points.length) ? id : null;
-    };
-    /** Returns the squared distance to the mouse for the i-th point. */
-    ScatterPlot.prototype.getDist2ToMouse = function (i, e) {
-        var p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
-        var screenCoords = util.vector3DToScreenCoords(this.camera, this.width, this.height, p);
-        var dpr = window.devicePixelRatio || 1;
-        return vector_1.dist_2D([e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
-    };
-    ScatterPlot.prototype.adjustSelectionSphere = function (e) {
-        var dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
-        this.selectionSphere.scale.set(dist, dist, dist);
-        var selectedPoints = [];
-        var n = this.worldSpacePointPositions.length;
-        for (var i = 0; i < n; ++i) {
-            var p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
-            var distPointToSphereOrigin = this.selectionSphere.position.clone().sub(p).length();
-            if (distPointToSphereOrigin < dist) {
-                selectedPoints.push(i);
-            }
-        }
-        this.projectorEventContext.notifySelectionChanged(selectedPoints);
-    };
-    ScatterPlot.prototype.createSelectionSphere = function () {
-        var geometry = new THREE.SphereGeometry(1, 300, 100);
-        var material = new THREE.MeshPhongMaterial({
-            color: 0x000000,
-            specular: (this.sceneIs3D() && 0xffffff),
-            emissive: 0x000000,
-            shininess: 10,
-            shading: THREE.SmoothShading,
-            opacity: 0.125,
-            transparent: true,
-        });
-        this.selectionSphere = new THREE.Mesh(geometry, material);
-        this.selectionSphere.scale.set(0, 0, 0);
-        var p = util.vector3FromPackedArray(this.worldSpacePointPositions, this.nearestPoint);
-        this.scene.add(this.selectionSphere);
-        this.selectionSphere.position.copy(p);
+        var boundingBox = { x: e.offsetX, y: e.offsetY, width: 1, height: 1 };
+        var pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+        this.nearestPoint = pointIndices[0];
     };
     ScatterPlot.prototype.getLayoutValues = function () {
         this.width = this.containerNode.offsetWidth;
@@ -20787,6 +20967,7 @@ var ScatterPlot = (function () {
         if (axes != null) {
             this.scene.remove(axes);
         }
+        return axes;
     };
     ScatterPlot.prototype.add3dAxis = function () {
         var axes = new THREE.AxisHelper();
@@ -20918,7 +21099,11 @@ var ScatterPlot = (function () {
         this.visualizers.forEach(function (v) {
             v.onPickingRender(rc);
         });
-        this.renderer.render(this.scene, this.camera, this.pickingTexture);
+        {
+            var axes = this.remove3dAxis();
+            this.renderer.render(this.scene, this.camera, this.pickingTexture);
+            this.scene.add(axes);
+        }
         // Render second pass to color buffer, to be displayed on the canvas.
         this.visualizers.forEach(function (v) {
             v.onRender(rc);
@@ -21028,9 +21213,91 @@ var ScatterPlot = (function () {
 }());
 exports.ScatterPlot = ScatterPlot;
 
-},{"./renderContext":14,"./util":22,"./vector":23}],16:[function(require,module,exports){
-arguments[4][12][0].apply(exports,arguments)
-},{"dup":12}],17:[function(require,module,exports){
+},{"./renderContext":15,"./scatterPlotRectangleSelector":17,"./util":24}],17:[function(require,module,exports){
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+"use strict";
+var FILL = '#dddddd';
+var FILL_OPACITY = .2;
+var STROKE = '#aaaaaa';
+var STROKE_WIDTH = 2;
+var STROKE_DASHARRAY = '10 5';
+/**
+ * A class that manages and renders a data selection rectangle.
+ */
+var ScatterPlotRectangleSelector = (function () {
+    /**
+     * @param container The container HTML element that the selection SVG rect
+     *     will be a child of.
+     * @param selectionCallback The callback that accepts a bounding box to be
+     *     called when selection changes. Currently, we only call the callback on
+     *     mouseUp.
+     */
+    function ScatterPlotRectangleSelector(container, selectionCallback) {
+        this.svgElement = d3.select(container).select('#selector');
+        this.rectElement = this.svgElement.append('rect')
+            .style('stroke', STROKE)
+            .style('stroke-dasharray', STROKE_DASHARRAY)
+            .style('stroke-width', STROKE_WIDTH)
+            .style('fill', FILL)
+            .style('fill-opacity', FILL_OPACITY);
+        this.selectionCallback = selectionCallback;
+        this.isMouseDown = false;
+    }
+    ScatterPlotRectangleSelector.prototype.onMouseDown = function (offsetX, offsetY) {
+        this.isMouseDown = true;
+        this.svgElement.style('display', 'block');
+        this.startCoordinates = [offsetX, offsetY];
+        this.lastBoundingBox = {
+            x: this.startCoordinates[0],
+            y: this.startCoordinates[1],
+            width: 1,
+            height: 1
+        };
+    };
+    ScatterPlotRectangleSelector.prototype.onMouseMove = function (offsetX, offsetY) {
+        if (!this.isMouseDown) {
+            return;
+        }
+        this.lastBoundingBox.x = Math.min(offsetX, this.startCoordinates[0]);
+        this.lastBoundingBox.y = Math.max(offsetY, this.startCoordinates[1]);
+        this.lastBoundingBox.width =
+            Math.max(offsetX, this.startCoordinates[0]) - this.lastBoundingBox.x;
+        this.lastBoundingBox.height =
+            this.lastBoundingBox.y - Math.min(offsetY, this.startCoordinates[1]);
+        this.rectElement.attr({
+            x: this.lastBoundingBox.x,
+            y: this.lastBoundingBox.y - this.lastBoundingBox.height,
+            width: this.lastBoundingBox.width,
+            height: this.lastBoundingBox.height
+        });
+    };
+    ScatterPlotRectangleSelector.prototype.onMouseUp = function () {
+        this.isMouseDown = false;
+        this.svgElement.style('display', 'none');
+        this.rectElement.attr('width', 0);
+        this.rectElement.attr('height', 0);
+        this.selectionCallback(this.lastBoundingBox);
+    };
+    return ScatterPlotRectangleSelector;
+}());
+exports.ScatterPlotRectangleSelector = ScatterPlotRectangleSelector;
+
+},{}],18:[function(require,module,exports){
+arguments[4][13][0].apply(exports,arguments)
+},{"dup":13}],19:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21304,7 +21571,7 @@ var ScatterPlotVisualizer3DLabels = (function () {
 }());
 exports.ScatterPlotVisualizer3DLabels = ScatterPlotVisualizer3DLabels;
 
-},{"./util":22}],18:[function(require,module,exports){
+},{"./util":24}],20:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21324,6 +21591,8 @@ var label_1 = require('./label');
 var renderContext_1 = require('./renderContext');
 var util = require('./util');
 var MAX_LABELS_ON_SCREEN = 10000;
+var LABEL_STROKE_WIDTH = 3;
+var LABEL_FILL_WIDTH = 6;
 /**
  * Creates and maintains a 2d canvas on top of the GL canvas. All labels, when
  * active, are rendered to the 2d canvas as part of the visible render pass.
@@ -21346,15 +21615,8 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
         if ((rc.labels == null) || (rc.labels.pointIndices.length === 0)) {
             return;
         }
+        var lrc = rc.labels;
         var sceneIs3D = (rc.cameraType === renderContext_1.CameraType.Perspective);
-        var strokeStylePrefix;
-        var fillStylePrefix;
-        {
-            var ls = new THREE.Color(rc.labels.strokeColor).multiplyScalar(255);
-            var lc = new THREE.Color(rc.labels.fillColor).multiplyScalar(255);
-            strokeStylePrefix = 'rgba(' + ls.r + ',' + ls.g + ',' + ls.b + ',';
-            fillStylePrefix = 'rgba(' + lc.r + ',' + lc.g + ',' + lc.b + ',';
-        }
         var labelHeight = parseInt(this.gc.font, 10);
         var dpr = window.devicePixelRatio;
         var grid;
@@ -21364,22 +21626,22 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
             var bb = { loX: 0, hiX: pixw, loY: 0, hiY: pixh };
             grid = new label_1.CollisionGrid(bb, pixw / 25, pixh / 50);
         }
-        var opacityMap = d3.scale.pow().exponent(Math.E)
+        var opacityMap = d3.scale.pow()
+            .exponent(Math.E)
             .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
             .range([0.1, 1]);
         var camPos = rc.camera.position;
         var camToTarget = camPos.clone().sub(rc.cameraTarget);
         var camToPoint = new THREE.Vector3();
-        this.gc.lineWidth = 6;
         this.gc.textBaseline = 'middle';
         this.gc.miterLimit = 2;
         // Have extra space between neighboring labels. Don't pack too tightly.
         var labelMargin = 2;
         // Shift the label to the right of the point circle.
         var xShift = 4;
-        var n = Math.min(MAX_LABELS_ON_SCREEN, rc.labels.pointIndices.length);
+        var n = Math.min(MAX_LABELS_ON_SCREEN, lrc.pointIndices.length);
         for (var i = 0; i < n; ++i) {
-            var index = rc.labels.pointIndices[i];
+            var index = lrc.pointIndices[i];
             var point = util.vector3FromPackedArray(this.worldSpacePointPositions, index);
             // discard points that are behind the camera
             camToPoint.copy(camPos).sub(point);
@@ -21399,22 +21661,33 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
             };
             if (grid.insert(textBoundingBox, true)) {
                 var text = rc.labelAccessor(index);
-                var fontSize = rc.labels.defaultFontSize * rc.labels.scaleFactors[i] * dpr;
+                var fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
                 this.gc.font = fontSize + 'px roboto';
                 // Now, check with properly computed width.
                 textBoundingBox.hiX += this.gc.measureText(text).width - 1;
                 if (grid.insert(textBoundingBox)) {
                     var opacity = 1;
-                    if (sceneIs3D && (rc.labels.useSceneOpacityFlags[i] === 1)) {
+                    if (sceneIs3D && (lrc.useSceneOpacityFlags[i] === 1)) {
                         opacity = opacityMap(camToPoint.length());
                     }
-                    this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
-                    this.gc.fillStyle = fillStylePrefix + opacity + ')';
+                    this.gc.fillStyle =
+                        this.styleStringFromPackedRgba(lrc.fillColors, i, opacity);
+                    this.gc.strokeStyle =
+                        this.styleStringFromPackedRgba(lrc.strokeColors, i, opacity);
+                    this.gc.lineWidth = LABEL_STROKE_WIDTH;
                     this.gc.strokeText(text, x, y);
+                    this.gc.lineWidth = LABEL_FILL_WIDTH;
                     this.gc.fillText(text, x, y);
                 }
             }
         }
+    };
+    ScatterPlotVisualizerCanvasLabels.prototype.styleStringFromPackedRgba = function (packedRgbaArray, colorIndex, opacity) {
+        var offset = colorIndex * 3;
+        var r = packedRgbaArray[offset];
+        var g = packedRgbaArray[offset + 1];
+        var b = packedRgbaArray[offset + 2];
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
     };
     ScatterPlotVisualizerCanvasLabels.prototype.onResize = function (newWidth, newHeight) {
         var dpr = window.devicePixelRatio;
@@ -21446,7 +21719,7 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
 }());
 exports.ScatterPlotVisualizerCanvasLabels = ScatterPlotVisualizerCanvasLabels;
 
-},{"./label":10,"./renderContext":14,"./util":22}],19:[function(require,module,exports){
+},{"./label":11,"./renderContext":15,"./util":24}],21:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21676,7 +21949,7 @@ var ScatterPlotVisualizerSprites = (function () {
 }());
 exports.ScatterPlotVisualizerSprites = ScatterPlotVisualizerSprites;
 
-},{"./renderContext":14,"./util":22}],20:[function(require,module,exports){
+},{"./renderContext":15,"./util":24}],22:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21808,7 +22081,7 @@ var ScatterPlotVisualizerTraces = (function () {
 }());
 exports.ScatterPlotVisualizerTraces = ScatterPlotVisualizerTraces;
 
-},{"./util":22}],21:[function(require,module,exports){
+},{"./util":24}],23:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21955,7 +22228,7 @@ function fillArray(arr, value) {
     }
 }
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22138,7 +22411,7 @@ function getURLParams(url) {
 }
 exports.getURLParams = getURLParams;
 
-},{"./logging":11}],23:[function(require,module,exports){
+},{"./logging":12}],25:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22226,11 +22499,6 @@ function dist2_2D(a, b) {
     return dX * dX + dY * dY;
 }
 exports.dist2_2D = dist2_2D;
-/** Returns the euclidean distance between 2 2D points. */
-function dist_2D(a, b) {
-    return Math.sqrt(dist2_2D(a, b));
-}
-exports.dist_2D = dist_2D;
 /** Returns the square euclidean distance between two 3D points. */
 function dist2_3D(a, b) {
     var dX = a[0] - b[0];
@@ -22398,7 +22666,7 @@ function transposeTypedArray(r, c, typedArray) {
 }
 exports.transposeTypedArray = transposeTypedArray;
 
-},{"./util":22}],24:[function(require,module,exports){
+},{"./util":24}],26:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -22629,7 +22897,7 @@ var BookmarkPanel = (function (_super) {
 exports.BookmarkPanel = BookmarkPanel;
 document.registerElement(BookmarkPanel.prototype.is, BookmarkPanel);
 
-},{"./logging":11,"./vz-projector-util":31}],25:[function(require,module,exports){
+},{"./logging":12,"./vz-projector-util":33}],27:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22703,9 +22971,15 @@ var DataPanel = (function (_super) {
     DataPanel.prototype.metadataChanged = function (spriteAndMetadata, metadataFile) {
         this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
     };
+    DataPanel.prototype.addWordBreaks = function (longString) {
+        if (longString == null) {
+            return '';
+        }
+        return longString.replace(/([\/=-_,])/g, '$1<wbr>');
+    };
     DataPanel.prototype.updateMetadataUI = function (columnStats, metadataFile) {
         this.dom.select('#metadata-file')
-            .text(metadataFile)
+            .html(this.addWordBreaks(metadataFile))
             .attr('title', metadataFile);
         // Label by options.
         var labelIndex = -1;
@@ -22807,8 +23081,9 @@ var DataPanel = (function (_super) {
                     shape: _this.getEmbeddingInfoByName(name).tensorShape
                 };
             });
+            var wordBreakablePath = _this.addWordBreaks(_this.projectorConfig.modelCheckpointPath);
             _this.dom.select('#checkpoint-file')
-                .text(_this.projectorConfig.modelCheckpointPath)
+                .html(wordBreakablePath)
                 .attr('title', _this.projectorConfig.modelCheckpointPath);
             _this.dataProvider.getDefaultTensor(_this.selectedRun, function (defaultTensor) {
                 if (_this.selectedTensor === defaultTensor) {
@@ -22916,64 +23191,68 @@ var DataPanel = (function (_super) {
         uploadMetadataButton.on('click', function () {
             fileMetadataInput.node().click();
         });
-        // Fill out the projector config.
-        var projectorConfigTemplate = this.$$('#projector-config-template');
-        var projectorConfigTemplateJson = {
-            embeddings: [{
-                    tensorName: 'My tensor',
-                    tensorShape: [1000, 50],
-                    tensorPath: 'https://gist.github.com/.../tensors.tsv',
-                    metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
-                }],
-        };
-        this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
-        // Set up optional field checkboxes.
-        var spriteFieldCheckbox = this.$$('#config-sprite-checkbox');
-        spriteFieldCheckbox.addEventListener('change', function () {
-            if (spriteFieldCheckbox.checked) {
-                projectorConfigTemplateJson.embeddings[0].sprite = {
-                    imagePath: 'https://github.com/.../optional.sprite.png',
-                    singleImageDim: [32, 32]
-                };
-            }
-            else {
-                delete projectorConfigTemplateJson.embeddings[0].sprite;
-            }
-            _this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
-        });
-        var bookmarksFieldCheckbox = this.$$('#config-bookmarks-checkbox');
-        bookmarksFieldCheckbox.addEventListener('change', function () {
-            if (bookmarksFieldCheckbox.checked) {
-                projectorConfigTemplateJson.embeddings[0].bookmarksPath =
-                    'https://gist.github.com/.../bookmarks.txt';
-            }
-            else {
-                delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
-            }
-            _this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
-        });
-        var metadataFieldCheckbox = this.$$('#config-metadata-checkbox');
-        metadataFieldCheckbox.addEventListener('change', function () {
-            if (metadataFieldCheckbox.checked) {
-                projectorConfigTemplateJson.embeddings[0].metadataPath =
-                    'https://gist.github.com/.../optional.metadata.tsv';
-            }
-            else {
-                delete projectorConfigTemplateJson.embeddings[0].metadataPath;
-            }
-            _this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
-        });
-        // Update the link and the readonly shareable URL.
-        var projectorConfigUrlInput = this.$$('#projector-config-url');
-        var projectorConfigDemoUrlInput = this.$$('#projector-share-url');
-        var projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
-        projectorConfigUrlInput.addEventListener('input', function () {
-            var projectorDemoUrl = location.protocol + '//' + location.host +
-                location.pathname + '?config=' +
-                projectorConfigUrlInput.value;
-            projectorConfigDemoUrlInput.value = projectorDemoUrl;
-            projectorConfigDemoUrlLink.href = projectorDemoUrl;
-        });
+        if (this.projector.servingMode === 'demo') {
+            this.$$('#demo-data-buttons-container').style.display =
+                'block';
+            // Fill out the projector config.
+            var projectorConfigTemplate_1 = this.$$('#projector-config-template');
+            var projectorConfigTemplateJson_1 = {
+                embeddings: [{
+                        tensorName: 'My tensor',
+                        tensorShape: [1000, 50],
+                        tensorPath: 'https://gist.github.com/.../tensors.tsv',
+                        metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
+                    }],
+            };
+            this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
+            // Set up optional field checkboxes.
+            var spriteFieldCheckbox_1 = this.$$('#config-sprite-checkbox');
+            spriteFieldCheckbox_1.addEventListener('change', function () {
+                if (spriteFieldCheckbox_1.checked) {
+                    projectorConfigTemplateJson_1.embeddings[0].sprite = {
+                        imagePath: 'https://github.com/.../optional.sprite.png',
+                        singleImageDim: [32, 32]
+                    };
+                }
+                else {
+                    delete projectorConfigTemplateJson_1.embeddings[0].sprite;
+                }
+                _this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
+            });
+            var bookmarksFieldCheckbox_1 = this.$$('#config-bookmarks-checkbox');
+            bookmarksFieldCheckbox_1.addEventListener('change', function () {
+                if (bookmarksFieldCheckbox_1.checked) {
+                    projectorConfigTemplateJson_1.embeddings[0].bookmarksPath =
+                        'https://gist.github.com/.../bookmarks.txt';
+                }
+                else {
+                    delete projectorConfigTemplateJson_1.embeddings[0].bookmarksPath;
+                }
+                _this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
+            });
+            var metadataFieldCheckbox_1 = this.$$('#config-metadata-checkbox');
+            metadataFieldCheckbox_1.addEventListener('change', function () {
+                if (metadataFieldCheckbox_1.checked) {
+                    projectorConfigTemplateJson_1.embeddings[0].metadataPath =
+                        'https://gist.github.com/.../optional.metadata.tsv';
+                }
+                else {
+                    delete projectorConfigTemplateJson_1.embeddings[0].metadataPath;
+                }
+                _this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
+            });
+            // Update the link and the readonly shareable URL.
+            var projectorConfigUrlInput_1 = this.$$('#projector-config-url');
+            var projectorConfigDemoUrlInput_1 = this.$$('#projector-share-url');
+            var projectorConfigDemoUrlLink_1 = this.$$('#projector-share-url-link');
+            projectorConfigUrlInput_1.addEventListener('input', function () {
+                var projectorDemoUrl = location.protocol + '//' + location.host +
+                    location.pathname + '?config=' +
+                    projectorConfigUrlInput_1.value;
+                projectorConfigDemoUrlInput_1.value = projectorDemoUrl;
+                projectorConfigDemoUrlLink_1.href = projectorDemoUrl;
+            });
+        }
     };
     DataPanel.prototype.setProjectorConfigTemplateJson = function (projectorConfigTemplate, config) {
         projectorConfigTemplate.value =
@@ -22995,7 +23274,7 @@ var DataPanel = (function (_super) {
 exports.DataPanel = DataPanel;
 document.registerElement(DataPanel.prototype.is, DataPanel);
 
-},{"./data-provider":5,"./vz-projector-util":31}],26:[function(require,module,exports){
+},{"./data-provider":6,"./vz-projector-util":33}],28:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23093,7 +23372,7 @@ var ProjectorInput = (function (_super) {
 exports.ProjectorInput = ProjectorInput;
 document.registerElement(ProjectorInput.prototype.is, ProjectorInput);
 
-},{"./vz-projector-util":31}],27:[function(require,module,exports){
+},{"./vz-projector-util":33}],29:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23114,14 +23393,10 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var adapter = require('./projectorScatterPlotAdapter');
 var vector = require('./vector');
 // tslint:disable-next-line:no-unused-variable
 var vz_projector_util_1 = require('./vz-projector-util');
-/** Color scale for nearest neighbors. */
-var NN_COLOR_SCALE = d3.scale.linear()
-    .domain([1, 0.7, 0.4])
-    .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
-    .clamp(true);
 /** Limit the number of search results we show to the user. */
 var LIMIT_RESULTS = 100;
 // tslint:disable-next-line
@@ -23156,12 +23431,7 @@ var InspectorPanel = (function (_super) {
     /** Updates the nearest neighbors list in the inspector. */
     InspectorPanel.prototype.updateInspectorPane = function (indices, neighbors) {
         this.neighborsOfFirstPoint = neighbors;
-        if (neighbors.length > 0) {
-            this.selectedPointIndices = indices;
-        }
-        else {
-            this.selectedPointIndices = null;
-        }
+        this.selectedPointIndices = indices;
         this.updateFilterButtons(indices.length + neighbors.length);
         this.updateNeighborsList(neighbors);
         if (neighbors.length === 0) {
@@ -23243,7 +23513,7 @@ var InspectorPanel = (function (_super) {
         var labelValue = n.append('div').attr('class', 'label-and-value');
         labelValue.append('div')
             .attr('class', 'label')
-            .style('color', function (d) { return dist2color(_this.distFunc, d.dist, minDist); })
+            .style('color', function (d) { return adapter.dist2color(_this.distFunc, d.dist, minDist); })
             .text(function (d) { return _this.getLabelFromIndex(d.index); });
         labelValue.append('div')
             .attr('class', 'value')
@@ -23252,9 +23522,10 @@ var InspectorPanel = (function (_super) {
         bar.append('div')
             .attr('class', 'fill')
             .style('border-top-color', function (d) {
-            return dist2color(_this.distFunc, d.dist, minDist);
+            return adapter.dist2color(_this.distFunc, d.dist, minDist);
         })
-            .style('width', function (d) { return normalizeDist(_this.distFunc, d.dist, minDist) * 100 + '%'; });
+            .style('width', function (d) { return adapter.normalizeDist(_this.distFunc, d.dist, minDist) * 100 +
+            '%'; });
         bar.selectAll('.tick')
             .data(d3.range(1, 4))
             .enter()
@@ -23290,6 +23561,7 @@ var InspectorPanel = (function (_super) {
             _this.dom.selectAll('.distance a').classed('selected', false);
             eucDist.classed('selected', true);
             _this.distFunc = vector.dist;
+            _this.projectorEventContext.notifyDistanceMetricChanged(_this.distFunc);
             var neighbors = projector.dataSet.findNeighbors(_this.selectedPointIndices[0], _this.distFunc, _this.numNN);
             _this.updateNeighborsList(neighbors);
         });
@@ -23298,6 +23570,7 @@ var InspectorPanel = (function (_super) {
             _this.dom.selectAll('.distance a').classed('selected', false);
             cosDist.classed('selected', true);
             _this.distFunc = vector.cosDist;
+            _this.projectorEventContext.notifyDistanceMetricChanged(_this.distFunc);
             var neighbors = projector.dataSet.findNeighbors(_this.selectedPointIndices[0], _this.distFunc, _this.numNN);
             _this.updateNeighborsList(neighbors);
         });
@@ -23350,20 +23623,9 @@ var InspectorPanel = (function (_super) {
     return InspectorPanel;
 }(exports.PolymerClass));
 exports.InspectorPanel = InspectorPanel;
-/**
- * Normalizes the distance so it can be visually encoded with color.
- * The normalization depends on the distance metric (cosine vs euclidean).
- */
-function normalizeDist(distFunc, d, minDist) {
-    return distFunc === vector.dist ? minDist / d : 1 - d;
-}
-/** Normalizes and encodes the provided distance with color. */
-function dist2color(distFunc, d, minDist) {
-    return NN_COLOR_SCALE(normalizeDist(distFunc, d, minDist));
-}
 document.registerElement(InspectorPanel.prototype.is, InspectorPanel);
 
-},{"./vector":23,"./vz-projector-util":31}],28:[function(require,module,exports){
+},{"./projectorScatterPlotAdapter":14,"./vector":25,"./vz-projector-util":33}],30:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23442,7 +23704,7 @@ var Legend = (function (_super) {
 exports.Legend = Legend;
 document.registerElement(Legend.prototype.is, Legend);
 
-},{"./vz-projector-util":31}],29:[function(require,module,exports){
+},{"./vz-projector-util":33}],31:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23520,7 +23782,7 @@ var MetadataCard = (function (_super) {
 exports.MetadataCard = MetadataCard;
 document.registerElement(MetadataCard.prototype.is, MetadataCard);
 
-},{"./vz-projector-util":31}],30:[function(require,module,exports){
+},{"./vz-projector-util":33}],32:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23956,7 +24218,7 @@ var ProjectionsPanel = (function (_super) {
 exports.ProjectionsPanel = ProjectionsPanel;
 document.registerElement(ProjectionsPanel.prototype.is, ProjectionsPanel);
 
-},{"./data":6,"./vector":23,"./vz-projector-util":31}],31:[function(require,module,exports){
+},{"./data":7,"./vector":25,"./vz-projector-util":33}],33:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23977,7 +24239,7 @@ function PolymerElement(spec) {
 }
 exports.PolymerElement = PolymerElement;
 
-},{}],32:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23998,6 +24260,7 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var analyticsLogger_1 = require('./analyticsLogger');
 var data_1 = require('./data');
 var data_provider_demo_1 = require('./data-provider-demo');
 var data_provider_proto_1 = require('./data-provider-proto');
@@ -24024,7 +24287,9 @@ exports.ProjectorPolymer = vz_projector_util_1.PolymerElement({
         routePrefix: String,
         dataProto: { type: String, observer: '_dataProtoChanged' },
         servingMode: String,
-        projectorConfigJsonPath: String
+        projectorConfigJsonPath: String,
+        pageViewLogging: Boolean,
+        eventLogging: Boolean
     }
 });
 var INDEX_METADATA_FIELD = '__index__';
@@ -24034,6 +24299,9 @@ var Projector = (function (_super) {
         _super.apply(this, arguments);
     }
     Projector.prototype.ready = function () {
+        this.analyticsLogger =
+            new analyticsLogger_1.AnalyticsLogger(this.pageViewLogging, this.eventLogging);
+        this.analyticsLogger.logPageView('embeddings');
         this.selectionChangedListeners = [];
         this.hoverListeners = [];
         this.projectionChangedListeners = [];
@@ -24050,7 +24318,7 @@ var Projector = (function (_super) {
         this.bookmarkPanel.initialize(this, this);
         this.metadataCard = this.$['metadata-card'];
         this.statusBar = this.dom.select('#status-bar');
-        this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
+        this.scopeSubtree(this.$$('#notification-dialog'), true);
         this.setupUIControls();
         this.initializeDataProvider();
     };
@@ -24233,7 +24501,12 @@ var Projector = (function (_super) {
     Projector.prototype.adjustSelectionAndHover = function (selectedPointIndices, hoverIndex) {
         this.notifySelectionChanged(selectedPointIndices);
         this.notifyHoverOverPoint(hoverIndex);
-        this.scatterPlot.setMode(scatterPlot_1.Mode.HOVER);
+        this.setMode(scatterPlot_1.Mode.HOVER);
+    };
+    Projector.prototype.setMode = function (mode) {
+        var selectModeButton = this.querySelector('#selectMode');
+        selectModeButton.active = (mode === scatterPlot_1.Mode.SELECT);
+        this.scatterPlot.setMode(mode);
     };
     Projector.prototype.setCurrentDataSet = function (ds) {
         this.adjustSelectionAndHover([]);
@@ -24260,7 +24533,7 @@ var Projector = (function (_super) {
         });
         var selectModeButton = this.querySelector('#selectMode');
         selectModeButton.addEventListener('click', function (event) {
-            _this.scatterPlot.setMode(selectModeButton.active ? scatterPlot_1.Mode.SELECT : scatterPlot_1.Mode.HOVER);
+            _this.setMode(selectModeButton.active ? scatterPlot_1.Mode.SELECT : scatterPlot_1.Mode.HOVER);
         });
         var nightModeButton = this.querySelector('#nightDayMode');
         nightModeButton.addEventListener('click', function () {
@@ -24322,7 +24595,7 @@ var Projector = (function (_super) {
         var neighbors = this.neighborsOfFirstPoint;
         var pointColorer = this.getLegendPointColorer(this.selectedColorOption);
         var adapter = this.projectorScatterPlotAdapter;
-        var pointColors = adapter.generatePointColorArray(dataSet, pointColorer, selectedSet, neighbors, hoverIndex, this.get3DLabelMode(), this.getSpriteImageMode());
+        var pointColors = adapter.generatePointColorArray(dataSet, pointColorer, this.inspectorPanel.distFunc, selectedSet, neighbors, hoverIndex, this.get3DLabelMode(), this.getSpriteImageMode());
         var pointScaleFactors = adapter.generatePointScaleFactorArray(dataSet, selectedSet, neighbors, hoverIndex);
         var labels = adapter.generateVisibleLabelRenderParams(dataSet, selectedSet, neighbors, hoverIndex);
         var traceColors = adapter.generateLineSegmentColorMap(dataSet, pointColorer);
@@ -24363,6 +24636,7 @@ var Projector = (function (_super) {
         this.selectedProjection = projection;
         this.selectedProjectionPointAccessors = pointAccessors;
         this.scatterPlot.setDimensions(dimensionality);
+        this.analyticsLogger.logProjectionChanged(projection);
         if (this.dataSet.projectionCanBeRendered(projection)) {
             this.updateScatterPlotAttributes();
             this.notifyProjectionsUpdated();
@@ -24433,14 +24707,18 @@ var Projector = (function (_super) {
         }
         this.notifySelectionChanged(state.selectedPoints);
     };
+    Projector.prototype.notifyDistanceMetricChanged = function (distMetric) {
+        this.updateScatterPlotAttributes();
+        this.scatterPlot.render();
+    };
     return Projector;
 }(exports.ProjectorPolymer));
 exports.Projector = Projector;
 document.registerElement(Projector.prototype.is, Projector);
 
-},{"./data":6,"./data-provider-demo":2,"./data-provider-proto":3,"./data-provider-server":4,"./logging":11,"./projectorScatterPlotAdapter":13,"./scatterPlot":15,"./scatterPlotVisualizer3DLabels":17,"./scatterPlotVisualizerCanvasLabels":18,"./scatterPlotVisualizerSprites":19,"./scatterPlotVisualizerTraces":20,"./util":22,"./vz-projector-util":31}],33:[function(require,module,exports){
-arguments[4][7][0].apply(exports,arguments)
-},{"dup":7}]},{},[33,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]);
+},{"./analyticsLogger":1,"./data":7,"./data-provider-demo":3,"./data-provider-proto":4,"./data-provider-server":5,"./logging":12,"./projectorScatterPlotAdapter":14,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":19,"./scatterPlotVisualizerCanvasLabels":20,"./scatterPlotVisualizerSprites":21,"./scatterPlotVisualizerTraces":22,"./util":24,"./vz-projector-util":33}],35:[function(require,module,exports){
+arguments[4][8][0].apply(exports,arguments)
+},{"dup":8}]},{},[35,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34]);
 </script>
 </dom-module>
 </body></html>

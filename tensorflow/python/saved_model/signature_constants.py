@@ -19,6 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# Key in the signature def map for `default` serving signatures. The default
+# signature is used in inference requests where a specific signature was not
+# specified.
+DEFAULT_SERVING_SIGNATURE_DEF_KEY = "serving_default"
+
 ################################################################################
 # Classification API constants.
 

@@ -25,19 +25,14 @@ export type DistanceFunction = (a: number[], b: number[]) => number;
 export type PointAccessor = (index: number) => number;
 export type PointAccessors3D = [PointAccessor, PointAccessor, PointAccessor];
 
-export interface PointMetadata {
-  [key: string]: number | string;
-}
+export interface PointMetadata { [key: string]: number|string; }
 
 export interface DataProto {
   shape: [number, number];
   tensor: number[];
   metadata: {
-    columns: Array<{
-      name: string;
-      stringValues: string[];
-      numericValues: number[];
-    }>;
+    columns: Array<
+        {name: string; stringValues: string[]; numericValues: number[];}>;
   };
 }
 
@@ -139,8 +134,8 @@ export class DataSet {
   private tsne: TSNE;
 
   /** Creates a new Dataset */
-  constructor(points: DataPoint[],
-      spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
+  constructor(
+      points: DataPoint[], spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
     this.sampledDataIndices =
         shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
@@ -193,7 +188,7 @@ export class DataSet {
     return traces;
   }
 
-  getPointAccessors(projection: Projection, components: (number|string)[]):
+  getPointAccessors(projection: ProjectionType, components: (number|string)[]):
       [PointAccessor, PointAccessor, PointAccessor] {
     if (components.length > 3) {
       throw new RangeError('components length must be <= 3');
@@ -212,7 +207,7 @@ export class DataSet {
     return accessors;
   }
 
-  projectionCanBeRendered(projection: Projection): boolean {
+  projectionCanBeRendered(projection: ProjectionType): boolean {
     if (projection !== 'tsne') {
       return true;
     }
@@ -228,8 +223,8 @@ export class DataSet {
    * @return A subset of the original dataset.
    */
   getSubset(subset?: number[]): DataSet {
-    let pointsSubset = subset && subset.length ?
-        subset.map(i => this.points[i]) : this.points;
+    let pointsSubset =
+        subset && subset.length ? subset.map(i => this.points[i]) : this.points;
     let points = pointsSubset.map(dp => {
       return {
         metadata: dp.metadata,
@@ -382,7 +377,9 @@ export class DataSet {
         .forEach((m, i) => this.points[i].metadata = m);
   }
 
-  stopTSNE() { this.tSNEShouldStop = true; }
+  stopTSNE() {
+    this.tSNEShouldStop = true;
+  }
 
   /**
    * Finds the nearest neighbors of the query point using a
@@ -391,8 +388,8 @@ export class DataSet {
   findNeighbors(pointIndex: number, distFunc: DistanceFunction, numNN: number):
       knn.NearestEntry[] {
     // Find the nearest neighbors of a particular point.
-    let neighbors = knn.findKNNofPoint(this.points, pointIndex, numNN,
-        (d => d.vector), distFunc);
+    let neighbors = knn.findKNNofPoint(
+        this.points, pointIndex, numNN, (d => d.vector), distFunc);
     // TODO(smilkov): Figure out why we slice.
     let result = neighbors.slice(0, numNN);
     return result;
@@ -413,7 +410,14 @@ export class DataSet {
   }
 }
 
-export type Projection = 'tsne' | 'pca' | 'custom';
+export type ProjectionType = 'tsne' | 'pca' | 'custom';
+
+export class Projection {
+  constructor(
+      public projectionType: ProjectionType,
+      public pointAccessors: PointAccessors3D, public dimensionality: number,
+      public dataSet: DataSet) {}
+}
 
 export interface ColorOption {
   name: string;
@@ -438,7 +442,7 @@ export class State {
   isSelected: boolean = false;
 
   /** The selected projection tab. */
-  selectedProjection: Projection;
+  selectedProjection: ProjectionType;
 
   /** Dimensions of the DataSet. */
   dataSetDimensions: [number, number];
