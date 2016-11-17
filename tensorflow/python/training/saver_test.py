@@ -1162,7 +1162,7 @@ class CheckpointStateTest(tf.test.TestCase):
     train_dir = "train"
     os.mkdir(train_dir)
     abs_path = os.path.join(save_dir, "model-0")
-    rel_path = "train/model-2"
+    rel_path = os.path.join("train", "model-2")
     tf.train.update_checkpoint_state(
         train_dir,
         rel_path,
