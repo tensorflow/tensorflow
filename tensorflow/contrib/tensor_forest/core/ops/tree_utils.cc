@@ -395,7 +395,7 @@ double getDistanceFromLambda3(double lambda3, const std::vector<float>& mu1,
   //   x = (lambda_1 1 + 2 mu1) / (2 - 2 lambda_3)
   //   y = (lambda_2 1 + 2 mu2) / (2 + 2 lambda_3)
   double dist = 0.0;
-  for (int i = 0; i < mu1.size(); i++) {
+  for (size_t i = 0; i < mu1.size(); i++) {
     double diff = (lambda1 + 2.0 * mu1[i]) / (2.0 - 2.0 * lambda3) - mu1[i];
     dist += diff * diff;
     diff = (lambda2 + 2.0 * mu2[i]) / (2.0 + 2.0 * lambda3) - mu2[i];

@@ -1612,7 +1612,7 @@ TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos) {
   }
 
   mutex_lock l(graph->mu);
-  while (*pos < graph->graph.num_node_ids()) {
+  while (*pos < static_cast<size_t>(graph->graph.num_node_ids())) {
     Node* node = graph->graph.FindNodeId(*pos);
     // FindNodeId() returns nullptr for nodes that have been deleted.
     // We aren't currently allowing nodes to be deleted, but it is safer

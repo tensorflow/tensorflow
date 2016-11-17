@@ -68,6 +68,7 @@ REGISTER_GPU_KERNEL(bfloat16);
 
 #undef REGISTER_GPU_KERNEL
 
+
 #if GOOGLE_CUDA
 // A special GPU kernel for int32 and bool.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

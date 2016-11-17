@@ -75,6 +75,7 @@ mathematical functions to your graph.
 @@zeta
 @@polygamma
 @@betainc
+@@rint
 
 ## Matrix Math Functions
 

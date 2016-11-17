@@ -796,6 +796,12 @@ def _FloorGrad(_, unused_grad):
   return [None]
 
 
+@ops.RegisterGradient("Rint")
+def _RintGrad(_, unused_grad):
+  # the gradient of Rint is zero
+  return [None]
+
+
 @ops.RegisterGradient("BatchMatMul")
 def _BatchMatMul(op, grad):
   """Returns the gradient of x and y given the gradient of x * y."""

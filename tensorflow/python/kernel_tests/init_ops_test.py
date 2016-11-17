@@ -28,25 +28,27 @@ from tensorflow.python.ops import init_ops
 
 # Returns true iff the two initializers produce the same tensor to
 # within a tiny tolerance.
-def identicaltest(tc, init1, init2):
+def identicaltest(tc, init1, init2, shape=None):
   """Tests if two initializations are identical to within tiny tolerances.
 
   Args:
     tc: An instance of TensorFlowTestCase.
     init1: An Initializer that generates a tensor of a given shape
     init2: An Initializer that generates a tensor of a given shape
+    shape: Shape of the tensor to initialize or `None` to use a vector of length 100.
   Returns:
     True or False as determined by test.
   """
-  num = 100
+  if shape is None:
+    shape = [100]
   with tc.test_session(graph=tf.Graph()):
-    t1 = init1([num]).eval()
+    t1 = init1(shape).eval()
   with tc.test_session(graph=tf.Graph()):
-    t2 = init2([num]).eval()
+    t2 = init2(shape).eval()
   return np.allclose(t1, t2, rtol=1e-15, atol=1e-15)
 
 
-def duplicated_initializer(tc, init, graph_seed):
+def duplicated_initializer(tc, init, graph_seed, shape=None):
   """Tests duplicated random initializer within the same graph.
 
   This test generates two random kernels from the same initializer to the same
@@ -58,14 +60,16 @@ def duplicated_initializer(tc, init, graph_seed):
     tc: An instance of TensorFlowTestCase.
     init: An Initializer that generates a tensor of a given shape
     graph_seed: A graph-level seed to use.
+    shape: Shape of the tensor to initialize or `None` to use a vector of length 100.
   Returns:
     True or False as determined by test.
   """
-  num = 100
+  if shape is None:
+    shape = [100]
   with tc.test_session(graph=tf.Graph()):
     random_seed.set_random_seed(graph_seed)
-    t1 = init([num]).eval()
-    t2 = init([num]).eval()
+    t1 = init(shape).eval()
+    t2 = init(shape).eval()
     return np.allclose(t1, t2, rtol=1e-15, atol=1e-15)
 
 
@@ -443,6 +447,60 @@ class DeviceTest(tf.test.TestCase):
     self.assertDeviceEqual("/job:ps", var.device)
     self.assertDeviceEqual("/job:ps", var.initializer.device)
 
+
+class OrthogonalInitializerTest(tf.test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [tf.float32, tf.float64]:
+      init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      init2 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2, (10, 10)))
+
+  def testInitializerDifferent(self):
+    for dtype in [tf.float32, tf.float64]:
+      init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      init2 = tf.orthogonal_initializer(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2, (10, 10)))
+
+  def testDuplicatedInitializer(self):
+    init = tf.orthogonal_initializer()
+    self.assertFalse(duplicated_initializer(self, init, 1, (10, 10)))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+      ValueError,
+      tf.orthogonal_initializer, dtype=tf.string)
+
+  def testInvalidShape(self):
+    init1 = tf.orthogonal_initializer()
+    with self.test_session(graph=tf.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init1, shape=[5])
+
+  def testGain(self):
+    shape = (10, 10)
+    for dtype in [tf.float32, tf.float64]:
+      init1 = tf.orthogonal_initializer(seed=1, dtype=dtype)
+      init2 = tf.orthogonal_initializer(gain=3.14, seed=1, dtype=dtype)
+      with self.test_session(graph=tf.Graph(), use_gpu=True):
+        t1 = init1(shape).eval()
+      with self.test_session(graph=tf.Graph(), use_gpu=True):
+        t2 = init2(shape).eval()
+      return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
+
+  def testShapesValues(self):
+    for dtype in [tf.float32, tf.float64]:
+      for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
+        init = tf.orthogonal_initializer(dtype=dtype)
+        with self.test_session(graph=tf.Graph(), use_gpu=True):
+          # Check the shape
+          t = init(shape).eval()
+          self.assertAllEqual(shape, t.shape)
+          # Check orthogonality by computing the inner product
+          t = t.reshape((np.prod(t.shape[:-1]), t.shape[-1]))
+          if t.shape[0] > t.shape[1]:
+            self.assertAllClose(np.dot(t.T, t), np.eye(t.shape[1]))
+          else:
+            self.assertAllClose(np.dot(t, t.T), np.eye(t.shape[0]))
 
 if __name__ == "__main__":
   tf.test.main()

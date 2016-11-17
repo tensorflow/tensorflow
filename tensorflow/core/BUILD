@@ -1118,6 +1118,7 @@ tf_version_info_genrule()
 cc_library(
     name = "version_lib",
     srcs = ["util/version_info.cc"],
+    hdrs = ["public/version.h"],
     copts = tf_copts(),
 )
 
@@ -1129,7 +1130,6 @@ tf_cuda_library(
             "example/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
-            "public/version.h",
             "util/**/*.h",
             "util/**/*.cc",
         ],
@@ -1142,6 +1142,7 @@ tf_cuda_library(
             "framework/fake_input.*",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/version_info.cc",
         ],
     ) + select({
         "//tensorflow:windows": [],
@@ -1394,11 +1395,13 @@ tf_cuda_library(
 cc_library(
     name = "sycl_runtime",
     srcs = if_not_windows([
+        "common_runtime/sycl/sycl_allocator.cc",
         "common_runtime/sycl/sycl_device.cc",
         "common_runtime/sycl/sycl_device_context.cc",
         "common_runtime/sycl/sycl_device_factory.cc",
     ]),
     hdrs = if_not_windows([
+        "common_runtime/sycl/sycl_allocator.h",
         "common_runtime/sycl/sycl_device.h",
         "common_runtime/sycl/sycl_device_context.h",
     ]),

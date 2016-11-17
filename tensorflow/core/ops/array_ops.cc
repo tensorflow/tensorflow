@@ -3859,7 +3859,7 @@ strides: 1-D of length 4. How far the centers of two consecutive patches are in
 rates: 1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
   input stride, specifying how far two consecutive patch samples are in the
   input. Equivalent to extracting patches with
-  `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by
+  `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by
   subsampling them spatially by a factor of `rates`.
 padding: The type of padding algorithm to use.
 
