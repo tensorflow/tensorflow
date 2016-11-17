@@ -333,7 +333,14 @@ export class Projector extends ProjectorPolymer implements
   adjustSelectionAndHover(selectedPointIndices: number[], hoverIndex?: number) {
     this.notifySelectionChanged(selectedPointIndices);
     this.notifyHoverOverPoint(hoverIndex);
-    this.scatterPlot.setMode(Mode.HOVER);
+    this.setMode(Mode.HOVER);
+  }
+
+  private setMode(mode: Mode) {
+    let selectModeButton = this.querySelector('#selectMode');
+    (selectModeButton as any).active = (mode === Mode.SELECT);
+
+    this.scatterPlot.setMode(mode);
   }
 
   private setCurrentDataSet(ds: DataSet) {
@@ -366,8 +373,7 @@ export class Projector extends ProjectorPolymer implements
 
     let selectModeButton = this.querySelector('#selectMode');
     selectModeButton.addEventListener('click', (event) => {
-      this.scatterPlot.setMode(
-          (selectModeButton as any).active ? Mode.SELECT : Mode.HOVER);
+      this.setMode((selectModeButton as any).active ? Mode.SELECT : Mode.HOVER);
     });
     let nightModeButton = this.querySelector('#nightDayMode');
     nightModeButton.addEventListener('click', () => {
