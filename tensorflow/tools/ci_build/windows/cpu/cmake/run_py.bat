@@ -30,8 +30,14 @@ SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe"
 :: Uninstall tensorflow pip package, which might be a leftover from old runs.
 %PIP_EXE% uninstall -y tensorflow
 
+
+:: Since there are no wildcards in windows command prompt, use dark magic to get the wheel file name.
+DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
+set /p WHEEL_FILENAME=<wheel_filename_file
+del wheel_filename_file
+
 :: Install the pip package.
-%PIP_EXE% install --upgrade %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\tensorflow-0.11.0rc2_cmake_experimental-py3-none-any.whl
+%PIP_EXE% install --upgrade %WHEEL_FILENAME%
 
 :: Run all python tests
 ctest -C Release --output-on-failure
