@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {AnalyticsLogger} from './analyticsLogger';
-import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, DistanceFunction, PointAccessors3D, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
+import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, DistanceFunction, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
 import {DataProvider, EmbeddingInfo, ServingMode} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
 import {ProtoDataProvider} from './data-provider-proto';
@@ -88,8 +88,7 @@ export class Projector extends ProjectorPolymer implements
   private selectedLabelOption: string;
   private routePrefix: string;
   private normalizeData: boolean;
-  private selectedProjection: Projection;
-  private selectedProjectionPointAccessors: PointAccessors3D;
+  private projection: Projection;
 
   /** Polymer component panels */
   private dataPanel: DataPanel;
@@ -356,7 +355,7 @@ export class Projector extends ProjectorPolymer implements
     this.dom.select('span.numDataPoints').text(this.dataSet.dim[0]);
     this.dom.select('span.dim').text(this.dataSet.dim[1]);
 
-    this.selectedProjectionPointAccessors = null;
+    this.projection = null;
 
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
@@ -438,12 +437,12 @@ export class Projector extends ProjectorPolymer implements
     if (this.dataSet == null) {
       return;
     }
-    if (this.selectedProjectionPointAccessors == null) {
+    if (this.projection == null) {
       return;
     }
     const newPositions =
         this.projectorScatterPlotAdapter.generatePointPositionArray(
-            this.dataSet, this.selectedProjectionPointAccessors);
+            this.dataSet, this.projection.pointAccessors);
     this.scatterPlot.setPointPositions(this.dataSet, newPositions);
   }
 
@@ -508,14 +507,11 @@ export class Projector extends ProjectorPolymer implements
     this.scatterPlot.render();
   }
 
-  setProjection(
-      projection: Projection, dimensionality: number,
-      pointAccessors: PointAccessors3D) {
-    this.selectedProjection = projection;
-    this.selectedProjectionPointAccessors = pointAccessors;
-    this.scatterPlot.setDimensions(dimensionality);
-    this.analyticsLogger.logProjectionChanged(projection);
-    if (this.dataSet.projectionCanBeRendered(projection)) {
+  setProjection(projection: Projection) {
+    this.projection = projection;
+    this.scatterPlot.setDimensions(projection.dimensionality);
+    this.analyticsLogger.logProjectionChanged(projection.projectionType);
+    if (this.dataSet.projectionCanBeRendered(projection.projectionType)) {
       this.updateScatterPlotAttributes();
       this.notifyProjectionsUpdated();
     }
@@ -546,7 +542,7 @@ export class Projector extends ProjectorPolymer implements
       }
       state.projections.push(projections);
     }
-    state.selectedProjection = this.selectedProjection;
+    state.selectedProjection = this.projection.projectionType;
     state.dataSetDimensions = this.dataSet.dim;
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
@@ -588,8 +584,9 @@ export class Projector extends ProjectorPolymer implements
       const dimensions = stateGetAccessorDimensions(state);
       const accessors =
           this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
-      this.setProjection(
-          state.selectedProjection, dimensions.length, accessors);
+      const projection = new Projection(
+          state.selectedProjection, accessors, dimensions.length);
+      this.setProjection(projection);
     }
     this.notifySelectionChanged(state.selectedPoints);
   }

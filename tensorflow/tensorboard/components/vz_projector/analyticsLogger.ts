@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-import {Projection} from './data';
+import {ProjectionType} from './data';
 
 export class AnalyticsLogger {
   private eventLogging: boolean;
@@ -43,7 +43,7 @@ export class AnalyticsLogger {
     }
   }
 
-  logProjectionChanged(projection: Projection) {
+  logProjectionChanged(projection: ProjectionType) {
     if (this.eventLogging) {
       ga('send', {
         hitType: 'event',
