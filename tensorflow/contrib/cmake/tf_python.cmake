@@ -473,10 +473,13 @@ add_dependencies(tf_python_ops tf_python_op_gen_main)
 
 find_package(SWIG REQUIRED)
 # Generate the C++ and Python source code for the SWIG wrapper.
+# NOTE(mrry): We always regenerate the SWIG wrapper, which means that we must
+# always re-link the Python extension, but we don't have to track the
+# individual headers on which the SWIG wrapper depends.
 add_custom_command(
       OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/pywrap_tensorflow.py"
              "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.cc"
-      DEPENDS tf_python_touchup_modules
+      DEPENDS tf_python_touchup_modules __force_rebuild
       COMMAND ${SWIG_EXECUTABLE}
       ARGS -python -c++
            -I${tensorflow_source_dir}
