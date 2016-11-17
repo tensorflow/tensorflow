@@ -173,7 +173,10 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average.
+    decay: decay for the moving average. Reasonable values for `decay` are close 
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+      good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -396,7 +399,10 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average.
+    decay: decay for the moving average. Reasonable values for `decay` are close 
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+      good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
