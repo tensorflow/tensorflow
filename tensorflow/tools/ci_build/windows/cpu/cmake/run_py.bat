@@ -22,16 +22,31 @@ CD %BUILD_DIR%
 SET BUILD_CC_TESTS=OFF
 SET BUILD_PYTHON_TESTS=ON
 
-:: Run the CMAKE build to build the pip package.
-CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
-
+SET CONDA_EXE="C:\Program Files\Anaconda3\Scripts\conda"
+SET ACTIVATE_EXE="C:\Program Files\Anaconda3\Scripts\activate"
+SET DEACTIVATE_EXE="C:\Program Files\Anaconda3\Scripts\deactivate"
 SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe"
 
-:: Uninstall tensorflow pip package, which might be a leftover from old runs.
-%PIP_EXE% uninstall -y tensorflow
+:: Run the CMAKE build to build the pip package.
+CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
+if %errorlevel% neq 0 exit /b %errorlevel%
+
+:: Create a conda environment with a unique name.
+:: Import all bunch of variables Visual Studio needs.
+CALL "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat"
+uuidgen > uuid.txt
+set /p ENV_NAME=<uuid.txt
+
+%CONDA_EXE% create --name %ENV_NAME% numpy
+%ACTIVATE_EXE% %ENV_NAME%
 
 :: Install the pip package.
 %PIP_EXE% install --upgrade %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\tensorflow-0.11.0rc2_cmake_experimental-py3-none-any.whl
+if %errorlevel% neq 0 exit /b %errorlevel%
 
 :: Run all python tests
 ctest -C Release --output-on-failure
+if %errorlevel% neq 0 exit /b %errorlevel%
+
+%DEACTIVATE_EXE%
+%CONDA_EXE% env remove %ENV_NAME%
