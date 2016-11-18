@@ -61,7 +61,7 @@ TEST_F(SummaryScalarOpTest, SimpleFloat) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({3}), {"tag1", "tag2", "tag3"});
-  AddInputFromArray<float>(TensorShape({3}), {1.0, -0.73, 10000.0});
+  AddInputFromArray<float>(TensorShape({3}), {1.0f, -0.73f, 10000.0f});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output size.
@@ -121,7 +121,7 @@ TEST_F(SummaryScalarOpTest, Error_MismatchedSize) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
-  AddInputFromArray<float>(TensorShape({3}), {1.0, -0.73, 10000.0});
+  AddInputFromArray<float>(TensorShape({3}), {1.0f, -0.73f, 10000.0f});
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString()).contains("not the same shape")) << s;
 }
@@ -131,7 +131,7 @@ TEST_F(SummaryScalarOpTest, Error_WrongDimsTags) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2, 1}), {"tag1", "tag2"});
-  AddInputFromArray<float>(TensorShape({2}), {1.0, -0.73});
+  AddInputFromArray<float>(TensorShape({2}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(
       StringPiece(s.ToString()).contains("tags and values not the same shape"))
@@ -143,7 +143,7 @@ TEST_F(SummaryScalarOpTest, Error_WrongDimsValues) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
-  AddInputFromArray<float>(TensorShape({2, 1}), {1.0, -0.73});
+  AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(
       StringPiece(s.ToString()).contains("tags and values not the same shape"))
@@ -169,7 +169,8 @@ TEST_F(SummaryHistoOpTest, SimpleFloat) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({}), {"taghisto"});
-  AddInputFromArray<float>(TensorShape({3, 2}), {0.1, -0.7, 4.1, 4., 5., 4.});
+  AddInputFromArray<float>(TensorShape({3, 2}),
+                           {0.1f, -0.7f, 4.1f, 4., 5.f, 4.f});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output size.
@@ -254,7 +255,7 @@ TEST_F(SummaryHistoOpTest, Error_WrongDimsTags) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2, 1}), {"tag1", "tag2"});
-  AddInputFromArray<float>(TensorShape({2}), {1.0, -0.73});
+  AddInputFromArray<float>(TensorShape({2}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString()).contains("tags must be scalar")) << s;
 }
@@ -264,7 +265,7 @@ TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
-  AddInputFromArray<float>(TensorShape({2, 1}), {1.0, -0.73});
+  AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString()).contains("tags must be scalar")) << s;
 }
