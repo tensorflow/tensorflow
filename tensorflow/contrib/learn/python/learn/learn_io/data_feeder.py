@@ -104,10 +104,12 @@ def setup_train_data_feeder(
   If `x` and `y` are iterators, use `StreamingDataFeeder`.
 
   Args:
-    x: numpy, pandas or Dask matrix or dictionary of aforementioned. Also supports iterables.
-    y: numpy, pandas or Dask array or dictionary of aforementioned. Also supports iterables.
-    n_classes: number of classes. Must be None or same type as y. In case, y is dict (or iterable returns dic)
-      n_classes[key] = n_classes for y[key]
+    x: numpy, pandas or Dask matrix or dictionary of aforementioned. Also
+      supports iterables.
+    y: numpy, pandas or Dask array or dictionary of aforementioned. Also supports
+      iterables.
+    n_classes: number of classes. Must be None or same type as y. In case, `y` is `dict`
+      (or iterable which returns dict) such that `n_classes[key] = n_classes for y[key]`
     batch_size: size to split data into parts. Must be >= 1.
     shuffle: Whether to shuffle the inputs.
     epochs: Number of epochs to run.
@@ -177,9 +179,10 @@ def setup_predict_data_feeder(x, batch_size=None):
   """Returns an iterable for feeding into predict step.
 
   Args:
-    x: numpy, pandas, Dask array or dictionary of aforementioned. Also supports iterable.
-    batch_size: Size of batches to split data into.
-      If `None`, returns one batch of full size.
+    x: numpy, pandas, Dask array or dictionary of aforementioned. Also supports
+      iterable.
+    batch_size: Size of batches to split data into. If `None`, returns one
+      batch of full size.
 
   Returns:
     List or iterator (or dictionary thereof) of parts of data to predict on.
@@ -275,8 +278,8 @@ class DataFeeder(object):
         labels.
       n_classes: Number of classes, 0 and 1 are considered regression, `None`
         will pass through the input labels without one-hot conversion. Also, if
-        y is dict, then n_classes must be dict such that n_classes[key] =
-        n_classes for label y[key], None otherwise.
+        `y` is `dict`, then `n_classes` must be `dict` such that
+        `n_classes[key] = n_classes for label y[key]`, `None` otherwise.
       batch_size: Mini-batch size to accumulate samples in one mini batch.
       shuffle: Whether to shuffle `x`.
       random_state: Numpy `RandomState` object to reproduce sampling.
@@ -413,16 +416,16 @@ class DataFeeder(object):
       input_placeholder: Placeholder for `x` variable. Should match shape
         of the examples in the x dataset.
       output_placeholder: Placeholder for `y` variable. Should match
-        shape of the examples in the y dataset. Can be None.
+        shape of the examples in the y dataset. Can be `None`.
     """
     self._input_placeholder = input_placeholder
     self._output_placeholder = output_placeholder
 
   def get_feed_params(self):
-    """Function returns a dict with data feed params while training.
+    """Function returns a `dict` with data feed params while training.
 
     Returns:
-      A dict with data feed params while training.
+      A `dict` with data feed params while training.
     """
     return {
         'epoch': self.epoch,
@@ -435,7 +438,7 @@ class DataFeeder(object):
 
     Returns:
       A function that when called samples a random subset of batch size
-      from x and y.
+      from `x` and `y`.
     """
     x_is_dict, y_is_dict = isinstance(self._x, dict), self._y is not None and isinstance(self._y, dict)
 
@@ -526,23 +529,23 @@ class StreamingDataFeeder(DataFeeder):
         a Nd numpy matrix or dictionary of Nd numpy matrices with 1 or many
         classes regression values.
       n_classes: indicator of how many classes the corresponding label sample
-        has for the purposes of one-hot conversion of label. In case where y is
-        a dictionary, n_classes must be dictionary (with same keys as y) of how
-        many classes there are in each label in y. If key is present in y and
-        missing in n_classes, the value is assumed None and no one-hot
-        conversion will be applied to label with that key.
+        has for the purposes of one-hot conversion of label. In case where `y`
+        is a dictionary, `n_classes` must be dictionary (with same keys as `y`)
+        of how many classes there are in each label in `y`. If key is
+        present in `y` and missing in `n_classes`, the value is assumed `None`
+        and no one-hot conversion will be applied to the label with that key.
       batch_size: Mini batch size to accumulate samples in one batch. If set
-        None then assumes iterator to return already batched element.
+        `None`, then assumes that iterator to return already batched element.
 
     Attributes:
       x: input features (or dictionary of input features).
       y: input label (or dictionary of output features).
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
-      input_shape: shape of the input (can be dictionary depending on x).
-      output_shape: shape of the output (can be dictionary depending on y).
-      input_dtype: dtype of input (can be dictionary depending on x).
-      output_dtype: dtype of output (can be dictionary depending on y).
+      input_shape: shape of the input (can be dictionary depending on `x`).
+      output_shape: shape of the output (can be dictionary depending on `y`).
+      input_dtype: dtype of input (can be dictionary depending on `x`).
+      output_dtype: dtype of output (can be dictionary depending on `y`).
     """
     # pylint: disable=invalid-name,super-init-not-called
     x_first_el = six.next(x)
@@ -588,10 +591,10 @@ class StreamingDataFeeder(DataFeeder):
         else (check_y_dtype(y_first_el) if y is not None else None)
 
   def get_feed_params(self):
-    """Function returns a dict with data feed params while training.
+    """Function returns a `dict` with data feed params while training.
 
     Returns:
-      A dict with data feed params while training.
+      A `dict` with data feed params while training.
     """
     return {'batch_size': self._batch_size}
 
@@ -608,7 +611,7 @@ class StreamingDataFeeder(DataFeeder):
       """Samples data and provides it to placeholders.
 
       Returns:
-        Dict of input and output tensors.
+        `dict` of input and output tensors.
       """
 
       def init_array(shape, dtype):
@@ -754,10 +757,10 @@ class DaskDataFeeder(object):
       self.random_state = random_state
 
   def get_feed_params(self):
-    """Function returns a dict with data feed params while training.
+    """Function returns a `dict` with data feed params while training.
 
     Returns:
-      A dict with data feed params while training.
+      A `dict` with data feed params while training.
     """
     return {'batch_size': self._batch_size}
 
