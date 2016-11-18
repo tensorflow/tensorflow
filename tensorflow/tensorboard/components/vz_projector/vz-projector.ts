@@ -130,8 +130,7 @@ export class Projector extends ProjectorPolymer implements
           .metadata[this.selectedLabelOption] as string;
     };
     this.metadataCard.setLabelOption(this.selectedLabelOption);
-    this.projectorScatterPlotAdapter.scatterPlot.setLabelAccessor(
-        labelAccessor);
+    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
     this.projectorScatterPlotAdapter.render();
   }
 
@@ -402,8 +401,7 @@ export class Projector extends ProjectorPolymer implements
           '' + this.dataSet.points[i].metadata[this.selectedLabelOption];
       this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter(
           this.getScatterContainer(), this as ProjectorEventContext);
-      this.projectorScatterPlotAdapter.scatterPlot.setLabelAccessor(
-          labelAccessor);
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
     }
 
     this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(
