@@ -1252,9 +1252,9 @@ available, or `session` must be specified explicitly.
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
-registered for each `Operation` type using `tf.RegisterShape`.
-See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-details of what a shape represents.
+registered in the Op for each `Operation`.  See
+[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+for more details of what a shape represents.
 
 The inferred shape of a tensor is used to provide shape
 information without having to launch the graph in a session. This
@@ -2253,9 +2253,9 @@ available, or `session` must be specified explicitly.
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
-registered for each `Operation` type using `tf.RegisterShape`.
-See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-details of what a shape represents.
+registered in the Op for each `Operation`.  See
+[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+for more details of what a shape represents.
 
 The inferred shape of a tensor is used to provide shape
 information without having to launch the graph in a session. This
@@ -3993,24 +3993,8 @@ an attempt to request its gradient is made.
 
 A decorator for registering the shape function for an op type.
 
-This decorator is only used when defining a new op type. A shape
-function is a function from an `Operation` object to a list of
-`TensorShape` objects, with one `TensorShape` for each output of the
-operation.
-
-For example, assuming that operations of type `"Sub"` take two
-inputs `x` and `y`, and return a single output `x - y`, all with the
-same shape, the following shape function would be registered:
-
-```python
-@tf.RegisterShape("Sub")
-def _sub_shape(op):
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-```
-
-The decorator argument `op_type` is the string type of an
-operation. This corresponds to the `OpDef.name` field for the proto
-that defines the operation.
+Soon to be removed.  Shape functions should be registered via
+the SetShapeFn on the original Op specification in C++.
 - - -
 
 #### `tf.RegisterShape.__call__(f)` {#RegisterShape.__call__}
@@ -4044,10 +4028,11 @@ A `TensorShape` represents a possibly-partial shape specification for a
 
 If a tensor is produced by an operation of type `"Foo"`, its shape
 may be inferred if there is a registered shape function for
-`"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
-for details of shape
-functions and how to register them. Alternatively, the shape may be set
-explicitly using [`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape).
+`"Foo"`. See [`Shape functions in
+C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
+details of shape functions and how to register them. Alternatively,
+the shape may be set explicitly using
+[`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape).
 
 - - -
 
