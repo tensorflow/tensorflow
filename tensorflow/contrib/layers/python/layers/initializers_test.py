@@ -48,6 +48,9 @@ class InitializerTest(tf.test.TestCase):
     self._test_xavier(tf.contrib.layers.xavier_initializer,
                       [100, 40], 2. / (100. + 40.), False)
 
+  def test_xavier_scalar(self):
+    self._test_xavier(tf.contrib.layers.xavier_initializer, [], 0.0, True)
+
   def test_xavier_conv2d_uniform(self):
     self._test_xavier(tf.contrib.layers.xavier_initializer_conv2d,
                       [100, 40, 5, 7], 2. / (100. * 40 * (5 + 7)), True)
@@ -148,6 +151,14 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
     self._test_variance(tf.contrib.layers.variance_scaling_initializer,
                         shape=[100, 40],
                         variance=2. / (100. + 40.),
+                        factor=1.0,
+                        mode='FAN_AVG',
+                        uniform=False)
+
+  def test_xavier_scalar(self):
+    self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                        shape=[],
+                        variance=0.0,
                         factor=1.0,
                         mode='FAN_AVG',
                         uniform=False)

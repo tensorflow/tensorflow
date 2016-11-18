@@ -919,15 +919,6 @@ class ExecutorState {
   void FindOrCreateChildFrame(FrameState* frame, int64 iter, const Node* node,
                               FrameState** child);
 
-  // Get the output frame/iter of a node. Create new frame/iteration if
-  // needed. If there are dead roots for the new iteration, we need to
-  // "execute" them so add them to the ready queue. Returns true if
-  // we need to check for the completion of output frame/iter.
-  void FindOrCreateOutputFrameIter(const TaggedNode& tagged_node,
-                                   const EntryVector& outputs,
-                                   FrameState** frame, int64* iter,
-                                   TaggedNodeSeq* ready);
-
   // Delete a frame. Called when the frame is done.
   void DeleteFrame(FrameState* frame, TaggedNodeSeq* ready);
 

@@ -524,17 +524,18 @@ struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 /** this should go in Eigen
   * \brief Template functor to compute the round to int value of a scalar
   */
-template<typename Scalar> struct scalar_rint_op {
+template <typename Scalar>
+struct scalar_rint_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE \
-    const Scalar operator() (const Scalar& a) const {
-    #if defined(__CUDACC__)
-        return ::rint(a);
-    #elif defined(PLATFORM_POSIX_ANDROID)
-        return rint(a);
-    #else
-        return std::rint(a);
-    #endif
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& a) const {
+#if defined(__CUDACC__)
+    return ::rint(a);
+#elif defined(__ANDROID__)
+    return rint(a);
+#else
+    return std::rint(a);
+#endif
   }
 };
 

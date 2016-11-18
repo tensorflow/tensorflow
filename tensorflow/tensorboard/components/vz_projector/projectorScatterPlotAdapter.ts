@@ -82,8 +82,11 @@ export class ProjectorScatterPlotAdapter {
   private selectedPointIndices: number[];
   private neighborsOfFirstSelectedPoint: NearestEntry[];
   private renderLabelsIn3D: boolean = false;
+  private labelPointAccessor: (index: number) => string;
   private legendPointColorer: (index: number) => string;
   private distanceMetric: DistanceFunction;
+
+  private labels3DVisualizer: ScatterPlotVisualizer3DLabels;
 
   constructor(
       scatterPlotContainer: d3.Selection<any>,
@@ -130,6 +133,13 @@ export class ProjectorScatterPlotAdapter {
 
   setLegendPointColorer(legendPointColorer: (index: number) => string) {
     this.legendPointColorer = legendPointColorer;
+  }
+
+  setLabelPointAccessor(labelPointAccessor: (index: number) => string) {
+    this.labelPointAccessor = labelPointAccessor;
+    if (this.labels3DVisualizer != null) {
+      this.labels3DVisualizer.setLabelAccessor(labelPointAccessor);
+    }
   }
 
   resize() {
@@ -303,8 +313,8 @@ export class ProjectorScatterPlotAdapter {
     }
 
     return new LabelRenderParams(
-        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, fillColors,
-        strokeColors);
+        this.labelPointAccessor, visibleLabels, scale, opacityFlags,
+        LABEL_FONT_SIZE, fillColors, strokeColors);
   }
 
   generatePointScaleFactorArray(
@@ -532,8 +542,11 @@ export class ProjectorScatterPlotAdapter {
   private createVisualizers(inLabels3DMode: boolean) {
     const scatterPlot = this.scatterPlot;
     scatterPlot.removeAllVisualizers();
+    this.labels3DVisualizer = null;
     if (inLabels3DMode) {
-      scatterPlot.addVisualizer(new ScatterPlotVisualizer3DLabels());
+      this.labels3DVisualizer = new ScatterPlotVisualizer3DLabels();
+      this.labels3DVisualizer.setLabelAccessor(this.labelPointAccessor);
+      scatterPlot.addVisualizer(this.labels3DVisualizer);
     } else {
       scatterPlot.addVisualizer(new ScatterPlotVisualizerSprites());
       scatterPlot.addVisualizer(
