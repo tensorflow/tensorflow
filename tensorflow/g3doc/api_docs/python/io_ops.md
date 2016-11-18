@@ -59,14 +59,14 @@ A placeholder op that passes though `input` when its output is not fed.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. The default value to produce when `output` is not fed.
+*  <b>`input`</b>: A `Tensor`. The default value to produce when `output` is not fed.
 *  <b>`shape`</b>: A `tf.TensorShape` or list of `ints`.
     The (possibly partial) shape of the tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   A placeholder tensor that defaults to `input` if it is not fed.
 
 
@@ -1232,10 +1232,10 @@ Note that we allow leading and trailing spaces with int or float field.
 ##### Args:
 
 
-*  <b>`records`</b>: An `Output` of type `string`.
+*  <b>`records`</b>: A `Tensor` of type `string`.
     Each string is a record/row in the csv and all records should have
     the same format.
-*  <b>`record_defaults`</b>: A list of `Output` objects with types from: `float32`, `int32`, `int64`, `string`.
+*  <b>`record_defaults`</b>: A list of `Tensor` objects with types from: `float32`, `int32`, `int64`, `string`.
     One tensor per column of the input record, with either a
     scalar default value for that column or empty if the column is required.
 *  <b>`field_delim`</b>: An optional `string`. Defaults to `","`.
@@ -1244,7 +1244,7 @@ Note that we allow leading and trailing spaces with int or float field.
 
 ##### Returns:
 
-  A list of `Output` objects. Has the same type as `record_defaults`.
+  A list of `Tensor` objects. Has the same type as `record_defaults`.
   Each tensor will have the same shape as records.
 
 
@@ -1257,7 +1257,7 @@ Reinterpret the bytes of a string as a vector of numbers.
 ##### Args:
 
 
-*  <b>`bytes`</b>: An `Output` of type `string`.
+*  <b>`bytes`</b>: A `Tensor` of type `string`.
     All the elements must have the same length.
 *  <b>`out_type`</b>: A `tf.DType` from: `tf.half, tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
 *  <b>`little_endian`</b>: An optional `bool`. Defaults to `True`.
@@ -1268,7 +1268,7 @@ Reinterpret the bytes of a string as a vector of numbers.
 
 ##### Returns:
 
-  A `Output` of type `out_type`.
+  A `Tensor` of type `out_type`.
   A Tensor with one more dimension than the input `bytes`.  The
   added dimension will have size equal to the length of the elements
   of `bytes` divided by the number of bytes to represent `out_type`.
@@ -1660,7 +1660,7 @@ Transforms a serialized tensorflow.TensorProto proto into a Tensor.
 ##### Args:
 
 
-*  <b>`serialized`</b>: An `Output` of type `string`.
+*  <b>`serialized`</b>: A `Tensor` of type `string`.
     A scalar string containing a serialized TensorProto proto.
 *  <b>`out_type`</b>: A `tf.DType`.
     The type of the serialized tensor.  The provided type must match the
@@ -1669,7 +1669,7 @@ Transforms a serialized tensorflow.TensorProto proto into a Tensor.
 
 ##### Returns:
 
-  A `Output` of type `out_type`. A Tensor of type `out_type`.
+  A `Tensor` of type `out_type`. A Tensor of type `out_type`.
 
 
 - - -
@@ -1688,14 +1688,14 @@ Example-parsing ops.
 ##### Args:
 
 
-*  <b>`json_examples`</b>: An `Output` of type `string`.
+*  <b>`json_examples`</b>: A `Tensor` of type `string`.
     Each string is a JSON object serialized according to the JSON
     mapping of the Example proto.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
   Each string is a binary Example protocol buffer corresponding
   to the respective element of `json_examples`.
 
@@ -2699,12 +2699,12 @@ basename portion of the pattern, not in the directory portion.
 ##### Args:
 
 
-*  <b>`pattern`</b>: An `Output` of type `string`. A (scalar) shell wildcard pattern.
+*  <b>`pattern`</b>: A `Tensor` of type `string`. A (scalar) shell wildcard pattern.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. A vector of matching filenames.
+  A `Tensor` of type `string`. A vector of matching filenames.
 
 
 - - -
@@ -2716,12 +2716,12 @@ Reads and outputs the entire contents of the input filename.
 ##### Args:
 
 
-*  <b>`filename`</b>: An `Output` of type `string`.
+*  <b>`filename`</b>: A `Tensor` of type `string`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
 
 
 - - -
@@ -2733,9 +2733,9 @@ Writes contents to the file at input filename. Creates file if not existing.
 ##### Args:
 
 
-*  <b>`filename`</b>: An `Output` of type `string`.
+*  <b>`filename`</b>: A `Tensor` of type `string`.
     scalar. The name of the file to which we write the contents.
-*  <b>`contents`</b>: An `Output` of type `string`.
+*  <b>`contents`</b>: A `Tensor` of type `string`.
     scalar. The content to be written to the output file.
 *  <b>`name`</b>: A name for the operation (optional).
 

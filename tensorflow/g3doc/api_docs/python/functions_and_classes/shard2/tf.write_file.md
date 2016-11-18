@@ -5,9 +5,9 @@ Writes contents to the file at input filename. Creates file if not existing.
 ##### Args:
 
 
-*  <b>`filename`</b>: An `Output` of type `string`.
+*  <b>`filename`</b>: A `Tensor` of type `string`.
     scalar. The name of the file to which we write the contents.
-*  <b>`contents`</b>: An `Output` of type `string`.
+*  <b>`contents`</b>: A `Tensor` of type `string`.
     scalar. The content to be written to the output file.
 *  <b>`name`</b>: A name for the operation (optional).
 

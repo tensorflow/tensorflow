@@ -29,10 +29,10 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`ref`</b>: A mutable `Tensor`. Should be from a `Variable` node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of updated values to store in `ref`.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `True`.
     If True, the assignment will be protected by a lock;

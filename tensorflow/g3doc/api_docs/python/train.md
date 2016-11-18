@@ -735,12 +735,12 @@ to pretend that the value was a constant. Some examples include:
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 

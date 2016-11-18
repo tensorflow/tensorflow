@@ -17,14 +17,14 @@ garbage result.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float64`, `float32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`. Shape is `[..., M, M]`.
+  A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
 
   @compatibility(numpy)
   Equivalent to np.linalg.inv

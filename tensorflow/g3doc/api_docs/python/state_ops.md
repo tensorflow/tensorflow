@@ -436,13 +436,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -457,13 +457,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -478,13 +478,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -534,13 +534,13 @@ Returns the truth value of (x >= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -606,13 +606,13 @@ Returns the truth value of (x > y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -624,12 +624,12 @@ Returns the truth value of NOT x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -660,13 +660,13 @@ Returns the truth value of (x <= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -681,13 +681,13 @@ Returns the truth value of (x < y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -702,13 +702,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -729,12 +729,12 @@ I.e., \\(y = -x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -749,13 +749,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -799,13 +799,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -820,13 +820,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -841,13 +841,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -897,13 +897,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -925,13 +925,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -975,13 +975,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -1044,13 +1044,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -1409,9 +1409,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`.
+*  <b>`ref`</b>: A mutable `Tensor`.
     Should be from a `Variable` node. May be uninitialized.
-*  <b>`value`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be assigned to the variable.
 *  <b>`validate_shape`</b>: An optional `bool`. Defaults to `True`.
     If true, the operation will validate that the shape
@@ -1440,9 +1440,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`value`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be added to the variable.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the addition will be protected by a lock;
@@ -1467,9 +1467,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`value`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be subtracted to the variable.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the subtraction will be protected by a lock;
@@ -2800,10 +2800,10 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`ref`</b>: A mutable `Tensor`. Should be from a `Variable` node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of updated values to store in `ref`.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `True`.
     If True, the assignment will be protected by a lock;
@@ -2848,11 +2848,11 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of updated values to add to `ref`.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the addition will be protected by a lock;
@@ -2895,11 +2895,11 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of updated values to subtract from `ref`.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the subtraction will be protected by a lock;
@@ -2940,11 +2940,11 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of updated values to multiply to `ref`.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the operation will be protected by a lock;
@@ -2985,11 +2985,11 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of values that `ref` is divided by.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the operation will be protected by a lock;
@@ -3010,7 +3010,7 @@ Applies sparse `updates` to individual values or slices within a given
 
 variable according to `indices`.
 
-`ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -3019,7 +3019,7 @@ The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `ref`.
 
-`updates` is `Output` of rank `Q-1+P-K` with shape:
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 ```
 [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -3045,11 +3045,11 @@ slices.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. A mutable Tensor. Should be from a Variable node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`ref`</b>: A mutable `Tensor`. A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A Tensor. Must be one of the following types: int32, int64.
     A tensor of indices into ref.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A Tensor. Must have the same type as ref. A tensor of updated
     values to add to ref.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `True`.
@@ -3060,7 +3060,7 @@ slices.
 
 ##### Returns:
 
-  A mutable `Output`. Has the same type as `ref`.
+  A mutable `Tensor`. Has the same type as `ref`.
   Same as ref. Returned as a convenience for operations that want to
   use the updated values after the update is done.
 
@@ -3073,7 +3073,7 @@ Applies sparse addition between `updates` and individual values or slices
 
 within a given variable according to `indices`.
 
-`ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -3082,7 +3082,7 @@ The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `ref`.
 
-`updates` is `Output` of rank `Q-1+P-K` with shape:
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 ```
 [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -3108,12 +3108,12 @@ slices.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     A mutable Tensor. Should be from a Variable node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A Tensor. Must be one of the following types: int32, int64.
     A tensor of indices into ref.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A Tensor. Must have the same type as ref. A tensor of updated values
     to add to ref.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
@@ -3124,7 +3124,7 @@ slices.
 
 ##### Returns:
 
-  A mutable `Output`. Has the same type as `ref`.
+  A mutable `Tensor`. Has the same type as `ref`.
   Same as ref. Returned as a convenience for operations that want
   to use the updated values after the update is done.
 
@@ -3137,7 +3137,7 @@ Applies sparse subtraction between `updates` and individual values or slices
 
 within a given variable according to `indices`.
 
-`ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -3146,7 +3146,7 @@ The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `ref`.
 
-`updates` is `Output` of rank `Q-1+P-K` with shape:
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 ```
 [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -3172,12 +3172,12 @@ slices.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     A mutable Tensor. Should be from a Variable node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A Tensor. Must be one of the following types: int32, int64.
     A tensor of indices into ref.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A Tensor. Must have the same type as ref. A tensor of updated values
     to subtract from ref.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
@@ -3188,7 +3188,7 @@ slices.
 
 ##### Returns:
 
-  A mutable `Output`. Has the same type as `ref`.
+  A mutable `Tensor`. Has the same type as `ref`.
   Same as ref. Returned as a convenience for operations that want
   to use the updated values after the update is done.
 

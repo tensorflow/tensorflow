@@ -9,7 +9,7 @@ operator which extracts values or slices from a given tensor.
 TODO(simister): Add a link to Variable.__getitem__ documentation on slice
 syntax.
 
-`shape` is a `TensorShape` with rank `P` and `indices` is an `Output` of rank
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
 `Q`.
 
 `indices` must be integer tensor, containing indices into `shape`.
@@ -76,19 +76,19 @@ The resulting tensor would look like this:
 ##### Args:
 
 
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A Tensor. Must be one of the following types: int32, int64.
     A tensor of indices into ref.
-*  <b>`updates`</b>: A `Output`.
+*  <b>`updates`</b>: A `Tensor`.
     A Tensor. Must have the same type as tensor. A tensor of updated values
     to store in ref.
-*  <b>`shape`</b>: A `Output`. Must have the same type as `indices`.
+*  <b>`shape`</b>: A `Tensor`. Must have the same type as `indices`.
     A vector. The shape of the resulting tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `updates`.
+  A `Tensor`. Has the same type as `updates`.
   A new tensor with the given shape and updates applied according
   to the indices.
 

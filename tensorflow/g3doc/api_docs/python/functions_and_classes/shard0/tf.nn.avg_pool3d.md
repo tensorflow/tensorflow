@@ -5,7 +5,7 @@ Performs 3D average pooling on the input.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The size of the window for each dimension of
@@ -19,6 +19,6 @@ Performs 3D average pooling on the input.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   The average pooled output tensor.
 

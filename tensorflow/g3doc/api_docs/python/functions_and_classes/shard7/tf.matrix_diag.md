@@ -32,11 +32,11 @@ which has shape (2, 4, 4)
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Output`. Rank `k`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `diagonal`.
+  A `Tensor`. Has the same type as `diagonal`.
   Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
 

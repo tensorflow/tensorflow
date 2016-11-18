@@ -28,11 +28,11 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
-*  <b>`updates`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
     A tensor of updated values to add to `ref`.
 *  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
     If True, the addition will be protected by a lock;

@@ -24,12 +24,12 @@ using the `tf.gather operation`.  For example:
 ##### Args:
 
 
-*  <b>`boxes`</b>: An `Output` of type `float32`.
+*  <b>`boxes`</b>: A `Tensor` of type `float32`.
     A 2-D float tensor of shape `[num_boxes, 4]`.
-*  <b>`scores`</b>: An `Output` of type `float32`.
+*  <b>`scores`</b>: A `Tensor` of type `float32`.
     A 1-D float tensor of shape `[num_boxes]` representing a single
     score corresponding to each box (each row of boxes).
-*  <b>`max_output_size`</b>: An `Output` of type `int32`.
+*  <b>`max_output_size`</b>: A `Tensor` of type `int32`.
     A scalar integer tensor representing the maximum number of
     boxes to be selected by non max suppression.
 *  <b>`iou_threshold`</b>: An optional `float`. Defaults to `0.5`.
@@ -39,7 +39,7 @@ using the `tf.gather operation`.  For example:
 
 ##### Returns:
 
-  An `Output` of type `int32`.
+  A `Tensor` of type `int32`.
   A 1-D integer tensor of shape `[M]` representing the selected
   indices from the boxes tensor, where `M <= max_output_size`.
 

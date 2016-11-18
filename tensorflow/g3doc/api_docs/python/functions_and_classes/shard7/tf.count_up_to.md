@@ -5,7 +5,7 @@ Increments 'ref' until it reaches 'limit'.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `int32`, `int64`.
     Should be from a scalar `Variable` node.
 *  <b>`limit`</b>: An `int`.
     If incrementing ref would bring it above limit, instead generates an
@@ -14,7 +14,7 @@ Increments 'ref' until it reaches 'limit'.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `ref`.
+  A `Tensor`. Has the same type as `ref`.
   A copy of the input before increment. If nothing else modifies the
   input, the values produced will all be distinct.
 

@@ -24,14 +24,14 @@ results in a rounded value.)
 ##### Args:
 
 
-*  <b>`string_tensor`</b>: An `Output` of type `string`.
+*  <b>`string_tensor`</b>: A `Tensor` of type `string`.
 *  <b>`out_type`</b>: An optional `tf.DType` from: `tf.float32, tf.int32`. Defaults to `tf.float32`.
     The numeric type to interpret each string in `string_tensor` as.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output` of type `out_type`.
+  A `Tensor` of type `out_type`.
   A Tensor of the same shape as the input `string_tensor`.
 
 
@@ -200,13 +200,13 @@ endian orderings will give different results.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32, tf.half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output` of type `type`.
+  A `Tensor` of type `type`.
 
 
 - - -
@@ -276,13 +276,13 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 ##### Args:
 
 
-*  <b>`input`</b>: A list of at least 1 `Output` objects of the same type.
+*  <b>`input`</b>: A list of at least 1 `Tensor` objects of the same type.
 *  <b>`out_type`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A list with the same number of `Output` objects as `input` of `Output` objects of type out_type.
+  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type out_type.
 
 
 - - -
@@ -415,14 +415,14 @@ reshape(t, []) ==> 7
 ##### Args:
 
 
-*  <b>`tensor`</b>: A `Output`.
-*  <b>`shape`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`tensor`</b>: A `Tensor`.
+*  <b>`shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     Defines the shape of the output tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `tensor`.
+  A `Tensor`. Has the same type as `tensor`.
 
 
 - - -
@@ -512,15 +512,15 @@ size 1.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
-*  <b>`axis`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     0-D (scalar). Specifies the axisension index at which to
     expand the shape of `input`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   Contains the same data as `input`, but its shape has an additional
   axisension of size 1 added.
 
@@ -832,14 +832,14 @@ dimension. For example, tiling `[a b c d]` by `[2]` produces
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. 1-D or higher.
-*  <b>`multiples`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`. 1-D or higher.
+*  <b>`multiples`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D. Length must be the same as the number of dimensions in `input`
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -1213,8 +1213,8 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. The input to reverse.
-*  <b>`seq_lengths`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`. The input to reverse.
+*  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
     `max(seq_lengths) < input.dims(seq_dim)`
 *  <b>`seq_dim`</b>: An `int`. The dimension which is partially reversed.
@@ -1224,7 +1224,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   The partially reversed input. It has the same shape as `input`.
 
 
@@ -1282,14 +1282,14 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 ##### Args:
 
 
-*  <b>`tensor`</b>: A `Output`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
     Up to 8-D.
-*  <b>`dims`</b>: An `Output` of type `bool`. 1-D. The dimensions to reverse.
+*  <b>`dims`</b>: A `Tensor` of type `bool`. 1-D. The dimensions to reverse.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `tensor`. The same shape as `tensor`.
+  A `Tensor`. Has the same type as `tensor`. The same shape as `tensor`.
 
 
 - - -
@@ -1345,15 +1345,15 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 ##### Args:
 
 
-*  <b>`tensor`</b>: A `Output`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
     Up to 8-D.
-*  <b>`axis`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D. The indices of the dimensions to reverse.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `tensor`. The same shape as `tensor`.
+  A `Tensor`. Has the same type as `tensor`. The same shape as `tensor`.
 
 
 - - -
@@ -1417,7 +1417,7 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 *  <b>`ksizes`</b>: A list of `ints` that has length `>= 4`.
     The size of the sliding window for each dimension of `images`.
@@ -1445,7 +1445,7 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `images`.
+  A `Tensor`. Has the same type as `images`.
   4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
   ksize_cols * depth]` containing image patches with size
   `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension.
@@ -1469,12 +1469,12 @@ precise description.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
     N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
     where spatial_shape has `M` dimensions.
-*  <b>`block_shape`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`block_shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with shape `[M]`, all values must be >= 1.
-*  <b>`paddings`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D with shape `[M, 2]`, all values must be >= 0.
       `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
       `i + 1`, which corresponds to spatial dimension `i`.  It is required that
@@ -1588,7 +1588,7 @@ precise description.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -1608,8 +1608,8 @@ block size.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. 4-D with shape `[batch, height, width, depth]`.
-*  <b>`paddings`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`. 4-D with shape `[batch, height, width, depth]`.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
       the padding of the input with zeros across the spatial dimensions as follows:
 
@@ -1701,7 +1701,7 @@ block size.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -1758,12 +1758,12 @@ reverse of SpaceToBatch.  See below for a precise description.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
     N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
     where spatial_shape has M dimensions.
-*  <b>`block_shape`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`block_shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with shape `[M]`, all values must be >= 1.
-*  <b>`crops`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`crops`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D with shape `[M, 2]`, all values must be >= 0.
       `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input
       dimension `i + 1`, which corresponds to spatial dimension `i`.  It is
@@ -1878,7 +1878,7 @@ reverse of SpaceToBatch.  See below for a precise description.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -1898,11 +1898,11 @@ followed by cropping along the `height` and `width` dimensions.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. 4-D tensor with shape
+*  <b>`input`</b>: A `Tensor`. 4-D tensor with shape
     `[batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
       depth]`. Note that the batch size of the input tensor must be divisible by
     `block_size * block_size`.
-*  <b>`crops`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`crops`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
     how many elements to crop from the intermediate result across the spatial
     dimensions as follows:
@@ -1914,7 +1914,7 @@ followed by cropping along the `height` and `width` dimensions.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   4-D with shape `[batch, height, width, depth]`, where:
 
         height = height_pad - crop_top - crop_bottom
@@ -2065,13 +2065,13 @@ x = [[[[1, 2, 3, 4],
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
 *  <b>`block_size`</b>: An `int` that is `>= 2`. The size of the spatial block.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -2162,14 +2162,14 @@ x = [[ [1],   [2],  [5],  [6]],
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
 *  <b>`block_size`</b>: An `int` that is `>= 2`.
     The size of the spatial block, same as in Space2Depth.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -2202,14 +2202,14 @@ this operation will permute `params` accordingly.
 ##### Args:
 
 
-*  <b>`params`</b>: A `Output`.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`params`</b>: A `Tensor`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
 *  <b>`validate_indices`</b>: An optional `bool`. Defaults to `True`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `params`.
+  A `Tensor`. Has the same type as `params`.
 
 
 - - -
@@ -2313,14 +2313,14 @@ Batched indexing into a 3-tensor:
 ##### Args:
 
 
-*  <b>`params`</b>: A `Output`. `P-D`.  The tensor from which to gather values.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`params`</b>: A `Tensor`. `P-D`.  The tensor from which to gather values.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `params`.
+  A `Tensor`. Has the same type as `params`.
   `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
   `indices`.
 
@@ -2352,17 +2352,17 @@ count ==> [2, 1, 3, 1, 2]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. 1-D.
+*  <b>`x`</b>: A `Tensor`. 1-D.
 *  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (y, idx, count).
+  A tuple of `Tensor` objects (y, idx, count).
 
-*  <b>`y`</b>: A `Output`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Output` of type `out_idx`. 1-D.
-*  <b>`count`</b>: A `Output` of type `out_idx`. 1-D.
+*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
+*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
 - - -
@@ -2378,7 +2378,7 @@ operator which extracts values or slices from a given tensor.
 TODO(simister): Add a link to Variable.__getitem__ documentation on slice
 syntax.
 
-`shape` is a `TensorShape` with rank `P` and `indices` is an `Output` of rank
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
 `Q`.
 
 `indices` must be integer tensor, containing indices into `shape`.
@@ -2445,19 +2445,19 @@ The resulting tensor would look like this:
 ##### Args:
 
 
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A Tensor. Must be one of the following types: int32, int64.
     A tensor of indices into ref.
-*  <b>`updates`</b>: A `Output`.
+*  <b>`updates`</b>: A `Tensor`.
     A Tensor. Must have the same type as tensor. A tensor of updated values
     to store in ref.
-*  <b>`shape`</b>: A `Output`. Must have the same type as `indices`.
+*  <b>`shape`</b>: A `Tensor`. Must have the same type as `indices`.
     A vector. The shape of the resulting tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `updates`.
+  A `Tensor`. Has the same type as `updates`.
   A new tensor with the given shape and updates applied according
   to the indices.
 
@@ -2507,8 +2507,8 @@ For example:
 ##### Args:
 
 
-*  <b>`data`</b>: A `Output`.
-*  <b>`partitions`</b>: An `Output` of type `int32`.
+*  <b>`data`</b>: A `Tensor`.
+*  <b>`partitions`</b>: A `Tensor` of type `int32`.
     Any shape.  Indices in the range `[0, num_partitions)`.
 *  <b>`num_partitions`</b>: An `int` that is `>= 1`.
     The number of partitions to output.
@@ -2516,7 +2516,7 @@ For example:
 
 ##### Returns:
 
-  A list of `num_partitions` `Output` objects of the same type as data.
+  A list of `num_partitions` `Tensor` objects of the same type as data.
 
 
 - - -
@@ -2572,13 +2572,13 @@ For example:
 ##### Args:
 
 
-*  <b>`indices`</b>: A list of at least 1 `Output` objects of type `int32`.
-*  <b>`data`</b>: A list with the same number of `Output` objects as `indices` of `Output` objects of the same type.
+*  <b>`indices`</b>: A list of at least 1 `Tensor` objects of type `int32`.
+*  <b>`data`</b>: A list with the same number of `Tensor` objects as `indices` of `Tensor` objects of the same type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `data`.
+  A `Tensor`. Has the same type as `data`.
 
 
 - - -
@@ -2837,17 +2837,17 @@ result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
-*  <b>`min_range`</b>: An `Output` of type `float32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`min_range`</b>: A `Tensor` of type `float32`.
     The minimum scalar value possibly produced for the input.
-*  <b>`max_range`</b>: An `Output` of type `float32`.
+*  <b>`max_range`</b>: A `Tensor` of type `float32`.
     The maximum scalar value possibly produced for the input.
 *  <b>`mode`</b>: An optional `string` from: `"MIN_COMBINED", "MIN_FIRST"`. Defaults to `"MIN_COMBINED"`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 
 
 - - -
@@ -2909,10 +2909,10 @@ operations that have to perform further calculations on them.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `float32`.
-*  <b>`min_range`</b>: An `Output` of type `float32`.
+*  <b>`input`</b>: A `Tensor` of type `float32`.
+*  <b>`min_range`</b>: A `Tensor` of type `float32`.
     The minimum scalar value possibly produced for the input.
-*  <b>`max_range`</b>: An `Output` of type `float32`.
+*  <b>`max_range`</b>: A `Tensor` of type `float32`.
     The maximum scalar value possibly produced for the input.
 *  <b>`T`</b>: A `tf.DType` from: `tf.qint8, tf.quint8, tf.qint16, tf.quint16, tf.qint32`.
 *  <b>`mode`</b>: An optional `string` from: `"MIN_COMBINED", "MIN_FIRST"`. Defaults to `"MIN_COMBINED"`.
@@ -2920,11 +2920,11 @@ operations that have to perform further calculations on them.
 
 ##### Returns:
 
-  A tuple of `Output` objects (output, output_min, output_max).
+  A tuple of `Tensor` objects (output, output_min, output_max).
 
-*  <b>`output`</b>: A `Output` of type `T`. The quantized data produced from the float input.
-*  <b>`output_min`</b>: An `Output` of type `float32`. The actual minimum scalar value used for the output.
-*  <b>`output_max`</b>: An `Output` of type `float32`. The actual maximum scalar value used for the output.
+*  <b>`output`</b>: A `Tensor` of type `T`. The quantized data produced from the float input.
+*  <b>`output_min`</b>: A `Tensor` of type `float32`. The actual minimum scalar value used for the output.
+*  <b>`output_max`</b>: A `Tensor` of type `float32`. The actual maximum scalar value used for the output.
 
 
 - - -
@@ -2936,27 +2936,27 @@ Concatenates quantized tensors along one dimension.
 ##### Args:
 
 
-*  <b>`concat_dim`</b>: An `Output` of type `int32`.
+*  <b>`concat_dim`</b>: A `Tensor` of type `int32`.
     0-D.  The dimension along which to concatenate.  Must be in the
     range [0, rank(values)).
-*  <b>`values`</b>: A list of at least 2 `Output` objects of the same type.
+*  <b>`values`</b>: A list of at least 2 `Tensor` objects of the same type.
     The `N` Tensors to concatenate. Their ranks and types must match,
     and their sizes must match in all dimensions except `concat_dim`.
-*  <b>`input_mins`</b>: A list with the same number of `Output` objects as `values` of `Output` objects of type `float32`.
+*  <b>`input_mins`</b>: A list with the same number of `Tensor` objects as `values` of `Tensor` objects of type `float32`.
     The minimum scalar values for each of the input tensors.
-*  <b>`input_maxes`</b>: A list with the same number of `Output` objects as `values` of `Output` objects of type `float32`.
+*  <b>`input_maxes`</b>: A list with the same number of `Tensor` objects as `values` of `Tensor` objects of type `float32`.
     The maximum scalar values for each of the input tensors.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (output, output_min, output_max).
+  A tuple of `Tensor` objects (output, output_min, output_max).
 
-*  <b>`output`</b>: A `Output`. Has the same type as `values`. An `Output` with the concatenation of values stacked along the
+*  <b>`output`</b>: A `Tensor`. Has the same type as `values`. A `Tensor` with the concatenation of values stacked along the
     `concat_dim` dimension.  This tensor's shape matches that of `values` except
     in `concat_dim` where it has the sum of the sizes.
-*  <b>`output_min`</b>: An `Output` of type `float32`. The float value that the minimum quantized output value represents.
-*  <b>`output_max`</b>: An `Output` of type `float32`. The float value that the maximum quantized output value represents.
+*  <b>`output_min`</b>: A `Tensor` of type `float32`. The float value that the minimum quantized output value represents.
+*  <b>`output_max`</b>: A `Tensor` of type `float32`. The float value that the maximum quantized output value represents.
 
 
 - - -
@@ -2990,17 +2990,17 @@ idx ==> [1, 3, 5]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. 1-D. Values to keep.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
 *  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (out, idx).
+  A tuple of `Tensor` objects (out, idx).
 
-*  <b>`out`</b>: A `Output`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Output` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 
 
 
@@ -3022,14 +3022,14 @@ Quantization is called fake since the output is still in floating point.
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
 *  <b>`min`</b>: An optional `float`. Defaults to `-6`.
 *  <b>`max`</b>: An optional `float`. Defaults to `6`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 
 
 - - -
@@ -3041,9 +3041,9 @@ Compute gradients for a FakeQuantWithMinMaxArgs operation.
 ##### Args:
 
 
-*  <b>`gradients`</b>: An `Output` of type `float32`.
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
     Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
-*  <b>`inputs`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
     Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
 *  <b>`min`</b>: An optional `float`. Defaults to `-6`.
 *  <b>`max`</b>: An optional `float`. Defaults to `6`.
@@ -3051,7 +3051,7 @@ Compute gradients for a FakeQuantWithMinMaxArgs operation.
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
   Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
   `gradients * (inputs >= min && inputs <= max)`.
 
@@ -3074,14 +3074,14 @@ This operation has a gradient and thus allows for training `min` and `max` value
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of type `float32`.
-*  <b>`min`</b>: An `Output` of type `float32`.
-*  <b>`max`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 
 
 - - -
@@ -3093,24 +3093,24 @@ Compute gradients for a FakeQuantWithMinMaxVars operation.
 ##### Args:
 
 
-*  <b>`gradients`</b>: An `Output` of type `float32`.
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
     Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
-*  <b>`inputs`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
     Values passed as inputs to the FakeQuantWithMinMaxVars operation.
     min, max: Quantization interval, scalar floats.
-*  <b>`min`</b>: An `Output` of type `float32`.
-*  <b>`max`</b>: An `Output` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
+  A tuple of `Tensor` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
 
-*  <b>`backprops_wrt_input`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. inputs:
+*  <b>`backprops_wrt_input`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. inputs:
     `gradients * (inputs >= min && inputs <= max)`.
-*  <b>`backprop_wrt_min`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. min parameter:
+*  <b>`backprop_wrt_min`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. min parameter:
     `sum(gradients * (inputs < min))`.
-*  <b>`backprop_wrt_max`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. max parameter:
+*  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter:
     `sum(gradients * (inputs > max))`.
 
 
@@ -3132,14 +3132,14 @@ This operation has a gradient and thus allows for training `min` and `max` value
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of type `float32`.
-*  <b>`min`</b>: An `Output` of type `float32`.
-*  <b>`max`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 
 
 - - -
@@ -3151,27 +3151,27 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 ##### Args:
 
 
-*  <b>`gradients`</b>: An `Output` of type `float32`.
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
     Backpropagated gradients above the FakeQuantWithMinMaxVars operation,
     shape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`.
-*  <b>`inputs`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
     Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
       same as `gradients`.
     min, max: Quantization interval, floats of shape `[d]`.
-*  <b>`min`</b>: An `Output` of type `float32`.
-*  <b>`max`</b>: An `Output` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
+  A tuple of `Tensor` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
 
-*  <b>`backprops_wrt_input`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. inputs, shape same as
+*  <b>`backprops_wrt_input`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. inputs, shape same as
     `inputs`:
       `gradients * (inputs >= min && inputs <= max)`.
-*  <b>`backprop_wrt_min`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. min parameter, shape `[d]`:
+*  <b>`backprop_wrt_min`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. min parameter, shape `[d]`:
     `sum_per_d(gradients * (inputs < min))`.
-*  <b>`backprop_wrt_max`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. max parameter, shape `[d]`:
+*  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter, shape `[d]`:
     `sum_per_d(gradients * (inputs > max))`.
 
 

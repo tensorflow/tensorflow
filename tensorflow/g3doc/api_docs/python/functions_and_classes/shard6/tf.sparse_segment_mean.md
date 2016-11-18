@@ -12,16 +12,16 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
-*  <b>`segment_ids`</b>: An `Output` of type `int32`.
+*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `data`.
+  A `Tensor`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 

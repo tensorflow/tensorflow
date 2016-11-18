@@ -149,20 +149,20 @@ the other direction.
 ##### Args:
 
 
-*  <b>`sp_indices`</b>: An `Output` of type `int64`.
+*  <b>`sp_indices`</b>: A `Tensor` of type `int64`.
     2-D.  `N x R` matrix with the indices of non-empty values in a
     SparseTensor, possibly not in canonical ordering.
-*  <b>`sp_values`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`sp_values`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     1-D.  `N` non-empty values corresponding to `sp_indices`.
-*  <b>`sp_shape`</b>: An `Output` of type `int64`.
+*  <b>`sp_shape`</b>: A `Tensor` of type `int64`.
     1-D.  Shape of the input SparseTensor.
-*  <b>`dense`</b>: A `Output`. Must have the same type as `sp_values`.
+*  <b>`dense`</b>: A `Tensor`. Must have the same type as `sp_values`.
     `R`-D.  The dense Tensor operand.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `sp_values`.
+  A `Tensor`. Has the same type as `sp_values`.
   1-D.  The `N` values that are operated on.
 
 
@@ -182,20 +182,20 @@ the other direction.
 ##### Args:
 
 
-*  <b>`sp_indices`</b>: An `Output` of type `int64`.
+*  <b>`sp_indices`</b>: A `Tensor` of type `int64`.
     2-D.  `N x R` matrix with the indices of non-empty values in a
     SparseTensor, possibly not in canonical ordering.
-*  <b>`sp_values`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`sp_values`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     1-D.  `N` non-empty values corresponding to `sp_indices`.
-*  <b>`sp_shape`</b>: An `Output` of type `int64`.
+*  <b>`sp_shape`</b>: A `Tensor` of type `int64`.
     1-D.  Shape of the input SparseTensor.
-*  <b>`dense`</b>: A `Output`. Must have the same type as `sp_values`.
+*  <b>`dense`</b>: A `Tensor`. Must have the same type as `sp_values`.
     `R`-D.  The dense Tensor operand.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `sp_values`.
+  A `Tensor`. Has the same type as `sp_values`.
   1-D.  The `N` values that are operated on.
 
 

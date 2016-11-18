@@ -21,12 +21,12 @@ Return a tensor with the same shape and contents as the input tensor or value.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -121,7 +121,7 @@ Increments 'ref' until it reaches 'limit'.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `int32`, `int64`.
     Should be from a scalar `Variable` node.
 *  <b>`limit`</b>: An `int`.
     If incrementing ref would bring it above limit, instead generates an
@@ -130,7 +130,7 @@ Increments 'ref' until it reaches 'limit'.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `ref`.
+  A `Tensor`. Has the same type as `ref`.
   A copy of the input before increment. If nothing else modifies the
   input, the values produced will all be distinct.
 
@@ -408,13 +408,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -426,12 +426,12 @@ Returns the truth value of NOT x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -446,13 +446,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -480,13 +480,13 @@ Returns the truth value of (x == y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`, `bool`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`, `bool`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -501,13 +501,13 @@ Returns the truth value of (x != y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`, `bool`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`, `bool`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -522,13 +522,13 @@ Returns the truth value of (x < y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -543,13 +543,13 @@ Returns the truth value of (x <= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -564,13 +564,13 @@ Returns the truth value of (x > y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -585,13 +585,13 @@ Returns the truth value of (x >= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -643,16 +643,16 @@ select(condition, t, e) ==> [[1, 2],
 ##### Args:
 
 
-*  <b>`condition`</b>: An `Output` of type `bool`.
-*  <b>`t`</b>: An `Output` which may have the same shape as `condition`.
+*  <b>`condition`</b>: A `Tensor` of type `bool`.
+*  <b>`t`</b>: A `Tensor` which may have the same shape as `condition`.
     If `condition` is rank 1, `t` may have higher rank,
     but its first dimension must match the size of `condition`.
-*  <b>`e`</b>: An `Output` with the same type and shape as `t`.
+*  <b>`e`</b>: A `Tensor` with the same type and shape as `t`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with the same type and shape as `t` and `e`.
+  A `Tensor` with the same type and shape as `t` and `e`.
 
 
 - - -
@@ -724,12 +724,12 @@ Equivalent to np.isfinite
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -745,12 +745,12 @@ Equivalent to np.isinf
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -766,12 +766,12 @@ Equivalent to np.isnan
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -804,13 +804,13 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
 ##### Args:
 
 
-*  <b>`tensor`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`message`</b>: A `string`. Prefix of the error message.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `tensor`.
+  A `Tensor`. Has the same type as `tensor`.
 
 
 - - -

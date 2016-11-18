@@ -60,8 +60,8 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. The input to reverse.
-*  <b>`seq_lengths`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`. The input to reverse.
+*  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
     `max(seq_lengths) < input.dims(seq_dim)`
 *  <b>`seq_dim`</b>: An `int`. The dimension which is partially reversed.
@@ -71,6 +71,6 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   The partially reversed input. It has the same shape as `input`.
 

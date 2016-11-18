@@ -15,9 +15,9 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 ##### Args:
 
 
-*  <b>`dims`</b>: An `Output` of type `int32`.
+*  <b>`dims`</b>: A `Tensor` of type `int32`.
     1-D. Represents the shape of the output tensor.
-*  <b>`value`</b>: A `Output`. 0-D (scalar). Value to fill the returned tensor.
+*  <b>`value`</b>: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
 
     @compatibility(numpy)
     Equivalent to np.full
@@ -27,5 +27,5 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 ##### Returns:
 
-  A `Output`. Has the same type as `value`.
+  A `Tensor`. Has the same type as `value`.
 

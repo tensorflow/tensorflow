@@ -17,16 +17,16 @@ Parts of the bounding box may fall outside the image.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Output`. Must be one of the following types: `float32`, `half`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
     4-D with shape `[batch, height, width, depth]`. A batch of images.
-*  <b>`boxes`</b>: An `Output` of type `float32`.
+*  <b>`boxes`</b>: A `Tensor` of type `float32`.
     3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
     boxes.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `images`.
+  A `Tensor`. Has the same type as `images`.
   4-D with the same shape as `images`. The batch of input images with
   bounding boxes drawn on the images.
 

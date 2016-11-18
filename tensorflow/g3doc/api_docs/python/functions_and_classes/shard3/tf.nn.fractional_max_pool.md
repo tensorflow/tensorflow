@@ -34,7 +34,7 @@ For more details on fractional max pooling, see this paper:
 ##### Args:
 
 
-*  <b>`value`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
     Pooling ratio for each dimension of `value`, currently only
@@ -73,9 +73,9 @@ For more details on fractional max pooling, see this paper:
 
 ##### Returns:
 
-  A tuple of `Output` objects (output, row_pooling_sequence, col_pooling_sequence).
+  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
 
-*  <b>`output`</b>: A `Output`. Has the same type as `value`. output tensor after fractional max pooling.
-*  <b>`row_pooling_sequence`</b>: An `Output` of type `int64`. row pooling sequence, needed to calculate gradient.
-*  <b>`col_pooling_sequence`</b>: An `Output` of type `int64`. column pooling sequence, needed to calculate gradient.
+*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional max pooling.
+*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
 

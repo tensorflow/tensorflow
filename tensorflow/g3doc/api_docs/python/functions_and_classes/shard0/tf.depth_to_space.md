@@ -84,12 +84,12 @@ x = [[ [1],   [2],  [5],  [6]],
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
 *  <b>`block_size`</b>: An `int` that is `>= 2`.
     The size of the spatial block, same as in Space2Depth.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
