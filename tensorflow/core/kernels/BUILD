@@ -1245,22 +1245,37 @@ tf_cuda_cc_test(
 
 tf_kernel_libraries(
     name = "io",
+    libs = [":save_restore"],
     prefixes = [
         "fixed_length_record_reader_op",
         "identity_reader_op",
         "matching_files_op",
         "reader_ops",
-        "restore_op",
-        "save_op",
-        "save_restore_v2_ops",
         "text_line_reader_op",
         "tf_record_reader_op",
         "whole_file_read_ops",
     ],
     deps = [
-        ":bounds_check_lib",
         ":ops_util",
         ":reader_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:io_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_kernel_libraries(
+    name = "save_restore",
+    prefixes = [
+        "restore_op",
+        "save_op",
+        "save_restore_v2_ops",
+    ],
+    deps = [
+        ":bounds_check_lib",
         ":save_restore_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:io_ops_op_lib",
