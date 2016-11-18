@@ -312,7 +312,6 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/example/example_parser_configuration_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/example/feature_util_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/util/reporter_test.cc"
-      "${tensorflow_source_dir}/tensorflow/core/util/memmapped_file_system_test.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/bundle_shim_test.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/bundle_test.cc"
