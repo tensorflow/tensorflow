@@ -275,7 +275,6 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_down_and_shrink_range_op_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/cast_op_test.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/control_flow_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/spacetobatch_benchmark_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/sparse_add_op_test.cc"
