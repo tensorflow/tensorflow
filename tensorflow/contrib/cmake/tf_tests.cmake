@@ -294,7 +294,6 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/retrying_file_system_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/time_util_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/hadoop/hadoop_file_system_test.cc"
-      "${tensorflow_source_dir}/tensorflow/core/platform/port_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/profile_utils/cpu_utils_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/subprocess_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_allocator_retry_test.cc"

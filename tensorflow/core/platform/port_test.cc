@@ -36,8 +36,14 @@ TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
   mutex m;
   mutex_lock l(m);
   condition_variable cv;
+  ConditionResult result = kCond_MaybeNotified;
   time_t start = time(NULL);
-  EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_Timeout);
+  // Condition variables are subject to spurious wakeups on some platforms,
+  // so need to check for a timeout within a loop.
+  while (result == kCond_MaybeNotified) {
+    result = WaitForMilliseconds(&l, &cv, 3000);
+  }
+  EXPECT_EQ(result, kCond_Timeout);
   time_t finish = time(NULL);
   EXPECT_GE(finish - start, 3);
 }
@@ -51,7 +57,7 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
   // Sleep for just 1 second then notify.  We have a timeout of 3 secs,
   // so the condition variable will notice the cv signal before the timeout.
   pool.Schedule([&m, &cv]() {
-    sleep(1);
+    Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
     mutex_lock l(m);
     cv.notify_all();
   });
