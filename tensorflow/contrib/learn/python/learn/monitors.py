@@ -618,7 +618,8 @@ class ValidationMonitor(EveryN):
                eval_steps=None,
                every_n_steps=100, metrics=None, early_stopping_rounds=None,
                early_stopping_metric="loss",
-               early_stopping_metric_minimize=True, name=None):
+               early_stopping_metric_minimize=True, name=None,
+               *input_fn_args, **input_fn_kwargs):
     """Initializes a ValidationMonitor.
 
     Args:
@@ -643,6 +644,8 @@ class ValidationMonitor(EveryN):
           loss metrics like mean squared error, and False for performance
           metrics like accuracy.
       name: See `BaseEstimator.evaluate`.
+      *input_fn_args: See `BaseEstimator.evaluate`.
+      **input_fn_kwargs: See `BaseEstimator.evaluate`.
 
     Raises:
       ValueError: If both x and input_fn are provided.
@@ -655,6 +658,8 @@ class ValidationMonitor(EveryN):
     self.x = x
     self.y = y
     self.input_fn = input_fn
+    self.input_fn_args = input_fn_args,
+    self.input_fn_kwargs = input_fn_kwargs,
     self.batch_size = batch_size
     self.eval_steps = eval_steps
     self.metrics = metrics
@@ -707,7 +712,8 @@ class ValidationMonitor(EveryN):
     # Run evaluation and log it.
     validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        steps=self.eval_steps, metrics=self.metrics, name=self.name)
+        steps=self.eval_steps, metrics=self.metrics, name=self.name,
+        *self.input_fn_args, **self.input_fn_kwargs)
     stats = []
     for name in validation_outputs:
       stats.append("%s = %s" % (name, str(validation_outputs[name])))

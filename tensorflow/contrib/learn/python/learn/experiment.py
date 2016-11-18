@@ -373,7 +373,7 @@ class Experiment(object):
         self._train_monitors += [monitors.ValidationMonitor(
             input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
             metrics=self._eval_metrics, every_n_steps=self._min_eval_frequency,
-            name=eval_dir_suffix,
+            name=eval_dir_suffix, *self._eval_input_args, **self._eval_input_kwargs
         )]
       self.train(delay_secs=0)
 
