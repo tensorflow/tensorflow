@@ -245,7 +245,7 @@ class DirichletMultinomial(distribution.Distribution):
   def _variance(self):
     alpha_sum = array_ops.expand_dims(self.alpha_sum, -1)
     normalized_alpha = self.alpha / alpha_sum
-    variance = -math_ops.batch_matmul(
+    variance = -math_ops.matmul(
         array_ops.expand_dims(normalized_alpha, -1),
         array_ops.expand_dims(normalized_alpha, -2))
     variance = array_ops.matrix_set_diag(variance, normalized_alpha *

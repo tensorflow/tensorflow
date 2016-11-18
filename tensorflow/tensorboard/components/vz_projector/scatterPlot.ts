@@ -53,9 +53,9 @@ export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
 /** Supported modes of interaction. */
-export enum Mode {
-  SELECT,
-  HOVER
+export enum MouseMode {
+  AREA_SELECT,
+  CAMERA_AND_CLICK_SELECT
 }
 
 /** Defines a camera, suitable for serialization. */
@@ -79,13 +79,12 @@ export class ScatterPlot {
   private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
 
-  private labelAccessor: (index: number) => string;
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
 
   private height: number;
   private width: number;
 
-  private mode: Mode;
+  private mouseMode: MouseMode;
   private backgroundColor: number = BACKGROUND_COLOR;
 
   private dimensionality: number = 3;
@@ -376,7 +375,7 @@ export class ScatterPlot {
 
     // If shift is released, stop selecting
     if (e.keyCode === SHIFT_KEY) {
-      this.selecting = (this.getMode() === Mode.SELECT);
+      this.selecting = (this.getMouseMode() === MouseMode.AREA_SELECT);
       if (!this.selecting) {
         this.containerNode.style.cursor = 'default';
       }
@@ -560,9 +559,6 @@ export class ScatterPlot {
     if (this.scene) {
       visualizer.setScene(this.scene);
     }
-    if (this.labelAccessor) {
-      visualizer.onSetLabelAccessor(this.labelAccessor);
-    }
     visualizer.onResize(this.width, this.height);
     if (this.dataSet) {
       visualizer.onPointPositionsChanged(
@@ -610,8 +606,7 @@ export class ScatterPlot {
         this.camera, cameraType, this.orbitCameraControls.target, this.width,
         this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1],
         this.backgroundColor, this.pointColors, this.pointScaleFactors,
-        this.labelAccessor, this.labels, this.traceColors, this.traceOpacities,
-        this.traceWidths);
+        this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
 
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
@@ -637,16 +632,9 @@ export class ScatterPlot {
     this.renderer.render(this.scene, this.camera);
   }
 
-  setLabelAccessor(labelAccessor: (index: number) => string) {
-    this.labelAccessor = labelAccessor;
-    this.visualizers.forEach(v => {
-      v.onSetLabelAccessor(labelAccessor);
-    });
-  }
-
-  setMode(mode: Mode) {
-    this.mode = mode;
-    if (mode === Mode.SELECT) {
+  setMouseMode(mouseMode: MouseMode) {
+    this.mouseMode = mouseMode;
+    if (mouseMode === MouseMode.AREA_SELECT) {
       this.selecting = true;
       this.containerNode.style.cursor = 'crosshair';
     } else {
@@ -683,8 +671,8 @@ export class ScatterPlot {
     this.traceWidths = widths;
   }
 
-  getMode(): Mode {
-    return this.mode;
+  getMouseMode(): MouseMode {
+    return this.mouseMode;
   }
 
   resetZoom() {

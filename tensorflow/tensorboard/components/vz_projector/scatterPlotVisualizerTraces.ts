@@ -146,5 +146,4 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
 
   onPickingRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
-  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

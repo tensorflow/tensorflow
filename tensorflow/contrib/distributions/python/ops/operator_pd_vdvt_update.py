@@ -319,10 +319,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # M^{-1} V
     minv_v = self._operator.solve(self._v)
     # V^T M^{-1} V
-    if batch_mode:
-      vt_minv_v = math_ops.batch_matmul(self._v, minv_v, adj_x=True)
-    else:
-      vt_minv_v = math_ops.matmul(self._v, minv_v, transpose_a=True)
+    vt_minv_v = math_ops.matmul(self._v, minv_v, adjoint_a=True)
 
     # D^{-1} + V^T M^{-1} V
     capacitance = self._diag_inv_operator.add_to_tensor(vt_minv_v)
@@ -360,14 +357,14 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     v = self._v
     m = self._operator
     d = self._diag_operator
-    # The operators call the appropriate matmul/batch_matmul automatically.  We
-    # cannot override.
-    # batch_matmul is defined as:  x * y, so adj_x and adj_y are the ways to
-    # transpose the left and right.
+    # The operators call the appropriate matmul/batch_matmul automatically.
+    # We cannot override.
+    # batch_matmul is defined as:  x * y, so adjoint_a and adjoint_b are the
+    # ways to transpose the left and right.
     mx = m.matmul(x, transpose_x=transpose_x)
-    vt_x = math_ops.batch_matmul(v, x, adj_x=True, adj_y=transpose_x)
+    vt_x = math_ops.matmul(v, x, adjoint_a=True, adjoint_b=transpose_x)
     d_vt_x = d.matmul(vt_x)
-    v_d_vt_x = math_ops.batch_matmul(v, d_vt_x)
+    v_d_vt_x = math_ops.matmul(v, d_vt_x)
 
     return mx + v_d_vt_x
 
@@ -444,11 +441,11 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # M^{-1} rhs
     minv_rhs = m.solve(rhs)
     # V^T M^{-1} rhs
-    vt_minv_rhs = math_ops.batch_matmul(v, minv_rhs, adj_x=True)
+    vt_minv_rhs = math_ops.matmul(v, minv_rhs, adjoint_a=True)
     # C^{-1} V^T M^{-1} rhs
     cinv_vt_minv_rhs = linalg_ops.cholesky_solve(cchol, vt_minv_rhs)
     # V C^{-1} V^T M^{-1} rhs
-    v_cinv_vt_minv_rhs = math_ops.batch_matmul(v, cinv_vt_minv_rhs)
+    v_cinv_vt_minv_rhs = math_ops.matmul(v, cinv_vt_minv_rhs)
     # M^{-1} V C^{-1} V^T M^{-1} rhs
     minv_v_cinv_vt_minv_rhs = m.solve(v_cinv_vt_minv_rhs)
 
@@ -457,7 +454,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
 
   def _to_dense(self):
     sqrt = self.sqrt_to_dense()
-    return math_ops.batch_matmul(sqrt, sqrt, adj_y=True)
+    return math_ops.matmul(sqrt, sqrt, adjoint_b=True)
 
   def _sqrt_to_dense(self):
     v = self._v
@@ -467,6 +464,6 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     d_vt = d.matmul(v, transpose_x=True)
     # Batch op won't be efficient for singletons.  Currently we don't break
     # to_dense into batch/singleton methods.
-    v_d_vt = math_ops.batch_matmul(v, d_vt)
+    v_d_vt = math_ops.matmul(v, d_vt)
     m_plus_v_d_vt = m.to_dense() + v_d_vt
     return m_plus_v_d_vt

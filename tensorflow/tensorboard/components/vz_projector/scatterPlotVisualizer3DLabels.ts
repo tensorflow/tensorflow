@@ -319,7 +319,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  onSetLabelAccessor(labelAccessor: (index: number) => string) {
+  setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
     this.dispose();
     this.onPointPositionsChanged(this.worldSpacePointPositions, this.dataSet);

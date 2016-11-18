@@ -223,9 +223,8 @@ class Multinomial(distribution.Distribution):
 
   def _variance(self):
     p = self.p * array_ops.expand_dims(array_ops.ones_like(self.n), -1)
-    outer_prod = math_ops.batch_matmul(
-        array_ops.expand_dims(self._mean_val, -1),
-        array_ops.expand_dims(p, -2))
+    outer_prod = math_ops.matmul(
+        array_ops.expand_dims(self._mean_val, -1), array_ops.expand_dims(p, -2))
     return array_ops.matrix_set_diag(-outer_prod,
                                      self._mean_val - self._mean_val * p)
 

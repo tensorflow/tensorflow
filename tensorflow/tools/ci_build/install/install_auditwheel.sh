@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions for copying elements from one graph to another.
 
-"""
+set -e
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+sudo pip3 install auditwheel
 
-from tensorflow.contrib.copy_graph.python.util.copy_elements import *
+# Install patchelf from source (it does not come with trusty package)
+wget https://nixos.org/releases/patchelf/patchelf-0.9/patchelf-0.9.tar.bz2
+tar xfa patchelf-0.9.tar.bz2
+cd patchelf-0.9
+./configure --prefix=/usr/local
+make
+sudo make install
+cd ..
+
+

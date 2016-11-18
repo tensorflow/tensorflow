@@ -394,6 +394,13 @@ new_http_archive(
 )
 
 new_http_archive(
+  name = "paper_spinner",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/paper-spinner/archive/v1.1.1.tar.gz",
+  strip_prefix = "paper-spinner-1.1.1",
+)
+
+new_http_archive(
   name = "paper_styles",
   build_file = "bower.BUILD",
   url = "https://github.com/polymerelements/paper-styles/archive/v1.1.4.tar.gz",

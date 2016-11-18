@@ -26,20 +26,13 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.11.0'
+_VERSION = '0.11.0-cmake-experimental'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf == 3.1.0',
+    'protobuf == 3.0.0',
 ]
-
-project_name = 'tensorflow'
-if '--project_name' in sys.argv:
-  project_name_idx = sys.argv.index('--project_name')
-  project_name = sys.argv[project_name_idx + 1]
-  sys.argv.remove('--project_name')
-  sys.argv.pop(project_name_idx)
 
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
@@ -60,8 +53,8 @@ TEST_PACKAGES = [
 ]
 
 class BinaryDistribution(Distribution):
-  def has_ext_modules(self):
-    return True
+  def is_pure(self):
+    return False
 
 
 class InstallCommand(InstallCommandBase):
@@ -147,20 +140,21 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
-
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
 else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
 
-headers = (list(find_files('*.h', 'tensorflow/core')) +
-           list(find_files('*.h', 'google/protobuf/src')) +
-           list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'external/eigen_archive')))
+
+# TODO(mrry): Add support for development headers.
+# headers = (list(find_files('*.h', 'tensorflow/core')) +
+#            list(find_files('*.h', 'google/protobuf/src')) +
+#            list(find_files('*', 'third_party/eigen3')) +
+#            list(find_files('*', 'external/eigen_archive')))
 
 
 setup(
-    name=project_name,
+    name='tensorflow',
     version=_VERSION,
     description='TensorFlow helps the tensors flow',
     long_description='',
@@ -172,24 +166,18 @@ setup(
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
     },
-    headers=headers,
+    # headers=headers,
     install_requires=REQUIRED_PACKAGES,
     tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': [EXTENSION_NAME,
-                       'tensorboard/dist/bazel-html-imports.html',
-                       'tensorboard/dist/index.html',
-                       'tensorboard/dist/tf-tensorboard.html',
-                       'tensorboard/lib/css/global.css',
-                       'tensorboard/TAG',
-                     ] + matches,
+        'tensorflow': [EXTENSION_NAME] + matches,
     },
     zip_safe=False,
     distclass=BinaryDistribution,
     cmdclass={
-        'install_headers': InstallHeaders,
+        # 'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
     # PyPI package information.

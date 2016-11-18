@@ -38,7 +38,7 @@ class OperatorPDSqrtVDVTUpdateTest(
   def _random_pd_matrix(self, shape):
     # With probability 1 this is positive definite.
     sqrt = self._rng.randn(*shape)
-    mat = tf.batch_matmul(sqrt, sqrt, adj_y=True)
+    mat = tf.matmul(sqrt, sqrt, adjoint_b=True)
     return mat.eval()
 
   def _random_v_and_diag(self, mat_shape, v_matrix_rank):
@@ -67,11 +67,11 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag_vt = tf.matrix_transpose(v)
     else:
       diag_mat = tf.matrix_diag(diag)
-      diag_vt = tf.batch_matmul(diag_mat, v, adj_y=True)
+      diag_vt = tf.matmul(diag_mat, v, adjoint_b=True)
 
-    v_diag_vt = tf.batch_matmul(v, diag_vt)
+    v_diag_vt = tf.matmul(v, diag_vt)
     sqrt = mat + v_diag_vt
-    a = tf.batch_matmul(sqrt, sqrt, adj_y=True)
+    a = tf.matmul(sqrt, sqrt, adjoint_b=True)
     return a.eval()
 
   def _build_operator_and_mat(self, batch_shape, k, dtype=np.float64):
