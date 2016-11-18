@@ -344,9 +344,9 @@ class Output(_TensorLike):
     """Returns the `TensorShape` that represents the shape of this tensor.
 
     The shape is computed using shape inference functions that are
-    registered for each `Operation` type using `tf.RegisterShape`.
-    See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-    details of what a shape represents.
+    registered in the Op for each `Operation`.  See
+    [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+    for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
     information without having to launch the graph in a session. This
@@ -381,6 +381,7 @@ class Output(_TensorLike):
 
     Returns:
       A `TensorShape` representing the shape of this tensor.
+
     """
     return self._shape
 
@@ -1575,25 +1576,8 @@ def _set_call_cpp_shape_fn(call_cpp_shape_fn):
 class RegisterShape(object):
   """A decorator for registering the shape function for an op type.
 
-  This decorator is only used when defining a new op type. A shape
-  function is a function from an `Operation` object to a list of
-  `TensorShape` objects, with one `TensorShape` for each output of the
-  operation.
-
-  For example, assuming that operations of type `"Sub"` take two
-  inputs `x` and `y`, and return a single output `x - y`, all with the
-  same shape, the following shape function would be registered:
-
-  ```python
-  @tf.RegisterShape("Sub")
-  def _sub_shape(op):
-    return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-  ```
-
-  The decorator argument `op_type` is the string type of an
-  operation. This corresponds to the `OpDef.name` field for the proto
-  that defines the operation.
-
+  Soon to be removed.  Shape functions should be registered via
+  the SetShapeFn on the original Op specification in C++.
   """
 
   def __init__(self, op_type):
@@ -1709,9 +1693,9 @@ _stats_registry = registry.Registry("statistical functions")
 class RegisterStatistics(object):
   """A decorator for registering the statistics function for an op type.
 
-  This decorator is very similar to the RegisterShapes class, and can be defined
-  for an op type so that it gives a report on the resources used by an instance
-  of an operator, in the form of an OpStats object.
+  This decorator can be defined for an op type so that it gives a
+  report on the resources used by an instance of an operator, in the
+  form of an OpStats object.
 
   Well-known types of statistics include these so far:
 
