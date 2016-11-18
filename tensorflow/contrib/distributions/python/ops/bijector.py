@@ -715,6 +715,9 @@ class Bijector(object):
         ildj = self._constant_ildj  # Ignore any ildj we may/not have.
       elif self.is_constant_jacobian:
         self._constant_ildj = ildj
+      # We use the mapped version of x, even if we re-computed x above with a
+      # call to self._inverse_and_inverse_log_det_jacobian.  This prevents
+      # re-evaluation of the inverse in a common case.
       x = x if mapping.x is None else mapping.x
       mapping = mapping.merge(x=x, ildj=ildj)
       self._cache(mapping)
@@ -1471,7 +1474,7 @@ class Softplus(Bijector):
     # ==> dX/dY = exp{Y} / (exp{Y} - 1)
     #           = 1 / (1 - exp{-Y}),
     # which is the most stable for large Y > 0.  For small Y, we use
-    # 1 - exp{-Y] approx Y.
+    # 1 - exp{-Y} approx Y.
     if self.shaper is None:
       raise ValueError("Jacobian cannot be computed with unknown event_ndims")
     _, _, event_dims = self.shaper.get_dims(y)
