@@ -399,9 +399,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     is_same_size = shape_size == nparray.size
 
     if verify_shape:
-        if not nparray.shape == tuple(shape):
-            raise TypeError("Expected Tensor's shape: %s, got %s." %
-                            (tuple(shape), nparray.shape))
+      if not nparray.shape == tuple(shape):
+        raise TypeError("Expected Tensor's shape: %s, got %s." %
+                        (tuple(shape), nparray.shape))
 
     if nparray.size > shape_size:
       raise ValueError(
