@@ -29,7 +29,7 @@ from tensorflow.python.training import slot_creator
 
 
 # TODO(touts): switch to variables.Variable.
-def assign_moving_average(variable, value, decay, zero_debias=False, name=None):
+def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   """Compute the moving average of a variable.
 
   The moving average of 'variable' updated with 'value' is:
@@ -89,9 +89,9 @@ def weighted_moving_average(value,
   and `weight`.
 
   Args:
-    value: A numeric `Tensor`.
-    decay: A float `Tensor` or float value.  The moving average decay.
-    weight:  `Tensor` that keeps the current value of a weight.
+    value: A numeric `Output`.
+    decay: A float `Output` or float value.  The moving average decay.
+    weight:  `Output` that keeps the current value of a weight.
       Shape should be able to multiply `value`.
     truediv:  Boolean, if `True`, dividing by `moving_average(weight)` is
       floating point division.  If `False`, use division implied by dtypes.
@@ -124,8 +124,10 @@ def weighted_moving_average(value,
                                                dtype=weight.dtype),
         trainable=False,
         collections=collections)
-    numerator = assign_moving_average(value_x_weight_var, value * weight, decay)
-    denominator = assign_moving_average(weight_var, weight, decay)
+    numerator = assign_moving_average(
+        value_x_weight_var, value * weight, decay, zero_debias=False)
+    denominator = assign_moving_average(
+        weight_var, weight, decay, zero_debias=False)
 
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
@@ -191,8 +193,9 @@ def _zero_debias(unbiased_var, value, decay):
       # use the new values of the biased variable and the local step.
       with ops.control_dependencies([update_biased, update_local_step]):
         # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
-        unbiased_ema_delta = (unbiased_var - biased_var.ref() /
-                              (1 - math_ops.pow(1.0 - decay, local_step.ref())))
+        unbiased_ema_delta = (unbiased_var - biased_var.read_value() /
+                              (1 - math_ops.pow(
+                                  1.0 - decay, local_step.read_value())))
 
       return unbiased_ema_delta
 
@@ -313,11 +316,11 @@ class ExponentialMovingAverage(object):
   def apply(self, var_list=None):
     """Maintains moving averages of variables.
 
-    `var_list` must be a list of `Variable` or `Tensor` objects.  This method
+    `var_list` must be a list of `Variable` or `Output` objects.  This method
     creates shadow variables for all elements of `var_list`.  Shadow variables
     for `Variable` objects are initialized to the variable's initial value.
     They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-    For `Tensor` objects, the shadow variables are initialized to 0 and zero
+    For `Output` objects, the shadow variables are initialized to 0 and zero
     debiased (see docstring in `assign_moving_average` for more details).
 
     shadow variables are created with `trainable=False` and added to the

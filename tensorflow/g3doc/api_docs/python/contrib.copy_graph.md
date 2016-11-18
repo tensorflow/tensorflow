@@ -34,7 +34,7 @@ scope: A scope for the new `Variable` (default `""`).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `org_instance` is not an `Operation` or `Tensor`.
+*  <b>`TypeError`</b>: If `org_instance` is not an `Operation` or `Output`.
 
 
 - - -

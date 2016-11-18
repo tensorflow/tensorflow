@@ -21,19 +21,24 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`matrix`</b>: A `Output`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
+*  <b>`rhs`</b>: A `Output`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
 *  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
     Boolean indicating whether the innermost matrices in `matrix` are
     lower or upper triangular.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
     Boolean indicating whether to solve with `matrix` or its (block-wise)
-    adjoint.
+             adjoint.
+
+    @compatibility(numpy)
+    Equivalent to np.linalg.triangular_solve
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
+  A `Output`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 

@@ -1,4 +1,4 @@
-Represents the type of the elements in a `Tensor`.
+Represents the type of the elements in an `Output`.
 
 The following `DType` objects are defined:
 
@@ -74,20 +74,6 @@ Returns a non-reference `DType` based on this `DType`.
 #### `tf.DType.real_dtype` {#DType.real_dtype}
 
 Returns the dtype correspond to this dtype's real part.
-
-
-- - -
-
-#### `tf.DType.is_ref_dtype` {#DType.is_ref_dtype}
-
-Returns `True` if this `DType` represents a reference type.
-
-
-- - -
-
-#### `tf.DType.as_ref` {#DType.as_ref}
-
-Returns a reference `DType` based on this `DType`.
 
 
 - - -

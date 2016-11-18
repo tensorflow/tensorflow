@@ -305,14 +305,15 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
     if (this.points != null) {
       const notEnoughSpace = (this.pickingColors.length < newPositions.length);
-      const newImage =
+      const newImage = (dataSet != null) &&
           (this.image !== dataSet.spriteAndMetadataInfo.spriteImage);
       if (notEnoughSpace || newImage) {
         this.dispose();
       }
     }
 
-    this.image = dataSet.spriteAndMetadataInfo.spriteImage;
+    this.image =
+        (dataSet != null) ? dataSet.spriteAndMetadataInfo.spriteImage : null;
     this.worldSpacePointPositions = newPositions;
 
     if (this.points == null) {

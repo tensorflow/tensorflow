@@ -53,6 +53,8 @@ export BAZEL_VS="C:/Program Files (x86)/Microsoft Visual Studio 14.0"
 # '/usr/bin/env python' as a shebang
 export PATH="/c/Program Files/Anaconda3:$PATH"
 
+export TF_NEED_CUDA=0
+
 # bazel clean --expunge doesn't work on Windows yet.
 # Clean the output base manually to ensure build correctness
 bazel clean

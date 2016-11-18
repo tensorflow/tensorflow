@@ -55,6 +55,17 @@ py_library(
     ],
 )
 
+py_library(
+    name = "main_op",
+    srcs = ["main_op.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
 py_test(
     name = "saved_model_test",
     size = "small",
@@ -66,6 +77,7 @@ py_test(
     deps = [
         ":builder",
         ":loader",
+        ":main_op",
         ":tag_constants",
         ":utils",
         "//tensorflow:tensorflow_py",

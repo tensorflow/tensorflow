@@ -23,6 +23,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 
 
@@ -577,7 +578,21 @@ class ConstantValueTest(tf.test.TestCase):
   def testRank(self):
     tf_val = tf.rank(tf.constant(0.0, shape=[1, 2, 3]))
     c_val = tf.contrib.util.constant_value(tf_val)
+
+    self.assertEqual(np.ndarray, type(c_val))
+    self.assertEqual((), c_val.shape)
     self.assertEqual(3, c_val)
+
+    # Repeat test using array_ops.rank_internal to avoid the optimization that
+    # happens in the rank function.
+    tf_val = array_ops.rank_internal(tf.constant(0.0, shape=[1, 2, 3]),
+                                     optimize=False)
+    c_val = tf.contrib.util.constant_value(tf_val)
+
+    self.assertEqual(np.ndarray, type(c_val))
+    self.assertEqual((), c_val.shape)
+    self.assertEqual(3, c_val)
+    self.assertEqual([3], c_val)
 
   def testCast(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)

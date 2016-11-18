@@ -92,7 +92,7 @@ REGISTER_OP("BatchMatMul")
     .Doc(R"doc(
 Multiplies slices of two tensors in batches.
 
-Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+Multiplies all slices of `Output` `x` and `y` (each slice can be
 viewed as an element of a batch), and arranges the individual results
 in a single output tensor of the same batch size. Each of the
 individual slices can optionally be adjointed (to adjoint a matrix
@@ -217,17 +217,23 @@ Computes numerical negative value element-wise.
 I.e., \\(y = -x\\).
 )doc");
 
-REGISTER_OP("Inv").UNARY().Doc(R"doc(
+REGISTER_OP("Inv")
+    .UNARY()
+    .Doc(R"doc(
 Computes the reciprocal of x element-wise.
 I.e., \\(y = 1 / x\\).
-)doc");
+)doc")
+    .Deprecated(17, "Use Reciprocal");
 
-REGISTER_OP("InvGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("InvGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the inverse of `x` wrt its input.
 
 Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
 is the corresponding input gradient.
-)doc");
+)doc")
+    .Deprecated(17, "Use ReciprocalGrad");
 
 REGISTER_OP("Reciprocal").UNARY().Doc(R"doc(
 Computes the reciprocal of x element-wise.
@@ -403,6 +409,10 @@ REGISTER_OP("IsNan")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns which elements of x are NaN.
+
+@compatibility(numpy)
+Equivalent to np.isnan
+@end_compatibility
 )doc");
 
 REGISTER_OP("IsInf")
@@ -412,6 +422,10 @@ REGISTER_OP("IsInf")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns which elements of x are Inf.
+
+@compatibility(numpy)
+Equivalent to np.isinf
+@end_compatibility
 )doc");
 
 REGISTER_OP("IsFinite")
@@ -421,6 +435,10 @@ REGISTER_OP("IsFinite")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns which elements of x are finite.
+
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
 )doc");
 
 REGISTER_OP("Sign")
@@ -452,6 +470,25 @@ REGISTER_OP("Ceil")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns element-wise smallest integer in not less than x.
+)doc");
+
+REGISTER_OP("Rint")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns element-wise integer closest to x.
+
+If the result is midway between two representable values,
+the even representable is chosen.
+For example:
+
+```
+rint(-1.5) ==> -2.0
+rint(0.5000001) ==> 1.0
+rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
+```
 )doc");
 
 // Declares cwise binary operations signature: 't, 't -> 't.
@@ -1027,11 +1064,11 @@ select(condition, t, e) ==> [[1, 2],
 
 ```
 
-t:= A `Tensor` which may have the same shape as `condition`.
+t:= An `Output` which may have the same shape as `condition`.
     If `condition` is rank 1, `t` may have higher rank,
     but its first dimension must match the size of `condition`.
-e:= A `Tensor` with the same type and shape as `t`.
-output:= A `Tensor` with the same type and shape as `t` and `e`.
+e:= An `Output` with the same type and shape as `t`.
+output:= An `Output` with the same type and shape as `t` and `e`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -2030,6 +2067,10 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 2
   dimensions of `input` are replaced with their 2D Fourier Transform.
+
+@compatibility(numpy)
+Equivalent to np.fft2
+@end_compatibility
 )doc");
 
 REGISTER_OP("IFFT2D")
@@ -2045,6 +2086,10 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 2
   dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+
+@compatibility(numpy)
+Equivalent to np.ifft2
+@end_compatibility
 )doc");
 
 REGISTER_OP("FFT3D")
@@ -2060,6 +2105,10 @@ dimensions of `input`.
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 3
   dimensions of `input` are replaced with their 3D Fourier Transform.
+
+@compatibility(numpy)
+Equivalent to np.fft3
+@end_compatibility
 )doc");
 
 REGISTER_OP("IFFT3D")
@@ -2075,6 +2124,10 @@ Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 3
   dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+
+@compatibility(numpy)
+Equivalent to np.fft3
+@end_compatibility
 )doc");
 
 // --------------------------------------------------------------------------

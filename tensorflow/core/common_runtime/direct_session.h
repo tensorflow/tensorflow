@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#ifndef NOTFDBG
 #include "tensorflow/core/debug/debug_graph_utils.h"
+#endif
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -46,7 +48,9 @@ limitations under the License.
 namespace tensorflow {
 
 class CostModel;
+#ifndef NOTFDBG
 class DebugGateway;
+#endif
 class Device;
 class DirectSessionFactory;
 
@@ -159,7 +163,9 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
+#ifndef NOTFDBG
     std::unique_ptr<DebuggerState> debugger_state;
+#endif
   };
 
   // Initializes the base execution state given the 'graph',
@@ -294,8 +300,10 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
+#ifndef NOTFDBG
   // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;
+#endif
 };
 
 }  // end namespace tensorflow

@@ -52,7 +52,7 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 ##### Args:
 
 
-*  <b>`log_likelihood`</b>: `Tensor` log p(x|Z).
+*  <b>`log_likelihood`</b>: `Output` log p(x|Z).
 *  <b>`variational_with_prior`</b>: dict from `StochasticTensor` q(Z) to
     `Distribution` p(Z). If `None`, defaults to all `StochasticTensor`
     objects upstream of `log_likelihood` with priors registered with
@@ -66,7 +66,7 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 ##### Returns:
 
-  `Tensor` ELBO of the same type and shape as `log_likelihood`.
+  `Output` ELBO of the same type and shape as `log_likelihood`.
 
 ##### Raises:
 
@@ -93,7 +93,7 @@ Because only the joint is specified, analytic KL is not available.
 ##### Args:
 
 
-*  <b>`log_joint`</b>: `Tensor` log p(x, Z).
+*  <b>`log_joint`</b>: `Output` log p(x, Z).
 *  <b>`variational`</b>: list of `StochasticTensor` q(Z). If `None`, defaults to all
     `StochasticTensor` objects upstream of `log_joint`.
 *  <b>`keep_batch_dim`</b>: bool. Whether to keep the batch dimension when summing
@@ -105,7 +105,7 @@ Because only the joint is specified, analytic KL is not available.
 
 ##### Returns:
 
-  `Tensor` ELBO of the same type and shape as `log_joint`.
+  `Output` ELBO of the same type and shape as `log_joint`.
 
 ##### Raises:
 

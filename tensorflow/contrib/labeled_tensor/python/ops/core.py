@@ -519,7 +519,7 @@ LabeledTensorLike = tc.Union(LabeledTensor, ops.Output, np.ndarray, Scalar)
 def convert_to_labeled_tensor(value, dtype=None, name=None):
   """Converts the given `value` to a `LabeledTensor`.
 
-  This function accepts `LabeledTensor` objects, 0-dimensional `Tensor` objects
+  This function accepts `LabeledTensor` objects, 0-dimensional `Output` objects
   and numpy arrays, and Python scalars. Higher dimensional unlabeled tensors
   must use the `LabeledTensor` constructor explicitly.
 
@@ -1098,7 +1098,7 @@ def define_unary_op(op_name, elementwise_function):
 abs_function = define_unary_op('abs', math_ops.abs)
 neg = define_unary_op('neg', math_ops.neg)
 sign = define_unary_op('sign', math_ops.sign)
-inv = define_unary_op('inv', math_ops.inv)
+reciprocal = define_unary_op('reciprocal', math_ops.reciprocal)
 square = define_unary_op('square', math_ops.square)
 round_function = define_unary_op('round', math_ops.round)
 sqrt = define_unary_op('sqrt', math_ops.sqrt)

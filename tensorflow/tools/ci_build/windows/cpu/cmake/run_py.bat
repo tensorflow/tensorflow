@@ -22,16 +22,25 @@ CD %BUILD_DIR%
 SET BUILD_CC_TESTS=OFF
 SET BUILD_PYTHON_TESTS=ON
 
-:: Run the CMAKE build to build the pip package.
-CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
-
 SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe"
 
-:: Uninstall tensorflow pip package, which might be a leftover from old runs.
-%PIP_EXE% uninstall -y tensorflow
+:: Run the CMAKE build to build the pip package.
+CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
+if %errorlevel% neq 0 exit /b %errorlevel%
+
+:: Attempt to upgrade PIP to work around Anaconda issue #542.
+%PIP_EXE% install --ignore-installed --upgrade pip setuptools -v -v
+
+:: Since there are no wildcards in windows command prompt, use dark magic to get the wheel file name.
+DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
+set /p WHEEL_FILENAME=<wheel_filename_file
+del wheel_filename_file
 
 :: Install the pip package.
-%PIP_EXE% install --upgrade %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\tensorflow-0.11.0rc2_cmake_experimental-py3-none-any.whl
+echo Installing PIP package...
+%PIP_EXE% install --upgrade %WHEEL_FILENAME% -v -v
+if %errorlevel% neq 0 exit /b %errorlevel%
 
-:: Run all python tests
+:: Run all python tests if the installation succeeded.
+echo Running tests...
 ctest -C Release --output-on-failure

@@ -110,8 +110,8 @@ func (p Output) Shape() (shape []int64, err error) {
 	return ret, nil
 }
 
-func (p Output) c() C.TF_Port {
-	return C.TF_Port{oper: p.Op.c, index: C.int(p.Index)}
+func (p Output) c() C.TF_Output {
+	return C.TF_Output{oper: p.Op.c, index: C.int(p.Index)}
 }
 
 func (p Output) canBeAnInput() {}

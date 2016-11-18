@@ -72,7 +72,7 @@ class WindowsEnv : public Env {
   }
 
   bool MatchPath(const string& path, const string& pattern) override {
-    return PathMatchSpec(path.c_str(), pattern.c_str()) == S_OK;
+    return PathMatchSpec(path.c_str(), pattern.c_str()) == TRUE;
   }
 
   uint64 NowMicros() override {

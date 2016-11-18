@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Python front-end supports for functions."""
+"""Python front-end supports for functions.
+
+NOTE: functions are currently experimental and subject to change!
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -742,7 +745,7 @@ class Defun(object):
   function.
 
   The decorated function must add ops to the default graph and return zero or
-  more `Tensor` objects.  Call the decorator with named arguments, one for each
+  more `Output` objects.  Call the decorator with named arguments, one for each
   argument of the function to decorate, with the expected type of the argument
   as value.
 

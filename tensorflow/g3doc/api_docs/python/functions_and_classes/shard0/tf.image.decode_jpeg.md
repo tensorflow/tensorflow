@@ -21,7 +21,7 @@ downscaling the image later.
 ##### Args:
 
 
-*  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The JPEG-encoded image.
+*  <b>`contents`</b>: An `Output` of type `string`. 0-D.  The JPEG-encoded image.
 *  <b>`channels`</b>: An optional `int`. Defaults to `0`.
     Number of color channels for the decoded image.
 *  <b>`ratio`</b>: An optional `int`. Defaults to `1`. Downscaling ratio.
@@ -37,5 +37,5 @@ downscaling the image later.
 
 ##### Returns:
 
-  A `Tensor` of type `uint8`. 3-D with shape `[height, width, channels]`..
+  An `Output` of type `uint8`. 3-D with shape `[height, width, channels]`..
 

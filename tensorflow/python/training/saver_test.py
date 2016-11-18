@@ -1162,7 +1162,7 @@ class CheckpointStateTest(tf.test.TestCase):
     train_dir = "train"
     os.mkdir(train_dir)
     abs_path = os.path.join(save_dir, "model-0")
-    rel_path = "train/model-2"
+    rel_path = os.path.join("train", "model-2")
     tf.train.update_checkpoint_state(
         train_dir,
         rel_path,
@@ -1243,6 +1243,10 @@ class MetaGraphTest(tf.test.TestCase):
       meta_graph_def = save.export_meta_graph(filename)
       self.assertTrue(meta_graph_def.HasField("saver_def"))
       self.assertTrue(meta_graph_def.HasField("graph_def"))
+      self.assertTrue(meta_graph_def.HasField("meta_info_def"))
+      self.assertNotEqual(meta_graph_def.meta_info_def.tensorflow_version, "")
+      self.assertNotEqual(meta_graph_def.meta_info_def.tensorflow_git_version,
+                          "")
       collection_def = meta_graph_def.collection_def
       self.assertEqual(len(collection_def), 12)
 

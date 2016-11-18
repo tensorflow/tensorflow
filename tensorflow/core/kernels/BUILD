@@ -1689,7 +1689,6 @@ tf_kernel_libraries(
         ":bounds_check",
         ":conv_2d",
         ":conv_ops",
-        ":depthwise_conv_grad_op",
         ":dilation_ops",
         ":fused_batch_norm_util_gpu",
         ":ops_util",
@@ -1701,6 +1700,7 @@ tf_kernel_libraries(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ] + if_not_windows([
+        ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
     ]),
 )

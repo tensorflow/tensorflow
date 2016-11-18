@@ -158,7 +158,7 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			C.TF_AddInput(cdesc, in.c())
 		case OutputList:
 			size := len(in)
-			list := make([]C.TF_Port, size)
+			list := make([]C.TF_Output, size)
 			for i, v := range in {
 				list[i] = v.c()
 			}

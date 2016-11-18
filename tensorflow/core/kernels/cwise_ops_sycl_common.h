@@ -22,6 +22,8 @@ limitations under the License.
 
 #define EIGEN_USE_SYCL
 
+#include "tensorflow/core/framework/register_types.h"
+
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/platform/logging.h"
@@ -31,6 +33,14 @@ namespace tensorflow {
 namespace functor {
 
 typedef Eigen::SyclDevice SYCLDevice;
+
+template <typename Index, int N> Eigen::array<Index, N> GenerateArrayOfOnes() {
+  Eigen::array<Index, N> result;
+  for (int i = 0; i < N; ++i) {
+    result[i] = 1;
+  }
+  return result;
+}
 
 template <typename OUT, typename RHS>
 void Assign(const SYCLDevice& d, OUT out, RHS rhs) {
@@ -52,23 +62,31 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
   void operator()(const SYCLDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
                   typename Functor::tin_type in1, bool* error) {
-    Assign(d, out, in0.binaryExpr(in1, typename Functor::func()));
+    To32Bit(out).device(d) = To32Bit(in0).binaryExpr(in1, typename Functor::func());
   }
 
   void Left(const SYCLDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
             typename Functor::tin_type in, bool* error) {
-    LOG(FATAL) << "BinaryFunctor::Left NOT IMPLEMENTED ! ";
+    typedef typename Functor::func Binary;
+    constexpr int NumDims = Functor::tin_type::NumDimensions; 
+    typedef typename Functor::tin_type::Scalar T;
+    typedef typename Functor::tin_type::Index Index;
+    Eigen::array<Index, NumDims> scalar_dim = GenerateArrayOfOnes<Index, NumDims>();
+    Eigen::TensorMap<Eigen::Tensor<T, NumDims, Eigen::RowMajor>> tmp(scalar.data(), scalar_dim);
+    out.device(d) = tmp.broadcast(in.dimensions()).binaryExpr(in, Binary());
   }
 
   void Right(const SYCLDevice& d, typename Functor::tout_type out,
              typename Functor::tin_type in,
              typename Functor::tscalar_type scalar, bool* error) {
-    typedef typename Functor::out_type Tout;
-    typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
-    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
-    Assign(d, out, in.unaryExpr(Unary(scalar.data())));
+    constexpr int NumDims = Functor::tin_type::NumDimensions;
+    typedef typename Functor::tin_type::Scalar T;
+    typedef typename Functor::tin_type::Index Index;
+    Eigen::array<Index, NumDims> scalar_dim = GenerateArrayOfOnes<Index, NumDims>();
+    Eigen::TensorMap<Eigen::Tensor<T, NumDims, Eigen::RowMajor>> tmp(scalar.data(), scalar_dim);
+    out.device(d) = in.binaryExpr(tmp.broadcast(in.dimensions()), Binary());
   }
 
   void BCast(const SYCLDevice& d,
@@ -78,7 +96,25 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
              bool* error) {
-    LOG(FATAL) << "BinaryFunctor::BCast NOT IMPLEMENTED ";
+    typedef typename Functor::in_type T;
+    typename Functor::func func;
+    if ((NDIMS == 2) && Functor::use_bcast_optimization &&
+        use_bcast_optimization<T>::value) {
+      const bool bcast0_all_one = AllOne<NDIMS>(bcast0);
+      const bool bcast1_all_one = AllOne<NDIMS>(bcast1);
+      if (bcast0_all_one && !bcast1_all_one) {
+        To32Bit(out).device(d) =
+            To32Bit(in0).binaryExpr(To32Bit(in1).broadcast(bcast1), func);
+        return;
+      }
+      if (!bcast0_all_one && bcast1_all_one) {
+        To32Bit(out).device(d) =
+            To32Bit(in0).broadcast(bcast0).binaryExpr(To32Bit(in1), func);
+        return;
+      }
+    }
+    To32Bit(out).device(d) = To32Bit(in0).broadcast(bcast0).binaryExpr(
+        To32Bit(in1).broadcast(bcast1), func);
   }
 };
 

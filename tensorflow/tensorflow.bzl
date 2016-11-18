@@ -41,6 +41,7 @@ def check_version(bazel_version):
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_sycl_tests_tags",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -164,6 +165,9 @@ def tf_copts():
               "//tensorflow:windows": [
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
+                "/DPLATFORM_WINDOWS",
+                "/DEIGEN_HAS_C99_MATH",
+                "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
@@ -416,7 +420,7 @@ def _cuda_copts():
         "@local_config_cuda//cuda:using_nvcc": (
             common_cuda_opts +
             [
-                "-nvcc_options=relaxed-constexpr",
+                "-nvcc_options=expt-relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
@@ -442,7 +446,7 @@ def _cuda_copts():
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                           **kwargs):
-  copts = copts + _cuda_copts() + if_cuda(cuda_copts)
+  copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
 
   native.cc_library(
       srcs = srcs,
@@ -885,6 +889,20 @@ def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
              shard_count=shard_count,
              additional_deps=additional_deps,
              flaky=flaky)
+
+def sycl_py_test(name, srcs, size="medium", data=[], main=None, args=[],
+                shard_count=1, additional_deps=[], tags=[], flaky=0):
+ test_tags = tags + tf_sycl_tests_tags()
+ tf_py_test(name=name,
+            size=size,
+            srcs=srcs,
+            data=data,
+            main=main,
+            args=args,
+            tags=test_tags,
+            shard_count=shard_count,
+            additional_deps=additional_deps,
+            flaky=flaky)
 
 def py_tests(name,
              srcs,

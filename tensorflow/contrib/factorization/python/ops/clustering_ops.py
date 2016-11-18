@@ -358,7 +358,8 @@ class KMeans(object):
         cluster_center_updates -= tf.cast(
             tf.reshape(count_updates, broadcast_shape),
             inp.dtype) * old_cluster_centers
-        learning_rate = tf.inv(tf.cast(old_counts + count_updates, inp.dtype))
+        learning_rate = tf.reciprocal(tf.cast(old_counts + count_updates,
+                                              inp.dtype))
         learning_rate = tf.reshape(learning_rate, broadcast_shape)
         # scale by 1 / (n + k), see comment above.
         cluster_center_updates *= learning_rate

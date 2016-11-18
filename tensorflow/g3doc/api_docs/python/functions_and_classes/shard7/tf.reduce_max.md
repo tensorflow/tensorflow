@@ -24,3 +24,7 @@ tensor with a single element is returned.
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.max
+@end_compatibility
+

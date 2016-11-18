@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import functools
 import itertools
+import json
 import tempfile
 
 import numpy as np
@@ -688,8 +689,12 @@ class InferRealValuedColumnsTest(tf.test.TestCase):
 class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testVariablesAreOnPs(self):
-    with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=1))):
+    tf_config = {'cluster': {tf.contrib.learn.TaskType.PS: ['fake_ps_0']}}
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+
+    with tf.device(estimator._get_replica_device_setter(config)):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w
@@ -701,7 +706,7 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testVariablesAreLocal(self):
     with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=0))):
+        tf.contrib.learn.RunConfig())):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w
@@ -712,8 +717,12 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('', a.device)
 
   def testMutableHashTableIsOnPs(self):
-    with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=1))):
+    tf_config = {'cluster': {tf.contrib.learn.TaskType.PS: ['fake_ps_0']}}
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+
+    with tf.device(estimator._get_replica_device_setter(config)):
       default_val = tf.constant([-1, -1], tf.int64)
       table = tf.contrib.lookup.MutableHashTable(tf.string,
                                                  tf.int64,
@@ -725,7 +734,7 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testMutableHashTableIsLocal(self):
     with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=0))):
+        tf.contrib.learn.RunConfig())):
       default_val = tf.constant([-1, -1], tf.int64)
       table = tf.contrib.lookup.MutableHashTable(tf.string,
                                                  tf.int64,
@@ -736,10 +745,20 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('', output.device)
 
   def testTaskIsSetOnWorkerWhenJobNameIsSet(self):
-    with tf.device(
-        estimator._get_replica_device_setter(
-            tf.contrib.learn.RunConfig(
-                num_ps_replicas=1, job_name='worker', task=3))):
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0']
+        },
+        'task': {
+            'type': tf.contrib.learn.TaskType.WORKER,
+            'index': 3
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+
+    with tf.device(estimator._get_replica_device_setter(config)):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w

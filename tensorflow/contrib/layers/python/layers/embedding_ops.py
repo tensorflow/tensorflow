@@ -41,7 +41,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                  combiner=None,
                                  default_id=None,
                                  name=None,
-                                 partition_strategy="div"):
+                                 partition_strategy="div",
+                                 max_norm=None):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
@@ -75,6 +76,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
     name: A name for this operation (optional).
     partition_strategy: A string specifying the partitioning strategy.
         Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+    max_norm: If not None, all embeddings are l2-normalized to max_norm before
+        combining.
 
 
   Returns:
@@ -135,7 +138,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
         sparse_weights,
         combiner=combiner,
         partition_strategy=partition_strategy,
-        name=None if default_id is None else scope)
+        name=None if default_id is None else scope,
+        max_norm=max_norm)
 
     if default_id is None:
       # Broadcast is_row_empty to the same shape as embedding_lookup_result,
@@ -198,9 +202,9 @@ def hashed_embedding_lookup(params, values, dimension, name=None,
   partitioned in 4 tensors with length `[3, 3, 2, 2]`.
 
   Args:
-    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
+    params: An `Output`, `list` of `Output`s, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
-    values: `Tensor` of values to be embedded.
+    values: `Output` of values to be embedded.
     dimension: Embedding dimension
     name: An optional name for this op.
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
@@ -274,7 +278,7 @@ def hashed_embedding_lookup_sparse(params,
   See `tf.contrib.layers.hashed_embedding_lookup` for embedding with hashing.
 
   Args:
-    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
+    params: An `Output`, `list` of `Output`s, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
     sparse_values: A 2-D `SparseTensor` containing the values to be embedded.
       Some rows may be empty.
@@ -354,12 +358,12 @@ def embedding_lookup_unique(params, ids, name=None):
   Args:
     params: A list of tensors with the same shape and type, or a
       `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
-    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
+    ids: A one-dimensional `Output` with type `int32` or `int64` containing
       the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
     name: A name for this operation (optional).
 
   Returns:
-    A `Tensor` with the same type as the tensors in `params` and dimension of
+    An `Output` with the same type as the tensors in `params` and dimension of
     `[ids1, ids2, d1, d2, ...]`.
 
   Raises:

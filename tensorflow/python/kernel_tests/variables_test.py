@@ -152,7 +152,7 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual([c.op], d.op.control_inputs)
       self.assertEqual([], var_x.initializer.control_inputs)
       self.assertEqual([], var_x.value().op.control_inputs)
-      self.assertEqual([], var_x.ref().op.control_inputs)
+      self.assertEqual([], var_x._ref().op.control_inputs)  # pylint: disable=protected-access
       self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
 
   def testControlFlow(self):

@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+
 
 namespace tensorflow {
 namespace thread {
@@ -50,6 +52,8 @@ struct EigenEnvironment {
     return env_->StartThread(thread_options_, name_, [=]() {
       // Set the processor flag to flush denormals to zero
       port::ScopedFlushDenormal flush;
+      // Set the C++ rounding mode to ROUND TO NEAREST
+      port::ScopedSetRound round;
       f();
     });
   }
