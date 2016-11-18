@@ -22,24 +22,11 @@ CD %BUILD_DIR%
 SET BUILD_CC_TESTS=OFF
 SET BUILD_PYTHON_TESTS=ON
 
-SET CONDA_EXE="C:\Program Files\Anaconda3\Scripts\conda"
-SET ACTIVATE_EXE="C:\Program Files\Anaconda3\Scripts\activate"
-SET DEACTIVATE_EXE="C:\Program Files\Anaconda3\Scripts\deactivate"
 SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe"
 
 :: Run the CMAKE build to build the pip package.
 CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
 if %errorlevel% neq 0 exit /b %errorlevel%
-
-:: Create a conda environment with a unique name.
-:: Import all bunch of variables Visual Studio needs.
-CALL "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat"
-uuidgen > uuid.txt
-set /p ENV_NAME=<uuid.txt
-
-%CONDA_EXE% create --name %ENV_NAME% numpy
-%ACTIVATE_EXE% %ENV_NAME%
-
 
 :: Since there are no wildcards in windows command prompt, use dark magic to get the wheel file name.
 DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
@@ -47,9 +34,10 @@ set /p WHEEL_FILENAME=<wheel_filename_file
 del wheel_filename_file
 
 :: Install the pip package.
-%PIP_EXE% install --upgrade %WHEEL_FILENAME%
+echo Installing PIP package...
+%PIP_EXE% install --upgrade %WHEEL_FILENAME% -v -v
+if %errorlevel% neq 0 exit /b %errorlevel%
 
 :: Run all python tests if the installation succeeded.
-if %errorlevel% eq 0 ctest -C Release --output-on-failure
-%DEACTIVATE_EXE%
-%CONDA_EXE% env remove %ENV_NAME%
+echo Running tests...
+ctest -C Release --output-on-failure
