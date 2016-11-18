@@ -40,8 +40,8 @@ def create_operator(matrix):
       dtype=matrix.dtype,
       # TODO(rmlarsen): We are only using batch_matmul here because matmul
       # only has transpose and not adjoint.
-      apply=lambda v: tf.batch_matmul(matrix, v, adj_x=False),
-      apply_adjoint=lambda v: tf.batch_matmul(matrix, v, adj_x=True))
+      apply=lambda v: tf.matmul(matrix, v, adjoint_a=False),
+      apply_adjoint=lambda v: tf.matmul(matrix, v, adjoint_a=True))
 
 
 # TODO(rmlarsen): Measure if we should just call matmul.
