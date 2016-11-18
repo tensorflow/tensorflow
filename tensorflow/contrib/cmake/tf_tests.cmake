@@ -70,17 +70,18 @@ function(AddTest)
   )
 
   foreach(datafile ${_AT_DATA})
+    file(RELATIVE_PATH datafile_rel ${tensorflow_source_dir} ${datafile})
     add_custom_command(
       TARGET ${_AT_TARGET} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
-             "${CMAKE_CURRENT_SOURCE_DIR}/${datafile}"
-             "${testdir}/${datafile}"
-      DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${datafile}"
+             "${datafile}"
+             "${testdir}/${datafile_rel}"
+      DEPENDS "${datafile}"
     )
   endforeach()
 
   if (_AT_DEPENDS)
-    add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
+    add_dependencies(${_AT_TARGET} ${_AT_DEPENDS} googletest)
   endif()
 endfunction(AddTest)
 
@@ -116,6 +117,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
   # include all test
   file(GLOB_RECURSE tf_test_src_py
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
+    "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
   )
@@ -200,6 +202,18 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.cc"
   )
 
+  if(WIN32)
+     set(tf_src_testlib
+       ${tf_src_testlib}
+       "${tensorflow_source_dir}/tensorflow/core/platform/windows/test.cc"
+     )
+  else()
+     set(tf_src_testlib
+       ${tf_src_testlib}
+       "${tensorflow_source_dir}/tensorflow/core/platform/posix/test.cc"
+     )
+  endif()
+
   # include all test
   file(GLOB_RECURSE tf_test_src_simple
     "${tensorflow_source_dir}/tensorflow/cc/*_test.cc"
@@ -255,13 +269,6 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops_test.cc" # status 5
 
       # TODO: not compiling 
-      "${tensorflow_source_dir}/tensorflow/cc/framework/gradient_checker_test.cc"
-      "${tensorflow_source_dir}/tensorflow/cc/gradients/math_grad_test.cc"
-      "${tensorflow_source_dir}/tensorflow/cc/gradients/array_grad_test.cc"
-      "${tensorflow_source_dir}/tensorflow/cc/gradients/nn_grad_test.cc"
-      "${tensorflow_source_dir}/tensorflow/cc/saved_model/loader_test.cc"
-      "${tensorflow_source_dir}/tensorflow/cc/training/queue_runner_test.cc"
-      "${tensorflow_source_dir}/tensorflow/cc/training/coordinator_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/nn_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantization_utils_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/batch_norm_op_test.cc"
@@ -333,8 +340,16 @@ if (tensorflow_BUILD_CC_TESTS)
     )
   endif()
 
-  list(REMOVE_ITEM tf_test_src_simple ${tf_test_src_simple_exclude})
-  
+  # Tests for saved_model require data, so need to treat them separately.
+  file(GLOB tf_cc_saved_model_test_srcs
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*_test.cc"
+  )
+
+  list(REMOVE_ITEM tf_test_src_simple
+    ${tf_test_src_simple_exclude}
+    ${tf_cc_saved_model_test_srcs}
+  )
+
   set(tf_test_lib tf_test_lib)
   add_library(${tf_test_lib} STATIC ${tf_src_testlib})
 
@@ -345,6 +360,7 @@ if (tensorflow_BUILD_CC_TESTS)
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
     $<TARGET_OBJECTS:tf_core_kernels>
+    $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_framework>
     $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>
@@ -360,10 +376,23 @@ if (tensorflow_BUILD_CC_TESTS)
     ${tensorflow_EXTERNAL_LIBRARIES}
   )
 
+  # All tests that require no data.
   AddTests(
     SOURCES ${tf_test_src_simple}
     OBJECTS ${tf_obj_test}
-    LIBS ${tf_test_libs} 
-    DEPENDS googletest
+    LIBS ${tf_test_libs}
   )
+
+  # Tests for tensorflow/cc/saved_model.
+  file(GLOB_RECURSE tf_cc_saved_model_test_data
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/testdata/*"
+  )
+
+  AddTests(
+    SOURCES ${tf_cc_saved_model_test_srcs}
+    DATA ${tf_cc_saved_model_test_data}
+    OBJECTS ${tf_obj_test}
+    LIBS ${tf_test_libs}
+  )
+
 endif(tensorflow_BUILD_CC_TESTS)
