@@ -277,6 +277,7 @@ class QuantizeGraphTest(tf.test.TestCase):
     ops = [node.op for node in eightbit_graph_def.node]
     # No quantize since all inputs are const and can be quantized up-front.
     self.assertEqual(0, ops.count("QuantizeV2") + ops.count("Quantize"))
+    self.assertEqual(1, ops.count("QuantizedReshape"))
 
     # One dequantize at the end.
     self.assertEqual(1, ops.count("Dequantize"))
@@ -305,6 +306,38 @@ class QuantizeGraphTest(tf.test.TestCase):
     self.assertTrue((np.array([0.25, 0.25, 0.75, 0.75]) == qarr).all())
     qarr = quantize_graph.quantize_array(arr.reshape((2, 2)), 2)
     self.assertTrue((np.array([[0.25, 0.25], [0.75, 0.75]]) == qarr).all())
+
+  def test_non_float_concat(self):
+    concat_dim = quantize_graph.create_constant_node(
+        "concat_dim", value=0, dtype=tf.int32, shape=[])
+    a = quantize_graph.create_constant_node(
+        "a", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=tf.int32, shape=[2, 2, 3])
+    b = quantize_graph.create_constant_node(
+        "b", value=[13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+        dtype=tf.int32, shape=[2, 2, 3])
+    concat = quantize_graph.create_node(
+        "Concat", "concat", [concat_dim.name, a.name, b.name])
+    quantize_graph.set_attr_int(concat, "N", 2)
+    quantize_graph.set_attr_dtype(concat, "T", tf.int32)
+
+    g = tf.GraphDef()
+    g.node.extend([concat_dim, a, b, concat])
+    test_graph(g, {}, [concat.name])
+
+  def test_non_float_reshape(self):
+    a = quantize_graph.create_constant_node(
+        "a", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=tf.int32, shape=[2, 2, 3])
+    shape = quantize_graph.create_constant_node(
+        "shape", value=[12], dtype=tf.int32, shape=[1])
+    reshape = quantize_graph.create_node(
+        "Reshape", "reshape", [a.name, shape.name])
+    quantize_graph.set_attr_dtype(reshape, "T", tf.int32)
+
+    g = tf.GraphDef()
+    g.node.extend([a, shape, reshape])
+    test_graph(g, {}, [reshape.name])
 
   def test_concat(self):
     shape_constant_name = "shape_constant"
@@ -339,6 +372,14 @@ class QuantizeGraphTest(tf.test.TestCase):
     float_graph_def.node.extend([concat_node])
 
     test_graph(float_graph_def, {}, [concat_name])
+
+    # Verify the concat is quantized.
+    eightbit_rewriter = quantize_graph.GraphRewriter(
+        float_graph_def, "eightbit", quantized_input_range=None)
+    eightbit_graph_def = eightbit_rewriter.rewrite([concat_name])
+
+    ops = [node.op for node in eightbit_graph_def.node]
+    self.assertEqual(1, ops.count("QuantizedConcat"))
 
   def test_multiple_outputs(self):
     input_constant_name = "input_constant"

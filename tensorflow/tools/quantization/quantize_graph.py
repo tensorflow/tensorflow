@@ -535,8 +535,9 @@ class GraphRewriter(object):
     if not self.state.output_node_stack: return False
     top = self.state.output_node_stack[-1]
     if not top[2]: return False
-    assert tf.as_dtype(node.attr["dtype"].type) == tf.float32, (
-        "Quantizing constant %s" % node.name)
+    dtype = tf.as_dtype(node.attr["dtype"].type)
+    assert dtype == tf.float32, (
+        "Failed to quantized constant %s of type %s" % (node.name, dtype))
     return True
 
   def eightbitize_nodes_recursively(self, current_node):
@@ -557,9 +558,11 @@ class GraphRewriter(object):
                              "BatchNormWithGlobalNormalization"):
         quantize_input = True
       elif current_node.op == "Concat" and i > 0:
-        quantize_input = True
+        quantize_input = (
+            tf.as_dtype(current_node.attr["T"].type) == tf.float32)
       elif current_node.op == "Reshape" and i == 0:
-        quantize_input = True
+        quantize_input = (
+            tf.as_dtype(current_node.attr["T"].type) == tf.float32)
 
       self.state.output_node_stack.append((current_node, i, quantize_input))
 
@@ -581,11 +584,13 @@ class GraphRewriter(object):
     elif current_node.op == "Relu" or current_node.op == "Relu6":
       self.eightbitize_single_input_tensor_node(current_node,
                                                 self.add_relu_function)
-    elif current_node.op == "Concat":
+    elif (current_node.op == "Concat" and
+          tf.as_dtype(current_node.attr["T"].type) == tf.float32):
       self.eightbitize_concat_node(current_node)
     elif current_node.op == "BatchNormWithGlobalNormalization":
       self.eightbitize_batch_norm_node(current_node)
-    elif current_node.op == "Reshape":
+    elif (current_node.op == "Reshape" and
+          tf.as_dtype(current_node.attr["T"].type) == tf.float32):
       self.eightbitize_reshape_node(current_node)
     elif (self.input_range and
           current_node.op in ("Placeholder", "PlaceholderV2")):
