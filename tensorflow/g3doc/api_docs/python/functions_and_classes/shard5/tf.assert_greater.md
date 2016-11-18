@@ -22,8 +22,8 @@ If both `x` and `y` are empty, this is trivially satisfied.
 ##### Args:
 
 
-*  <b>`x`</b>: Numeric `Output`.
-*  <b>`y`</b>: Numeric `Output`, same dtype as and broadcastable to `x`.
+*  <b>`x`</b>: Numeric `Tensor`.
+*  <b>`y`</b>: Numeric `Tensor`, same dtype as and broadcastable to `x`.
 *  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
     error message and first few entries of `x`, `y`.
 *  <b>`summarize`</b>: Print this many entries of each tensor.

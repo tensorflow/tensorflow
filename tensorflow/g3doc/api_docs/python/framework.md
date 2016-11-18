@@ -16,7 +16,7 @@ A TensorFlow computation, represented as a dataflow graph.
 A `Graph` contains a set of
 [`Operation`](../../api_docs/python/framework.md#Operation) objects,
 which represent units of computation; and
-[`Output`](../../api_docs/python/framework.md#Output) objects, which represent
+[`Tensor`](../../api_docs/python/framework.md#Tensor) objects, which represent
 the units of data that flow between operations.
 
 A default `Graph` is always registered, and accessible by calling
@@ -209,7 +209,7 @@ def my_func(pred, tensor):
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Output` objects which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
     defined in the context.  Can also be `None` to clear the control
     dependencies.
@@ -223,7 +223,7 @@ def my_func(pred, tensor):
 
 
 *  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or
-    `Output` objects.
+    `Tensor` objects.
 
 
 - - -
@@ -488,7 +488,7 @@ the collection list if it exists and never creates an empty collection.
 
 #### `tf.Graph.as_graph_element(obj, allow_tensor=True, allow_operation=True)` {#Graph.as_graph_element}
 
-Returns the object referred to by `obj`, as an `Operation` or `Output`.
+Returns the object referred to by `obj`, as an `Operation` or `Tensor`.
 
 This function validates that `obj` represents an element of this
 graph, and gives an informative error message if it is not.
@@ -502,15 +502,15 @@ This method may be called concurrently from multiple threads.
 ##### Args:
 
 
-*  <b>`obj`</b>: An `Output`, an `Operation`, or the name of a tensor or operation.
+*  <b>`obj`</b>: A `Tensor`, an `Operation`, or the name of a tensor or operation.
     Can also be any object with an `_as_graph_element()` method that returns
     a value of one of these types.
-*  <b>`allow_tensor`</b>: If true, `obj` may refer to an `Output`.
+*  <b>`allow_tensor`</b>: If true, `obj` may refer to a `Tensor`.
 *  <b>`allow_operation`</b>: If true, `obj` may refer to an `Operation`.
 
 ##### Returns:
 
-  The `Output` or `Operation` in the Graph corresponding to `obj`.
+  The `Tensor` or `Operation` in the Graph corresponding to `obj`.
 
 ##### Raises:
 
@@ -550,18 +550,18 @@ This method may be called concurrently from multiple threads.
 
 #### `tf.Graph.get_tensor_by_name(name)` {#Graph.get_tensor_by_name}
 
-Returns the `Output` with the given `name`.
+Returns the `Tensor` with the given `name`.
 
 This method may be called concurrently from multiple threads.
 
 ##### Args:
 
 
-*  <b>`name`</b>: The name of the `Output` to return.
+*  <b>`name`</b>: The name of the `Tensor` to return.
 
 ##### Returns:
 
-  The `Output` with the given `name`.
+  The `Tensor` with the given `name`.
 
 ##### Raises:
 
@@ -670,7 +670,7 @@ the default graph.
 
 *  <b>`op_type`</b>: The `Operation` type to create. This corresponds to the
     `OpDef.name` field for the proto that defines the operation.
-*  <b>`inputs`</b>: A list of `Output` objects that will be inputs to the `Operation`.
+*  <b>`inputs`</b>: A list of `Tensor` objects that will be inputs to the `Operation`.
 *  <b>`dtypes`</b>: A list of `DType` objects that will be the types of the tensors
     that the operation produces.
 *  <b>`input_types`</b>: (Optional.) A list of `DType`s that will be the types of
@@ -693,7 +693,7 @@ the default graph.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if any of the inputs is not an `Output`.
+*  <b>`TypeError`</b>: if any of the inputs is not a `Tensor`.
 *  <b>`ValueError`</b>: if colocation conflicts with existing device assignment.
 
 ##### Returns:
@@ -898,7 +898,7 @@ Marks the given `op` as unfetchable in this graph.
 Represents a graph node that performs computation on tensors.
 
 An `Operation` is a node in a TensorFlow `Graph` that takes zero or
-more `Output` objects as input, and produces zero or more `Output`
+more `Tensor` objects as input, and produces zero or more `Tensor`
 objects as output. Objects of type `Operation` are created by
 calling a Python op constructor (such as
 [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul))
@@ -931,7 +931,7 @@ The type of the op (e.g. `"MatMul"`).
 
 #### `tf.Operation.inputs` {#Operation.inputs}
 
-The list of `Output` objects representing the data inputs of this op.
+The list of `Tensor` objects representing the data inputs of this op.
 
 
 - - -
@@ -955,7 +955,7 @@ in the correct order.
 
 #### `tf.Operation.outputs` {#Operation.outputs}
 
-The list of `Output` objects representing the outputs of this op.
+The list of `Tensor` objects representing the outputs of this op.
 
 
 - - -
@@ -995,7 +995,7 @@ available, or `session` must be specified explicitly.
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run)
     for a description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
@@ -1053,9 +1053,9 @@ regular expression:
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
-*  <b>`inputs`</b>: list of `Output` objects. The inputs to this `Operation`.
+*  <b>`inputs`</b>: list of `Tensor` objects. The inputs to this `Operation`.
 *  <b>`output_types`</b>: list of `DType` objects.  List of the types of the
-    `Output`s computed by this operation.  The length of this list indicates
+    `Tensors` computed by this operation.  The length of this list indicates
     the number of output endpoints of the `Operation`.
 *  <b>`control_inputs`</b>: list of operations or tensors from which to have a
     control dependency.
@@ -1351,13 +1351,13 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
     `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` the same size and type as `x` with absolute
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
     values.
 
 
@@ -1478,8 +1478,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1517,7 +1517,7 @@ Returns the truth value of (x >= y) element-wise.
 
 #### `tf.Output.__getitem__(tensor, slice_spec, var=None)` {#Output.__getitem__}
 
-Overload for Output.__getitem__.
+Overload for Tensor.__getitem__.
 
 This operation extracts the specified region from the tensor.
 The notation is similar to NumPy with the restriction that
@@ -1557,7 +1557,7 @@ print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
 
 
 *  <b>`tensor`</b>: An ops.Tensor object.
-*  <b>`slice_spec`</b>: The arguments to Output.__getitem__.
+*  <b>`slice_spec`</b>: The arguments to Tensor.__getitem__.
 *  <b>`var`</b>: In the case of variable slice assignment, the Variable
     object to slice (i.e. tensor is the read-only view of this
     variable).
@@ -1796,15 +1796,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -1898,8 +1898,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1979,15 +1979,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -2031,8 +2031,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2100,8 +2100,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2352,13 +2352,13 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
     `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` the same size and type as `x` with absolute
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
     values.
 
 
@@ -2479,8 +2479,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2518,7 +2518,7 @@ Returns the truth value of (x >= y) element-wise.
 
 #### `tf.Tensor.__getitem__(tensor, slice_spec, var=None)` {#Tensor.__getitem__}
 
-Overload for Output.__getitem__.
+Overload for Tensor.__getitem__.
 
 This operation extracts the specified region from the tensor.
 The notation is similar to NumPy with the restriction that
@@ -2558,7 +2558,7 @@ print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
 
 
 *  <b>`tensor`</b>: An ops.Tensor object.
-*  <b>`slice_spec`</b>: The arguments to Output.__getitem__.
+*  <b>`slice_spec`</b>: The arguments to Tensor.__getitem__.
 *  <b>`var`</b>: In the case of variable slice assignment, the Variable
     object to slice (i.e. tensor is the read-only view of this
     variable).
@@ -2797,15 +2797,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -2899,8 +2899,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2980,15 +2980,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -3032,8 +3032,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3101,8 +3101,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3137,7 +3137,7 @@ The name of the device on which this tensor will be produced, or None.
 
 ### `class tf.DType` {#DType}
 
-Represents the type of the elements in an `Output`.
+Represents the type of the elements in a `Tensor`.
 
 The following `DType` objects are defined:
 
@@ -3481,7 +3481,7 @@ def my_op(a, b, c, name=None):
 
 *  <b>`name`</b>: The name argument that is passed to the op function.
 *  <b>`default_name`</b>: The default name to use if the `name` argument is `None`.
-*  <b>`values`</b>: The list of `Output` arguments that are passed to the op function.
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
 
 ##### Returns:
 
@@ -3506,7 +3506,7 @@ for more details.
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Output` objects which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
     defined in the context.  Can also be `None` to clear the control
     dependencies.
@@ -3521,10 +3521,10 @@ for more details.
 
 ### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
 
-Converts the given `value` to an `Output`.
+Converts the given `value` to a `Tensor`.
 
-This function converts Python objects of various types to `Output`
-objects. It accepts `Output` objects, numpy arrays, Python lists,
+This function converts Python objects of various types to `Tensor`
+objects. It accepts `Tensor` objects, numpy arrays, Python lists,
 and Python scalars. For example:
 
 ```python
@@ -3544,17 +3544,17 @@ This function can be useful when composing a new operation in Python
 (such as `my_func` in the example above). All standard Python op
 constructors apply this function to each of their Tensor-valued
 inputs, which allows those ops to accept numpy arrays, Python lists,
-and scalars in addition to `Output` objects.
+and scalars in addition to `Tensor` objects.
 
 ##### Args:
 
 
-*  <b>`value`</b>: An object whose type has a registered `Output` conversion function.
+*  <b>`value`</b>: An object whose type has a registered `Tensor` conversion function.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
-*  <b>`name`</b>: Optional name to use if a new `Output` is created.
+*  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
 *  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Output` is created.
+    `Tensor` is created.
 *  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
     used when dtype is None. In some cases, a caller may not have a
     dtype in mind when converting to a tensor, so preferred_dtype
@@ -3563,7 +3563,7 @@ and scalars in addition to `Output` objects.
 
 ##### Returns:
 
-  An `Output` based on `value`.
+  A `Tensor` based on `value`.
 
 ##### Raises:
 
@@ -3576,10 +3576,10 @@ and scalars in addition to `Output` objects.
 
 ### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
 
-Converts the given object to an `Output` or an `IndexedSlices`.
+Converts the given object to a `Tensor` or an `IndexedSlices`.
 
 If `value` is an `IndexedSlices` or `SparseTensor` it is returned
-unmodified. Otherwise, it is converted to an `Output` using
+unmodified. Otherwise, it is converted to a `Tensor` using
 `convert_to_tensor()`.
 
 ##### Args:
@@ -3587,14 +3587,14 @@ unmodified. Otherwise, it is converted to an `Output` using
 
 *  <b>`value`</b>: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
     by `convert_to_tensor()`.
-*  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Output` or
+*  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
-*  <b>`name`</b>: (Optional.) A name to use if a new `Output` is created.
+*  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
 *  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
 
 ##### Returns:
 
-  An `Output`, `IndexedSlices`, or `SparseTensor` based on `value`.
+  An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
 ##### Raises:
 
@@ -3631,7 +3631,7 @@ Clears the default graph stack and resets the global default graph.
 NOTE: The default graph is a property of the current thread. This
 function applies only to the current thread.  Calling this function while
 a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
-behavior. Using any previously created `tf.Operation` or `tf.Output` objects
+behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
 after calling this function will result in undefined behavior.
 
 
@@ -3644,7 +3644,7 @@ Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
 This function provides a way to import a serialized TensorFlow
 [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
 protocol buffer, and extract individual objects in the `GraphDef` as
-[`Output`](#Output) and [`Operation`](#Operation) objects. See
+[`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
 [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
 `GraphDef` proto.
 
@@ -3654,11 +3654,11 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 *  <b>`graph_def`</b>: A `GraphDef` proto containing operations to be imported into
     the default graph.
 *  <b>`input_map`</b>: A dictionary mapping input names (as strings) in `graph_def`
-    to `Output` objects. The values of the named input tensors in the
-    imported graph will be re-mapped to the respective `Output` values.
+    to `Tensor` objects. The values of the named input tensors in the
+    imported graph will be re-mapped to the respective `Tensor` values.
 *  <b>`return_elements`</b>: A list of strings containing operation names in
     `graph_def` that will be returned as `Operation` objects; and/or
-    tensor names in `graph_def` that will be returned as `Output` objects.
+    tensor names in `graph_def` that will be returned as `Tensor` objects.
 *  <b>`name`</b>: (Optional.) A prefix that will be prepended to the names in
     `graph_def`. Defaults to `"import"`.
 *  <b>`op_dict`</b>: (Optional.) A dictionary mapping op type names to `OpDef` protos.
@@ -3673,14 +3673,14 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 
 ##### Returns:
 
-  A list of `Operation` and/or `Output` objects from the imported graph,
+  A list of `Operation` and/or `Tensor` objects from the imported graph,
   corresponding to the names in `return_elements`.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: If `graph_def` is not a `GraphDef` proto,
-    `input_map` is not a dictionary mapping strings to `Output` objects,
+    `input_map` is not a dictionary mapping strings to `Tensor` objects,
     or `return_elements` is not a list of strings.
 *  <b>`ValueError`</b>: If `input_map`, or `return_elements` contains names that
     do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
@@ -3846,7 +3846,7 @@ The following standard keys are defined:
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
   for more details.
-* `SUMMARIES`: the summary `Output` objects that have been created in the
+* `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
   [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
   for more details.
@@ -3875,9 +3875,9 @@ A decorator for registering the gradient function for an op type.
 
 This decorator is only used when defining a new op type. For an op
 with `m` inputs and `n` outputs, the gradient function is a function
-that takes the original `Operation` and `n` `Output` objects
+that takes the original `Operation` and `n` `Tensor` objects
 (representing the gradients with respect to each output of the op),
-and returns `m` `Output` objects (representing the partial gradients
+and returns `m` `Tensor` objects (representing the partial gradients
 with respect to each input of the op).
 
 For example, assuming that operations of type `"Sub"` take two
@@ -4014,10 +4014,10 @@ Saves the `op_type` as the `Operation` type.
 
 ### `class tf.TensorShape` {#TensorShape}
 
-Represents the shape of an `Output`.
+Represents the shape of a `Tensor`.
 
 A `TensorShape` represents a possibly-partial shape specification for a
-`Output`. It may be one of the following:
+`Tensor`. It may be one of the following:
 
 * *Fully-known shape:* has a known number of dimensions and a known size
   for each dimension.
@@ -4032,7 +4032,7 @@ may be inferred if there is a registered shape function for
 C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
 details of shape functions and how to register them. Alternatively,
 the shape may be set explicitly using
-[`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape).
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
 - - -
 
@@ -4823,7 +4823,7 @@ For details on how the graph-level seed interacts with op seeds, see
 
 ### `tf.register_tensor_conversion_function(base_type, conversion_func, priority=100)` {#register_tensor_conversion_function}
 
-Registers a function for converting objects of `base_type` to `Output`.
+Registers a function for converting objects of `base_type` to `Tensor`.
 
 The conversion function must have the following signature:
 
@@ -4832,15 +4832,15 @@ The conversion function must have the following signature:
       # ...
 ```
 
-It must return an `Output` with the given `dtype` if specified. If the
-conversion function creates a new `Output`, it should use the given
+It must return a `Tensor` with the given `dtype` if specified. If the
+conversion function creates a new `Tensor`, it should use the given
 `name` if specified. All exceptions will be propagated to the caller.
 
 The conversion function may return `NotImplemented` for some
 inputs. In this case, the conversion process will continue to try
 subsequent conversion functions.
 
-If `as_ref` is true, the function must return an `Output` reference,
+If `as_ref` is true, the function must return a `Tensor` reference,
 such as a `Variable`.
 
 NOTE: The conversion functions will execute in order of priority,
@@ -4854,7 +4854,7 @@ registered with a smaller priority than `G`.
 *  <b>`base_type`</b>: The base type or tuple of base types for all objects that
     `conversion_func` accepts.
 *  <b>`conversion_func`</b>: A function that converts instances of `base_type` to
-    `Output`.
+    `Tensor`.
 *  <b>`priority`</b>: Optional integer that indicates the priority for applying this
     conversion function. Conversion functions with smaller priority values
     run earlier than conversion functions with larger priority values.

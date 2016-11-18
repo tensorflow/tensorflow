@@ -11,13 +11,13 @@ See also:  `is_non_decreasing`
 ##### Args:
 
 
-*  <b>`x`</b>: Numeric `Output`.
+*  <b>`x`</b>: Numeric `Tensor`.
 *  <b>`name`</b>: A name for this operation (optional).
     Defaults to "is_strictly_increasing"
 
 ##### Returns:
 
-  Boolean `Output`, equal to `True` iff `x` is strictly increasing.
+  Boolean `Tensor`, equal to `True` iff `x` is strictly increasing.
 
 ##### Raises:
 

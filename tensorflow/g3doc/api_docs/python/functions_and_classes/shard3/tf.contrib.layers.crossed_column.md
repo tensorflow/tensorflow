@@ -12,7 +12,7 @@ Creates a _CrossedColumn for performing feature crosses.
 *  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
     to restore the column weights. Required if `tensor_name_in_ckpt` is not
     None.
-*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Output` in the provided
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
 *  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`

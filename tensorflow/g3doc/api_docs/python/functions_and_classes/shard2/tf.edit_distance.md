@@ -55,7 +55,7 @@ output ==> [[inf, 1.0],  # (0,0): no truth, (0,1): no hypothesis
 
 ##### Returns:
 
-  A dense `Output` with rank `R - 1`, where R is the rank of the
+  A dense `Tensor` with rank `R - 1`, where R is the rank of the
   `SparseTensor` inputs `hypothesis` and `truth`.
 
 ##### Raises:

@@ -18,7 +18,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 *  <b>`file_pattern`</b>: List of files or pattern of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-*  <b>`batch_size`</b>: An int or scalar `Output` specifying the batch size to use.
+*  <b>`batch_size`</b>: An int or scalar `Tensor` specifying the batch size to use.
 *  <b>`reader`</b>: A function or class that returns an object with
     `read` method, (filename tensor) -> (example tensor).
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
@@ -28,7 +28,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
     `tf.global_variables_initializer()` as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
-*  <b>`read_batch_size`</b>: An int or scalar `Output` specifying the number of
+*  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
     records to read at once
 *  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
     representation. If `None`, no parsing is done.
@@ -36,7 +36,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Returns:
 
-  String `Output` of batched `Example` proto.
+  String `Tensor` of batched `Example` proto.
 
 ##### Raises:
 

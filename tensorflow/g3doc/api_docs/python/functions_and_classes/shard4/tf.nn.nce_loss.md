@@ -24,13 +24,13 @@ with an otherwise unused class.
 ##### Args:
 
 
-*  <b>`weights`</b>: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+*  <b>`weights`</b>: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-partitioned) class embeddings.
-*  <b>`biases`</b>: An `Output` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: An `Output` of shape `[batch_size, dim]`.  The forward
+*  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
       activations of the input network.
-*  <b>`labels`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.

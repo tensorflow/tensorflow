@@ -25,7 +25,7 @@ This is the opposite of pack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`value`</b>: A rank `R > 0` `Output` to be unpacked.
+*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unpacked.
 *  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
     if `None` (the default).
 *  <b>`axis`</b>: An `int`. The axis to unpack along. Defaults to the first
@@ -34,7 +34,7 @@ This is the opposite of pack.  The numpy equivalent is
 
 ##### Returns:
 
-  The list of `Output` objects unpacked from `value`.
+  The list of `Tensor` objects unpacked from `value`.
 
 ##### Raises:
 

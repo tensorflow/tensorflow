@@ -35,14 +35,14 @@ the implementation uses
 ##### Args:
 
 
-*  <b>`logits`</b>: An `Output` of type `float32` or `float64`.
-*  <b>`targets`</b>: An `Output` of the same type and shape as `logits`.
+*  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
+*  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`pos_weight`</b>: A coefficient to use on the positive examples.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of the same shape as `logits` with the componentwise
+  A `Tensor` of the same shape as `logits` with the componentwise
   weighted logistic losses.
 
 ##### Raises:

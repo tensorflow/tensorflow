@@ -12,7 +12,7 @@ what to emit for the output.
 For example, it can be used to implement the dynamic decoder of a seq2seq
 model.
 
-Instead of working with `Output` objects, most operations work with
+Instead of working with `Tensor` objects, most operations work with
 `TensorArray` objects directly.
 
 The operation of `raw_rnn`, in pseudo-code, is basically the following:
@@ -81,23 +81,23 @@ outputs = outputs_ta.pack()
     `(time, cell_output, cell_state, loop_state)`
     and returns the tuple
     `(finished, next_input, next_cell_state, emit_output, next_loop_state)`.
-    Here `time` is an int32 scalar `Output`, `cell_output` is a
-    `Output` or (possibly nested) tuple of tensors as determined by
-    `cell.output_size`, and `cell_state` is an `Output`
+    Here `time` is an int32 scalar `Tensor`, `cell_output` is a
+    `Tensor` or (possibly nested) tuple of tensors as determined by
+    `cell.output_size`, and `cell_state` is a `Tensor`
     or (possibly nested) tuple of tensors, as determined by the `loop_fn`
     on its first call (and should match `cell.state_size`).
-    The outputs are: `finished`, a boolean `Output` of
+    The outputs are: `finished`, a boolean `Tensor` of
     shape `[batch_size]`, `next_input`: the next input to feed to `cell`,
     `next_cell_state`: the next state to feed to `cell`,
     and `emit_output`: the output to store for this iteration.
 
-    Note that `emit_output` should be an `Output` or (possibly nested)
+    Note that `emit_output` should be a `Tensor` or (possibly nested)
     tuple of tensors with shapes and structure matching `cell.output_size`
     and `cell_output` above.  The parameter `cell_state` and output
     `next_cell_state` may be either a single or (possibly nested) tuple
     of tensors.  The parameter `loop_state` and
     output `next_loop_state` may be either a single or (possibly nested) tuple
-    of `Output` and `TensorArray` objects.  This last parameter
+    of `Tensor` and `TensorArray` objects.  This last parameter
     may be ignored by `loop_fn` and the return value may be `None`.  If it
     is not `None`, then the `loop_state` will be propagated through the RNN
     loop, for use purely by `loop_fn` to keep track of its own state.
@@ -110,8 +110,8 @@ outputs = outputs_ta.pack()
     may be the output of `cell.zero_state()`.  It should be a
     (possibly nested) tuple structure of tensors.
     If `cell.state_size` is an integer, this must be
-    an `Output` of appropriate type and shape `[batch_size, cell.state_size]`.
-    If `cell.state_size` is a `TensorShape`, this must be an `Output` of
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
+    If `cell.state_size` is a `TensorShape`, this must be a `Tensor` of
     appropriate type and shape `[batch_size] + cell.state_size`.
     If `cell.state_size` is a (possibly nested) tuple of ints or
     `TensorShape`, this will be a tuple having the corresponding shapes.

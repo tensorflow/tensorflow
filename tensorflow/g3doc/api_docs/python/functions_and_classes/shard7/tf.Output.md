@@ -217,13 +217,13 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
     `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` the same size and type as `x` with absolute
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
     values.
 
 
@@ -344,8 +344,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -383,7 +383,7 @@ Returns the truth value of (x >= y) element-wise.
 
 #### `tf.Output.__getitem__(tensor, slice_spec, var=None)` {#Output.__getitem__}
 
-Overload for Output.__getitem__.
+Overload for Tensor.__getitem__.
 
 This operation extracts the specified region from the tensor.
 The notation is similar to NumPy with the restriction that
@@ -423,7 +423,7 @@ print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
 
 
 *  <b>`tensor`</b>: An ops.Tensor object.
-*  <b>`slice_spec`</b>: The arguments to Output.__getitem__.
+*  <b>`slice_spec`</b>: The arguments to Tensor.__getitem__.
 *  <b>`var`</b>: In the case of variable slice assignment, the Variable
     object to slice (i.e. tensor is the read-only view of this
     variable).
@@ -662,15 +662,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -764,8 +764,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -845,15 +845,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -897,8 +897,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -966,8 +966,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

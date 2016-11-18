@@ -15,12 +15,12 @@ size(t) ==> 12
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` or `SparseTensor`.
+*  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`out_type`</b>: (Optional) The specified output type of the operation
     (`int32` or `int64`). Defaults to tf.int32.
 
 ##### Returns:
 
-  An `Output` of type `out_type`. Defaults to tf.int32.
+  A `Tensor` of type `out_type`. Defaults to tf.int32.
 

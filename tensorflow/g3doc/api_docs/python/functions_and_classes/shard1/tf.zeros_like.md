@@ -16,8 +16,8 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
 ##### Args:
 
 
-*  <b>`tensor`</b>: An `Output`.
-*  <b>`dtype`</b>: A type for the returned `Output`. Must be `float32`, `float64`,
+*  <b>`tensor`</b>: A `Tensor`.
+*  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
   `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
@@ -26,5 +26,5 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
 
 ##### Returns:
 
-  An `Output` with all elements set to zero.
+  A `Tensor` with all elements set to zero.
 

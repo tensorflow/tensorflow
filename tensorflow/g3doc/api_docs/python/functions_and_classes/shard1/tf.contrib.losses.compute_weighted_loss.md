@@ -12,7 +12,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` that returns the weighted loss.
+    A scalar `Tensor` that returns the weighted loss.
 
   Raises:
     ValueError: If `weights` is `None` or the shape is not compatible with

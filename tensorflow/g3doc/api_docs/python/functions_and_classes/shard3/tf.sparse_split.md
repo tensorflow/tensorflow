@@ -24,7 +24,7 @@ Graphically the output tensors are:
 ##### Args:
 
 
-*  <b>`split_dim`</b>: A 0-D `int32` `Output`. The dimension along which to split.
+*  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
 *  <b>`num_split`</b>: A Python integer. The number of ways to split.
 *  <b>`sp_input`</b>: The `SparseTensor` to split.
 *  <b>`name`</b>: A name for the operation (optional).

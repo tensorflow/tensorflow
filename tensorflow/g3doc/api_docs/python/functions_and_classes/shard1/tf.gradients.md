@@ -2,13 +2,13 @@
 
 Constructs symbolic partial derivatives of sum of `ys` w.r.t. x in `xs`.
 
-`ys` and `xs` are each an `Output` or a list of tensors.  `grad_ys`
-is a list of `Output`, holding the gradients received by the
+`ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
+is a list of `Tensor`, holding the gradients received by the
 `ys`. The list must be the same length as `ys`.
 
 `gradients()` adds ops to the graph to output the partial
 derivatives of `ys` with respect to `xs`.  It returns a list of
-`Output` of length `len(xs)` where each tensor is the `sum(dy/dx)`
+`Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
 for y in `ys`.
 
 `grad_ys` is a list of tensors of the same length as `ys` that holds
@@ -22,9 +22,9 @@ each y).
 ##### Args:
 
 
-*  <b>`ys`</b>: An `Output` or list of tensors to be differentiated.
-*  <b>`xs`</b>: An `Output` or list of tensors to be used for differentiation.
-*  <b>`grad_ys`</b>: Optional. An `Output` or list of tensors the same size as
+*  <b>`ys`</b>: A `Tensor` or list of tensors to be differentiated.
+*  <b>`xs`</b>: A `Tensor` or list of tensors to be used for differentiation.
+*  <b>`grad_ys`</b>: Optional. A `Tensor` or list of tensors the same size as
     `ys` and holding the gradients computed for each y in `ys`.
 *  <b>`name`</b>: Optional name to use for grouping all the gradient ops together.
     defaults to 'gradients'.

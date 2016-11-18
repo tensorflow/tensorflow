@@ -18,8 +18,8 @@ x = tf.with_dependencies([tf.assert_rank(x, 2)], x)
 ##### Args:
 
 
-*  <b>`x`</b>: Numeric `Output`.
-*  <b>`rank`</b>: Scalar integer `Output`.
+*  <b>`x`</b>: Numeric `Tensor`.
+*  <b>`rank`</b>: Scalar integer `Tensor`.
 *  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
     error message and first few entries of `x`.
 *  <b>`summarize`</b>: Print this many entries of each tensor.

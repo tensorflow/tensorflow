@@ -4,7 +4,7 @@ A `Bijector` implements a
 [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
 bijective, differentiable function. A `Bijector` is used by
 `TransformedDistribution` but can be generally used for transforming a
-`Distribution` generated `Output`.  A `Bijector` is characterized by three
+`Distribution` generated `Tensor`.  A `Bijector` is characterized by three
 operations:
 
 1. Forward Evaluation
@@ -96,11 +96,11 @@ Example transformations:
 Example of why a `Bijector` needs to understand sample, batch, event
 partitioning:
 
-- Consider the `Exp` `Bijector` applied to an `Output` which has sample,
-  batch, and event (S, B, E) shape semantics.  Suppose
-  the `Output`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
+- Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
+  and event (S, B, E) shape semantics.  Suppose
+  the `Tensor`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
 
-  For `Exp`, the shape of the `Output` returned by `forward` and `inverse` is
+  For `Exp`, the shape of the `Tensor` returned by `forward` and `inverse` is
   unchanged, i.e., `[4, 2, 3, 3]`. However the shape returned by
   `inverse_log_det_jacobian` is `[4, 2]` because the Jacobian is a reduction
   over the event dimensions.
@@ -228,7 +228,7 @@ See `Bijector` subclass docstring for more details and specific examples.
 
 #### `tf.contrib.distributions.bijector.Bijector.dtype` {#Bijector.dtype}
 
-dtype of `Output`s transformable by this distribution.
+dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
@@ -240,13 +240,13 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output`. The input to the "forward" evaluation.
+*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output`.
+  `Tensor`.
 
 ##### Raises:
 
@@ -260,19 +260,19 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 #### `tf.contrib.distributions.bijector.Bijector.forward_event_shape(input_shape, name='forward_event_shape')` {#Bijector.forward_event_shape}
 
-Shape of a single sample from a single batch as an `int32` 1D `Output`.
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 ##### Args:
 
 
-*  <b>`input_shape`</b>: `Output`, `int32` vector indicating event-portion shape
+*  <b>`input_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
     passed into `forward` function.
 *  <b>`name`</b>: name to give to the op
 
 ##### Returns:
 
 
-*  <b>`forward_event_shape`</b>: `Output`, `int32` vector indicating event-portion
+*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
     shape after applying `forward`.
 
 
@@ -285,13 +285,13 @@ Returns both the forward_log_det_jacobian.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output`. The input to the "forward" Jacobian evaluation.
+*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output`.
+  `Tensor`.
 
 ##### Raises:
 
@@ -353,13 +353,13 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 ##### Args:
 
 
-*  <b>`y`</b>: `Output`. The input to the "inverse" evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output`.
+  `Tensor`.
 
 ##### Raises:
 
@@ -384,13 +384,13 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 ##### Args:
 
 
-*  <b>`y`</b>: `Output`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output`.
+  `Tensor`.
 
 ##### Raises:
 
@@ -405,19 +405,19 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 #### `tf.contrib.distributions.bijector.Bijector.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Bijector.inverse_event_shape}
 
-Shape of a single sample from a single batch as an `int32` 1D `Output`.
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 ##### Args:
 
 
-*  <b>`output_shape`</b>: `Output`, `int32` vector indicating event-portion shape
+*  <b>`output_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
     passed into `inverse` function.
 *  <b>`name`</b>: name to give to the op
 
 ##### Returns:
 
 
-*  <b>`inverse_event_shape`</b>: `Output`, `int32` vector indicating event-portion
+*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
     shape after applying `inverse`.
 
 
@@ -434,13 +434,13 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 ##### Args:
 
 
-*  <b>`y`</b>: `Output`. The input to the "inverse" Jacobian evaluation.
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output`.
+  `Tensor`.
 
 ##### Raises:
 

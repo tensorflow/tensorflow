@@ -38,7 +38,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 
 ##### Returns:
 
-  An `Output` representing the results of the pooling operation.
+  A `Tensor` representing the results of the pooling operation.
 
 ##### Raises:
 
@@ -114,7 +114,7 @@ can have speed penalty, specially in distributed settings.
 
 ##### Returns:
 
-  An `Output` representing the output of the operation.
+  A `Tensor` representing the output of the operation.
 
 ##### Raises:
 
@@ -135,7 +135,7 @@ It is required that 1 <= N <= 3.
 
 `convolution` creates a variable called `weights`, representing the
 convolutional kernel, that is convolved (actually cross-correlated) with the
-`inputs` to produce an `Output` of activations. If a `normalizer_fn` is
+`inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
 provided (such as `batch_norm`), it is then applied. Otherwise, if
 `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
 variable would be created and added the activations. Finally, if
@@ -252,7 +252,7 @@ operations such as image gradients:
 
 ##### Returns:
 
-  An `Output` representing the output of the operation.
+  A `Tensor` representing the output of the operation.
 
 
 - - -
@@ -268,7 +268,7 @@ second variable called 'biases' is added to the result of the operation.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A 4-D `Output` of type `float` and shape
+*  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
     `[batch, height, width, in_channels]` for `NHWC` data format or
     `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`num_outputs`</b>: integer, the number of output filters.
@@ -343,7 +343,7 @@ Adds a fully connected layer.
 
 `fully_connected` creates a variable called `weights`, representing a fully
 connected weight matrix, which is multiplied by the `inputs` to produce a
-`Output` of hidden units. If a `normalizer_fn` is provided (such as
+`Tensor` of hidden units. If a `normalizer_fn` is provided (such as
 `batch_norm`), it is then applied. Otherwise, if `normalizer_fn` is
 None and a `biases_initializer` is provided then a `biases` variable would be
 created and added the hidden units. Finally, if `activation_fn` is not `None`,
@@ -421,7 +421,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 
 ##### Returns:
 
-  An `Output` representing the output of the operation.
+  A `Tensor` representing the output of the operation.
 
 ##### Raises:
 
@@ -456,7 +456,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 
 ##### Returns:
 
-  An `Output` representing the results of the pooling operation.
+  A `Tensor` representing the results of the pooling operation.
 
 ##### Raises:
 
@@ -509,7 +509,7 @@ layers are called with `scope='stack'`.
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` suitable for layer.
+*  <b>`inputs`</b>: A `Tensor` suitable for layer.
 *  <b>`repetitions`</b>: Int, number of repetitions.
 *  <b>`layer`</b>: A layer with arguments `(inputs, *args, **kwargs)`
 *  <b>`*args`</b>: Extra args for the layer.
@@ -627,7 +627,7 @@ to produce the end result.
 
 ##### Returns:
 
-  An `Output` representing the output of the operation.
+  A `Tensor` representing the output of the operation.
 
 
 - - -
@@ -661,7 +661,7 @@ This is the opposite of unstack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`values`</b>: A list of `Output` objects with the same shape and type.
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
 *  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
     Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
@@ -669,7 +669,7 @@ This is the opposite of unstack.  The numpy equivalent is
 ##### Returns:
 
 
-*  <b>`output`</b>: A stacked `Output` with the same type as `values`.
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
 
 ##### Raises:
 
@@ -688,14 +688,14 @@ Note that the rank of `input` must be known.
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of arbitrary size.
+*  <b>`inputs`</b>: A `Tensor` of arbitrary size.
 *  <b>`dim`</b>: The dimension along which the input is normalized.
 *  <b>`epsilon`</b>: A small value to add to the inputs to avoid dividing by zero.
 *  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
-  The normalized `Output`.
+  The normalized `Tensor`.
 
 ##### Raises:
 
@@ -727,9 +727,9 @@ subtraction, it usually shouldn't hurt much either.
 ##### Args:
 
 
-*  <b>`regularizer`</b>: A function that takes a single `Output` argument and returns
-    a scalar `Output` output.
-*  <b>`weights_list`</b>: List of weights `Output`s or `Variables` to apply
+*  <b>`regularizer`</b>: A function that takes a single `Tensor` argument and returns
+    a scalar `Tensor` output.
+*  <b>`weights_list`</b>: List of weights `Tensors` or `Variables` to apply
     `regularizer` over. Defaults to the `GraphKeys.WEIGHTS` collection if
     `None`.
 
@@ -755,7 +755,7 @@ L1 regularization encourages sparsity.
 ##### Args:
 
 
-*  <b>`scale`</b>: A scalar multiplier `Output`. 0.0 disables the regularizer.
+*  <b>`scale`</b>: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
 *  <b>`scope`</b>: An optional scope name.
 
 ##### Returns:
@@ -779,7 +779,7 @@ Small values of L2 can help prevent overfitting the training data.
 ##### Args:
 
 
-*  <b>`scale`</b>: A scalar multiplier `Output`. 0.0 disables the regularizer.
+*  <b>`scale`</b>: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
 *  <b>`scope`</b>: An optional scope name.
 
 ##### Returns:
@@ -952,7 +952,7 @@ Various ways of passing optimizers, include:
 
 - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
     for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
-- function, takes learning rate `Output` as argument and must return
+- function, takes learning rate `Tensor` as argument and must return
     `Optimizer` instance. E.g. `optimize_loss(...,
     optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
   Alternatively, if `learning_rate` is `None`, the function takes no
@@ -967,13 +967,13 @@ Various ways of passing optimizers, include:
 ##### Args:
 
 
-*  <b>`loss`</b>: Scalar `Output`.
-*  <b>`global_step`</b>: Scalar int `Output`, step counter for each update. If not
+*  <b>`loss`</b>: Scalar `Tensor`.
+*  <b>`global_step`</b>: Scalar int `Tensor`, step counter for each update. If not
                supplied, it will be fetched from the default graph (see
                `tf.contrib.framework.get_global_step` for details). If it's
                not been created, no step will be incremented with each weight
                update. `learning_rate_decay_fn` requires `global_step`.
-*  <b>`learning_rate`</b>: float or `Output`, magnitude of update per each training
+*  <b>`learning_rate`</b>: float or `Tensor`, magnitude of update per each training
                  step. Can be `None`.
 *  <b>`optimizer`</b>: string, class or optimizer instance, used as trainer.
              string should be name of optimizer, like 'SGD',
@@ -994,7 +994,7 @@ Various ways of passing optimizers, include:
     This callable takes a `list` of `(gradients, variables)` `tuple`s and
     returns the same thing with the gradients modified.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
-                          `Output`s, returns `Output`.
+                          `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
                           For example: `tf.train.exponential_decay`.
@@ -1204,7 +1204,7 @@ Creates a _CrossedColumn for performing feature crosses.
 *  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
     to restore the column weights. Required if `tensor_name_in_ckpt` is not
     None.
-*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Output` in the provided
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
 *  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
@@ -1252,7 +1252,7 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 *  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
     to restore the column weights. Required if `tensor_name_in_ckpt` is not
     None.
-*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Output` in the provided
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
 
@@ -1486,7 +1486,7 @@ my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
 
 ##### Returns:
 
-  A `dict` mapping FeatureColumn to `Output` and `SparseTensor` values.
+  A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
 
 
 - - -
@@ -1515,9 +1515,9 @@ Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
   A tuple consisting of:
 
 *  <b>`context_features`</b>: a dict mapping `FeatureColumns` from
-    `context_feature_columns` to their parsed `Output`s/`SparseTensor`s.
+    `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
 *  <b>`sequence_features`</b>: a dict mapping `FeatureColumns` from
-    `sequence_feature_columns` to their parsed `Output`s/`SparseTensor`s.
+    `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
 
 
 - - -
@@ -1592,7 +1592,7 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
 *  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
     to restore the column weights. Required if `tensor_name_in_ckpt` is not
     None.
-*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Output` in the provided
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
 

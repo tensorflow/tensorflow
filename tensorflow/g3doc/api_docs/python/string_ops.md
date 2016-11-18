@@ -2,7 +2,7 @@
 
 # Strings
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -211,8 +211,8 @@ st.values = ['hello', 'world', 'a', 'b', 'c']
 ##### Args:
 
 
-*  <b>`source`</b>: `1-D` string `Output`, the strings to split.
-*  <b>`delimiter`</b>: `0-D` string `Output`, the delimiter character, the string should
+*  <b>`source`</b>: `1-D` string `Tensor`, the strings to split.
+*  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
     be length 0 or 1.
 
 ##### Returns:

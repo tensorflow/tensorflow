@@ -230,7 +230,7 @@ available, or `session` must be specified explicitly.
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
     description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this sparse

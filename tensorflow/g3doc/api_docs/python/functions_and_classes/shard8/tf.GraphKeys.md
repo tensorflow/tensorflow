@@ -25,7 +25,7 @@ The following standard keys are defined:
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
   for more details.
-* `SUMMARIES`: the summary `Output` objects that have been created in the
+* `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
   [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
   for more details.

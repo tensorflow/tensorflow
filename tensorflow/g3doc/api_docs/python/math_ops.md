@@ -2,7 +2,7 @@
 
 # Math
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -82,7 +82,7 @@ Returns x * y element-wise.
 
 ### `tf.scalar_mul(scalar, x)` {#scalar_mul}
 
-Multiplies a scalar times an `Output` or `IndexedSlices` object.
+Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
 Intended for use in gradient code which might deal with `IndexedSlices`
 objects, which are easy to multiply by a scalar but more expensive to
@@ -91,12 +91,12 @@ multiply with arbitrary tensors.
 ##### Args:
 
 
-*  <b>`scalar`</b>: A 0-D scalar `Output`. Must have known shape.
-*  <b>`x`</b>: An `Output` or `IndexedSlices` to be scaled.
+*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
+*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
 
 ##### Returns:
 
-  `scalar * x` of the same type (`Output` or `IndexedSlices`) as `x`.
+  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
 
 ##### Raises:
 
@@ -152,8 +152,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -187,8 +187,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -380,12 +380,12 @@ Adds all input tensors element-wise.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of `Output` objects, each with same shape and type.
+*  <b>`inputs`</b>: A list of `Tensor` objects, each with same shape and type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of same shape and type as the elements of `inputs`.
+  A `Tensor` of same shape and type as the elements of `inputs`.
 
 ##### Raises:
 
@@ -412,13 +412,13 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
     `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` the same size and type as `x` with absolute
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
     values.
 
 
@@ -454,13 +454,13 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`. Must be one of the following types:
-    `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -493,13 +493,13 @@ I.e., \(y = x * x = x^2\).
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`. Must be one of the following types:
-    `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`. Has the same type as `x`.
 
 
 - - -
@@ -520,12 +520,12 @@ tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32` or `float64`.
+*  <b>`x`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of same shape and type as `x`.
+  A `Tensor` of same shape and type as `x`.
 
 
 - - -
@@ -539,13 +539,13 @@ I.e., \(y = \sqrt{x} = x^{1/2}\).
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`. Must be one of the following types:
-    `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -585,15 +585,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -782,7 +782,7 @@ bivariate beta function.
 ##### Args:
 
 
-*  <b>`x`</b>: A rank `n + 1` `Output` with type `float`, or `double`.
+*  <b>`x`</b>: A rank `n + 1` `Tensor` with type `float`, or `double`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -908,13 +908,13 @@ Computes the Gauss error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of `SparseTensor`. Must be one of the following types:
-    `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -1294,13 +1294,13 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 ##### Args:
 
 
-*  <b>`a`</b>: An `Output`.
+*  <b>`a`</b>: A `Tensor`.
 *  <b>`perm`</b>: A permutation of the dimensions of `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A transposed `Output`.
+  A transposed `Tensor`.
 
 
 
@@ -1329,18 +1329,18 @@ tf.eye(2, num_columns=3)
 ##### Args:
 
 
-*  <b>`num_rows`</b>: Non-negative `int32` scalar `Output` giving the number of rows
+*  <b>`num_rows`</b>: Non-negative `int32` scalar `Tensor` giving the number of rows
     in each batch matrix.
-*  <b>`num_columns`</b>: Optional non-negative `int32` scalar `Output` giving the number
+*  <b>`num_columns`</b>: Optional non-negative `int32` scalar `Tensor` giving the number
     of columns in each batch matrix.  Defaults to `num_rows`.
-*  <b>`batch_shape`</b>: `int32` `Output`.  If provided, returned `Output` will have
+*  <b>`batch_shape`</b>: `int32` `Tensor`.  If provided, returned `Tensor` will have
     leading batch dimensions of this shape.
-*  <b>`dtype`</b>: The type of an element in the resulting `Output`
+*  <b>`dtype`</b>: The type of an element in the resulting `Tensor`
 *  <b>`name`</b>: A name for this `Op`.  Defaults to "eye".
 
 ##### Returns:
 
-  An `Output` of shape `batch_shape + [num_rows, num_columns]`
+  A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
 
 
 - - -
@@ -1557,12 +1557,12 @@ tf.matrix_transpose(x) ==> [[1 4]
 ##### Args:
 
 
-*  <b>`a`</b>: An `Output` with `rank >= 2`.
+*  <b>`a`</b>: A `Tensor` with `rank >= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A transposed batch matrix `Output`.
+  A transposed batch matrix `Tensor`.
 
 ##### Raises:
 
@@ -1629,9 +1629,9 @@ c = tf.matmul(a, b) => [[[ 94 100]
 ##### Args:
 
 
-*  <b>`a`</b>: `Output` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+*  <b>`a`</b>: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
     `complex128` and rank > 1.
-*  <b>`b`</b>: `Output` with same type as `a`.
+*  <b>`b`</b>: `Tensor` with same type and rank as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
 *  <b>`adjoint_a`</b>: If `True`, `a` is conjugated and transposed before
@@ -1644,7 +1644,7 @@ c = tf.matmul(a, b) => [[[ 94 100]
 
 ##### Returns:
 
-  An `Output` of the same type as `a` and `b` where each inner-most matrix is
+  A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
   the product of the corresponding matrices in `a` and `b, e.g. if all
   transpose or adjoint attributes are `False`:
 
@@ -1808,12 +1808,12 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
 ##### Args:
 
 
-*  <b>`chol`</b>: An `Output`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
+*  <b>`chol`</b>: A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
     Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
     For that reason, only the lower triangular parts (including the diagonal)
     of the last two dimensions of `chol` are used.  The strictly upper part is
     assumed to be zero and not accessed.
-*  <b>`rhs`</b>: An `Output`, same type as `chol`, shape is `[..., M, K]`.
+*  <b>`rhs`</b>: A `Tensor`, same type as `chol`, shape is `[..., M, K]`.
 *  <b>`name`</b>: A name to give this `Op`.  Defaults to `cholesky_solve`.
 
 ##### Returns:
@@ -1907,7 +1907,7 @@ Solves one or more linear least-squares problems.
 `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
 form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
 inner-most 2 dimensions form `M`-by-`K` matrices.   The computed output is a
-`Output` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
+`Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
 matrices that solve the equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
 sense.
@@ -1942,16 +1942,16 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
 ##### Args:
 
 
-*  <b>`matrix`</b>: `Output` of shape `[..., M, N]`.
-*  <b>`rhs`</b>: `Output` of shape `[..., M, K]`.
-*  <b>`l2_regularizer`</b>: 0-D `double` `Output`. Ignored if `fast=False`.
+*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`.
+*  <b>`rhs`</b>: `Tensor` of shape `[..., M, K]`.
+*  <b>`l2_regularizer`</b>: 0-D `double` `Tensor`. Ignored if `fast=False`.
 *  <b>`fast`</b>: bool. Defaults to `True`.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
 
-*  <b>`output`</b>: `Output` of shape `[..., N, K]` whose inner-most 2 dimensions form
+*  <b>`output`</b>: `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form
     `M`-by-`K` matrices that solve the equations
     `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
     squares sense.
@@ -1970,7 +1970,7 @@ in `tensor` such that
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Output` of shape `[..., N, N]`. Only the lower triangular part of
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
     each inner inner matrix is referenced.
 *  <b>`name`</b>: string, optional name of the operation.
 
@@ -1991,7 +1991,7 @@ Computes the eigenvalues of one or more self-adjoint matrices.
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Output` of shape `[..., N, N]`.
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
@@ -2023,7 +2023,7 @@ s = svd(a, compute_uv=False)
 ##### Args:
 
 
-*  <b>`matrix`</b>: `Output` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
     `N`.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
@@ -2075,13 +2075,13 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ##### Args:
 
 
-*  <b>`real`</b>: An `Output`. Must be one of the following types: `float32`, `float64`.
-*  <b>`imag`</b>: An `Output`. Must have the same type as `real`.
+*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`imag`</b>: A `Tensor`. Must have the same type as `real`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `complex64` or `complex128`.
+  A `Tensor` of type `complex64` or `complex128`.
 
 
 - - -
@@ -2105,12 +2105,12 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `complex64` or `complex128`.
+*  <b>`x`</b>: A `Tensor` of type `complex64` or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32` or `float64`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -2136,12 +2136,12 @@ If `x` is real, it is returned unchanged.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` to conjugate.  Must have numeric type.
+*  <b>`x`</b>: `Tensor` to conjugate.  Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` that is the conjugate of `x` (with the same type).
+  A `Tensor` that is the conjugate of `x` (with the same type).
 
 ##### Raises:
 
@@ -2171,13 +2171,13 @@ tf.imag(input) ==> [4.75, 5.75]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output`. Must be one of the following types:
-    `complex64`, `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+    `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32` or `float64`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -2204,12 +2204,12 @@ If `input` is already real, it is returned unchanged.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output`. Must have numeric type.
+*  <b>`input`</b>: A `Tensor`. Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32` or `float64`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 
@@ -2758,14 +2758,14 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of `Output` objects, each with same shape and type.
+*  <b>`inputs`</b>: A list of `Tensor` objects, each with same shape and type.
 *  <b>`shape`</b>: Shape of elements of `inputs`.
 *  <b>`tensor_dtype`</b>: The type of `inputs`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of same shape and type as the elements of `inputs`.
+  A `Tensor` of same shape and type as the elements of `inputs`.
 
 ##### Raises:
 
@@ -2831,12 +2831,12 @@ This function behaves like `numpy.einsum`, but does not support:
 
 *  <b>`equation`</b>: a `str` describing the contraction, in the same format as
     `numpy.einsum`.
-*  <b>`inputs`</b>: the inputs to contract (each one an `Output`), whose shapes should
+*  <b>`inputs`</b>: the inputs to contract (each one a `Tensor`), whose shapes should
     be consistent with `equation`.
 
 ##### Returns:
 
-  The contracted `Output`, with shape determined by `equation`.
+  The contracted `Tensor`, with shape determined by `equation`.
 
 ##### Raises:
 
@@ -2889,16 +2889,16 @@ tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`. Must be one of the following types: `float32`, `float64`,
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`,
      `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
      `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`axis`</b>: An `Output` of type `int32` (default: 0).
+*  <b>`axis`</b>: A `Tensor` of type `int32` (default: 0).
 *  <b>`reverse`</b>: A `bool` (default: False).
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2936,16 +2936,16 @@ tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`. Must be one of the following types: `float32`, `float64`,
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`,
      `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
      `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`axis`</b>: An `Output` of type `int32` (default: 0).
+*  <b>`axis`</b>: A `Tensor` of type `int32` (default: 0).
 *  <b>`reverse`</b>: A `bool` (default: False).
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 
@@ -3420,7 +3420,7 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 ##### Args:
 
 
-*  <b>`condition`</b>: An `Output` of type `bool`
+*  <b>`condition`</b>: A `Tensor` of type `bool`
 *  <b>`x`</b>: A Tensor which may have the same shape as `condition`. If `condition` is
     rank 1, `x` may have higher rank, but its first dimension must match the
     size of `condition`.
@@ -3429,8 +3429,8 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 
 ##### Returns:
 
-  An `Output` with the same type and shape as `x`, `y` if they are non-None.
-  An `Output` with shape `(num_true, dim_size(condition))`.
+  A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
+  A `Tensor` with shape `(num_true, dim_size(condition))`.
 
 ##### Raises:
 
@@ -3535,7 +3535,7 @@ output ==> [[inf, 1.0],  # (0,0): no truth, (0,1): no hypothesis
 
 ##### Returns:
 
-  A dense `Output` with rank `R - 1`, where R is the rank of the
+  A dense `Tensor` with rank `R - 1`, where R is the rank of the
   `SparseTensor` inputs `hypothesis` and `truth`.
 
 ##### Raises:
@@ -3612,13 +3612,13 @@ I.e., \(y = -x\).
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`. Must be one of the following types:
-    `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor`, respectively. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -

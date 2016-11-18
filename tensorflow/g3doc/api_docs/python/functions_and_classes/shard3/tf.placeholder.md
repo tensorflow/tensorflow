@@ -4,7 +4,7 @@ Inserts a placeholder for a tensor that will be always fed.
 
 **Important**: This tensor will produce an error if evaluated. Its value must
 be fed using the `feed_dict` optional argument to `Session.run()`,
-`Output.eval()`, or `Operation.run()`.
+`Tensor.eval()`, or `Operation.run()`.
 
 For example:
 
@@ -29,6 +29,6 @@ with tf.Session() as sess:
 
 ##### Returns:
 
-  An `Output` that may be used as a handle for feeding a value, but not
+  A `Tensor` that may be used as a handle for feeding a value, but not
   evaluated directly.
 

@@ -22,11 +22,11 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: 4-D `Output` with shape `[batch, in_height, in_width, in_channels]`.
-*  <b>`depthwise_filter`</b>: 4-D `Output` with shape
+*  <b>`input`</b>: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
+*  <b>`depthwise_filter`</b>: 4-D `Tensor` with shape
     `[filter_height, filter_width, in_channels, channel_multiplier]`.
     Contains `in_channels` convolutional filters of depth 1.
-*  <b>`pointwise_filter`</b>: 4-D `Output` with shape
+*  <b>`pointwise_filter`</b>: 4-D `Tensor` with shape
     `[1, 1, channel_multiplier * in_channels, out_channels]`.  Pointwise
     filter to mix channels after `depthwise_filter` has convolved spatially.
 *  <b>`strides`</b>: 1-D of size 4.  The strides for the depthwise convolution for
@@ -38,7 +38,7 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
 ##### Returns:
 
-  A 4-D `Output` of shape `[batch, out_height, out_width, out_channels]`.
+  A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
 ##### Raises:
 

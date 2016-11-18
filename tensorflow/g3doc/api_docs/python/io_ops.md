@@ -2,7 +2,7 @@
 
 # Inputs and Readers
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -21,7 +21,7 @@ Inserts a placeholder for a tensor that will be always fed.
 
 **Important**: This tensor will produce an error if evaluated. Its value must
 be fed using the `feed_dict` optional argument to `Session.run()`,
-`Output.eval()`, or `Operation.run()`.
+`Tensor.eval()`, or `Operation.run()`.
 
 For example:
 
@@ -46,7 +46,7 @@ with tf.Session() as sess:
 
 ##### Returns:
 
-  An `Output` that may be used as a handle for feeding a value, but not
+  A `Tensor` that may be used as a handle for feeding a value, but not
   evaluated directly.
 
 
@@ -82,7 +82,7 @@ Inserts a placeholder for a sparse tensor that will be always fed.
 
 **Important**: This sparse tensor will produce an error if evaluated.
 Its value must be fed using the `feed_dict` optional argument to
-`Session.run()`, `Output.eval()`, or `Operation.run()`.
+`Session.run()`, `Tensor.eval()`, or `Operation.run()`.
 
 For example:
 
@@ -1471,17 +1471,17 @@ protos given in `serialized`.
 protos. These may be useful for debugging purposes, but they have no effect on
 the output. If not `None`, `example_names` must be the same length as `serialized`.
 
-This op parses serialized examples into a dictionary mapping keys to `Output`
+This op parses serialized examples into a dictionary mapping keys to `Tensor`
 and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
 and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
-`SparseTensor`, and each `FixedLenFeature` is mapped to an `Output`.
+`SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
 
 Each `VarLenFeature` maps to a `SparseTensor` of the specified type
 representing a ragged matrix. Its indices are `[batch, index]` where `batch`
 is the batch entry the value is from in `serialized`, and `index` is the
 value's index in the list of values associated with that feature and example.
 
-Each `FixedLenFeature` `df` maps to an `Output` of the specified type (or
+Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
 `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
 
 `FixedLenFeature` entries with a `default_value` are optional. With no default
@@ -1605,7 +1605,7 @@ And the expected output is:
 
 ##### Returns:
 
-  A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+  A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
 ##### Raises:
 
@@ -1621,7 +1621,7 @@ Parses a single `Example` proto.
 
 Similar to `parse_example`, except:
 
-For dense tensors, the returned `Output` is identical to the output of
+For dense tensors, the returned `Tensor` is identical to the output of
 `parse_example`, except there is no batch dimension, the output shape is the
 same as the shape given in `dense_shape`.
 
@@ -1643,7 +1643,7 @@ single element vector).
 
 ##### Returns:
 
-  A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+  A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
 ##### Raises:
 
@@ -1846,7 +1846,7 @@ session is [closed](../../api_docs/python/client.md#Session.close),
 ##### Args:
 
 
-*  <b>`n`</b>: A scalar `Output` containing the number of elements to dequeue.
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1957,7 +1957,7 @@ Otherwise the behavior is identical to `dequeue_many`.
 ##### Args:
 
 
-*  <b>`n`</b>: A scalar `Output` containing the number of elements to dequeue.
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2785,7 +2785,7 @@ initialize local variables.
 ##### Args:
 
 
-*  <b>`tensor`</b>: Any `Output`.
+*  <b>`tensor`</b>: Any `Tensor`.
 *  <b>`num_epochs`</b>: A positive integer (optional).  If specified, limits the number
     of steps the output tensor may be evaluated.
 *  <b>`name`</b>: A name for the operations (optional).
@@ -2880,7 +2880,7 @@ Note: if `num_epochs` is not `None`, this function creates local counter
 
 ### `tf.train.slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#slice_input_producer}
 
-Produces a slice of each `Output` in `tensor_list`.
+Produces a slice of each `Tensor` in `tensor_list`.
 
 Implemented using a Queue -- a `QueueRunner` for the Queue
 is added to the current `Graph`'s `QUEUE_RUNNER` collection.
@@ -2888,7 +2888,7 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 ##### Args:
 
 
-*  <b>`tensor_list`</b>: A list of `Output` objects. Every `Output` in
+*  <b>`tensor_list`</b>: A list of `Tensor` objects. Every `Tensor` in
     `tensor_list` must have the same size in the first dimension.
 *  <b>`num_epochs`</b>: An integer (optional). If specified, `slice_input_producer`
     produces each slice `num_epochs` times before generating

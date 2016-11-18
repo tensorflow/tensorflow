@@ -88,20 +88,20 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Output` of `Example` strings, parses it into features that are then
+        `Tensor` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
         returns a tuple of (features, labels), where features is a dict of
-        string key to `Output` and labels is an `Output` that's currently not
+        string key to `Tensor` and labels is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Output` that the exported model will take as
+        the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Output` of `Example` strings, `dict` of `Output`s
-        for features and `Output` or `dict` of `Output`s for predictions.
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
       prediction_key: The key for a tensor in the `predictions` dict (output
         from the `model_fn`) to use as the `predictions` input to the
         `signature_fn`. Optional. If `None`, predictions will pass to
@@ -277,7 +277,7 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 *  <b>`Returns`</b>: 
       A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns an `Output` for `predictions` or a `dict`
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
       of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
       predictions if as_iterable is True.
 
@@ -329,9 +329,9 @@ Constructs an `Estimator` instance.
 
 *  <b>`model_fn`</b>: Model function. Follows the signature:
     * Args:
-      * `features` are single `Output` or `dict` of `Output`s
+      * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `labels` are `Output` or `dict` of `Output`s (for multi-head
+      * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
              models). If mode is `ModeKeys.INFER`, `labels=None` will be
              passed. If the `model_fn`'s signature does not accept
              `mode`, the `model_fn` must still be able to handle
@@ -347,11 +347,11 @@ Constructs an `Estimator` instance.
 
     Also supports a legacy signature which returns tuple of:
 
-      * predictions: `Output`, `SparseTensor` or dictionary of same.
-          Can also be any type that is convertible to an `Output` or
+      * predictions: `Tensor`, `SparseTensor` or dictionary of same.
+          Can also be any type that is convertible to a `Tensor` or
           `SparseTensor`, or dictionary of same.
-      * loss: Scalar loss `Output`.
-      * train_op: Training update `Output` or `Operation`.
+      * loss: Scalar loss `Tensor`.
+      * train_op: Training update `Tensor` or `Operation`.
 
     Supports next three signatures for the function:
 
@@ -429,20 +429,20 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Output` of `Example` strings, parses it into features that are then
+        `Tensor` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
         returns a tuple of (features, labels), where features is a dict of
-        string key to `Output` and labels is an `Output` that's currently not
+        string key to `Tensor` and labels is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Output` that the exported model will take as
+        the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Output` of `Example` strings, `dict` of `Output`s
-        for features and `Output` or `dict` of `Output`s for predictions.
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
       prediction_key: The key for a tensor in the `predictions` dict (output
         from the `model_fn`) to use as the `predictions` input to the
         `signature_fn`. Optional. If `None`, predictions will pass to
@@ -618,7 +618,7 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 *  <b>`Returns`</b>: 
       A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns an `Output` for `predictions` or a `dict`
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
       of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
       predictions if as_iterable is True.
 
@@ -678,8 +678,8 @@ Trains a model given training data `x` predictions and `y` labels.
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
 *  <b>`input_fn`</b>: Input function returning a tuple of:
-      features - Dictionary of string feature name to `Output` or `Output`.
-      labels - `Output` or dictionary of `Output` with labels.
+      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      labels - `Tensor` or dictionary of `Tensor` with labels.
     If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
     'steps' works incrementally. If you call two times fit(steps=10) then
@@ -740,8 +740,8 @@ for which this evaluation was performed.
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
 *  <b>`input_fn`</b>: Input function returning a tuple of:
-      features - Dictionary of string feature name to `Output` or `Output`.
-      labels - `Output` or dictionary of `Output` with labels.
+      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      labels - `Tensor` or dictionary of `Tensor` with labels.
     If input_fn is set, `x`, `y`, and `batch_size` must be `None`. If
     `steps` is not provided, this should raise `OutOfRangeError` or
     `StopIteration` after the desired amount of data (e.g., one epoch) has
@@ -831,7 +831,7 @@ Input of `fit` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:
 
 * if `weight_column_name` is not `None`, a feature with
-   `key=weight_column_name` whose value is an `Output`.
+   `key=weight_column_name` whose value is a `Tensor`.
 * for each `column` in `feature_columns`:
   - if `column` is a `SparseColumn`, a feature with `key=column.name`
     whose `value` is a `SparseTensor`.
@@ -839,7 +839,7 @@ Input of `fit` and `evaluate` should have following features,
     `key` the id column name, the second with `key` the weight column name.
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-    whose `value` is an `Output`.
+    whose `value` is a `Tensor`.
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None)` {#DNNClassifier.__init__}
@@ -956,7 +956,7 @@ Returns value of the variable given by name.
 
 ##### Returns:
 
-  `Output` object.
+  `Tensor` object.
 
 
 - - -
@@ -1078,7 +1078,7 @@ Input of `fit` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:
 
 * if `weight_column_name` is not `None`, a feature with
-  `key=weight_column_name` whose value is an `Output`.
+  `key=weight_column_name` whose value is a `Tensor`.
 * for each `column` in `feature_columns`:
   - if `column` is a `SparseColumn`, a feature with `key=column.name`
     whose `value` is a `SparseTensor`.
@@ -1086,7 +1086,7 @@ Input of `fit` and `evaluate` should have following features,
     `key` the id column name, the second with `key` the weight column name.
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-    whose `value` is an `Output`.
+    whose `value` is a `Tensor`.
 - - -
 
 #### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, label_dimension=1)` {#DNNRegressor.__init__}
@@ -1461,7 +1461,7 @@ Input of `fit` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:
 
 * if `weight_column_name` is not `None`, a feature with
-  `key=weight_column_name` whose value is an `Output`.
+  `key=weight_column_name` whose value is a `Tensor`.
 * for each `column` in `feature_columns`:
   - if `column` is a `SparseColumn`, a feature with `key=column.name`
     whose `value` is a `SparseTensor`.
@@ -1469,7 +1469,7 @@ Input of `fit` and `evaluate` should have following features,
     `key` the id column name, the second with `key` the weight column name.
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-    whose `value` is an `Output`.
+    whose `value` is a `Tensor`.
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=False, _joint_weight=False, config=None, feature_engineering_fn=None)` {#LinearClassifier.__init__}
@@ -1661,7 +1661,7 @@ Input of `fit` and `evaluate` should have following features,
   otherwise there will be a KeyError:
 
 * if `weight_column_name` is not `None`:
-  key=weight_column_name, value=an `Output`
+  key=weight_column_name, value=a `Tensor`
 * for column in `feature_columns`:
   - if isinstance(column, `SparseColumn`):
       key=column.name, value=a `SparseTensor`
@@ -1669,7 +1669,7 @@ Input of `fit` and `evaluate` should have following features,
       {key=id column name, value=a `SparseTensor`,
        key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
-      key=column.name, value=an `Output`
+      key=column.name, value=a `Tensor`
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=False, label_dimension=1, _joint_weights=False, config=None, feature_engineering_fn=None)` {#LinearRegressor.__init__}
@@ -1898,20 +1898,20 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Output` of `Example` strings, parses it into features that are then
+        `Tensor` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
         returns a tuple of (features, labels), where features is a dict of
-        string key to `Output` and labels is an `Output` that's currently not
+        string key to `Tensor` and labels is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Output` that the exported model will take as
+        the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Output` of `Example` strings, `dict` of `Output`s
-        for features and `Output` or `dict` of `Output`s for predictions.
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
       prediction_key: The key for a tensor in the `predictions` dict (output
         from the `model_fn`) to use as the `predictions` input to the
         `signature_fn`. Optional. If `None`, predictions will pass to
@@ -2104,7 +2104,7 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 *  <b>`Returns`</b>: 
       A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns an `Output` for `predictions` or a `dict`
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
       of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
       predictions if as_iterable is True.
 
@@ -2277,7 +2277,7 @@ variable.
 Evaluate a model loaded from a checkpoint.
 
 Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
-to restore variables from, and a `dict` of `Output`s to evaluate, run an eval
+to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
 loop for `max_steps` steps, or until an exception (generally, an
 end-of-input signal from a reader operation) is raised from running
 `eval_dict`.
@@ -2300,7 +2300,7 @@ and written to `output_dir`.
     returned. If `update_op` is None, then it's evaluated in every step. If
     `max_steps` is `None`, this should depend on a reader that will raise an
     end-of-input exception when the inputs are exhausted.
-*  <b>`update_op`</b>: An `Output` which is run in every step.
+*  <b>`update_op`</b>: A `Tensor` which is run in every step.
 *  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
     one is extracted from the graph using the same logic as in `Supervisor`.
     Used to place eval summaries on training curves.
@@ -2340,14 +2340,14 @@ init all variables.
 
 *  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
     restore.
-*  <b>`output_dict`</b>: A `dict` mapping string names to `Output` objects to run.
+*  <b>`output_dict`</b>: A `dict` mapping string names to `Tensor` objects to run.
     Tensors must all be from the same graph.
-*  <b>`feed_dict`</b>: `dict` object mapping `Output` objects to input values to feed.
+*  <b>`feed_dict`</b>: `dict` object mapping `Tensor` objects to input values to feed.
 
 ##### Returns:
 
   Dict of values read from `output_dict` tensors. Keys are the same as
-  `output_dict`, values are the results read from the corresponding `Output`
+  `output_dict`, values are the results read from the corresponding `Tensor`
   in `output_dict`.
 
 ##### Raises:
@@ -2416,7 +2416,7 @@ program is terminated with exit code 1.
     one is extracted from the graph using the same logic as in `Supervisor`.
 *  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
     default.
-*  <b>`init_feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`init_feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     This feed dictionary will be used when `init_op` is evaluated.
 *  <b>`init_fn`</b>: Optional callable passed to Supervisor to initialize the model.
 *  <b>`log_every_steps`</b>: Output logs regularly. The logs contain timing data and the
@@ -2601,7 +2601,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 *  <b>`file_pattern`</b>: List of files or pattern of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-*  <b>`batch_size`</b>: An int or scalar `Output` specifying the batch size to use.
+*  <b>`batch_size`</b>: An int or scalar `Tensor` specifying the batch size to use.
 *  <b>`reader`</b>: A function or class that returns an object with
     `read` method, (filename tensor) -> (example tensor).
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
@@ -2611,7 +2611,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
     `tf.global_variables_initializer()` as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
-*  <b>`read_batch_size`</b>: An int or scalar `Output` specifying the number of
+*  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
     records to read at once
 *  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
     representation. If `None`, no parsing is done.
@@ -2619,7 +2619,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Returns:
 
-  String `Output` of batched `Example` proto.
+  String `Tensor` of batched `Example` proto.
 
 ##### Raises:
 
@@ -2648,7 +2648,7 @@ All ops are added to the default graph.
 
 *  <b>`file_pattern`</b>: List of files or pattern of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-*  <b>`batch_size`</b>: An int or scalar `Output` specifying the batch size to use.
+*  <b>`batch_size`</b>: An int or scalar `Tensor` specifying the batch size to use.
 *  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
     `VarLenFeature` values.
 *  <b>`reader`</b>: A function or class that returns an object with
@@ -2668,7 +2668,7 @@ All ops are added to the default graph.
 
 ##### Returns:
 
-  A dict of `Output` or `SparseTensor` objects for each in `features`.
+  A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
 ##### Raises:
 
@@ -2689,7 +2689,7 @@ See more detailed description in `read_examples`.
 
 *  <b>`file_pattern`</b>: List of files or pattern of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-*  <b>`batch_size`</b>: An int or scalar `Output` specifying the batch size to use.
+*  <b>`batch_size`</b>: An int or scalar `Tensor` specifying the batch size to use.
 *  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
     `VarLenFeature` values.
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
@@ -2703,7 +2703,7 @@ See more detailed description in `read_examples`.
 
 ##### Returns:
 
-  A dict of `Output` or `SparseTensor` objects for each in `features`.
+  A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
 ##### Raises:
 

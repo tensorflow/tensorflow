@@ -25,7 +25,7 @@ target classes as noise classes for the same example.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`sampled_candidates`</b>: A tensor of type `int64` and shape `[num_sampled]`.
     The sampled_candidates output of CandidateSampler.
@@ -36,10 +36,10 @@ target classes as noise classes for the same example.
 ##### Returns:
 
 
-*  <b>`indices`</b>: An `Output` of type `int32` and shape `[num_accidental_hits]`.
+*  <b>`indices`</b>: A `Tensor` of type `int32` and shape `[num_accidental_hits]`.
     Values indicate rows in `true_classes`.
-*  <b>`ids`</b>: An `Output` of type `int64` and shape `[num_accidental_hits]`.
+*  <b>`ids`</b>: A `Tensor` of type `int64` and shape `[num_accidental_hits]`.
     Values indicate positions in `sampled_candidates`.
-*  <b>`weights`</b>: An `Output` of type `float` and shape `[num_accidental_hits]`.
+*  <b>`weights`</b>: A `Tensor` of type `float` and shape `[num_accidental_hits]`.
     Each value is `-FLOAT_MAX`.
 

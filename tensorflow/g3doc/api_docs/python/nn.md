@@ -2,7 +2,7 @@
 
 # Neural Network
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -44,13 +44,13 @@ Computes Rectified Linear 6: `min(max(features, 0), 6)`.
 ##### Args:
 
 
-*  <b>`features`</b>: An `Output` with type `float`, `double`, `int32`, `int64`,
-    `uint8`, `int16`, or `int8`.
+*  <b>`features`</b>: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+    `int16`, or `int8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with the same type as `features`.
+  A `Tensor` with the same type as `features`.
 
 
 - - -
@@ -67,13 +67,13 @@ Source: https://arxiv.org/abs/1603.05201
 ##### Args:
 
 
-*  <b>`features`</b>: An `Output` with type `float`, `double`, `int32`, `int64`,
-    `uint8`, `int16`, or `int8`.
+*  <b>`features`</b>: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+    `int16`, or `int8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with the same type as `features`.
+  A `Tensor` with the same type as `features`.
 
 
 - - -
@@ -152,9 +152,9 @@ kept independently and each row and column will be kept or not kept together.
 
 
 *  <b>`x`</b>: A tensor.
-*  <b>`keep_prob`</b>: A scalar `Output` with the same type as x. The probability
+*  <b>`keep_prob`</b>: A scalar `Tensor` with the same type as x. The probability
     that each element is kept.
-*  <b>`noise_shape`</b>: A 1-D `Output` of type `int32`, representing the
+*  <b>`noise_shape`</b>: A 1-D `Tensor` of type `int32`, representing the
     shape for randomly generated keep/drop flags.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
@@ -185,9 +185,9 @@ case where both types are quantized.
 ##### Args:
 
 
-*  <b>`value`</b>: An `Output` with type `float`, `double`, `int64`, `int32`, `uint8`,
+*  <b>`value`</b>: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
     `int16`, `int8`, `complex64`, or `complex128`.
-*  <b>`bias`</b>: A 1-D `Output` with size matching the last dimension of `value`.
+*  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
 *  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
@@ -195,7 +195,7 @@ case where both types are quantized.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 
 
 - - -
@@ -374,12 +374,12 @@ It is required that 1 <= N <= 3.
 ##### Args:
 
 
-*  <b>`input`</b>: An N-D `Output` of type `T`, of shape
+*  <b>`input`</b>: An N-D `Tensor` of type `T`, of shape
     `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
     not start with "NC" (default), or
     `[batch_size, in_channels] + input_spatial_shape` if data_format starts
     with "NC".
-*  <b>`filter`</b>: An N-D `Output` with the same type as `input` and shape
+*  <b>`filter`</b>: An N-D `Tensor` with the same type as `input` and shape
     `spatial_filter_shape + [in_channels, out_channels]`.
 *  <b>`padding`</b>: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
 *  <b>`strides`</b>: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
@@ -403,7 +403,7 @@ It is required that 1 <= N <= 3.
 
 ##### Returns:
 
-  An `Output` with the same type as `input` of shape
+  A `Tensor` with the same type as `input` of shape
 
       `[batch_size] + output_spatial_shape + [out_channels]`
 
@@ -520,7 +520,7 @@ same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
 ##### Returns:
 
-  A 4-D `Output` of shape
+  A 4-D `Tensor` of shape
   `[batch, out_height, out_width, in_channels * channel_multiplier].`
 
 
@@ -550,11 +550,11 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: 4-D `Output` with shape `[batch, in_height, in_width, in_channels]`.
-*  <b>`depthwise_filter`</b>: 4-D `Output` with shape
+*  <b>`input`</b>: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
+*  <b>`depthwise_filter`</b>: 4-D `Tensor` with shape
     `[filter_height, filter_width, in_channels, channel_multiplier]`.
     Contains `in_channels` convolutional filters of depth 1.
-*  <b>`pointwise_filter`</b>: 4-D `Output` with shape
+*  <b>`pointwise_filter`</b>: 4-D `Tensor` with shape
     `[1, 1, channel_multiplier * in_channels, out_channels]`.  Pointwise
     filter to mix channels after `depthwise_filter` has convolved spatially.
 *  <b>`strides`</b>: 1-D of size 4.  The strides for the depthwise convolution for
@@ -566,7 +566,7 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
 ##### Returns:
 
-  A 4-D `Output` of shape `[batch, out_height, out_width, out_channels]`.
+  A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
 ##### Raises:
 
@@ -664,9 +664,9 @@ inputs are identical.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` of type `float`. It needs to be in the default "NHWC"
+*  <b>`value`</b>: A 4-D `Tensor` of type `float`. It needs to be in the default "NHWC"
     format. Its shape is `[batch, in_height, in_width, in_channels]`.
-*  <b>`filters`</b>: A 4-D `Output` with the same type as `value` and shape
+*  <b>`filters`</b>: A 4-D `Tensor` with the same type as `value` and shape
     `[filter_height, filter_width, in_channels, out_channels]`. `filters`'
     `in_channels` dimension must match that of `value`. Atrous convolution is
     equivalent to standard convolution with upsampled filters with effective
@@ -684,7 +684,7 @@ inputs are identical.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 
 ##### Raises:
 
@@ -707,13 +707,13 @@ deconvolution.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` of type `float` and shape
+*  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
     `[batch, height, width, in_channels]` for `NHWC` data format or
     `[batch, in_channels, height, width]` for `NCHW` data format.
-*  <b>`filter`</b>: A 4-D `Output` with the same type as `value` and shape
+*  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
     `[height, width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
-*  <b>`output_shape`</b>: A 1-D `Output` representing the output shape of the
+*  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
     deconvolution op.
 *  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
     dimension of the input tensor.
@@ -724,7 +724,7 @@ deconvolution.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 
 ##### Raises:
 
@@ -764,8 +764,8 @@ returned to the caller.
 ##### Args:
 
 
-*  <b>`value`</b>: A 3D `Output`.  Must be of type `float32` or `float64`.
-*  <b>`filters`</b>: A 3D `Output`.  Must have the same type as `input`.
+*  <b>`value`</b>: A 3D `Tensor`.  Must be of type `float32` or `float64`.
+*  <b>`filters`</b>: A 3D `Tensor`.  Must have the same type as `input`.
 *  <b>`stride`</b>: An `integer`.  The number of entries by which
     the filter is moved right at each step.
 *  <b>`padding`</b>: 'SAME' or 'VALID'
@@ -778,7 +778,7 @@ returned to the caller.
 
 ##### Returns:
 
-  An `Output`.  Has the same type as input.
+  A `Tensor`.  Has the same type as input.
 
 ##### Raises:
 
@@ -832,12 +832,12 @@ deconvolution.
 ##### Args:
 
 
-*  <b>`value`</b>: A 5-D `Output` of type `float` and shape
+*  <b>`value`</b>: A 5-D `Tensor` of type `float` and shape
     `[batch, depth, height, width, in_channels]`.
-*  <b>`filter`</b>: A 5-D `Output` with the same type as `value` and shape
+*  <b>`filter`</b>: A 5-D `Tensor` with the same type as `value` and shape
     `[depth, height, width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
-*  <b>`output_shape`</b>: A 1-D `Output` representing the output shape of the
+*  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
     deconvolution op.
 *  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
     dimension of the input tensor.
@@ -847,7 +847,7 @@ deconvolution.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 
 ##### Raises:
 
@@ -884,7 +884,7 @@ window in `value`.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` of shape `[batch, height, width, channels]` and type
+*  <b>`value`</b>: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
     `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
 *  <b>`ksize`</b>: A list of ints that has length >= 4.
     The size of the window for each dimension of the input tensor.
@@ -898,8 +898,7 @@ window in `value`.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.  The average pooled output
-  tensor.
+  A `Tensor` with the same type as `value`.  The average pooled output tensor.
 
 
 - - -
@@ -911,7 +910,7 @@ Performs the max pooling on the input.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` with shape `[batch, height, width, channels]` and
+*  <b>`value`</b>: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
     type `tf.float32`.
 *  <b>`ksize`</b>: A list of ints that has length >= 4.  The size of the window for
     each dimension of the input tensor.
@@ -924,7 +923,7 @@ Performs the max pooling on the input.
 
 ##### Returns:
 
-  An `Output` with type `tf.float32`.  The max pooled output tensor.
+  A `Tensor` with type `tf.float32`.  The max pooled output tensor.
 
 
 - - -
@@ -1358,8 +1357,8 @@ the dilation of `-value` by the reflected `kernel`.
 ##### Args:
 
 
-*  <b>`value`</b>: An `Output`. 4-D with shape `[batch, in_height, in_width, depth]`.
-*  <b>`kernel`</b>: An `Output`. Must have the same type as `value`.
+*  <b>`value`</b>: A `Tensor`. 4-D with shape `[batch, in_height, in_width, depth]`.
+*  <b>`kernel`</b>: A `Tensor`. Must have the same type as `value`.
     3-D with shape `[kernel_height, kernel_width, depth]`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
     1-D of length 4. The stride of the sliding window for each dimension of
@@ -1374,7 +1373,7 @@ the dilation of `-value` by the reflected `kernel`.
 
 ##### Returns:
 
-  An `Output`. Has the same type as `value`.
+  A `Tensor`. Has the same type as `value`.
   4-D with shape `[batch, out_height, out_width, depth]`.
 
 ##### Raises:
@@ -1406,7 +1405,7 @@ dimension `dim`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`.
+*  <b>`x`</b>: A `Tensor`.
 *  <b>`dim`</b>: Dimension along which to normalize.  A scalar or a vector of
     integers.
 *  <b>`epsilon`</b>: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
@@ -1415,7 +1414,7 @@ dimension `dim`.
 
 ##### Returns:
 
-  An `Output` with the same shape as `x`.
+  A `Tensor` with the same shape as `x`.
 
 
 - - -
@@ -1468,9 +1467,9 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`.
+*  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
-*  <b>`shift`</b>: An `Output` containing the value by which to shift the data for
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift
     close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
@@ -1478,7 +1477,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 
 ##### Returns:
 
-  Four `Output` objects of the same type as `x`:
+  Four `Tensor` objects of the same type as `x`:
 
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
@@ -1495,18 +1494,18 @@ Calculate the mean and variance of based on the sufficient statistics.
 ##### Args:
 
 
-*  <b>`counts`</b>: An `Output` containing a the total count of the data (one value).
-*  <b>`mean_ss`</b>: An `Output` containing the mean sufficient statistics: the
-    (possibly shifted) sum of the elements to average over.
-*  <b>`variance_ss`</b>: An `Output` containing the variance sufficient statistics: the
+*  <b>`counts`</b>: A `Tensor` containing a the total count of the data (one value).
+*  <b>`mean_ss`</b>: A `Tensor` containing the mean sufficient statistics: the (possibly
+    shifted) sum of the elements to average over.
+*  <b>`variance_ss`</b>: A `Tensor` containing the variance sufficient statistics: the
     (possibly shifted) squared sum of the data to compute the variance over.
-*  <b>`shift`</b>: An `Output` containing the value by which the data is shifted for
+*  <b>`shift`</b>: A `Tensor` containing the value by which the data is shifted for
     numerical stability, or `None` if no shift was performed.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
 ##### Returns:
 
-  Two `Output` objects: `mean` and `variance`.
+  Two `Tensor` objects: `mean` and `variance`.
 
 
 - - -
@@ -1529,10 +1528,10 @@ When using these moments for batch normalization (see
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`.
+*  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints.  Axes along which to compute mean and
     variance.
-*  <b>`shift`</b>: An `Output` containing the value by which to shift the data for
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift
     close to the true mean provides the most numerically stable results.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
@@ -1540,7 +1539,7 @@ When using these moments for batch normalization (see
 
 ##### Returns:
 
-  Two `Output` objects: `mean` and `variance`.
+  Two `Tensor` objects: `mean` and `variance`.
 
 
 - - -
@@ -1624,15 +1623,15 @@ loss is
 ##### Args:
 
 
-*  <b>`log_input`</b>: An `Output` of type `float32` or `float64`.
-*  <b>`targets`</b>: An `Output` of the same type and shape as `log_input`.
+*  <b>`log_input`</b>: A `Tensor` of type `float32` or `float64`.
+*  <b>`targets`</b>: A `Tensor` of the same type and shape as `log_input`.
 *  <b>`compute_full_loss`</b>: whether to compute the full loss. If false, a constant
     term is dropped in favor of more efficient optimization.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of the same shape as `log_input` with the componentwise
+  A `Tensor` of the same shape as `log_input` with the componentwise
   logistic losses.
 
 ##### Raises:
@@ -1682,13 +1681,13 @@ equivalent formulation
 ##### Args:
 
 
-*  <b>`logits`</b>: An `Output` of type `float32` or `float64`.
-*  <b>`targets`</b>: An `Output` of the same type and shape as `logits`.
+*  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
+*  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of the same shape as `logits` with the componentwise
+  A `Tensor` of the same shape as `logits` with the componentwise
   logistic losses.
 
 ##### Raises:
@@ -1710,7 +1709,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A non-empty `Output`. Must be one of the following types: `half`,
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
     `float32`, `float64`.
 *  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
     indicates the last dimension.
@@ -1718,7 +1717,7 @@ For each batch `i` and class `j` we have
 
 ##### Returns:
 
-  An `Output`. Has the same type as `logits`. Same shape as `logits`.
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
 
 ##### Raises:
 
@@ -1740,7 +1739,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A non-empty `Output`. Must be one of the following types: `half`,
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
     `float32`, `float64`.
 *  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
     indicates the last dimension.
@@ -1748,7 +1747,7 @@ For each batch `i` and class `j` we have
 
 ##### Returns:
 
-  An `Output`. Has the same type as `logits`. Same shape as `logits`.
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
 
 ##### Raises:
 
@@ -1793,7 +1792,7 @@ and the same dtype (either `float16`, `float32`, or `float64`).
 
 ##### Returns:
 
-  A 1-D `Output` of length `batch_size` of the same type as `logits` with the
+  A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
   softmax cross entropy loss.
 
 
@@ -1826,7 +1825,7 @@ Args:
 
   logits: Unscaled log probabilities of rank `r` and shape
     `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
-  labels: `Output` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+  labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
     `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
     Other values will raise an exception when this op is run on CPU, and
     return `NaN` for corresponding corresponding loss and gradient rows
@@ -1835,7 +1834,7 @@ Args:
 
 ##### Returns:
 
-  An `Output` of the same shape as `labels` and of the same type as `logits`
+  A `Tensor` of the same shape as `labels` and of the same type as `logits`
   with the softmax cross entropy loss.
 
 ##### Raises:
@@ -1884,14 +1883,14 @@ the implementation uses
 ##### Args:
 
 
-*  <b>`logits`</b>: An `Output` of type `float32` or `float64`.
-*  <b>`targets`</b>: An `Output` of the same type and shape as `logits`.
+*  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
+*  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`pos_weight`</b>: A coefficient to use on the positive examples.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of the same shape as `logits` with the componentwise
+  A `Tensor` of the same shape as `logits` with the componentwise
   weighted logistic losses.
 
 ##### Raises:
@@ -1944,8 +1943,8 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     along dimension 0. Alternatively, a `PartitionedVariable`, created by
     partitioning along dimension 0.  Each element must be appropriately sized
     for the given `partition_strategy`.
-*  <b>`ids`</b>: An `Output` with type `int32` or `int64` containing the ids to be
-    looked up in `params`.
+*  <b>`ids`</b>: A `Tensor` with type `int32` or `int64` containing the ids to be looked
+    up in `params`.
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
     if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
     is `"mod"`.
@@ -1956,7 +1955,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 ##### Returns:
 
-  An `Output` with the same type as the tensors in `params`.
+  A `Tensor` with the same type as the tensors in `params`.
 
 ##### Raises:
 
@@ -2058,12 +2057,12 @@ Creates a recurrent neural network specified by RNNCell `cell`.
 This function is functionally identical to the function `rnn` above, but
 performs fully dynamic unrolling of `inputs`.
 
-Unlike `rnn`, the input `inputs` is not a Python list of `Output`s, one for
-each frame.  Instead, `inputs` may be a single `Output` where
+Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`, one for
+each frame.  Instead, `inputs` may be a single `Tensor` where
 the maximum time is either the first or second dimension (see the parameter
 `time_major`).  Alternatively, it may be a (possibly nested) tuple of
 Tensors, each of them having matching batch and time dimensions.
-The corresponding output is either a single `Output` having the same number
+The corresponding output is either a single `Tensor` having the same number
 of time steps and batch size, or a (possibly nested) tuple of such tensors,
 matching the nested structure of `cell.output_size`.
 
@@ -2077,11 +2076,11 @@ for correctness than performance, unlike in rnn().
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: The RNN inputs.
 
-    If `time_major == False` (default), this must be an `Output` of shape:
+    If `time_major == False` (default), this must be a `Tensor` of shape:
       `[batch_size, max_time, ...]`, or a nested tuple of such
       elements.
 
-    If `time_major == True`, this must be an `Output` of shape:
+    If `time_major == True`, this must be a `Tensor` of shape:
       `[max_time, batch_size, ...]`, or a nested tuple of such
       elements.
 
@@ -2092,13 +2091,13 @@ for correctness than performance, unlike in rnn().
     structure of these tuples, except for the time dimension (from which the
     time is taken).
 
-    The input to `cell` at each time step will be an `Output` or (possibly
+    The input to `cell` at each time step will be a `Tensor` or (possibly
     nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
 
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    an `Output` of appropriate type and shape `[batch_size, cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
@@ -2114,8 +2113,8 @@ for correctness than performance, unlike in rnn().
     which would typically not fit on a single GPU, with very minimal (or no)
     performance penalty.
 *  <b>`time_major`</b>: The shape format of the `inputs` and `outputs` Tensors.
-    If true, these `Output`s must be shaped `[max_time, batch_size, depth]`.
-    If false, these `Output`s must be shaped `[batch_size, max_time, depth]`.
+    If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+    If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
     Using `time_major = True` is a bit more efficient because it avoids
     transposes at the beginning and end of the RNN calculation.  However,
     most TensorFlow data is batch-major, so by default this function
@@ -2127,12 +2126,12 @@ for correctness than performance, unlike in rnn().
   A pair (outputs, state) where:
 
 
-*  <b>`outputs`</b>: The RNN output `Output`.
+*  <b>`outputs`</b>: The RNN output `Tensor`.
 
-      If time_major == False (default), this will be an `Output` shaped:
+      If time_major == False (default), this will be a `Tensor` shaped:
         `[batch_size, max_time, cell.output_size]`.
 
-      If time_major == True, this will be an `Output` shaped:
+      If time_major == True, this will be a `Tensor` shaped:
         `[max_time, batch_size, cell.output_size]`.
 
       Note, if `cell.output_size` is a (possibly nested) tuple of integers
@@ -2192,11 +2191,11 @@ The dynamic calculation performed is, at time `t` for batch row `b`,
 
 
 *  <b>`cell`</b>: An instance of RNNCell.
-*  <b>`inputs`</b>: A length T list of inputs, each an `Output` of shape
+*  <b>`inputs`</b>: A length T list of inputs, each a `Tensor` of shape
     `[batch_size, input_size]`, or a nested tuple of such elements.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    an `Output` of appropriate type and shape `[batch_size, cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
@@ -2232,7 +2231,7 @@ RNN that accepts a state saver for time-truncated RNN calculation.
 
 
 *  <b>`cell`</b>: An instance of `RNNCell`.
-*  <b>`inputs`</b>: A length T list of inputs, each an `Output` of shape
+*  <b>`inputs`</b>: A length T list of inputs, each a `Tensor` of shape
     `[batch_size, input_size]`.
 *  <b>`state_saver`</b>: A state saver object with methods `state` and `save_state`.
 *  <b>`state_name`</b>: Python string or tuple of strings.  The name to use with the
@@ -2305,8 +2304,8 @@ given.
     which would typically not fit on a single GPU, with very minimal (or no)
     performance penalty.
 *  <b>`time_major`</b>: The shape format of the `inputs` and `outputs` Tensors.
-    If true, these `Output`s must be shaped `[max_time, batch_size, depth]`.
-    If false, these `Output`s must be shaped `[batch_size, max_time, depth]`.
+    If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+    If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
     Using `time_major = True` is a bit more efficient because it avoids
     transposes at the beginning and end of the RNN calculation.  However,
     most TensorFlow data is batch-major, so by default this function
@@ -2320,18 +2319,18 @@ given.
   A tuple (outputs, output_states) where:
 
 *  <b>`outputs`</b>: A tuple (output_fw, output_bw) containing the forward and
-      the backward rnn output `Output`.
+      the backward rnn output `Tensor`.
       If time_major == False (default),
-        output_fw will be an `Output` shaped:
+        output_fw will be a `Tensor` shaped:
         `[batch_size, max_time, cell_fw.output_size]`
-        and output_bw will be an `Output` shaped:
+        and output_bw will be a `Tensor` shaped:
         `[batch_size, max_time, cell_bw.output_size]`.
       If time_major == True,
-        output_fw will be an `Output` shaped:
+        output_fw will be a `Tensor` shaped:
         `[max_time, batch_size, cell_fw.output_size]`
-        and output_bw will be an `Output` shaped:
+        and output_bw will be a `Tensor` shaped:
         `[max_time, batch_size, cell_bw.output_size]`.
-      It returns a tuple instead of a single concatenated `Output`, unlike
+      It returns a tuple instead of a single concatenated `Tensor`, unlike
       in the `bidirectional_rnn`. If the concatenated one is preferred,
       the forward and backward outputs can be concatenated as
       `tf.concat(2, outputs)`.
@@ -2410,7 +2409,7 @@ what to emit for the output.
 For example, it can be used to implement the dynamic decoder of a seq2seq
 model.
 
-Instead of working with `Output` objects, most operations work with
+Instead of working with `Tensor` objects, most operations work with
 `TensorArray` objects directly.
 
 The operation of `raw_rnn`, in pseudo-code, is basically the following:
@@ -2479,23 +2478,23 @@ outputs = outputs_ta.pack()
     `(time, cell_output, cell_state, loop_state)`
     and returns the tuple
     `(finished, next_input, next_cell_state, emit_output, next_loop_state)`.
-    Here `time` is an int32 scalar `Output`, `cell_output` is a
-    `Output` or (possibly nested) tuple of tensors as determined by
-    `cell.output_size`, and `cell_state` is an `Output`
+    Here `time` is an int32 scalar `Tensor`, `cell_output` is a
+    `Tensor` or (possibly nested) tuple of tensors as determined by
+    `cell.output_size`, and `cell_state` is a `Tensor`
     or (possibly nested) tuple of tensors, as determined by the `loop_fn`
     on its first call (and should match `cell.state_size`).
-    The outputs are: `finished`, a boolean `Output` of
+    The outputs are: `finished`, a boolean `Tensor` of
     shape `[batch_size]`, `next_input`: the next input to feed to `cell`,
     `next_cell_state`: the next state to feed to `cell`,
     and `emit_output`: the output to store for this iteration.
 
-    Note that `emit_output` should be an `Output` or (possibly nested)
+    Note that `emit_output` should be a `Tensor` or (possibly nested)
     tuple of tensors with shapes and structure matching `cell.output_size`
     and `cell_output` above.  The parameter `cell_state` and output
     `next_cell_state` may be either a single or (possibly nested) tuple
     of tensors.  The parameter `loop_state` and
     output `next_loop_state` may be either a single or (possibly nested) tuple
-    of `Output` and `TensorArray` objects.  This last parameter
+    of `Tensor` and `TensorArray` objects.  This last parameter
     may be ignored by `loop_fn` and the return value may be `None`.  If it
     is not `None`, then the `loop_state` will be propagated through the RNN
     loop, for use purely by `loop_fn` to keep track of its own state.
@@ -2508,8 +2507,8 @@ outputs = outputs_ta.pack()
     may be the output of `cell.zero_state()`.  It should be a
     (possibly nested) tuple structure of tensors.
     If `cell.state_size` is an integer, this must be
-    an `Output` of appropriate type and shape `[batch_size, cell.state_size]`.
-    If `cell.state_size` is a `TensorShape`, this must be an `Output` of
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
+    If `cell.state_size` is a `TensorShape`, this must be a `Tensor` of
     appropriate type and shape `[batch_size] + cell.state_size`.
     If `cell.state_size` is a (possibly nested) tuple of ints or
     `TensorShape`, this will be a tuple having the corresponding shapes.
@@ -2642,10 +2641,10 @@ Here is a table of the (roughly) expected first order behavior:
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Output`.
-    If time_major == False, this will be an `Output` shaped:
+*  <b>`inputs`</b>: 3-D `float` `Tensor`.
+    If time_major == False, this will be a `Tensor` shaped:
       `[batch_size x max_time x num_classes]`.
-    If time_major == True (default), this will be an `Output` shaped:
+    If time_major == True (default), this will be a `Tensor` shaped:
       `[max_time x batch_size x num_classes]`.
     The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
@@ -2659,19 +2658,16 @@ Here is a table of the (roughly) expected first order behavior:
     If True, repeated labels are collapsed prior to the CTC calculation.
 *  <b>`ctc_merge_repeated`</b>: Boolean.  Default: True.
 *  <b>`time_major`</b>: The shape format of the `inputs` Tensors.
-    If True, these `Output`s must be shaped
-    `[max_time, batch_size, num_classes]`.
-    If False, these `Output`s must be shaped
-    `[batch_size, max_time, num_classes]`.
-    Using `time_major = True` (default) is a bit more efficient because it
-    avoids transposes at the beginning of the ctc_loss calculation. However,
-    most TensorFlow data is batch-major, so by this function also accepts
-    inputs in batch-major form.
+    If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+    If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+    Using `time_major = True` (default) is a bit more efficient because it avoids
+    transposes at the beginning of the ctc_loss calculation.  However, most
+    TensorFlow data is batch-major, so by this function also accepts inputs
+    in batch-major form.
 
 ##### Returns:
 
-  A 1-D `float` `Output`, size `[batch]`, containing the negative log
-  probabilities.
+  A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
 
 ##### Raises:
 
@@ -2700,7 +2696,7 @@ is the blank label) becomes
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Output` sized
+*  <b>`inputs`</b>: 3-D `float` `Tensor` sized
     `[max_time x batch_size x num_classes]`.  The logits.
 *  <b>`sequence_length`</b>: 1-D `int32` vector containing sequence lengths,
     having size `[batch_size]`.
@@ -2743,7 +2739,7 @@ is `A B B B B`, the return value is:
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Output`, size
+*  <b>`inputs`</b>: 3-D `float` `Tensor`, size
     `[max_time x batch_size x num_classes]`.  The logits.
 *  <b>`sequence_length`</b>: 1-D `int32` vector containing sequence lengths,
     having size `[batch_size]`.
@@ -2793,8 +2789,8 @@ If two elements are equal, the lower-index element appears first.
 ##### Args:
 
 
-*  <b>`input`</b>: 1-D or higher `Output` with last dimension at least `k`.
-*  <b>`k`</b>: 0-D `int32` `Output`.  Number of top elements to look for along the last
+*  <b>`input`</b>: 1-D or higher `Tensor` with last dimension at least `k`.
+*  <b>`k`</b>: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
     dimension (along each row for matrices).
 *  <b>`sorted`</b>: If true the resulting `k` elements will be sorted by the values in
     descending order.
@@ -2889,13 +2885,13 @@ with an otherwise unused class.
 ##### Args:
 
 
-*  <b>`weights`</b>: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+*  <b>`weights`</b>: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-partitioned) class embeddings.
-*  <b>`biases`</b>: An `Output` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: An `Output` of shape `[batch_size, dim]`.  The forward
+*  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
       activations of the input network.
-*  <b>`labels`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.
@@ -2944,13 +2940,13 @@ Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
 ##### Args:
 
 
-*  <b>`weights`</b>: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+*  <b>`weights`</b>: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-sharded) class embeddings.
-*  <b>`biases`</b>: An `Output` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: An `Output` of shape `[batch_size, dim]`.  The forward
+*  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
       activations of the input network.
-*  <b>`labels`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.  Note that this format differs from
       the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
@@ -3007,7 +3003,7 @@ compute them approximately.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
@@ -3066,7 +3062,7 @@ compute them approximately.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
@@ -3122,7 +3118,7 @@ compute them approximately.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
@@ -3175,7 +3171,7 @@ compute them approximately.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
@@ -3255,7 +3251,7 @@ target classes as noise classes for the same example.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`sampled_candidates`</b>: A tensor of type `int64` and shape `[num_sampled]`.
     The sampled_candidates output of CandidateSampler.
@@ -3266,11 +3262,11 @@ target classes as noise classes for the same example.
 ##### Returns:
 
 
-*  <b>`indices`</b>: An `Output` of type `int32` and shape `[num_accidental_hits]`.
+*  <b>`indices`</b>: A `Tensor` of type `int32` and shape `[num_accidental_hits]`.
     Values indicate rows in `true_classes`.
-*  <b>`ids`</b>: An `Output` of type `int64` and shape `[num_accidental_hits]`.
+*  <b>`ids`</b>: A `Tensor` of type `int64` and shape `[num_accidental_hits]`.
     Values indicate positions in `sampled_candidates`.
-*  <b>`weights`</b>: An `Output` of type `float` and shape `[num_accidental_hits]`.
+*  <b>`weights`</b>: A `Tensor` of type `float` and shape `[num_accidental_hits]`.
     Each value is `-FLOAT_MAX`.
 
 
@@ -3409,12 +3405,12 @@ shapes:
 ##### Args:
 
 
-*  <b>`x`</b>: Input `Output` of arbitrary dimensionality.
-*  <b>`mean`</b>: A mean `Output`.
-*  <b>`variance`</b>: A variance `Output`.
-*  <b>`offset`</b>: An offset `Output`, often denoted \\(\beta\\) in equations, or
+*  <b>`x`</b>: Input `Tensor` of arbitrary dimensionality.
+*  <b>`mean`</b>: A mean `Tensor`.
+*  <b>`variance`</b>: A variance `Tensor`.
+*  <b>`offset`</b>: An offset `Tensor`, often denoted \\(\beta\\) in equations, or
     None. If present, will be added to the normalized tensor.
-*  <b>`scale`</b>: A scale `Output`, often denoted \\(\gamma\\) in equations, or
+*  <b>`scale`</b>: A scale `Tensor`, often denoted \\(\gamma\\) in equations, or
     `None`. If present, the scale is applied to the normalized tensor.
 *  <b>`variance_epsilon`</b>: A small float number to avoid dividing by 0.
 *  <b>`name`</b>: A name for this operation (optional).

@@ -5,7 +5,7 @@ Performs the max pooling on the input.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` with shape `[batch, height, width, channels]` and
+*  <b>`value`</b>: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
     type `tf.float32`.
 *  <b>`ksize`</b>: A list of ints that has length >= 4.  The size of the window for
     each dimension of the input tensor.
@@ -18,5 +18,5 @@ Performs the max pooling on the input.
 
 ##### Returns:
 
-  An `Output` with type `tf.float32`.  The max pooled output tensor.
+  A `Tensor` with type `tf.float32`.  The max pooled output tensor.
 

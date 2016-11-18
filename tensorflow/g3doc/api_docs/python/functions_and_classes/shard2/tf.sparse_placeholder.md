@@ -4,7 +4,7 @@ Inserts a placeholder for a sparse tensor that will be always fed.
 
 **Important**: This sparse tensor will produce an error if evaluated.
 Its value must be fed using the `feed_dict` optional argument to
-`Session.run()`, `Output.eval()`, or `Operation.run()`.
+`Session.run()`, `Tensor.eval()`, or `Operation.run()`.
 
 For example:
 

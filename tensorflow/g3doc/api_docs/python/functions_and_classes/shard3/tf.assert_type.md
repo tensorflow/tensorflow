@@ -1,11 +1,11 @@
 ### `tf.assert_type(tensor, tf_type, message=None, name=None)` {#assert_type}
 
-Statically asserts that the given `Output` is of the specified type.
+Statically asserts that the given `Tensor` is of the specified type.
 
 ##### Args:
 
 
-*  <b>`tensor`</b>: A tensorflow `Output`.
+*  <b>`tensor`</b>: A tensorflow `Tensor`.
 *  <b>`tf_type`</b>: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
     etc).
 *  <b>`message`</b>: A string to prefix to the default message.

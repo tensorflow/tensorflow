@@ -7,11 +7,11 @@ I.e., \(y = x * x = x^2\).
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`. Must be one of the following types:
-    `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`. Has the same type as `x`.
 

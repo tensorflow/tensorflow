@@ -18,7 +18,7 @@ x = tf.with_dependencies([tf.assert_integer(x)], x)
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` whose basetype is integer and is not quantized.
+*  <b>`x`</b>: `Tensor` whose basetype is integer and is not quantized.
 *  <b>`message`</b>: A string to prefix to the default message.
 *  <b>`name`</b>: A name for this operation (optional).  Defaults to "assert_integer".
 

@@ -2,7 +2,7 @@
 
 # Control Flow
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -52,7 +52,7 @@ See also `group` and `with_dependencies`.
 ##### Args:
 
 
-*  <b>`tensors`</b>: A list of `Output`s or `IndexedSlices`, some entries can be `None`.
+*  <b>`tensors`</b>: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
 *  <b>`name`</b>: (optional) A name to use as a `name_scope` for the operation.
 *  <b>`control_inputs`</b>: List of additional ops to finish before returning.
 
@@ -63,8 +63,8 @@ See also `group` and `with_dependencies`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `tensors` does not contain any `Output` or `IndexedSlices`.
-*  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or `Output`
+*  <b>`ValueError`</b>: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
+*  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or `Tensor`
     objects.
 
 
@@ -300,7 +300,7 @@ not specified), it is assumed that the initial shape of each tensor in
 `loop_vars` is the same in every iteration. The `shape_invariants` argument
 allows the caller to specify a less specific shape invariant for each loop
 variable, which is needed if the shape varies between iterations. The
-[`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape)
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
 function may also be used in the `body` function to indicate that
 the output loop variable has a particular shape. The shape invariant for
 SparseTensor and IndexedSlices are treated specially as follows:
@@ -336,7 +336,7 @@ sequences and large batches.
 *  <b>`cond`</b>: A callable that represents the termination condition of the loop.
 *  <b>`body`</b>: A callable that represents the loop body.
 *  <b>`loop_vars`</b>: A (possibly nested) tuple, namedtuple or list of numpy array,
-    `Output`, and `TensorArray` objects.
+    `Tensor`, and `TensorArray` objects.
 *  <b>`shape_invariants`</b>: The shape invariants for the loop variables.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
     It must be a positive integer.
@@ -687,7 +687,7 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 ##### Args:
 
 
-*  <b>`condition`</b>: An `Output` of type `bool`
+*  <b>`condition`</b>: A `Tensor` of type `bool`
 *  <b>`x`</b>: A Tensor which may have the same shape as `condition`. If `condition` is
     rank 1, `x` may have higher rank, but its first dimension must match the
     size of `condition`.
@@ -696,8 +696,8 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 
 ##### Returns:
 
-  An `Output` with the same type and shape as `x`, `y` if they are non-None.
-  An `Output` with shape `(num_true, dim_size(condition))`.
+  A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
+  A `Tensor` with shape `(num_true, dim_size(condition))`.
 
 ##### Raises:
 

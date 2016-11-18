@@ -1,7 +1,7 @@
-Represents the shape of an `Output`.
+Represents the shape of a `Tensor`.
 
 A `TensorShape` represents a possibly-partial shape specification for a
-`Output`. It may be one of the following:
+`Tensor`. It may be one of the following:
 
 * *Fully-known shape:* has a known number of dimensions and a known size
   for each dimension.
@@ -16,7 +16,7 @@ may be inferred if there is a registered shape function for
 C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
 details of shape functions and how to register them. Alternatively,
 the shape may be set explicitly using
-[`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape).
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
 - - -
 

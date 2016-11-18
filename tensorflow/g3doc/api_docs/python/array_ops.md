@@ -2,7 +2,7 @@
 
 # Tensor Transformations
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -44,12 +44,12 @@ Casts a tensor to type `float64`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x` with type `float64`.
+  A `Tensor` or `SparseTensor` with same shape as `x` with type `float64`.
 
 ##### Raises:
 
@@ -66,12 +66,12 @@ Casts a tensor to type `float32`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x` with type `float32`.
+  A `Tensor` or `SparseTensor` with same shape as `x` with type `float32`.
 
 ##### Raises:
 
@@ -88,12 +88,12 @@ Casts a tensor to type `bfloat16`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x` with type `bfloat16`.
+  A `Tensor` or `SparseTensor` with same shape as `x` with type `bfloat16`.
 
 ##### Raises:
 
@@ -110,12 +110,12 @@ Casts a tensor to type `int32`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x` with type `int32`.
+  A `Tensor` or `SparseTensor` with same shape as `x` with type `int32`.
 
 ##### Raises:
 
@@ -132,12 +132,12 @@ Casts a tensor to type `int64`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x` with type `int64`.
+  A `Tensor` or `SparseTensor` with same shape as `x` with type `int64`.
 
 ##### Raises:
 
@@ -151,7 +151,7 @@ Casts a tensor to type `int64`.
 
 Casts a tensor to a new type.
 
-The operation casts `x` (in case of `Output`) or `x.values`
+The operation casts `x` (in case of `Tensor`) or `x.values`
 (in case of `SparseTensor`) to `dtype`.
 
 For example:
@@ -164,13 +164,13 @@ tf.cast(a, tf.int32) ==> [1, 2]  # dtype=tf.int32
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`dtype`</b>: The destination type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x`.
+  A `Tensor` or `SparseTensor` with same shape as `x`.
 
 ##### Raises:
 
@@ -222,7 +222,7 @@ applies the appropriate clamping before the cast.
 ##### Args:
 
 
-*  <b>`value`</b>: An `Output`.
+*  <b>`value`</b>: A `Tensor`.
 *  <b>`dtype`</b>: The desired output `DType`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -255,14 +255,14 @@ shape(t) ==> [2, 2, 3]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` or `SparseTensor`.
+*  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`out_type`</b>: (Optional) The specified output type of the operation
     (`int32` or `int64`). Defaults to `tf.int32`.
 
 ##### Returns:
 
-  An `Output` of type `out_type`.
+  A `Tensor` of type `out_type`.
 
 
 - - -
@@ -304,14 +304,14 @@ size(t) ==> 12
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` or `SparseTensor`.
+*  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`out_type`</b>: (Optional) The specified output type of the operation
     (`int32` or `int64`). Defaults to tf.int32.
 
 ##### Returns:
 
-  An `Output` of type `out_type`. Defaults to tf.int32.
+  A `Tensor` of type `out_type`. Defaults to tf.int32.
 
 
 - - -
@@ -337,12 +337,12 @@ element of the tensor. Rank is also known as "order", "degree", or "ndims."
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` or `SparseTensor`.
+*  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `int32`.
+  A `Tensor` of type `int32`.
 
 @compatibility(numpy)
 Equivalent to np.ndim
@@ -453,7 +453,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output`. The `input` to squeeze.
+*  <b>`input`</b>: A `Tensor`. The `input` to squeeze.
 *  <b>`axis`</b>: An optional list of `ints`. Defaults to `[]`.
     If specified, only squeezes the dimensions listed. The dimension
     index starts at 0. It is an error to squeeze a dimension that is not 1.
@@ -462,7 +462,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
 ##### Returns:
 
-  An `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   Contains the same data as `input`, but has one or more dimensions of
   size 1 removed.
 
@@ -563,14 +563,14 @@ results in
 ##### Args:
 
 
-*  <b>`*args`</b>: `Output`s with rank 1
+*  <b>`*args`</b>: `Tensor`s with rank 1
 *  <b>`indexing`</b>: Either 'xy' or 'ij' (optional, default: 'xy')
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
 
-*  <b>`outputs`</b>: A list of N `Output`s with rank N
+*  <b>`outputs`</b>: A list of N `Tensor`s with rank N
 
 
 
@@ -619,14 +619,14 @@ tf.slice(input, [1, 0, 0], [2, 1, 3]) ==> [[[3, 3, 3]],
 ##### Args:
 
 
-*  <b>`input_`</b>: An `Output`.
-*  <b>`begin`</b>: An `int32` or `int64` `Output`.
-*  <b>`size`</b>: An `int32` or `int64` `Output`.
+*  <b>`input_`</b>: A `Tensor`.
+*  <b>`begin`</b>: An `int32` or `int64` `Tensor`.
+*  <b>`size`</b>: An `int32` or `int64` `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` the same type as `input`.
+  A `Tensor` the same type as `input`.
 
 
 - - -
@@ -701,10 +701,10 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 ##### Args:
 
 
-*  <b>`input_`</b>: An `Output`.
-*  <b>`begin`</b>: An `int32` or `int64` `Output`.
-*  <b>`end`</b>: An `int32` or `int64` `Output`.
-*  <b>`strides`</b>: An `int32` or `int64` `Output`.
+*  <b>`input_`</b>: A `Tensor`.
+*  <b>`begin`</b>: An `int32` or `int64` `Tensor`.
+*  <b>`end`</b>: An `int32` or `int64` `Tensor`.
+*  <b>`strides`</b>: An `int32` or `int64` `Tensor`.
 *  <b>`begin_mask`</b>: An `int32` mask.
 *  <b>`end_mask`</b>: An `int32` mask.
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
@@ -715,7 +715,7 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 
 ##### Returns:
 
-  An `Output` the same type as `input`.
+  A `Tensor` the same type as `input`.
 
 
 - - -
@@ -753,15 +753,15 @@ tf.unpack(t, axis=axis)
 ##### Args:
 
 
-*  <b>`split_dim`</b>: A 0-D `int32` `Output`. The dimension along which to split.
+*  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
     Must be in the range `[0, rank(value))`.
 *  <b>`num_split`</b>: A Python integer. The number of ways to split.
-*  <b>`value`</b>: The `Output` to split.
+*  <b>`value`</b>: The `Tensor` to split.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  `num_split` `Output` objects resulting from splitting `value`.
+  `num_split` `Tensor` objects resulting from splitting `value`.
 
 
 - - -
@@ -795,13 +795,13 @@ tf.shape(split0) ==> [5, 10]
 ##### Args:
 
 
-*  <b>`value`</b>: The `Output` to split.
+*  <b>`value`</b>: The `Tensor` to split.
 *  <b>`size_splits`</b>: Either an integer indicating the number of splits along
     split_dim or a 1-D Tensor containing the sizes of each output tensor
     along split_dim. If an integer then it must evenly divide
     value.shape[split_dim]; otherwise the sum of sizes along the split
     dimension must match that of the input.
-*  <b>`split_dim`</b>: A 0-D `int32` `Output`. The dimension along which to split.
+*  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
     Must be in the range `[0, rank(value))`. Defaults to 0.
 *  <b>`num`</b>: Optional, used to specify the number of outputs when it cannot be
        inferred from the shape of size_splits.
@@ -809,7 +809,7 @@ tf.shape(split0) ==> [5, 10]
 
 ##### Returns:
 
-  `len(size_splits)` `Output` objects resulting from splitting `value`.
+  `len(size_splits)` `Tensor` objects resulting from splitting `value`.
 
 ##### Raises:
 
@@ -887,14 +887,14 @@ pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
 ##### Args:
 
 
-*  <b>`tensor`</b>: An `Output`.
-*  <b>`paddings`</b>: An `Output` of type `int32`.
+*  <b>`tensor`</b>: A `Tensor`.
+*  <b>`paddings`</b>: A `Tensor` of type `int32`.
 *  <b>`mode`</b>: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`. Has the same type as `tensor`.
+  A `Tensor`. Has the same type as `tensor`.
 
 ##### Raises:
 
@@ -954,13 +954,13 @@ tf.pack(tensors, axis=axis)
 ##### Args:
 
 
-*  <b>`concat_dim`</b>: 0-D `int32` `Output`.  Dimension along which to concatenate.
-*  <b>`values`</b>: A list of `Output` objects or a single `Output`.
+*  <b>`concat_dim`</b>: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
+*  <b>`values`</b>: A list of `Tensor` objects or a single `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` resulting from concatenation of the input tensors.
+  A `Tensor` resulting from concatenation of the input tensors.
 
 
 - - -
@@ -994,7 +994,7 @@ This is the opposite of unstack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`values`</b>: A list of `Output` objects with the same shape and type.
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
 *  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
     Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
@@ -1002,7 +1002,7 @@ This is the opposite of unstack.  The numpy equivalent is
 ##### Returns:
 
 
-*  <b>`output`</b>: A stacked `Output` with the same type as `values`.
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
 
 ##### Raises:
 
@@ -1041,7 +1041,7 @@ This is the opposite of unpack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`values`</b>: A list of `Output` objects with the same shape and type.
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
 *  <b>`axis`</b>: An `int`. The axis to pack along. Defaults to the first dimension.
     Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
@@ -1049,7 +1049,7 @@ This is the opposite of unpack.  The numpy equivalent is
 ##### Returns:
 
 
-*  <b>`output`</b>: A packed `Output` with the same type as `values`.
+*  <b>`output`</b>: A packed `Tensor` with the same type as `values`.
 
 ##### Raises:
 
@@ -1084,7 +1084,7 @@ This is the opposite of pack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`value`</b>: A rank `R > 0` `Output` to be unstacked.
+*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unstacked.
 *  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
     if `None` (the default).
 *  <b>`axis`</b>: An `int`. The axis to unstack along. Defaults to the first
@@ -1093,7 +1093,7 @@ This is the opposite of pack.  The numpy equivalent is
 
 ##### Returns:
 
-  The list of `Output` objects unstacked from `value`.
+  The list of `Tensor` objects unstacked from `value`.
 
 ##### Raises:
 
@@ -1131,7 +1131,7 @@ This is the opposite of pack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`value`</b>: A rank `R > 0` `Output` to be unpacked.
+*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unpacked.
 *  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
     if `None` (the default).
 *  <b>`axis`</b>: An `int`. The axis to unpack along. Defaults to the first
@@ -1140,7 +1140,7 @@ This is the opposite of pack.  The numpy equivalent is
 
 ##### Returns:
 
-  The list of `Output` objects unpacked from `value`.
+  The list of `Tensor` objects unpacked from `value`.
 
 ##### Raises:
 
@@ -1399,13 +1399,13 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 ##### Args:
 
 
-*  <b>`a`</b>: An `Output`.
+*  <b>`a`</b>: A `Tensor`.
 *  <b>`perm`</b>: A permutation of the dimensions of `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A transposed `Output`.
+  A transposed `Tensor`.
 
 
 - - -
@@ -2740,7 +2740,7 @@ The output will be
 ##### Args:
 
 
-*  <b>`indices`</b>: An `Output` of indices.
+*  <b>`indices`</b>: A `Tensor` of indices.
 *  <b>`depth`</b>: A scalar defining the depth of the one hot dimension.
 *  <b>`on_value`</b>: A scalar defining the value to fill in output when `indices[j]
     = i`. (default: 1)

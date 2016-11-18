@@ -26,7 +26,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of

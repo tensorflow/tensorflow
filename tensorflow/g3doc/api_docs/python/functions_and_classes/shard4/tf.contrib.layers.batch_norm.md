@@ -64,7 +64,7 @@ can have speed penalty, specially in distributed settings.
 
 ##### Returns:
 
-  An `Output` representing the output of the operation.
+  A `Tensor` representing the output of the operation.
 
 ##### Raises:
 

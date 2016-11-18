@@ -35,7 +35,7 @@ shape `[9, 4]` and `indices` / `values`:
 
 
 *  <b>`sp_input`</b>: The input `SparseTensor`.
-*  <b>`shape`</b>: A 1-D (vector) int64 `Output` specifying the new dense shape of the
+*  <b>`shape`</b>: A 1-D (vector) int64 `Tensor` specifying the new dense shape of the
     represented `SparseTensor`.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional)
 

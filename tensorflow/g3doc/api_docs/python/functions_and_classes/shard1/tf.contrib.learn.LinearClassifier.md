@@ -46,7 +46,7 @@ Input of `fit` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:
 
 * if `weight_column_name` is not `None`, a feature with
-  `key=weight_column_name` whose value is an `Output`.
+  `key=weight_column_name` whose value is a `Tensor`.
 * for each `column` in `feature_columns`:
   - if `column` is a `SparseColumn`, a feature with `key=column.name`
     whose `value` is a `SparseTensor`.
@@ -54,7 +54,7 @@ Input of `fit` and `evaluate` should have following features,
     `key` the id column name, the second with `key` the weight column name.
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-    whose `value` is an `Output`.
+    whose `value` is a `Tensor`.
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=False, _joint_weight=False, config=None, feature_engineering_fn=None)` {#LinearClassifier.__init__}
