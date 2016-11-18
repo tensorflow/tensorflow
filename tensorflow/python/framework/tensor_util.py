@@ -302,13 +302,14 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
-def make_tensor_proto(values, dtype=None, shape=None):
+def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   """Create a TensorProto.
 
   Args:
-    values:    Values to put in the TensorProto.
-    dtype:     Optional tensor_pb2 DataType value.
-    shape:     List of integers representing the dimensions of tensor.
+    values:         Values to put in the TensorProto.
+    dtype:          Optional tensor_pb2 DataType value.
+    shape:          List of integers representing the dimensions of tensor.
+    verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
     A TensorProto. Depending on the type, it may contain data in the
@@ -318,7 +319,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   Raises:
     TypeError:  if unsupported types are provided.
-    ValueError: if arguments have inappropriate values.
+    ValueError: if arguments have inappropriate values or if verify_shape is
+     True and shape of values is not equals to a shape from the argument.
 
   make_tensor_proto accepts "values" of a python scalar, a python list, a
   numpy ndarray, or a numpy scalar.
@@ -407,6 +409,11 @@ def make_tensor_proto(values, dtype=None, shape=None):
     shape = [int(dim) for dim in shape]
     shape_size = np.prod(shape)
     is_same_size = shape_size == nparray.size
+
+    if verify_shape:
+      if not nparray.shape == tuple(shape):
+        raise TypeError("Expected Tensor's shape: %s, got %s." %
+                        (tuple(shape), nparray.shape))
 
     if nparray.size > shape_size:
       raise ValueError(

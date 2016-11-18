@@ -522,6 +522,16 @@ class TensorUtilTest(tf.test.TestCase):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto([3], dtype=tf.qint8)
 
+  def testTensorShapeVerification(self):
+    array = np.array([[1], [2]])
+    correct_shape = (2, 1)
+    incorrect_shape = (1, 2)
+    tensor_util.make_tensor_proto(array, shape=correct_shape,
+        verify_shape=True)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto(array, shape=incorrect_shape,
+          verify_shape=True)
+
   def testShapeTooLarge(self):
     with self.assertRaises(ValueError):
       tensor_util.make_tensor_proto(np.array([1, 2]), shape=[1])
