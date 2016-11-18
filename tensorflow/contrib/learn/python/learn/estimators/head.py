@@ -273,7 +273,7 @@ class _RegressionHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(features, labels, train_op_fn, logits))
       eval_metric_ops = self._eval_metric_ops(features, labels, logits)
     signature_fn = self._signature_fn()
@@ -458,7 +458,7 @@ class _MultiClassHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(features, labels, train_op_fn, logits))
       eval_metric_ops = self._eval_metric_ops(features, labels, logits)
     signature_fn = self._signature_fn()
