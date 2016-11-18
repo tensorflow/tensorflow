@@ -61,8 +61,7 @@ def simple_decoder_fn_train(encoder_state, name=None):
     intended for training.
   """
   with ops.name_scope(name, "simple_decoder_fn_train", [encoder_state]):
-    if type(encoder_state) is not rnn_cell.LSTMStateTuple:
-      encoder_state = ops.convert_to_tensor(encoder_state)
+    pass
 
   def decoder_fn(time, cell_state, cell_input, cell_output, context_state):
     """ Decoder function used in the `dynamic_rnn_decoder` with the purpose of
@@ -170,8 +169,6 @@ def simple_decoder_fn_inference(output_fn, encoder_state, embeddings,
                       [output_fn, encoder_state, embeddings,
                        start_of_sequence_id, end_of_sequence_id,
                        maximum_length, num_decoder_symbols, dtype]):
-    if type(encoder_state) is not rnn_cell.LSTMStateTuple:
-      encoder_state = ops.convert_to_tensor(encoder_state)
     start_of_sequence_id = ops.convert_to_tensor(start_of_sequence_id, dtype)
     end_of_sequence_id = ops.convert_to_tensor(end_of_sequence_id, dtype)
     maximum_length = ops.convert_to_tensor(maximum_length, dtype)
