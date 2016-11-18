@@ -29,7 +29,7 @@ class Trainable(object):
 
   @abc.abstractmethod
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+          monitors=None, max_steps=None, *input_fn_args, **input_fn_kwargs):
     """Trains a model given training data `x` predictions and `y` labels.
 
     Args:
@@ -62,6 +62,10 @@ class Trainable(object):
         iterations. On the other hand, two calls to `fit(max_steps=100)` means
         that the second call will not do any iteration since first call did
         all 100 steps.
+      *input_fn_args: Any remaining positional arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified.
+      **input_fn_kwargs: Any remaining keyword arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified.
 
     Returns:
       `self`, for chaining.

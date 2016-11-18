@@ -274,6 +274,8 @@ def _export_estimator(estimator,
                       export_dir,
                       signature_fn,
                       input_fn,
+                      input_fn_args,
+                      input_fn_kwargs,
                       default_batch_size,
                       exports_to_keep,
                       input_feature_key=None,
@@ -294,7 +296,7 @@ def _export_estimator(estimator,
                                        name='input_example_tensor')
       features = input_fn(estimator, examples)
     else:
-      features, _ = input_fn()
+      features, _ = input_fn(*input_fn_args, **input_fn_kwargs)
       examples = None
       if input_feature_key is not None:
         examples = features.pop(input_feature_key)

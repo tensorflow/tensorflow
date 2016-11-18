@@ -23,7 +23,11 @@ from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import tf_logging as logging
 
 
-def run(experiment_fn, output_dir, schedule=None):
+def run(experiment_fn,
+        output_dir,
+        schedule=None,
+        *experiment_fn_args,
+        **experiment_fn_kwargs):
   """Make and run an experiment.
 
   It creates an Experiment by calling `experiment_fn`. Then it calls the
@@ -59,6 +63,10 @@ def run(experiment_fn, output_dir, schedule=None):
       `Experiment`.
     output_dir: Base output directory.
     schedule: The name of the  method in the `Experiment` to run.
+    *experiment_fn_args: Any additional positional arguments are passed through
+      to `experiment_fn` when it is called.
+    **experiment_fn_kwargs: Any additional keyword arguments are passed through
+      to `experiment_fn` when it is called.
 
   Returns:
     The return value of function `schedule`.
@@ -76,7 +84,7 @@ def run(experiment_fn, output_dir, schedule=None):
                     experiment_fn)
 
   # Call the builder
-  experiment = experiment_fn(output_dir=output_dir)
+  experiment = experiment_fn(output_dir=output_dir, *experiment_fn_args, **experiment_fn_kwargs)
   if not isinstance(experiment, Experiment):
     raise TypeError('Experiment builder did not return an Experiment '
                     'instance, got %s instead.' % type(experiment))

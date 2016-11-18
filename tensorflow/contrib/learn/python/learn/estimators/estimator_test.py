@@ -73,7 +73,7 @@ def boston_eval_fn():
   return tf.concat(0, [features, features]), tf.concat(0, [labels, labels])
 
 
-def linear_model_params_fn(features, labels, mode, params):
+def linear_model_params_fn(features, labels, mode, learning_rate=0.1):
   assert mode in (
       tf.contrib.learn.ModeKeys.TRAIN,
       tf.contrib.learn.ModeKeys.EVAL,
@@ -83,7 +83,7 @@ def linear_model_params_fn(features, labels, mode, params):
   )
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
-      learning_rate=params['learning_rate'])
+      learning_rate=learning_rate)
   return prediction, loss, train_op
 
 
@@ -199,7 +199,8 @@ class EstimatorTest(tf.test.TestCase):
       est.predict(input_fn=boston_input_fn)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
       est.predict(
-          input_fn=functools.partial(boston_input_fn, num_epochs=1),
+          input_fn=boston_input_fn,
+          num_epochs=1,
           as_iterable=True)
 
   def testCustomConfig(self):
@@ -312,7 +313,7 @@ class EstimatorTest(tf.test.TestCase):
     boston = tf.contrib.learn.datasets.load_boston()
     est = tf.contrib.learn.SKCompat(
         tf.contrib.learn.Estimator(model_fn=linear_model_params_fn,
-                                   params={'learning_rate': 0.01}))
+                                   learning_rate=0.2))
     est.fit(x=boston.data, y=boston.target, steps=100)
 
   def testBostonAll(self):
@@ -444,8 +445,7 @@ class EstimatorTest(tf.test.TestCase):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
-    input_fn = functools.partial(boston_input_fn, num_epochs=1)
-    output = list(est.predict(input_fn=input_fn))
+    output = list(est.predict(input_fn=boston_input_fn, num_epochs=1))
     self.assertEqual(len(output), boston.target.shape[0])
 
   def testWithModelFnOps(self):
