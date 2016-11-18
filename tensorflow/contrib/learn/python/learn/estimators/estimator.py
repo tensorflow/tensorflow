@@ -75,15 +75,6 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
     '  est = Estimator(...) -> est = SKCompat(Estimator(...))')
 
 
-# TODO(roumposg): Migrate external users to tf.learn.contrib.ModeKeys and delete
-# this.
-ModeKeys = model_fn_lib.ModeKeys  # pylint: disable=invalid-name
-
-
-# TODO(roumposg): Migrate external users to model.ModelFnOps and delete this.
-ModelFnOps = model_fn_lib.ModelFnOps  # pylint: disable=invalid-name
-
-
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
   """Make inputs into input and feed functions.
 
@@ -706,7 +697,7 @@ class BaseEstimator(
       # cases, but will soon be deleted after the subclasses are updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       train_ops = self._get_train_ops(features, labels)
-      if isinstance(train_ops, ModelFnOps):  # Default signature
+      if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
         train_op = train_ops.train_op
         loss_op = train_ops.loss
       else:  # Legacy signature
@@ -800,7 +791,7 @@ class BaseEstimator(
       # updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, ModelFnOps):  # Default signature
+      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
         eval_dict = eval_ops.eval_metric_ops
       else:  # Legacy signature
         eval_dict = eval_ops
@@ -846,7 +837,7 @@ class BaseEstimator(
       # are updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       infer_ops = self._get_predict_ops(features)
-      if isinstance(infer_ops, ModelFnOps):  # Default signature
+      if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
         predictions = infer_ops.predictions
       else:  # Legacy signature
         predictions = infer_ops
@@ -1031,14 +1022,14 @@ class Estimator(BaseEstimator):
     else:
       model_fn_results = self._model_fn(features, labels)
 
-    if isinstance(model_fn_results, ModelFnOps):
+    if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
     # Here model_fn_ops should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
-    return ModelFnOps(
+    return model_fn_lib.ModelFnOps(
         mode=mode,
         predictions=model_fn_results[0],
         loss=model_fn_results[1],
@@ -1058,7 +1049,7 @@ class Estimator(BaseEstimator):
     Returns:
       `ModelFnOps` object.
     """
-    return self._call_model_fn(features, labels, ModeKeys.TRAIN)
+    return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
 
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
@@ -1085,7 +1076,8 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if `metrics` don't match `labels`.
     """
-    model_fn_ops = self._call_model_fn(features, labels, ModeKeys.EVAL)
+    model_fn_ops = self._call_model_fn(
+        features, labels, model_fn_lib.ModeKeys.EVAL)
 
     # Custom metrics should overwrite defaults.
     if metrics:
@@ -1112,7 +1104,7 @@ class Estimator(BaseEstimator):
     """
     labels = tensor_signature.create_placeholders_from_signatures(
         self._labels_info)
-    return self._call_model_fn(features, labels, ModeKeys.INFER)
+    return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
 
 # For time of deprecation x,y from Estimator allow direct access.

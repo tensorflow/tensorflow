@@ -26,6 +26,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -587,7 +588,7 @@ def _get_dynamic_rnn_model_fn(cell,
       sequence_input = build_sequence_input(features,
                                             sequence_feature_columns,
                                             context_feature_columns)
-      if mode == estimator.ModeKeys.TRAIN:
+      if mode == model_fn.ModeKeys.TRAIN:
         cell_for_mode = apply_dropout(
             cell, input_keep_probability, output_keep_probability)
       else:
@@ -624,11 +625,11 @@ def _get_dynamic_rnn_model_fn(cell,
           optimizer=optimizer,
           clip_gradients=gradient_clipping_norm,
           summaries=optimizers.OPTIMIZER_SUMMARIES)
-    return estimator.ModelFnOps(mode=mode,
-                                predictions=prediction_dict,
-                                loss=loss,
-                                train_op=train_op,
-                                eval_metric_ops=eval_metric_ops)
+    return model_fn.ModelFnOps(mode=mode,
+                               predictions=prediction_dict,
+                               loss=loss,
+                               train_op=train_op,
+                               eval_metric_ops=eval_metric_ops)
   return _dynamic_rnn_model_fn
 
 
