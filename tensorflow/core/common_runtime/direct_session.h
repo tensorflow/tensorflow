@@ -217,6 +217,8 @@ class DirectSession : public Session {
   // operation_timeout_in_ms is greater than 0.
   //
   // If the timeout expires, the `cm->StartCancel()` will be called.
+  ::tensorflow::Status WaitForNotification(Notification* n,
+                                           int64 timeout_in_ms);
   void WaitForNotification(RunState* run_state, CancellationManager* cm,
                            int64 timeout_in_ms);
 
