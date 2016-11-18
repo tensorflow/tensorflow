@@ -118,8 +118,16 @@ RELATIVE_PROTOBUF_GENERATE_PYTHON(
     ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_protos_python_srcs}
 )
 
+# NOTE(mrry): Avoid regenerating the tensorflow/core protos because this
+# can cause benign-but-failing-on-Windows-due-to-file-locking conflicts
+# when two rules attempt to generate the same file.
+file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
+    "${tensorflow_source_dir}/tensorflow/python/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
+)
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
-    ${tensorflow_source_dir} ${tf_protos_python_srcs}
+    ${tensorflow_source_dir} ${tf_python_protos_cc_srcs}
 )
 
 add_library(tf_python_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
