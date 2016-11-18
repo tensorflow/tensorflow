@@ -48,8 +48,8 @@ class Block(collections.namedtuple('Block', ['scope', 'unit_fn', 'args'])):
 
   Its parts are:
     scope: The scope of the `Block`.
-    unit_fn: The ResNet unit function which takes as input an `Output` and
-      returns another `Output` with the output of the ResNet unit.
+    unit_fn: The ResNet unit function which takes as input a `Tensor` and
+      returns another `Tensor` with the output of the ResNet unit.
     args: A list of length equal to the number of units in the `Block`. The list
       contains one (depth, depth_bottleneck, stride) tuple for each unit in the
       block to serve as argument to unit_fn.
@@ -60,13 +60,13 @@ def subsample(inputs, factor, scope=None):
   """Subsamples the input along the spatial dimensions.
 
   Args:
-    inputs: An `Output` of size [batch, height_in, width_in, channels].
+    inputs: A `Tensor` of size [batch, height_in, width_in, channels].
     factor: The subsampling factor.
     scope: Optional variable_scope.
 
   Returns:
-    output: An `Output` of size [batch, height_out, width_out, channels] with
-      the input, either intact (if factor == 1) or subsampled (if factor > 1).
+    output: A `Tensor` of size [batch, height_out, width_out, channels] with the
+      input, either intact (if factor == 1) or subsampled (if factor > 1).
   """
   if factor == 1:
     return inputs
@@ -144,7 +144,7 @@ def stack_blocks_dense(net, blocks, output_stride=None,
   Control of the output feature density is implemented by atrous convolution.
 
   Args:
-    net: An `Output` of size [batch, height, width, channels].
+    net: A `Tensor` of size [batch, height, width, channels].
     blocks: A list of length equal to the number of ResNet `Blocks`. Each
       element is a ResNet `Block` object describing the units in the `Block`.
     output_stride: If `None`, then the output will be computed at the nominal

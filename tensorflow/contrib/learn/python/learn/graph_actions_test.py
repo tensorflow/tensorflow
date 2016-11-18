@@ -148,7 +148,7 @@ class GraphActionsTest(tf.test.TestCase):
     This includes a regular variable, local variable, and fake table.
 
     Returns:
-      Tuple of 3 `Output` objects, 2 input and 1 output.
+      Tuple of 3 `Tensor` objects, 2 input and 1 output.
     """
     tf.contrib.framework.create_global_step()
     in0 = tf.Variable(1.0)
@@ -567,7 +567,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
     This includes a regular variable, local variable, and fake table.
 
     Returns:
-      Tuple of 3 `Output` objects, 2 input and 1 output.
+      Tuple of 3 `Tensor` objects, 2 input and 1 output.
     """
     tf.contrib.framework.create_global_step()
     in0 = tf.Variable(1.0)

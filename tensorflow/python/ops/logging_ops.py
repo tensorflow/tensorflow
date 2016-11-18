@@ -80,15 +80,15 @@ def histogram_summary(tag, values, collections=None, name=None):
   This op reports an `InvalidArgument` error if any value is not finite.
 
   Args:
-    tag: A `string` `Output`. 0-D.  Tag to use for the summary value.
-    values: A real numeric `Output`. Any shape. Values to use to
+    tag: A `string` `Tensor`. 0-D.  Tag to use for the summary value.
+    values: A real numeric `Tensor`. Any shape. Values to use to
       build the histogram.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
     name: A name for the operation (optional).
 
   Returns:
-    A scalar `Output` of type `string`. The serialized `Summary` protocol
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
   with ops.name_scope(name, "HistogramSummary", [tag, values]) as scope:
@@ -121,7 +121,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
      is at 127.  They are then rescaled so that either the smallest value is 0,
      or the largest one is 255.
 
-  The `tag` argument is a scalar `Output` of type `string`.  It is used to
+  The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
   build the `tag` of the summary values:
 
   *  If `max_images` is 1, the summary value tag is '*tag*/image'.
@@ -129,9 +129,9 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
      generated sequentially as '*tag*/image/0', '*tag*/image/1', etc.
 
   Args:
-    tag: A scalar `Output` of type `string`. Used to build the `tag`
+    tag: A scalar `Tensor` of type `string`. Used to build the `tag`
       of the summary values.
-    tensor: A 4-D `uint8` or `float32` `Output` of shape `[batch_size, height,
+    tensor: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
       width, channels]` where `channels` is 1, 3, or 4.
     max_images: Max number of batch elements to generate images for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
@@ -139,7 +139,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A scalar `Output` of type `string`. The serialized `Summary` protocol
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
   with ops.name_scope(name, "ImageSummary", [tag, tensor]) as scope:
@@ -163,7 +163,7 @@ def audio_summary(tag,
   assumed to be in the range of `[-1.0, 1.0]` with a sample rate of
   `sample_rate`.
 
-  The `tag` argument is a scalar `Output` of type `string`.  It is used to
+  The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
   build the `tag` of the summary values:
 
   *  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
@@ -171,11 +171,11 @@ def audio_summary(tag,
      generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
 
   Args:
-    tag: A scalar `Output` of type `string`. Used to build the `tag`
+    tag: A scalar `Tensor` of type `string`. Used to build the `tag`
       of the summary values.
-    tensor: A 3-D `float32` `Output` of shape `[batch_size, frames, channels]`
-      or a 2-D `float32` `Output` of shape `[batch_size, frames]`.
-    sample_rate: A Scalar `float32` `Output` indicating the sample rate of the
+    tensor: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
+      or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
+    sample_rate: A Scalar `float32` `Tensor` indicating the sample rate of the
       signal in hertz.
     max_outputs: Max number of batch elements to generate audio for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
@@ -183,7 +183,7 @@ def audio_summary(tag,
     name: A name for the operation (optional).
 
   Returns:
-    A scalar `Output` of type `string`. The serialized `Summary` protocol
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
   with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
@@ -211,14 +211,14 @@ def merge_summary(inputs, collections=None, name=None):
   in the summaries to merge use the same tag.
 
   Args:
-    inputs: A list of `string` `Output` objects containing serialized `Summary`
+    inputs: A list of `string` `Tensor` objects containing serialized `Summary`
       protocol buffers.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
     name: A name for the operation (optional).
 
   Returns:
-    A scalar `Output` of type `string`. The serialized `Summary` protocol
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer resulting from the merging.
   """
   with ops.name_scope(name, "MergeSummary", inputs):
@@ -236,7 +236,7 @@ def merge_all_summaries(key=ops.GraphKeys.SUMMARIES):
 
   Returns:
     If no summaries were collected, returns None.  Otherwise returns a scalar
-    `Output` of type `string` containing the serialized `Summary` protocol
+    `Tensor` of type `string` containing the serialized `Summary` protocol
     buffer resulting from the merging.
   """
   summary_ops = ops.get_collection(key)
@@ -254,7 +254,7 @@ def get_summary_op():
 
   Returns:
     If no summaries were collected, returns None. Otherwise returns a scalar
-    `Output` of type `string` containing the serialized `Summary` protocol
+    `Tensor` of type `string` containing the serialized `Summary` protocol
     buffer resulting from the merging.
   """
   summary_op = ops.get_collection(ops.GraphKeys.SUMMARY_OP)
@@ -277,14 +277,14 @@ def scalar_summary(tags, values, collections=None, name=None):
   summary has a summary value for each tag-value pair in `tags` and `values`.
 
   Args:
-    tags: A `string` `Output`.  Tags for the summaries.
+    tags: A `string` `Tensor`.  Tags for the summaries.
     values: A real numeric Tensor.  Values for the summaries.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
     name: A name for the operation (optional).
 
   Returns:
-    A scalar `Output` of type `string`. The serialized `Summary` protocol
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
   with ops.name_scope(name, "ScalarSummary", [tags, values]) as scope:

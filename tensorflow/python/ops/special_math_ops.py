@@ -52,7 +52,7 @@ def lbeta(x, name='lbeta'):
   bivariate beta function.
 
   Args:
-    x: A rank `n + 1` `Output` with type `float`, or `double`.
+    x: A rank `n + 1` `Tensor` with type `float`, or `double`.
     name: A name for the operation (optional).
 
   Returns:
@@ -145,11 +145,11 @@ def einsum(equation, *inputs):
   Args:
     equation: a `str` describing the contraction, in the same format as
       `numpy.einsum`.
-    inputs: the inputs to contract (each one an `Output`), whose shapes should
+    inputs: the inputs to contract (each one a `Tensor`), whose shapes should
       be consistent with `equation`.
 
   Returns:
-    The contracted `Output`, with shape determined by `equation`.
+    The contracted `Tensor`, with shape determined by `equation`.
 
   Raises:
     ValueError: If
@@ -230,16 +230,16 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
   """Helper for einsum() that computes the result of a two-argument einsum().
 
   Args:
-    t0: an `Output`
+    t0: a `Tensor`
     t0_axis_labels: a string of axis labels.  This string's length must equal
       the rank of t0.
-    t1: an `Output`
+    t1: a `Tensor`
     t1_axis_labels: a string to axis labels.  This string's length must equal
       the rank of t1.
     axes_to_sum: set of labels of axes to be summed over
 
   Returns:
-    An `Output` whose elements are obtained by summing, over all axes in
+    A `Tensor` whose elements are obtained by summing, over all axes in
     `axes_to_sum`, the corresponding elements of `t0` and `t1`.
 
     For example, if t0_axis_labels == 'abijk', t1_axis_labels == 'acjkl', and

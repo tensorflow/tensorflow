@@ -170,7 +170,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   @property
   def cholesky_input_output_matrices(self):
-    """Boolean indicating if `Output` input/outputs are Cholesky factorized."""
+    """Boolean indicating if `Tensor` input/outputs are Cholesky factorized."""
     return self._cholesky_input_output_matrices
 
   @property
@@ -488,9 +488,9 @@ class WishartCholesky(_WishartOperatorPD):
     """Construct Wishart distributions.
 
     Args:
-      df: `float` or `double` `Output`. Degrees of freedom, must be greater than
+      df: `float` or `double` `Tensor`. Degrees of freedom, must be greater than
         or equal to dimension of the scale matrix.
-      scale: `float` or `double` `Output`. The Cholesky factorization of
+      scale: `float` or `double` `Tensor`. The Cholesky factorization of
         the symmetric positive definite scale matrix of the distribution.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a
@@ -589,9 +589,9 @@ class WishartFull(_WishartOperatorPD):
     """Construct Wishart distributions.
 
     Args:
-      df: `float` or `double` `Output`. Degrees of freedom, must be greater than
+      df: `float` or `double` `Tensor`. Degrees of freedom, must be greater than
         or equal to dimension of the scale matrix.
-      scale: `float` or `double` `Output`. The symmetric positive definite
+      scale: `float` or `double` `Tensor`. The symmetric positive definite
         scale matrix of the distribution.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a

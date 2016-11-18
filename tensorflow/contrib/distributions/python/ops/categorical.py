@@ -86,12 +86,12 @@ class Categorical(distribution.Distribution):
     """Initialize Categorical distributions using class log-probabilities.
 
     Args:
-      logits: An N-D `Output`, `N >= 1`, representing the log probabilities
+      logits: An N-D `Tensor`, `N >= 1`, representing the log probabilities
           of a set of Categorical distributions. The first `N - 1` dimensions
           index into a batch of independent distributions and the last dimension
           represents a vector of logits for each class. Only one of `logits` or
           `p` should be passed in.
-      p: An N-D `Output`, `N >= 1`, representing the probabilities
+      p: An N-D `Tensor`, `N >= 1`, representing the probabilities
           of a set of Categorical distributions. The first `N - 1` dimensions
           index into a batch of independent distributions and the last dimension
           represents a vector of probabilities for each class. Only one of

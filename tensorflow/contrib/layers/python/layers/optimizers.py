@@ -74,7 +74,7 @@ def optimize_loss(loss,
 
   - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
       for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
-  - function, takes learning rate `Output` as argument and must return
+  - function, takes learning rate `Tensor` as argument and must return
       `Optimizer` instance. E.g. `optimize_loss(...,
       optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
     Alternatively, if `learning_rate` is `None`, the function takes no
@@ -87,13 +87,13 @@ def optimize_loss(loss,
       E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
-    loss: Scalar `Output`.
-    global_step: Scalar int `Output`, step counter for each update. If not
+    loss: Scalar `Tensor`.
+    global_step: Scalar int `Tensor`, step counter for each update. If not
                  supplied, it will be fetched from the default graph (see
                  `tf.contrib.framework.get_global_step` for details). If it's
                  not been created, no step will be incremented with each weight
                  update. `learning_rate_decay_fn` requires `global_step`.
-    learning_rate: float or `Output`, magnitude of update per each training
+    learning_rate: float or `Tensor`, magnitude of update per each training
                    step. Can be `None`.
     optimizer: string, class or optimizer instance, used as trainer.
                string should be name of optimizer, like 'SGD',
@@ -114,7 +114,7 @@ def optimize_loss(loss,
       This callable takes a `list` of `(gradients, variables)` `tuple`s and
       returns the same thing with the gradients modified.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
-                            `Output`s, returns `Output`.
+                            `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
                             functions.
                             For example: `tf.train.exponential_decay`.

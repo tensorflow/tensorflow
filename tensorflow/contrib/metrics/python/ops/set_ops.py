@@ -43,7 +43,7 @@ def set_size(a, validate_indices=True):
        in `a`.
 
   Returns:
-    `int32` `Output` of set sizes. For `a` ranked `n`, this is an `Output` with
+    `int32` `Tensor` of set sizes. For `a` ranked `n`, this is a `Tensor` with
     rank `n-1`, and the same 1st `n-1` dimensions as `a`. Each value is the
     number of unique elements in the corresponding `[0...n-1]` dimension of `a`.
 
@@ -72,9 +72,9 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   All but the last dimension of `a` and `b` must match.
 
   Args:
-    a: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+    a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Output` or `SparseTensor` of the same type as `a`. Must be
+    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
         `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
         sorted in row-major order.
     set_operation: String indicating set operaiton. See
@@ -122,9 +122,9 @@ def set_intersection(a, b, validate_indices=True):
   All but the last dimension of `a` and `b` must match.
 
   Args:
-    a: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+    a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Output` or `SparseTensor` of the same type as `a`. Must be
+    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
         `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
         sorted in row-major order.
     validate_indices: Whether to validate the order and range of sparse indices
@@ -144,9 +144,9 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
   All but the last dimension of `a` and `b` must match.
 
   Args:
-    a: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+    a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Output` or `SparseTensor` of the same type as `a`. Must be
+    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
         `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
         sorted in row-major order.
     aminusb: Whether to subtract `b` from `a`, vs vice versa.
@@ -167,9 +167,9 @@ def set_union(a, b, validate_indices=True):
   All but the last dimension of `a` and `b` must match.
 
   Args:
-    a: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+    a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Output` or `SparseTensor` of the same type as `a`. Must be
+    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
         `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
         sorted in row-major order.
     validate_indices: Whether to validate the order and range of sparse indices

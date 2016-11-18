@@ -194,8 +194,8 @@ def enqueue_data(data,
   """Creates a queue filled from a numpy array or pandas `DataFrame`.
 
     Returns a queue filled with the rows of the given array or `DataFrame`. In
-    the case of a pandas `DataFrame`, the first enqueued `Output` corresponds to
-    the index of the `DataFrame`. For numpy arrays, the first enqueued `Output`
+    the case of a pandas `DataFrame`, the first enqueued `Tensor` corresponds to
+    the index of the `DataFrame`. For numpy arrays, the first enqueued `Tensor`
     contains the row number.
 
   Args:

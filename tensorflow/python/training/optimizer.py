@@ -240,7 +240,7 @@ class Optimizer(object):
     of using this function.
 
     Args:
-      loss: An `Output` containing the value to minimize.
+      loss: A `Tensor` containing the value to minimize.
       global_step: Optional `Variable` to increment by one after the
         variables have been updated.
       var_list: Optional list of `Variable` objects to update to minimize
@@ -253,7 +253,7 @@ class Optimizer(object):
       colocate_gradients_with_ops: If True, try colocating gradients with
         the corresponding op.
       name: Optional name for the returned operation.
-      grad_loss: Optional. An `Output` holding the gradient computed for `loss`.
+      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
 
     Returns:
       An Operation that updates the variables in `var_list`.  If `global_step`
@@ -287,7 +287,7 @@ class Optimizer(object):
 
     This is the first part of `minimize()`.  It returns a list
     of (gradient, variable) pairs where "gradient" is the gradient
-    for "variable".  Note that "gradient" can be an `Output`, an
+    for "variable".  Note that "gradient" can be a `Tensor`, an
     `IndexedSlices`, or `None` if there is no gradient for the
     given variable.
 
@@ -302,7 +302,7 @@ class Optimizer(object):
         Valid values are defined in the class `AggregationMethod`.
       colocate_gradients_with_ops: If True, try colocating gradients with
         the corresponding op.
-      grad_loss: Optional. An `Output` holding the gradient computed for `loss`.
+      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
 
     Returns:
       A list of (gradient, variable) pairs. Variable is always present, but
@@ -498,7 +498,7 @@ class Optimizer(object):
     """Add ops to apply dense gradients to `var`.
 
     Args:
-      grad: An `Output`.
+      grad: A `Tensor`.
       var: A `Variable` object.
 
     Return:
@@ -563,7 +563,7 @@ class Optimizer(object):
 
     Args:
       var: A `Variable` object.
-      val: An `Output`.  The initial value of the slot.
+      val: A `Tensor`.  The initial value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
         needs to be created for  the slot.

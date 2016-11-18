@@ -76,19 +76,19 @@ def _lstm_block_cell(x,
   ```
 
   Args:
-    x: An `Output`. Must be one of the following types: `float32`.
+    x: A `Tensor`. Must be one of the following types: `float32`.
       The input to the LSTM cell, shape (batch_size, num_inputs).
-    cs_prev: An `Output`. Must have the same type as `x`.
+    cs_prev: A `Tensor`. Must have the same type as `x`.
       Value of the cell state at previous time step.
-    h_prev: An `Output`. Must have the same type as `x`.
+    h_prev: A `Tensor`. Must have the same type as `x`.
       Output of the previous cell at previous time step.
-    w: An `Output`. Must have the same type as `x`. The weight matrix.
-    b: An `Output`. Must have the same type as `x`. The bias vector.
-    wci: An `Output`. Must have the same type as `x`.
+    w: A `Tensor`. Must have the same type as `x`. The weight matrix.
+    b: A `Tensor`. Must have the same type as `x`. The bias vector.
+    wci: A `Tensor`. Must have the same type as `x`.
       The weight matrix for input gate peephole connection.
-    wcf: An `Output`. Must have the same type as `x`.
+    wcf: A `Tensor`. Must have the same type as `x`.
       The weight matrix for forget gate peephole connection.
-    wco: An `Output`. Must have the same type as `x`.
+    wco: A `Tensor`. Must have the same type as `x`.
       The weight matrix for output gate peephole connection.
     forget_bias: An optional `float`. Defaults to `1`. The forget gate bias.
     cell_clip: An optional `float`. Defaults to `3`.
@@ -98,14 +98,14 @@ def _lstm_block_cell(x,
     name: A name for the operation (optional).
 
   Returns:
-    A tuple of `Output` objects (i, cs, f, o, ci, co, h).
-    i: An `Output`. Has the same type as `x`. The input gate.
-    cs: An `Output`. Has the same type as `x`. The cell state before the tanh.
-    f: An `Output`. Has the same type as `x`. The forget gate.
-    o: An `Output`. Has the same type as `x`. The output gate.
-    ci: An `Output`. Has the same type as `x`. The cell input.
-    co: An `Output`. Has the same type as `x`. The cell after the tanh.
-    h: An `Output`. Has the same type as `x`. The output h vector.
+    A tuple of `Tensor` objects (i, cs, f, o, ci, co, h).
+    i: A `Tensor`. Has the same type as `x`. The input gate.
+    cs: A `Tensor`. Has the same type as `x`. The cell state before the tanh.
+    f: A `Tensor`. Has the same type as `x`. The forget gate.
+    o: A `Tensor`. Has the same type as `x`. The output gate.
+    ci: A `Tensor`. Has the same type as `x`. The cell input.
+    co: A `Tensor`. Has the same type as `x`. The cell after the tanh.
+    h: A `Tensor`. Has the same type as `x`. The output h vector.
 
   Raises:
     ValueError: If cell_size is None.
@@ -151,35 +151,35 @@ def _block_lstm(seq_len_max,
   r"""TODO(williamchan): add doc.
 
   Args:
-    seq_len_max: An `Output` of type `int64`.
-    x: A list of at least 1 `Output` objects of the same type in: `float32`.
-    w: An `Output`. Must have the same type as `x`.
-    b: An `Output`. Must have the same type as `x`.
-    cs_prev: An `Output`. Must have the same type as `x`.
-    h_prev: An `Output`. Must have the same type as `x`.
-    wci: An `Output`. Must have the same type as `x`.
-    wcf: An `Output`. Must have the same type as `x`.
-    wco: An `Output`. Must have the same type as `x`.
+    seq_len_max: A `Tensor` of type `int64`.
+    x: A list of at least 1 `Tensor` objects of the same type in: `float32`.
+    w: A `Tensor`. Must have the same type as `x`.
+    b: A `Tensor`. Must have the same type as `x`.
+    cs_prev: A `Tensor`. Must have the same type as `x`.
+    h_prev: A `Tensor`. Must have the same type as `x`.
+    wci: A `Tensor`. Must have the same type as `x`.
+    wcf: A `Tensor`. Must have the same type as `x`.
+    wco: A `Tensor`. Must have the same type as `x`.
     forget_bias: An optional `float`. Defaults to `1`.
     cell_clip: An optional `float`. Defaults to `3`.
     use_peephole: An optional `bool`. Defaults to `False`.
     name: A name for the operation (optional).
 
   Returns:
-    A tuple of `Output` objects (i, cs, f, o, ci, co, h).
-    i: A list with the same number of `Output` objects as `x` of `Output`
+    A tuple of `Tensor` objects (i, cs, f, o, ci, co, h).
+    i: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
-    cs: A list with the same number of `Output` objects as `x` of `Output`
+    cs: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
-    f: A list with the same number of `Output` objects as `x` of `Output`
+    f: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
-    o: A list with the same number of `Output` objects as `x` of `Output`
+    o: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
-    ci: A list with the same number of `Output` objects as `x` of `Output`
+    ci: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
-    co: A list with the same number of `Output` objects as `x` of `Output`
+    co: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
-    h: A list with the same number of `Output` objects as `x` of `Output`
+    h: A list with the same number of `Tensor` objects as `x` of `Tensor`
     objects of the same type as x.
 
   Raises:

@@ -71,7 +71,7 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
                  using both predictions and labels array.
     dtype: Data type of the confusion matrix.
     name: Scope name.
-    weights: An optional `Output` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape matches `predictions`.
 
   Returns:
     A k X k matrix representing the confusion matrix, where k is the number of

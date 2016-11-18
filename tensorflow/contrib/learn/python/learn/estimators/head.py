@@ -305,7 +305,7 @@ class _RegressionHead(_Head):
       name: Op name.
 
     Returns:
-      A loss `Output`.
+      A loss `Tensor`.
     """
     labels = _check_labels(labels, self._label_name)
 
@@ -349,10 +349,10 @@ class _RegressionHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` before applying possible centered bias.
+      logits: logits `Tensor` before applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
@@ -364,10 +364,10 @@ class _RegressionHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` after applying possible centered bias.
+      logits: logits `Tensor` after applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     predictions = {}
     if self.logits_dimension == 1:
@@ -490,7 +490,7 @@ class _MultiClassHead(_Head):
       name: Op name.
 
     Returns:
-      A loss `Output`.
+      A loss `Tensor`.
     """
     labels = _check_labels(labels, self._label_name)
 
@@ -534,10 +534,10 @@ class _MultiClassHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` before applying possible centered bias.
+      logits: logits `Tensor` before applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
@@ -549,10 +549,10 @@ class _MultiClassHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` after applying possible centered bias.
+      logits: logits `Tensor` after applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:

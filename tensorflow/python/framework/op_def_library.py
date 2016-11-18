@@ -245,7 +245,7 @@ def _MaybeColocateWith(inputs):
   """A context manager for (maybe) colocating with a list of input tensors.
 
   Args:
-    inputs: A list of `Output` or `Operation` objects.
+    inputs: A list of `Tensor` or `Operation` objects.
 
   Returns:
     A context manager.

@@ -54,7 +54,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     Input of `fit`, `train`, and `evaluate` should have following features,
       otherwise there will be a `KeyError`:
         if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is an `Output`.
+          `key=weight_column_name` whose value is a `Tensor`.
         for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
         - if `column` is a `SparseColumn`, a feature with `key=column.name`
           whose `value` is a `SparseTensor`.
@@ -62,7 +62,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           `key` the id column name, the second with `key` the weight column
           name. Both features' `value` must be a `SparseTensor`.
         - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is an `Output`.
+          whose `value` is a `Tensor`.
   """
 
   def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
@@ -369,8 +369,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
-    features: `Output` or dict of `Output` (depends on data passed to `fit`).
-    labels: `Output` of shape [batch_size, 1] or [batch_size] labels of dtype
+    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of dtype
       `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -586,7 +586,7 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
   Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
       if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is an `Output`.
+        `key=weight_column_name` whose value is a `Tensor`.
       for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
@@ -594,7 +594,7 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
         `key` the id column name, the second with `key` the weight column name.
         Both features' `value` must be a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is an `Output`.
+        whose `value` is a `Tensor`.
   """
 
   def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
@@ -802,7 +802,7 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
       name: string, name of the tensor.
 
     Returns:
-      `Output` object.
+      `Tensor` object.
     """
     return self._estimator.get_variable_value(name)
 
@@ -946,7 +946,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
   Input of `fit`, `train`, and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
       if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is an `Output`.
+        `key=weight_column_name` whose value is a `Tensor`.
       for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
@@ -954,7 +954,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         `key` the id column name, the second with `key` the weight column name.
         Both features' `value` must be a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is an `Output`.
+        whose `value` is a `Tensor`.
   """
 
   def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name

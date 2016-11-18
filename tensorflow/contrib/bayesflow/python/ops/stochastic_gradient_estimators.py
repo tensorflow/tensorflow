@@ -75,13 +75,13 @@ def score_function(stochastic_tensor, value, loss, baseline=None,
 
   Args:
     stochastic_tensor: `StochasticTensor` p(x).
-    value: `Output` x. Samples from p(x).
-    loss: `Output`.
-    baseline: `Output` broadcastable to `loss`.
+    value: `Tensor` x. Samples from p(x).
+    loss: `Tensor`.
+    baseline: `Tensor` broadcastable to `loss`.
     name: name to prepend ops with.
 
   Returns:
-    `Output` `p.log_prob(x) * (loss - b)`. Taking the gradient yields the score
+    `Tensor` `p.log_prob(x) * (loss - b)`. Taking the gradient yields the score
     function estimator.
   """
   with ops.name_scope(name, values=[value, loss, baseline]):
@@ -103,7 +103,7 @@ def get_score_function_with_advantage(advantage_fn=None,
 
   Args:
     advantage_fn: callable that takes the `StochasticTensor` and the
-      downstream `loss` and returns an `Output` advantage
+      downstream `loss` and returns a `Tensor` advantage
       (e.g. `loss - baseline`).
     name: name to prepend ops with.
 
@@ -125,7 +125,7 @@ def get_score_function_with_constant_baseline(baseline, name="ScoreFunction"):
   """Score function estimator with constant baseline.
 
   Args:
-    baseline: `Output` to be subtracted from loss.
+    baseline: `Tensor` to be subtracted from loss.
     name: name to prepend ops with.
 
   Returns:
@@ -145,7 +145,7 @@ def get_score_function_with_baseline(baseline_fn=None, name="ScoreFunction"):
 
   Args:
     baseline_fn: callable that takes the `StochasticTensor` and the downstream
-      `loss` and returns an `Output` baseline to be subtracted from the `loss`.
+      `loss` and returns a `Tensor` baseline to be subtracted from the `loss`.
       If None, defaults to `get_mean_baseline`, which is an EMA of the loss.
     name: name to prepend ops with.
 

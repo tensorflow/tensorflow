@@ -519,7 +519,7 @@ LabeledTensorLike = tc.Union(LabeledTensor, ops.Output, np.ndarray, Scalar)
 def convert_to_labeled_tensor(value, dtype=None, name=None):
   """Converts the given `value` to a `LabeledTensor`.
 
-  This function accepts `LabeledTensor` objects, 0-dimensional `Output` objects
+  This function accepts `LabeledTensor` objects, 0-dimensional `Tensor` objects
   and numpy arrays, and Python scalars. Higher dimensional unlabeled tensors
   must use the `LabeledTensor` constructor explicitly.
 

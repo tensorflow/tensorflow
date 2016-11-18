@@ -36,7 +36,7 @@ class Variable(object):
   variable to the graph by constructing an instance of the class `Variable`.
 
   The `Variable()` constructor requires an initial value for the variable,
-  which can be an `Output` of any type and shape. The initial value defines the
+  which can be a `Tensor` of any type and shape. The initial value defines the
   type and shape of the variable. After construction, the type and shape of
   the variable are fixed. The value can be changed using one of the assign
   methods.
@@ -44,9 +44,9 @@ class Variable(object):
   If you want to change the shape of a variable later you have to use an
   `assign` Op with `validate_shape=False`.
 
-  Just like any `Output`, variables created with `Variable()` can be used as
+  Just like any `Tensor`, variables created with `Variable()` can be used as
   inputs for other Ops in the graph. Additionally, all the operators
-  overloaded for the `Output` class are carried over to variables, so you can
+  overloaded for the `Tensor` class are carried over to variables, so you can
   also add nodes to the graph by just doing arithmetic on variables.
 
   ```python
@@ -168,7 +168,7 @@ class Variable(object):
     variable to its initial value.
 
     Args:
-      initial_value: An `Output`, or Python object convertible to an `Output`,
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called. In
@@ -238,7 +238,7 @@ class Variable(object):
     """Creates a new variable from arguments.
 
     Args:
-      initial_value: An `Output`, or Python object convertible to an `Output`,
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called. In
@@ -409,7 +409,7 @@ class Variable(object):
     See [`value()`](#Variable.value).
 
     Returns:
-      An `Output` containing the value of the variable.
+      A `Tensor` containing the value of the variable.
     """
     return self._snapshot
 
@@ -431,7 +431,7 @@ class Variable(object):
     You usually do not need to call this method as all ops that need the value
     of the variable call it automatically through a `convert_to_tensor()` call.
 
-    Returns an `Output` which holds the value of the variable.  You can not
+    Returns a `Tensor` which holds the value of the variable.  You can not
     assign a new value to this tensor as it is not a reference to the variable.
     See [`ref()`](#Variable.ref) if you want to get a reference to the
     variable.
@@ -442,7 +442,7 @@ class Variable(object):
     is on a different device it will get a copy of the variable.
 
     Returns:
-      An `Output` containing the value of the variable.
+      A `Tensor` containing the value of the variable.
     """
     return self._snapshot
 
@@ -463,13 +463,13 @@ class Variable(object):
     You usually do not need to call this method as all ops that need a reference
     to the variable call it automatically.
 
-    Returns is an `Output` which holds a reference to the variable.  You can
+    Returns is a `Tensor` which holds a reference to the variable.  You can
     assign a new value to the variable by passing the tensor to an assign op.
     See [`value()`](#Variable.value) if you want to get the value of the
     variable.
 
     Returns:
-      An `Output` that is a reference to the variable.
+      A `Tensor` that is a reference to the variable.
     """
     return self._variable
 
@@ -530,7 +530,7 @@ class Variable(object):
     ```
 
     Returns:
-      An `Output` holding the value of this variable after its initializer
+      A `Tensor` holding the value of this variable after its initializer
       has run.
     """
     with ops.control_dependencies(None):
@@ -555,7 +555,7 @@ class Variable(object):
     the variable.
 
     Returns:
-      An `Output`.
+      A `Tensor`.
     """
     return self._initial_value
 
@@ -565,11 +565,11 @@ class Variable(object):
     This is essentially a shortcut for `assign(self, value)`.
 
     Args:
-      value: An `Output`. The new value for this variable.
+      value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
 
     Returns:
-      An `Output` that will hold the new value of this variable after
+      A `Tensor` that will hold the new value of this variable after
       the assignment has completed.
     """
     return state_ops.assign(self._variable, value, use_locking=use_locking)
@@ -580,11 +580,11 @@ class Variable(object):
      This is essentially a shortcut for `assign_add(self, delta)`.
 
     Args:
-      delta: An `Output`. The value to add to this variable.
+      delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
 
     Returns:
-      An `Output` that will hold the new value of this variable after
+      A `Tensor` that will hold the new value of this variable after
       the addition has completed.
     """
     return state_ops.assign_add(self._variable, delta, use_locking=use_locking)
@@ -595,11 +595,11 @@ class Variable(object):
     This is essentially a shortcut for `assign_sub(self, delta)`.
 
     Args:
-      delta: An `Output`. The value to subtract from this variable.
+      delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
 
     Returns:
-      An `Output` that will hold the new value of this variable after
+      A `Tensor` that will hold the new value of this variable after
       the subtraction has completed.
     """
     return state_ops.assign_sub(self._variable, delta, use_locking=use_locking)
@@ -615,7 +615,7 @@ class Variable(object):
       use_locking: If `True`, use locking during the operation.
 
     Returns:
-      An `Output` that will hold the new value of this variable after
+      A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
 
     Raises:
@@ -645,7 +645,7 @@ class Variable(object):
       limit: value at which incrementing the variable raises an error.
 
     Returns:
-      An `Output` that will hold the variable value before the increment. If no
+      A `Tensor` that will hold the variable value before the increment. If no
       other Op modifies this variable, the values produced will all be
       distinct.
     """
@@ -976,14 +976,14 @@ class PartitionedVariable(object):
       return [i for i, p in enumerate(self._partitions) if p > 1]
 
   def _concat(self):
-    """Returns the overall concatenated value as an `Output`.
+    """Returns the overall concatenated value as a `Tensor`.
 
     This is different from using the partitioned variable directly as a tensor
     (through tensor conversion and `as_tensor`) in that it creates a new set of
     operations that keeps the control dependencies from its scope.
 
     Returns:
-      `Output` containing the concatenated value.
+      `Tensor` containing the concatenated value.
     """
     if len(self._variable_list) == 1:
       with ops.name_scope(None):
@@ -1004,14 +1004,14 @@ class PartitionedVariable(object):
       return array_ops.identity(concatenated, name=self._name)
 
   def as_tensor(self):
-    """Returns the overall concatenated value as an `Output`.
+    """Returns the overall concatenated value as a `Tensor`.
 
     The returned tensor will not inherit the control dependencies from the scope
     where the value is used, which is similar to getting the value of
     `Variable`.
 
     Returns:
-      `Output` containing the concatenated value.
+      `Tensor` containing the concatenated value.
     """
     with ops.control_dependencies(None):
       return self._concat()

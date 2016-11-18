@@ -38,11 +38,11 @@ def _logsum_expbig_minus_expsmall(big, small):
   To work correctly, we should have the pointwise relation:  `small <= big`.
 
   Args:
-    big: Numeric `Output`
-    small: Numeric `Output` with same `dtype` as `big` and broadcastable shape.
+    big: Numeric `Tensor`
+    small: Numeric `Tensor` with same `dtype` as `big` and broadcastable shape.
 
   Returns:
-    `Output` of same `dtype` of `big` and broadcast shape.
+    `Tensor` of same `dtype` of `big` and broadcast shape.
   """
   with ops.name_scope("logsum_expbig_minus_expsmall", values=[small, big]):
     return math_ops.log(1. - math_ops.exp(small - big)) + big
@@ -193,11 +193,11 @@ class QuantizedDistribution(distributions.Distribution):
     Args:
       distribution:  The base distribution class to transform. Typically an
         instance of `Distribution`.
-      lower_cutoff:  `Output` with same `dtype` as this distribution and shape
+      lower_cutoff:  `Tensor` with same `dtype` as this distribution and shape
         able to be added to samples.  Should be a whole number.  Default `None`.
         If provided, base distribution's pdf/pmf should be defined at
         `lower_cutoff`.
-      upper_cutoff:  `Output` with same `dtype` as this distribution and shape
+      upper_cutoff:  `Tensor` with same `dtype` as this distribution and shape
         able to be added to samples.  Should be a whole number.  Default `None`.
         If provided, base distribution's pdf/pmf should be defined at
         `upper_cutoff - 1`.

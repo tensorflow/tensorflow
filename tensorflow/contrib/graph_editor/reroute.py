@@ -44,8 +44,8 @@ def _check_ts_compatibility(ts0, ts1):
   """Make sure the shape and dtype of the two tensor's lists are compatible.
 
   Args:
-    ts0: an object convertible to a list of `tf.Output`.
-    ts1: an object convertible to a list of `tf.Output`.
+    ts0: an object convertible to a list of `tf.Tensor`.
+    ts1: an object convertible to a list of `tf.Tensor`.
   Raises:
     ValueError: if any pair of tensors (same index in ts0 and ts1) have
       a dtype or a shape which is not compatible.
@@ -163,8 +163,8 @@ def _reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
   Warning: this function is directly manipulating the internals of the tf.Graph.
 
   Args:
-    ts0: an object convertible to a list of `tf.Output`.
-    ts1: an object convertible to a list of `tf.Output`.
+    ts0: an object convertible to a list of `tf.Tensor`.
+    ts1: an object convertible to a list of `tf.Tensor`.
     mode: what to do with those tensors: "a->b" or "b<->a" for swaping and
       "a->b" or "b->a" for one direction re-routing.
     can_modify: iterable of operations which can be modified. Any operation
@@ -175,7 +175,7 @@ def _reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
   Returns:
     The number of individual modifications made by the function.
   Raises:
-    TypeError: if `ts0` or `ts1` cannot be converted to a list of `tf.Output`.
+    TypeError: if `ts0` or `ts1` cannot be converted to a list of `tf.Tensor`.
     TypeError: if `can_modify` or `cannot_modify` is not `None` and cannot be
       converted to a list of `tf.Operation`.
   """
@@ -215,8 +215,8 @@ def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   A0 A1     A0 A1
 
   Args:
-    ts0: an object convertible to a list of `tf.Output`.
-    ts1: an object convertible to a list of `tf.Output`.
+    ts0: an object convertible to a list of `tf.Tensor`.
+    ts1: an object convertible to a list of `tf.Tensor`.
     can_modify: iterable of operations which can be modified. Any operation
       outside within_ops will be left untouched by this function.
     cannot_modify: iterable of operations which cannot be modified.
@@ -242,8 +242,8 @@ def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   The end of the tensors in ts1 are left dangling.
 
   Args:
-    ts0: an object convertible to a list of `tf.Output`.
-    ts1: an object convertible to a list of `tf.Output`.
+    ts0: an object convertible to a list of `tf.Tensor`.
+    ts1: an object convertible to a list of `tf.Tensor`.
     can_modify: iterable of operations which can be modified. Any operation
       outside within_ops will be left untouched by this function.
     cannot_modify: iterable of operations which cannot be modified. Any
@@ -268,8 +268,8 @@ def reroute_b2a_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   The end of the tensors in ts0 are left dangling.
 
   Args:
-    ts0: an object convertible to a list of `tf.Output`.
-    ts1: an object convertible to a list of `tf.Output`.
+    ts0: an object convertible to a list of `tf.Tensor`.
+    ts1: an object convertible to a list of `tf.Tensor`.
     can_modify: iterable of operations which can be modified. Any operation
       outside within_ops will be left untouched by this function.
     cannot_modify: iterable of operations which cannot be modified.

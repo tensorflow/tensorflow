@@ -1322,7 +1322,7 @@ def _sparsify(array, threshold=0.5):
 class PartialFlattenTest(tf.test.TestCase):
 
   def testDensePartialFlatten(self):
-    """Test `_inner_flatten` on `Output`s."""
+    """Test `_inner_flatten` on `Tensor`s."""
     shape = [2, 3, 4, 5, 6]
     np.random.seed(5446)
     inputs = np.random.randint(0, 100, size=shape)
