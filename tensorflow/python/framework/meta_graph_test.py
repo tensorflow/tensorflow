@@ -762,50 +762,34 @@ class TestClone(tf.test.TestCase):
       c0_out, _ = meta_graph.clone(c0, "copy", replace={b: b_new})
       with tf.Session() as sess:
         with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                     ""):
+                                     "You must feed a value for placeholder"):
           sess.run(c0_out, feed_dict={a: np.ones([2, 3]), b: 0})
         c0_out_ = sess.run(c0_out, feed_dict={a: np.ones([2, 3]),
                                               b_new: 0})
-      self.assertAllClose(c0_out_, np.ones([2, 3]))
+      self.assertAllClose(c0_out_, np.ones([1, 2, 3]))
 
-      train_writer = tf.train.SummaryWriter('/tmp/zhusuan', g)
-      train_writer.close()
+  def testCloneControlDeps(self):
+    # a -> b ---> e -----
+    # c -> d --- /       \
+    #       \ ----------- f
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.placeholder(tf.float32, name='a')
+      b = tf.identity(a, name='b')
+      c = tf.placeholder(tf.float32, name='c')
+      d = tf.identity(c, name='d')
+      with tf.control_dependencies([b, d]):
+        e = tf.identity(a, name='e')
+      with tf.control_dependencies([e, d]):
+        f = tf.identity(a, name='f')
 
-  # def testCloneControlDeps(self):
-  #   # a -> b ---> e -----
-  #   # c -> d --- /       \
-  #   #       \ ----------- f
-  #   with StochasticGraph() as model:
-  #     a = tf.placeholder(tf.float32, name='a_deps')
-  #     b = tf.identity(a, name='b_deps')
-  #     c = tf.placeholder(tf.float32, name='c_deps')
-  #     d = tf.identity(c, name='d_deps')
-  #     with tf.control_dependencies([b, d]):
-  #       e = tf.add(1., tf.zeros([2, 2]), name='e_deps')
-  #     with tf.control_dependencies([e, d]):
-  #       f = tf.add(1., tf.ones([2, 2]), name='f_deps')
-  #
-  #   d_new = tf.add(1., tf.ones([]), name='d_deps_new')
-  #   e_new = tf.add(1., tf.ones([2, 2]), name='e_deps_new')
-  #   f_out_only_c = model.get_output(f, inputs={d: d_new, e: e_new})
-  #   assert f_out_only_c[0] is f
-  #   f_out_only_a = model.get_output(f, inputs={d: d_new})
-  #   assert f_out_only_a[0] is f
-  #
-  #   with tf.Session() as sess:
-  #     with pytest.raises(tf.errors.InvalidArgumentError):
-  #       sess.run(f)
-  #     with pytest.raises(tf.errors.InvalidArgumentError):
-  #       sess.run(e, feed_dict={a: 1.})
-  #     f_out_only_c_ = sess.run(f_out_only_c[0], feed_dict={a: 1., c: 1.})
-  #     f_out_only_a_ = sess.run(f_out_only_a[0], feed_dict={a: 1., c: 1.})
-  #     assert np.abs(f_out_only_c_ - np.ones([2, 2]) - 1.).max() < 1e-8
-  #     assert np.abs(f_out_only_a_ - np.ones([2, 2]) - 1.).max() < 1e-8
-  #
-  #     # train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-  #     #                                       tf.get_default_graph())
-  #     # train_writer.close()
-  #
+      d_new = tf.add(1., tf.ones([]), name='d_new')
+      e_new = tf.add(1., tf.constant([2., 2.]), name='e_new')
+      f_out, _ = meta_graph.clone(f, "copy1", replace={d: d_new, e: e_new})
+      self.assertTrue(f_out.op.name == "copy1/f")
+      self.assertTrue(f_out.op.control_inputs[0].name == "e")
+      self.assertTrue(f_out.op.control_inputs[1].name == "d")
+
   # def testCloneAssertEqual(self):
   #   with StochasticGraph() as model:
   #     a = tf.placeholder(tf.float32, shape=(), name='ass')

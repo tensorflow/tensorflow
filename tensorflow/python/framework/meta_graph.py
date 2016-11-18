@@ -692,8 +692,8 @@ def _node_def_unbound(from_node_def, export_scope, unbound_inputs,
     from_node_def: A `node_def_pb2.NodeDef` protocol buffer.
     export_scope: A `string` representing the name scope to remove.
     unbound_inputs: An array of unbound input names if they exist.
-    as_unbound_inputs: A list of `String`s. Input Tensor names that are
-      treated as unbound when exporting Operations.
+    as_unbound_inputs: A list of `String`s. Input names that are treated as
+      unbound when exporting Operations.
     clear_devices: Boolean which controls whether to clear device information
       from node_def. Default false.
 
@@ -703,7 +703,7 @@ def _node_def_unbound(from_node_def, export_scope, unbound_inputs,
   node_def = copy.deepcopy(from_node_def)
   as_unbound_inputs = set(as_unbound_inputs)
   for i, v in enumerate(node_def.input):
-    if node_def.input[i].lstrip("^") in as_unbound_inputs:
+    if node_def.input[i] in as_unbound_inputs:
       # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
       # identifiable.
       node_def.input[i] = re.sub(r"([\^]|^)(.*)",
@@ -748,8 +748,8 @@ def export_ops_meta_graph(op_list,
     export_scope: Optional `string`. Name scope under which to extract the ops.
       The scope name will be striped from the node definitions for easy import
       later into new name scopes.
-    as_unbound_inputs: A list of `Tensor`s. Inputs that are treated as unbound
-      when exporting Operations.
+    as_unbound_inputs: A list of `String`s. Input names that are treated as
+      unbound when exporting Operations.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
     unbound_inputs_col_name: Optional `string`. If provided, a string collection
       with the given name will be added to the returned `MetaGraphDef`,
@@ -773,9 +773,6 @@ def export_ops_meta_graph(op_list,
 
   graph = graph or ops.get_default_graph()
   as_unbound_inputs = as_unbound_inputs or []
-  def _tensor_name(tensor):
-    return tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
-  as_unbound_inputs = set(_tensor_name(t) for t in as_unbound_inputs)
   unbound_inputs = []
   graph_def = graph_pb2.GraphDef()
   # pylint: disable=protected-access
@@ -857,8 +854,7 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
                        "'from_scope'." % op.name)
     op_outputs.update(set(op.outputs))
 
-  def _unbounded_name(tensor):
-    name = tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
+  def _unbound_name(name):
     return re.sub(r"([\^]|^)(.*?)", r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
                   compat.as_str(name))
   input_map = {}
@@ -866,11 +862,17 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
   for op in op_list:
     for tensor in op.inputs:
       if not (tensor in op_outputs) or (tensor in replace):
-        as_unbound_inputs.append(tensor)
+        name = tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
+        as_unbound_inputs.append(name)
         if tensor in replace:
-          input_map[_unbounded_name(tensor)] = replace[tensor]
+          input_map[_unbound_name(name)] = replace[tensor]
         else:
-          input_map[_unbounded_name(tensor)] = tensor
+          input_map[_unbound_name(name)] = tensor
+    for dep in op.control_inputs:
+      if dep not in op_list:
+        name = "^" + dep.name
+        as_unbound_inputs.append(name)
+        input_map[_unbound_name(name)] = dep
   print('input_map:', input_map)
 
   orig_meta_graph, var_list = export_ops_meta_graph(

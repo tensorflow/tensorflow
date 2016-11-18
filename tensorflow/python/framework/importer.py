@@ -247,7 +247,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
         raise ValueError('tf.import_graph_def() requires a non-empty `name` '
                          'if `input_map` is used.')
       with ops.name_scope('_inputs'):
-        input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+        for k, v in input_map.items():
+          if not _IsControlInput(k):
+            input_map[k] = ops.convert_to_tensor(v)
 
     # NOTE(mrry): We do this in two passes, because there may be a cycle in
     # `graph_def`.
@@ -319,13 +321,17 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
         if _IsControlInput(input_name):
           # (a) Input is a control input that should be taken from an op
           #     in "graph_def".
-          try:
-            source_op = name_to_op[input_name[1:]]
-          except KeyError:
-            raise ValueError(
-                _InvalidNodeMessage(
-                    node,
-                    'Control input %r not found in graph_def.' % (input_name,)))
+          if input_name in input_map:
+            source_op = input_map[input_name]
+            used_input_keys.add(input_name)
+          else:
+            try:
+              source_op = name_to_op[input_name[1:]]
+            except KeyError:
+              raise ValueError(
+                  _InvalidNodeMessage(
+                      node, 'Control input %r not found in graph_def.' % (
+                      input_name,)))
           # pylint: disable=protected-access
           op._add_control_input(source_op)
           # pylint: enable=protected-access
