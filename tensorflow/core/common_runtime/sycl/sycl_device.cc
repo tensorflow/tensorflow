@@ -82,6 +82,12 @@ Status SYCLDevice::FillContextMap(const Graph *graph,
   return Status::OK();
 }
 
+Status SYCLDevice::Sync() {
+  sycl_device_->synchronize();
+  return Status::OK();
+}
+
+
 } // namespace tensorflow
 
 #endif // TENSORFLOW_USE_SYCL

@@ -58,7 +58,7 @@ public:
   Status FillContextMap(const Graph *graph,
                         DeviceContextMap *device_context_map) override;
 
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override;
   static string GetShortDeviceDescription(/*int device_id,
                                           const DeviceDescription& desc*/) {
     return strings::StrCat("device: 0, name SYCL, pci bus id: 0");
