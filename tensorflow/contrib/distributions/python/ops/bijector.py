@@ -1394,7 +1394,7 @@ class ScaleAndShift(Bijector):
 
   def _forward(self, x):
     x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
-    x = math_ops.batch_matmul(self.scale, x)
+    x = math_ops.matmul(self.scale, x)
     x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
     x += self.shift
     return x
@@ -1776,7 +1776,7 @@ class CholeskyOuterProduct(Bijector):
       x = control_flow_ops.with_dependencies([is_matrix, is_square], x)
     # For safety, explicitly zero-out the upper triangular part.
     x = array_ops.matrix_band_part(x, -1, 0)
-    return math_ops.batch_matmul(x, x, adj_y=True)
+    return math_ops.matmul(x, x, adjoint_b=True)
 
   def _inverse_and_inverse_log_det_jacobian(self, y):
     x = (math_ops.sqrt(y) if self._static_event_ndims == 0
@@ -1855,8 +1855,7 @@ class CholeskyOuterProduct(Bijector):
         dim=1)
 
     sum_weighted_log_diag = array_ops.squeeze(
-        math_ops.batch_matmul(math_ops.log(diag), exponents),
-        squeeze_dims=-1)
+        math_ops.matmul(math_ops.log(diag), exponents), squeeze_dims=-1)
     fldj = p * math.log(2.) + sum_weighted_log_diag
 
     if x.get_shape().ndims is not None:
