@@ -964,7 +964,7 @@ def _identity_feature_engineering_fn(features, labels):
 class Estimator(BaseEstimator):
   """Estimator class is the basic TensorFlow model trainer/evaluator.
   """
-  @deprecated_args('2017-2-1', 'Pass parameters as keyword arguments to')
+  @deprecated_args(PARAMS_DATE, PARAMS_INSTRUCTIONS, 'params')
   def __init__(self,
                model_fn=None,
                model_dir=None,
@@ -1026,10 +1026,9 @@ class Estimator(BaseEstimator):
     """
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
     self._model_fn = model_fn
-    self._model_fn_args = model_fn_args
+    self._model_fn_args = [params] if params else []
+    self._model_fn_args.extend(model_fn_args)
     self._model_fn_kwargs = model_fn_kwargs
-    if params is not None:
-      self._model_fn_kwargs.update(params)
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
@@ -1052,7 +1051,7 @@ class Estimator(BaseEstimator):
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
         model_fn_results = self._model_fn(
-            features, labels, mode=mode, *self._model_fn_args, **self.model_fn_kwargs)
+            features, labels, mode, *self._model_fn_args, **self.model_fn_kwargs)
     else:
       model_fn_results = self._model_fn(features, labels, *self._model_fn_args, **self._model_fn_kwargs)
 
