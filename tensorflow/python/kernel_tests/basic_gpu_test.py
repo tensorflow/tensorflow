@@ -48,6 +48,31 @@ class GPUBinaryOpsTest(tf.test.TestCase):
     self._compareGPU(x, y, np.multiply, tf.mul)
     self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
 
+  def testFloatWithBCast(self):
+    x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float32)
+    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float32)
+    self._compareGPU(x, y, np.add, tf.add)
+    self._compareGPU(x, y, np.subtract, tf.sub)
+    self._compareGPU(x, y, np.multiply, tf.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+
+  def testDoubleBasic(self):
+    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)
+    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)
+    self._compareGPU(x, y, np.add, tf.add)
+    self._compareGPU(x, y, np.subtract, tf.sub)
+    self._compareGPU(x, y, np.multiply, tf.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+
+  def testDoubleWithBCast(self):
+    x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float64)
+    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float64)
+    self._compareGPU(x, y, np.add, tf.add)
+    self._compareGPU(x, y, np.subtract, tf.sub)
+    self._compareGPU(x, y, np.multiply, tf.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+
+
   #def _GetGradientArgs(self, xs, ys):
     #with self.test_session(use_gpu=True) as sess:
      # return sess.run(_broadcast_gradient_args(xs, ys))
