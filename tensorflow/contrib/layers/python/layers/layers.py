@@ -1488,9 +1488,16 @@ def maxout(inputs,
            axis=None,
            outputs_collections=None,
            scope=None):
-  """Adds a maxout op which is a max pooling performed in filter/channel
-  dimension. This can also be used after fully-connected layers to reduce
-  number of features.
+  """Adds a maxout op from https://arxiv.org/abs/1302.4389
+
+    "Maxout Networks"
+
+    Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron Courville, Yoshua
+    Bengio
+
+
+  Max pooling is performed in given filter/channel dimension. This can also be
+  used after fully-connected layers to reduce number of features.
 
 
   Args:
