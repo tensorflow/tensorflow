@@ -2,7 +2,7 @@
 
 # Constants, Sequences, and Random Values
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -29,13 +29,13 @@ tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ##### Args:
 
 
-*  <b>`shape`</b>: Either a list of integers, or a 1-D `Output` of type `int32`.
-*  <b>`dtype`</b>: The type of an element in the resulting `Output`.
+*  <b>`shape`</b>: Either a list of integers, or a 1-D `Tensor` of type `int32`.
+*  <b>`dtype`</b>: The type of an element in the resulting `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with all elements set to zero.
+  A `Tensor` with all elements set to zero.
 
 
 - - -
@@ -58,8 +58,8 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
 ##### Args:
 
 
-*  <b>`tensor`</b>: An `Output`.
-*  <b>`dtype`</b>: A type for the returned `Output`. Must be `float32`, `float64`,
+*  <b>`tensor`</b>: A `Tensor`.
+*  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
   `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
@@ -68,7 +68,7 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
 
 ##### Returns:
 
-  An `Output` with all elements set to zero.
+  A `Tensor` with all elements set to zero.
 
 
 
@@ -90,13 +90,13 @@ tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ##### Args:
 
 
-*  <b>`shape`</b>: Either a list of integers, or a 1-D `Output` of type `int32`.
-*  <b>`dtype`</b>: The type of an element in the resulting `Output`.
+*  <b>`shape`</b>: Either a list of integers, or a 1-D `Tensor` of type `int32`.
+*  <b>`dtype`</b>: The type of an element in the resulting `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with all elements set to 1.
+  A `Tensor` with all elements set to 1.
 
 
 - - -
@@ -119,8 +119,8 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
 ##### Args:
 
 
-*  <b>`tensor`</b>: An `Output`.
-*  <b>`dtype`</b>: A type for the returned `Output`. Must be `float32`, `float64`,
+*  <b>`tensor`</b>: A `Tensor`.
+*  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
     `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, `complex128` or
     `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -129,7 +129,7 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
 
 ##### Returns:
 
-  An `Output` with all elements set to 1.
+  A `Tensor` with all elements set to 1.
 
 
 
@@ -152,9 +152,9 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 ##### Args:
 
 
-*  <b>`dims`</b>: An `Output` of type `int32`.
+*  <b>`dims`</b>: A `Tensor` of type `int32`.
     1-D. Represents the shape of the output tensor.
-*  <b>`value`</b>: A `Output`. 0-D (scalar). Value to fill the returned tensor.
+*  <b>`value`</b>: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
 
     @compatibility(numpy)
     Equivalent to np.full
@@ -164,7 +164,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 ##### Returns:
 
-  A `Output`. Has the same type as `value`.
+  A `Tensor`. Has the same type as `value`.
 
 
 
@@ -243,17 +243,17 @@ tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
 ##### Args:
 
 
-*  <b>`start`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`start`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     First entry in the range.
-*  <b>`stop`</b>: A `Output`. Must have the same type as `start`.
+*  <b>`stop`</b>: A `Tensor`. Must have the same type as `start`.
     Last entry in the range.
-*  <b>`num`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`num`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     Number of values to generate.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `start`. 1-D. The generated values.
+  A `Tensor`. Has the same type as `start`. 1-D. The generated values.
 
 
 
@@ -292,20 +292,20 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`start`</b>: A 0-D `Output` (scalar). Acts as first entry in the range if
+*  <b>`start`</b>: A 0-D `Tensor` (scalar). Acts as first entry in the range if
     `limit` is not None; otherwise, acts as range limit and first entry
     defaults to 0.
-*  <b>`limit`</b>: A 0-D `Output` (scalar). Upper limit of sequence,
+*  <b>`limit`</b>: A 0-D `Tensor` (scalar). Upper limit of sequence,
     exclusive. If None, defaults to the value of `start` while the first
     entry of the range defaults to 0.
-*  <b>`delta`</b>: A 0-D `Output` (scalar). Number that increments
+*  <b>`delta`</b>: A 0-D `Tensor` (scalar). Number that increments
     `start`. Defaults to 1.
 *  <b>`dtype`</b>: The type of the elements of the resulting tensor.
 *  <b>`name`</b>: A name for the operation. Defaults to "range".
 
 ##### Returns:
 
-  An 1-D `Output` of type `dtype`.
+  An 1-D `Tensor` of type `dtype`.
 
 @compatibility(numpy)
 Equivalent to np.arange
@@ -624,8 +624,8 @@ Example:
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` of shape `tf.concat(shape, tf.shape(alpha + beta))`
-    with values of type `dtype`.
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
+    values of type `dtype`.
 
 
 - - -

@@ -25,7 +25,7 @@ Args:
 
   logits: Unscaled log probabilities of rank `r` and shape
     `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
-  labels: `Output` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+  labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
     `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
     Other values will raise an exception when this op is run on CPU, and
     return `NaN` for corresponding corresponding loss and gradient rows
@@ -34,7 +34,7 @@ Args:
 
 ##### Returns:
 
-  An `Output` of the same shape as `labels` and of the same type as `logits`
+  A `Tensor` of the same shape as `labels` and of the same type as `logits`
   with the softmax cross entropy loss.
 
 ##### Raises:

@@ -1322,7 +1322,7 @@ def _sparsify(array, threshold=0.5):
 class PartialFlattenTest(tf.test.TestCase):
 
   def testDensePartialFlatten(self):
-    """Test `_inner_flatten` on `Output`s."""
+    """Test `_inner_flatten` on `Tensor`s."""
     shape = [2, 3, 4, 5, 6]
     np.random.seed(5446)
     inputs = np.random.randint(0, 100, size=shape)
@@ -1546,12 +1546,19 @@ class BatchNormTest(tf.test.TestCase):
           ValueError, 'data_format has to be either NCHW or NHWC.'):
         tf.contrib.layers.batch_norm(inputs, data_format='CHWN')
 
-  def testUnknownLastDim(self):
+  def testUnknownChannelsDimNHWC(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
-      with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
-        tf.contrib.layers.batch_norm(inputs)
+      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+        tf.contrib.layers.batch_norm(inputs, data_format='NHWC')
+
+  def testUnknownChannelsDimNCHW(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5, None, 3, 3)))
+      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+        tf.contrib.layers.batch_norm(inputs, data_format='NCHW')
 
   def testWeightedMomentsFused(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -1705,8 +1712,11 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(mean, expected_mean)
       self.assertAllClose(variance, expected_var)
 
-  def testNoneUpdatesCollectionsDefault(self):
-    self._testNoneUpdatesCollections(False)
+  def testNoneUpdatesCollectionsNHWC(self):
+    self._testNoneUpdatesCollections(False, data_format='NHWC')
+
+  def testNoneUpdatesCollectionsNCHW(self):
+    self._testNoneUpdatesCollections(False, data_format='NCHW')
 
   def testNoneUpdatesCollectionsFusedNCHW(self):
     if tf.test.is_gpu_available():
@@ -1769,8 +1779,11 @@ class BatchNormTest(tf.test.TestCase):
         sess.run(correct_moving_variance)
       self.assertAllClose(variance, expected_var)
 
-  def testDelayedUpdateMovingVarsDefault(self):
-    self._testDelayedUpdateMovingVars(False)
+  def testDelayedUpdateMovingVarsNHWC(self):
+    self._testDelayedUpdateMovingVars(False, data_format='NHWC')
+
+  def testDelayedUpdateMovingVarsNCHW(self):
+    self._testDelayedUpdateMovingVars(False, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNCHW(self):
     if tf.test.is_gpu_available():
@@ -1954,8 +1967,11 @@ class BatchNormTest(tf.test.TestCase):
       output_false = sess.run([output], {is_training: False})
       self.assertAllClose(output_true, output_false)
 
-  def testIsTrainingVariableDefault(self):
-    self._testIsTrainingVariable(False)
+  def testIsTrainingVariableNHWC(self):
+    self._testIsTrainingVariable(False, data_format='NHWC')
+
+  def testIsTrainingVariableNCHW(self):
+    self._testIsTrainingVariable(False, data_format='NCHW')
 
   def testIsTrainingVariableFusedNCHW(self):
     if tf.test.is_gpu_available():
@@ -2090,8 +2106,11 @@ class BatchNormTest(tf.test.TestCase):
       output_false = sess.run([output], {is_training: False})
       self.assertTrue(np.allclose(output_true, output_false))
 
-  def testNoneUpdatesCollectionIsTrainingVariableDefault(self):
-    self._testNoneUpdatesCollectionIsTrainingVariable(False)
+  def testNoneUpdatesCollectionIsTrainingVariableNHWC(self):
+    self._testNoneUpdatesCollectionIsTrainingVariable(False, data_format='NHWC')
+
+  def testNoneUpdatesCollectionIsTrainingVariableNCHW(self):
+    self._testNoneUpdatesCollectionIsTrainingVariable(False, data_format='NCHW')
 
   def testNoneUpdatesCollectionIsTrainingVariableFusedNCHW(self):
     if tf.test.is_gpu_available():
@@ -2166,8 +2185,11 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(moving_mean.eval(), expected_mean)
       self.assertAllClose(moving_variance.eval(), expected_var)
 
-  def testTrainMovingVarsDefault(self):
-    self._testTrainMovingVars(False)
+  def testTrainMovingVarsNHWC(self):
+    self._testTrainMovingVars(False, data_format='NHWC')
+
+  def testTrainMovingVarsNCHW(self):
+    self._testTrainMovingVars(False, data_format='NCHW')
 
   def testTrainMovingVarsFusedNCHW(self):
     if tf.test.is_gpu_available():
@@ -2198,6 +2220,58 @@ class BatchNormTest(tf.test.TestCase):
       sess.run(tf.global_variables_initializer())
       outs = sess.run(output)
       self.assertAllClose(outs, images)
+
+  def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
+    channels = shape[-1]
+    with self.test_session() as sess:
+      images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
+      beta = tf.constant_initializer(
+          np.arange(2, channels + 2, dtype=np.float32))
+      gamma = tf.constant_initializer(
+          np.arange(10, channels + 10, dtype=np.float32) * 2.0)
+      mean = tf.constant_initializer(
+          np.arange(3, channels + 3, dtype=np.float32) * 5.0)
+      variance = tf.constant_initializer(
+          np.arange(1, channels + 1, dtype=np.float32) * 4.0)
+      if data_format == 'NCHW':
+        # Reshape inputs from NHWC to NCHW format.
+        images = tf.transpose(
+            images,
+            [0, len(shape) - 1] + list(range(1, len(shape) - 1)))
+      output = tf.contrib.layers.batch_norm(
+          images,
+          is_training=is_training,
+          scale=True,
+          epsilon=0.5,
+          param_initializers={
+              'beta': beta,
+              'gamma': gamma,
+              'moving_mean': mean,
+              'moving_variance': variance,
+          },
+          data_format=data_format)
+      if data_format == 'NCHW':
+        # Reshape outputs from NCHW back to NHWC format.
+        output = tf.transpose(
+            output, [0] + list(range(2, len(shape))) + [1])
+      sess.run(tf.global_variables_initializer())
+      return sess.run(output)
+
+  def testNHWCAndNCHWInferenceProduceSameOutput(self):
+    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+      nhwc = self._runBatchNormalizationWithFormat(
+          data_format='NHWC', shape=shape, is_training=False)
+      nchw = self._runBatchNormalizationWithFormat(
+          data_format='NCHW', shape=shape, is_training=False)
+      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+
+  def testNHWCAndNCHWTrainingProduceSameOutput(self):
+    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+      nhwc = self._runBatchNormalizationWithFormat(
+          data_format='NHWC', shape=shape, is_training=True)
+      nchw = self._runBatchNormalizationWithFormat(
+          data_format='NCHW', shape=shape, is_training=True)
+      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
 
 class LayerNormTest(tf.test.TestCase):

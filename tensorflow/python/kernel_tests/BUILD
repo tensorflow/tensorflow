@@ -278,10 +278,7 @@ tf_py_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
-    tags = [
-        "manual",  # http://b/32655781
-        "noasan",  # http://b/32635055
-    ],
+    tags = ["noasan"],  # http://b/32635055
 )
 
 tf_py_test(

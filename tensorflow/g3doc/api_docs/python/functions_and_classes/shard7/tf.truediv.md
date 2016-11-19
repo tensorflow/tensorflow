@@ -16,8 +16,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

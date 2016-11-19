@@ -34,7 +34,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -50,7 +50,7 @@ Adds a externally defined loss to the collection of losses.
 ##### Args:
 
 
-*  <b>`loss`</b>: A loss `Output`.
+*  <b>`loss`</b>: A loss `Tensor`.
 *  <b>`loss_collection`</b>: Optional collection to add the loss to.
 
 
@@ -70,7 +70,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` that returns the weighted loss.
+    A scalar `Tensor` that returns the weighted loss.
 
   Raises:
     ValueError: If `weights` is `None` or the shape is not compatible with
@@ -93,7 +93,7 @@ Instructions for updating:
 
   Args:
     predictions: An arbitrary matrix.
-    labels: An `Output` whose shape matches 'predictions'
+    labels: A `Tensor` whose shape matches 'predictions'
     dim: The dimension along which the cosine distance is computed.
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
@@ -102,7 +102,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
@@ -159,7 +159,7 @@ Notice that the function adds the given losses to the regularization losses.
 
 ##### Returns:
 
-  An `Output` whose value represents the total loss.
+  A `Tensor` whose value represents the total loss.
 
 ##### Raises:
 
@@ -185,7 +185,7 @@ Instructions for updating:
     target: Deprecated alias for `labels`.
 
   Returns:
-    An `Output` of same shape as logits and target representing the loss values
+    A `Tensor` of same shape as logits and target representing the loss values
       across the batch.
 
   Raises:
@@ -221,7 +221,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -270,7 +270,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -305,7 +305,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -342,7 +342,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of
@@ -379,7 +379,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
@@ -411,7 +411,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shapes of logits, labels, and weight are incompatible, or

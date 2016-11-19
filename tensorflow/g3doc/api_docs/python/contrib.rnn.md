@@ -1128,7 +1128,7 @@ are returned.
 
   A tuple (outputs, output_state_fw, output_state_bw) where:
 
-*  <b>`outputs`</b>: Output `Output` shaped:
+*  <b>`outputs`</b>: Output `Tensor` shaped:
       `batch_size, max_time, layers_output]`. Where layers_output
       are depth-concatenated forward and backward outputs.
     output_states_fw is the final states, one tensor per layer,

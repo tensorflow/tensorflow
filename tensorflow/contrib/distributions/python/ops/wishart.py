@@ -170,7 +170,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   @property
   def cholesky_input_output_matrices(self):
-    """Boolean indicating if `Output` input/outputs are Cholesky factorized."""
+    """Boolean indicating if `Tensor` input/outputs are Cholesky factorized."""
     return self._cholesky_input_output_matrices
 
   @property
@@ -245,7 +245,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
     if not self.cholesky_input_output_matrices:
       # Complexity: O(nbk^3)
-      x = math_ops.batch_matmul(x, x, adj_y=True)
+      x = math_ops.matmul(x, x, adjoint_b=True)
 
     return x
 
@@ -353,7 +353,7 @@ class _WishartOperatorPD(distribution.Distribution):
   def _variance(self):
     x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
     d = array_ops.expand_dims(array_ops.matrix_diag_part(x), -1)
-    v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
+    v = math_ops.square(x) + math_ops.matmul(d, d, adjoint_b=True)
     if self.cholesky_input_output_matrices:
       return linalg_ops.cholesky(v)
     return v
@@ -488,9 +488,9 @@ class WishartCholesky(_WishartOperatorPD):
     """Construct Wishart distributions.
 
     Args:
-      df: `float` or `double` `Output`. Degrees of freedom, must be greater than
+      df: `float` or `double` `Tensor`. Degrees of freedom, must be greater than
         or equal to dimension of the scale matrix.
-      scale: `float` or `double` `Output`. The Cholesky factorization of
+      scale: `float` or `double` `Tensor`. The Cholesky factorization of
         the symmetric positive definite scale matrix of the distribution.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a
@@ -589,9 +589,9 @@ class WishartFull(_WishartOperatorPD):
     """Construct Wishart distributions.
 
     Args:
-      df: `float` or `double` `Output`. Degrees of freedom, must be greater than
+      df: `float` or `double` `Tensor`. Degrees of freedom, must be greater than
         or equal to dimension of the scale matrix.
-      scale: `float` or `double` `Output`. The symmetric positive definite
+      scale: `float` or `double` `Tensor`. The symmetric positive definite
         scale matrix of the distribution.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a

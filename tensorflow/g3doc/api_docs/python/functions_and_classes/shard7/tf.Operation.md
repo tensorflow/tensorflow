@@ -1,7 +1,7 @@
 Represents a graph node that performs computation on tensors.
 
 An `Operation` is a node in a TensorFlow `Graph` that takes zero or
-more `Output` objects as input, and produces zero or more `Output`
+more `Tensor` objects as input, and produces zero or more `Tensor`
 objects as output. Objects of type `Operation` are created by
 calling a Python op constructor (such as
 [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul))
@@ -34,7 +34,7 @@ The type of the op (e.g. `"MatMul"`).
 
 #### `tf.Operation.inputs` {#Operation.inputs}
 
-The list of `Output` objects representing the data inputs of this op.
+The list of `Tensor` objects representing the data inputs of this op.
 
 
 - - -
@@ -58,7 +58,7 @@ in the correct order.
 
 #### `tf.Operation.outputs` {#Operation.outputs}
 
-The list of `Output` objects representing the outputs of this op.
+The list of `Tensor` objects representing the outputs of this op.
 
 
 - - -
@@ -98,7 +98,7 @@ available, or `session` must be specified explicitly.
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run)
     for a description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
@@ -156,9 +156,9 @@ regular expression:
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
-*  <b>`inputs`</b>: list of `Output` objects. The inputs to this `Operation`.
+*  <b>`inputs`</b>: list of `Tensor` objects. The inputs to this `Operation`.
 *  <b>`output_types`</b>: list of `DType` objects.  List of the types of the
-    `Output`s computed by this operation.  The length of this list indicates
+    `Tensors` computed by this operation.  The length of this list indicates
     the number of output endpoints of the `Operation`.
 *  <b>`control_inputs`</b>: list of operations or tensors from which to have a
     control dependency.

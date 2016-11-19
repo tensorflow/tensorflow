@@ -3,7 +3,7 @@
 Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
 `hessians()` adds ops to the graph to output the Hessian matrix of `ys`
-with respect to `xs`.  It returns a list of `Output` of length `len(xs)`
+with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)`
 where each tensor is the Hessian of `sum(ys)`. This function currently
 only supports evaluating the Hessian with respect to (a list of) one-
 dimensional tensors.
@@ -14,8 +14,8 @@ tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
 ##### Args:
 
 
-*  <b>`ys`</b>: An `Output` or list of tensors to be differentiated.
-*  <b>`xs`</b>: An `Output` or list of tensors to be used for differentiation.
+*  <b>`ys`</b>: A `Tensor` or list of tensors to be differentiated.
+*  <b>`xs`</b>: A `Tensor` or list of tensors to be used for differentiation.
 *  <b>`name`</b>: Optional name to use for grouping all the gradient ops together.
     defaults to 'hessians'.
 *  <b>`colocate_gradients_with_ops`</b>: See `gradients()` documentation for details.

@@ -14,12 +14,12 @@ This operation has a gradient and thus allows for training `min` and `max` value
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of type `float32`.
-*  <b>`min`</b>: An `Output` of type `float32`.
-*  <b>`max`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 

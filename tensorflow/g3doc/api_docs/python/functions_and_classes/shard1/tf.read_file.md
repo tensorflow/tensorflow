@@ -5,10 +5,10 @@ Reads and outputs the entire contents of the input filename.
 ##### Args:
 
 
-*  <b>`filename`</b>: An `Output` of type `string`.
+*  <b>`filename`</b>: A `Tensor` of type `string`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
 

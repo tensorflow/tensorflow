@@ -361,7 +361,7 @@ class NanTensorHook(session_run_hook.SessionRunHook):
     """Initializes NanLoss monitor.
 
     Args:
-      loss_tensor: `Output`, the loss tensor.
+      loss_tensor: `Tensor`, the loss tensor.
       fail_on_nan_loss: `bool`, whether to raise exception when loss is NaN.
     """
     self._loss_tensor = loss_tensor
@@ -403,7 +403,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
           one will be created accordingly.
       scaffold: `Scaffold` to get summary_op if it's not provided.
-      summary_op: `Output` of type `string`. A serialized `Summary` protocol
+      summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
           buffer, as output by TF summary methods like `tf.summary.scalar` or
           `tf.summary.merge_all`.
 

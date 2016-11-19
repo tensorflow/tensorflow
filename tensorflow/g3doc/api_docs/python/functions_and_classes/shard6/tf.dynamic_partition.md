@@ -41,8 +41,8 @@ For example:
 ##### Args:
 
 
-*  <b>`data`</b>: A `Output`.
-*  <b>`partitions`</b>: An `Output` of type `int32`.
+*  <b>`data`</b>: A `Tensor`.
+*  <b>`partitions`</b>: A `Tensor` of type `int32`.
     Any shape.  Indices in the range `[0, num_partitions)`.
 *  <b>`num_partitions`</b>: An `int` that is `>= 1`.
     The number of partitions to output.
@@ -50,5 +50,5 @@ For example:
 
 ##### Returns:
 
-  A list of `num_partitions` `Output` objects of the same type as data.
+  A list of `num_partitions` `Tensor` objects of the same type as data.
 

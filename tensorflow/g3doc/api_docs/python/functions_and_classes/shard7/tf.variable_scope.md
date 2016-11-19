@@ -73,7 +73,7 @@ then all its sub-scopes become reusing as well.
 *  <b>`default_name`</b>: The default name to use if the `name_or_scope` argument is
     `None`, this name will be uniquified. If name_or_scope is provided it
     won't be used and therefore it is not required and can be None.
-*  <b>`values`</b>: The list of `Output` arguments that are passed to the op function.
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
 *  <b>`initializer`</b>: default initializer for variables within this scope.
 *  <b>`regularizer`</b>: default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: default caching device for variables within this scope.

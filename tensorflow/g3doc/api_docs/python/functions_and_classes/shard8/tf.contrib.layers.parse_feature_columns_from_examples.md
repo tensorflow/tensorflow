@@ -48,5 +48,5 @@ my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
 
 ##### Returns:
 
-  A `dict` mapping FeatureColumn to `Output` and `SparseTensor` values.
+  A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
 

@@ -5,7 +5,7 @@ Returns a default set of typically-used monitors.
 ##### Args:
 
 
-*  <b>`loss_op`</b>: `Output`, the loss tensor. This will be printed using `PrintTensor`
+*  <b>`loss_op`</b>: `Tensor`, the loss tensor. This will be printed using `PrintTensor`
       at the default interval.
 *  <b>`summary_op`</b>: See `SummarySaver`.
 *  <b>`save_summary_steps`</b>: See `SummarySaver`.

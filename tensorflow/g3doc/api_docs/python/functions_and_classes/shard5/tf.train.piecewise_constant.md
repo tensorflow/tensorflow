@@ -17,11 +17,11 @@ learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
 ##### Args:
 
 
-*  <b>`x`</b>: A 0-D scalar `Output`. Must be one of the following types: `float32`,
+*  <b>`x`</b>: A 0-D scalar `Tensor`. Must be one of the following types: `float32`,
     `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
-*  <b>`boundaries`</b>: A list of `Output`s or `int`s or `float`s with strictly
+*  <b>`boundaries`</b>: A list of `Tensor`s or `int`s or `float`s with strictly
     increasing entries, and with all elements having the same type as `x`.
-*  <b>`values`</b>: A list of `Output`s or float`s or `int`s that specifies the values
+*  <b>`values`</b>: A list of `Tensor`s or float`s or `int`s that specifies the values
     for the intervals defined by `boundaries`. It should have one more element
     than `boundaries`, and all elements should have the same type.
 *  <b>`name`</b>: A string. Optional name of the operation. Defaults to

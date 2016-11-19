@@ -1,6 +1,6 @@
 ### `tf.contrib.bayesflow.entropy.renyi_alpha(step, decay_time, alpha_min, alpha_max=0.99999, name='renyi_alpha')` {#renyi_alpha}
 
-Exponentially decaying `Output` appropriate for Renyi ratios.
+Exponentially decaying `Tensor` appropriate for Renyi ratios.
 
 When minimizing the Renyi divergence for `0 <= alpha < 1` (or maximizing the
 Renyi equivalent of elbo) in high dimensions, it is not uncommon to experience
@@ -22,17 +22,17 @@ alpha(t) = (1 - t) alpha_min + t alpha_max
 ##### Args:
 
 
-*  <b>`step`</b>: Non-negative scalar `Output`.  Typically the global step or an
+*  <b>`step`</b>: Non-negative scalar `Tensor`.  Typically the global step or an
     offset version thereof.
-*  <b>`decay_time`</b>: Positive scalar `Output`.
-*  <b>`alpha_min`</b>: `float` or `double` `Output`.
+*  <b>`decay_time`</b>: Positive scalar `Tensor`.
+*  <b>`alpha_min`</b>: `float` or `double` `Tensor`.
     The minimal, final value of `alpha`, achieved when `step >= decay_time`
-*  <b>`alpha_max`</b>: `Output` of same `dtype` as `alpha_min`.
+*  <b>`alpha_max`</b>: `Tensor` of same `dtype` as `alpha_min`.
     The maximal, beginning value of `alpha`, achieved when `step == 0`
 *  <b>`name`</b>: A name to give this `Op`.
 
 ##### Returns:
 
 
-*  <b>`alpha`</b>: An `Output` of same `dtype` as `alpha_min`.
+*  <b>`alpha`</b>: A `Tensor` of same `dtype` as `alpha_min`.
 

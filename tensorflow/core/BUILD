@@ -1288,9 +1288,7 @@ cc_library(
     hdrs = [
         "platform/regexp.h",
     ],
-    visibility = [
-        "//tensorflow/tools/tfprof:__subpackages__",
-    ],
+    visibility = ["//tensorflow/tools/tfprof:__subpackages__"],
     deps = [":lib_internal"],
 )
 
@@ -1543,8 +1541,22 @@ tf_cc_tests(
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
-        "platform/subprocess_test.cc",
     ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    srcs = ["platform/subprocess_test.cc"],
+    tags = ["manual"],
     deps = [
         ":lib",
         ":lib_internal",

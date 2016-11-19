@@ -25,8 +25,8 @@ st.values = ['hello', 'world', 'a', 'b', 'c']
 ##### Args:
 
 
-*  <b>`source`</b>: `1-D` string `Output`, the strings to split.
-*  <b>`delimiter`</b>: `0-D` string `Output`, the delimiter character, the string should
+*  <b>`source`</b>: `1-D` string `Tensor`, the strings to split.
+*  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
     be length 0 or 1.
 
 ##### Returns:

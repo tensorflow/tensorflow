@@ -199,7 +199,7 @@ REGISTER_OP("SerializeSparse")
       return Status::OK();
     })
     .Doc(R"doc(
-Serialize a `SparseTensor` into a string 3-vector (1-D `Output`) object.
+Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object.
 
 sparse_indices: 2-D.  The `indices` of the `SparseTensor`.
 sparse_values: 1-D.  The `values` of the `SparseTensor`.
@@ -221,7 +221,7 @@ REGISTER_OP("SerializeManySparse")
       return Status::OK();
     })
     .Doc(R"doc(
-Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Output`.
+Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`.
 
 The `SparseTensor` must have rank `R` greater than 1, and the first dimension
 is treated as the minibatch dimension.  Elements of the `SparseTensor`
@@ -621,7 +621,7 @@ REGISTER_OP("SparseTensorDenseAdd")
       return Status::OK();
     })
     .Doc(R"doc(
-Adds up a `SparseTensor` and a dense `Output`, producing a dense `Output`.
+Adds up a `SparseTensor` and a dense `Tensor`, producing a dense `Tensor`.
 
 This Op does not require `a_indices` be sorted in standard lexicographic order.
 
@@ -644,7 +644,7 @@ REGISTER_OP("SparseReduceSum")
 Computes the sum of elements across dimensions of a SparseTensor.
 
 This Op takes a SparseTensor and is the sparse counterpart to
-`tf.reduce_sum()`.  In particular, this Op also returns a dense `Output`
+`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
 instead of a sparse one.
 
 Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless

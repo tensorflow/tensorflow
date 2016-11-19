@@ -3,7 +3,7 @@ A TensorFlow computation, represented as a dataflow graph.
 A `Graph` contains a set of
 [`Operation`](../../api_docs/python/framework.md#Operation) objects,
 which represent units of computation; and
-[`Output`](../../api_docs/python/framework.md#Output) objects, which represent
+[`Tensor`](../../api_docs/python/framework.md#Tensor) objects, which represent
 the units of data that flow between operations.
 
 A default `Graph` is always registered, and accessible by calling
@@ -196,7 +196,7 @@ def my_func(pred, tensor):
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Output` objects which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
     defined in the context.  Can also be `None` to clear the control
     dependencies.
@@ -210,7 +210,7 @@ def my_func(pred, tensor):
 
 
 *  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or
-    `Output` objects.
+    `Tensor` objects.
 
 
 - - -
@@ -475,7 +475,7 @@ the collection list if it exists and never creates an empty collection.
 
 #### `tf.Graph.as_graph_element(obj, allow_tensor=True, allow_operation=True)` {#Graph.as_graph_element}
 
-Returns the object referred to by `obj`, as an `Operation` or `Output`.
+Returns the object referred to by `obj`, as an `Operation` or `Tensor`.
 
 This function validates that `obj` represents an element of this
 graph, and gives an informative error message if it is not.
@@ -489,15 +489,15 @@ This method may be called concurrently from multiple threads.
 ##### Args:
 
 
-*  <b>`obj`</b>: An `Output`, an `Operation`, or the name of a tensor or operation.
+*  <b>`obj`</b>: A `Tensor`, an `Operation`, or the name of a tensor or operation.
     Can also be any object with an `_as_graph_element()` method that returns
     a value of one of these types.
-*  <b>`allow_tensor`</b>: If true, `obj` may refer to an `Output`.
+*  <b>`allow_tensor`</b>: If true, `obj` may refer to a `Tensor`.
 *  <b>`allow_operation`</b>: If true, `obj` may refer to an `Operation`.
 
 ##### Returns:
 
-  The `Output` or `Operation` in the Graph corresponding to `obj`.
+  The `Tensor` or `Operation` in the Graph corresponding to `obj`.
 
 ##### Raises:
 
@@ -537,18 +537,18 @@ This method may be called concurrently from multiple threads.
 
 #### `tf.Graph.get_tensor_by_name(name)` {#Graph.get_tensor_by_name}
 
-Returns the `Output` with the given `name`.
+Returns the `Tensor` with the given `name`.
 
 This method may be called concurrently from multiple threads.
 
 ##### Args:
 
 
-*  <b>`name`</b>: The name of the `Output` to return.
+*  <b>`name`</b>: The name of the `Tensor` to return.
 
 ##### Returns:
 
-  The `Output` with the given `name`.
+  The `Tensor` with the given `name`.
 
 ##### Raises:
 
@@ -657,7 +657,7 @@ the default graph.
 
 *  <b>`op_type`</b>: The `Operation` type to create. This corresponds to the
     `OpDef.name` field for the proto that defines the operation.
-*  <b>`inputs`</b>: A list of `Output` objects that will be inputs to the `Operation`.
+*  <b>`inputs`</b>: A list of `Tensor` objects that will be inputs to the `Operation`.
 *  <b>`dtypes`</b>: A list of `DType` objects that will be the types of the tensors
     that the operation produces.
 *  <b>`input_types`</b>: (Optional.) A list of `DType`s that will be the types of
@@ -680,7 +680,7 @@ the default graph.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if any of the inputs is not an `Output`.
+*  <b>`TypeError`</b>: if any of the inputs is not a `Tensor`.
 *  <b>`ValueError`</b>: if colocation conflicts with existing device assignment.
 
 ##### Returns:

@@ -53,7 +53,7 @@ def _GetGradSource(op_or_tensor):
   that is used to create the gradient TensorArray.
 
   Args:
-    op_or_tensor: `Output` or `Operation` which is an input to a
+    op_or_tensor: `Tensor` or `Operation` which is an input to a
       TensorArray*Grad call.
 
   Returns:
@@ -79,10 +79,10 @@ def _TensorArrayReadGrad(op, grad):
 
   Args:
     op: Forward TensorArrayRead op.
-    grad: Gradient `Output` to TensorArrayRead.
+    grad: Gradient `Tensor` to TensorArrayRead.
 
   Returns:
-    A flow `Output`, which can be used in control dependencies to
+    A flow `Tensor`, which can be used in control dependencies to
     force the write of `grad` to the gradient `TensorArray`.
   """
   # Note: the forward flow dependency in the call to grad() is necessary for
@@ -108,10 +108,10 @@ def _TensorArrayWriteGrad(op, flow):
 
   Args:
     op: Forward TensorArrayWrite op.
-    flow: Gradient `Output` flow to TensorArrayWrite.
+    flow: Gradient `Tensor` flow to TensorArrayWrite.
 
   Returns:
-    A grad `Output`, the gradient created in an upstream ReadGrad or PackGrad.
+    A grad `Tensor`, the gradient created in an upstream ReadGrad or PackGrad.
   """
   # handle is the output store_handle of TensorArrayReadGrad or
   # the handle output of TensorArrayWriteGrad.  we must use this one.
@@ -132,10 +132,10 @@ def _TensorArrayGatherGrad(op, grad):
 
   Args:
     op: Forward TensorArrayGather op.
-    grad: Gradient `Output` to TensorArrayGather.
+    grad: Gradient `Tensor` to TensorArrayGather.
 
   Returns:
-    A flow `Output`, which can be used in control dependencies to
+    A flow `Tensor`, which can be used in control dependencies to
     force the write of `grad` to the gradient `TensorArray`.
   """
   # Note: the forward flow dependency in the call to grad() is necessary for
@@ -161,10 +161,10 @@ def _TensorArrayScatterGrad(op, flow):
 
   Args:
     op: Forward TensorArrayScatter op.
-    flow: Gradient `Output` flow to TensorArrayScatter.
+    flow: Gradient `Tensor` flow to TensorArrayScatter.
 
   Returns:
-    A grad `Output`, the gradient created in upstream ReadGrads or PackGrad.
+    A grad `Tensor`, the gradient created in upstream ReadGrads or PackGrad.
   """
   handle = op.inputs[0]
   indices = op.inputs[1]
@@ -183,10 +183,10 @@ def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
 
   Args:
     op: Forward TensorArrayConcat op.
-    grad: Gradient `Output` to TensorArrayConcat.
+    grad: Gradient `Tensor` to TensorArrayConcat.
 
   Returns:
-    A flow `Output`, which can be used in control dependencies to
+    A flow `Tensor`, which can be used in control dependencies to
     force the write of `grad` to the gradient `TensorArray`.
   """
   # Note: the forward flow dependency in the call to grad() is necessary for
@@ -213,10 +213,10 @@ def _TensorArraySplitGrad(op, flow):
 
   Args:
     op: Forward TensorArraySplit op.
-    flow: Gradient `Output` flow to TensorArraySplit.
+    flow: Gradient `Tensor` flow to TensorArraySplit.
 
   Returns:
-    A grad `Output`, the gradient created in upstream ReadGrads or PackGrad.
+    A grad `Tensor`, the gradient created in upstream ReadGrads or PackGrad.
   """
   handle = op.inputs[0]
   dtype = op.get_attr("T")

@@ -43,8 +43,8 @@ class Trainable(object):
          be integers representing the class index (i.e. values from 0 to
          n_classes-1).
       input_fn: Input function returning a tuple of:
-          features - Dictionary of string feature name to `Output` or `Output`.
-          labels - `Output` or dictionary of `Output` with labels.
+          features - Dictionary of string feature name to `Tensor` or `Tensor`.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
         If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
       steps: Number of steps for which to train model. If `None`, train forever.
         'steps' works incrementally. If you call two times fit(steps=10) then

@@ -14,13 +14,13 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 

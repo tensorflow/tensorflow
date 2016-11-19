@@ -59,7 +59,7 @@ class ResourceVariable(object):
     """Creates a variable.
 
     Args:
-      initial_value: An `Output` or Python object convertible to an `Output`
+      initial_value: A `Tensor` or Python object convertible to a `Tensor`
         representing the initial value of this variable.
       name: The name of this variable. Automatically uniquified.
       trainable: Whether the global read of this variable will be used for

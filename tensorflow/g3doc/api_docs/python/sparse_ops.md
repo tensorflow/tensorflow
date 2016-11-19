@@ -2,7 +2,7 @@
 
 # Sparse Tensors
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -169,20 +169,20 @@ the other direction.
 ##### Args:
 
 
-*  <b>`sp_indices`</b>: An `Output` of type `int64`.
+*  <b>`sp_indices`</b>: A `Tensor` of type `int64`.
     2-D.  `N x R` matrix with the indices of non-empty values in a
     SparseTensor, possibly not in canonical ordering.
-*  <b>`sp_values`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`sp_values`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     1-D.  `N` non-empty values corresponding to `sp_indices`.
-*  <b>`sp_shape`</b>: An `Output` of type `int64`.
+*  <b>`sp_shape`</b>: A `Tensor` of type `int64`.
     1-D.  Shape of the input SparseTensor.
-*  <b>`dense`</b>: A `Output`. Must have the same type as `sp_values`.
+*  <b>`dense`</b>: A `Tensor`. Must have the same type as `sp_values`.
     `R`-D.  The dense Tensor operand.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `sp_values`.
+  A `Tensor`. Has the same type as `sp_values`.
   1-D.  The `N` values that are operated on.
 
 
@@ -202,20 +202,20 @@ the other direction.
 ##### Args:
 
 
-*  <b>`sp_indices`</b>: An `Output` of type `int64`.
+*  <b>`sp_indices`</b>: A `Tensor` of type `int64`.
     2-D.  `N x R` matrix with the indices of non-empty values in a
     SparseTensor, possibly not in canonical ordering.
-*  <b>`sp_values`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`sp_values`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     1-D.  `N` non-empty values corresponding to `sp_indices`.
-*  <b>`sp_shape`</b>: An `Output` of type `int64`.
+*  <b>`sp_shape`</b>: A `Tensor` of type `int64`.
     1-D.  Shape of the input SparseTensor.
-*  <b>`dense`</b>: A `Output`. Must have the same type as `sp_values`.
+*  <b>`dense`</b>: A `Tensor`. Must have the same type as `sp_values`.
     `R`-D.  The dense Tensor operand.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `sp_values`.
+  A `Tensor`. Has the same type as `sp_values`.
   1-D.  The `N` values that are operated on.
 
 
@@ -250,7 +250,7 @@ available, or `session` must be specified explicitly.
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
     description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this sparse
@@ -356,14 +356,14 @@ are checked during execution.
 ##### Args:
 
 
-*  <b>`sparse_indices`</b>: A 0-D, 1-D, or 2-D `Output` of type `int32` or `int64`.
+*  <b>`sparse_indices`</b>: A 0-D, 1-D, or 2-D `Tensor` of type `int32` or `int64`.
     `sparse_indices[i]` contains the complete index where `sparse_values[i]`
     will be placed.
-*  <b>`output_shape`</b>: A 1-D `Output` of the same type as `sparse_indices`.  Shape
+*  <b>`output_shape`</b>: A 1-D `Tensor` of the same type as `sparse_indices`.  Shape
     of the dense output tensor.
-*  <b>`sparse_values`</b>: A 0-D or 1-D `Output`.  Values corresponding to each row of
+*  <b>`sparse_values`</b>: A 0-D or 1-D `Tensor`.  Values corresponding to each row of
     `sparse_indices`, or a scalar value to be used for all sparse indices.
-*  <b>`default_value`</b>: A 0-D `Output` of the same type as `sparse_values`.  Value
+*  <b>`default_value`</b>: A 0-D `Tensor` of the same type as `sparse_values`.  Value
     to set for indices not specified in `sparse_indices`.  Defaults to zero.
 *  <b>`validate_indices`</b>: A boolean value.  If True, indices are checked to make
     sure they are sorted in lexicographic order and that there are no repeats.
@@ -371,7 +371,7 @@ are checked during execution.
 
 ##### Returns:
 
-  Dense `Output` of shape `output_shape`.  Has the same type as
+  Dense `Tensor` of shape `output_shape`.  Has the same type as
   `sparse_values`.
 
 
@@ -751,7 +751,7 @@ shape `[9, 4]` and `indices` / `values`:
 
 
 *  <b>`sp_input`</b>: The input `SparseTensor`.
-*  <b>`shape`</b>: A 1-D (vector) int64 `Output` specifying the new dense shape of the
+*  <b>`shape`</b>: A 1-D (vector) int64 `Tensor` specifying the new dense shape of the
     represented `SparseTensor`.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional)
 
@@ -794,7 +794,7 @@ Graphically the output tensors are:
 ##### Args:
 
 
-*  <b>`split_dim`</b>: A 0-D `int32` `Output`. The dimension along which to split.
+*  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
 *  <b>`num_split`</b>: A Python integer. The number of ways to split.
 *  <b>`sp_input`</b>: The `SparseTensor` to split.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1017,7 +1017,7 @@ then the output will be a `SparseTensor` of shape `[5, 4]` and
 Computes the sum of elements across dimensions of a SparseTensor.
 
 This Op takes a SparseTensor and is the sparse counterpart to
-`tf.reduce_sum()`.  In particular, this Op also returns a dense `Output`
+`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
 instead of a sparse one.
 
 Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
@@ -1097,10 +1097,10 @@ which are interpreted according to the indexing rules in Python.
 
 Adds two tensors, at least one of each is a `SparseTensor`.
 
-If one `SparseTensor` and one `Output` are passed in, returns an `Output`.  If
+If one `SparseTensor` and one `Tensor` are passed in, returns a `Tensor`.  If
 both arguments are `SparseTensor`s, this returns a `SparseTensor`.  The order
 of arguments does not matter.  Use vanilla `tf.add()` for adding two dense
-`Output`s.
+`Tensor`s.
 
 The indices of any input `SparseTensor` are assumed ordered in standard
 lexicographic order.  If this is not the case, before this step run
@@ -1131,22 +1131,22 @@ Then,
 ##### Args:
 
 
-*  <b>`a`</b>: The first operand; `SparseTensor` or `Output`.
-*  <b>`b`</b>: The second operand; `SparseTensor` or `Output`.  At least one operand
+*  <b>`a`</b>: The first operand; `SparseTensor` or `Tensor`.
+*  <b>`b`</b>: The second operand; `SparseTensor` or `Tensor`.  At least one operand
     must be sparse.
-*  <b>`thresh`</b>: A 0-D `Output`.  The magnitude threshold that determines if an
+*  <b>`thresh`</b>: A 0-D `Tensor`.  The magnitude threshold that determines if an
   output value/index pair takes space.  Its dtype should match that of the
   values if they are real; if the latter are complex64/complex128, then the
   dtype should be float32/float64, correspondingly.
 
 ##### Returns:
 
-  A `SparseTensor` or an `Output`, representing the sum.
+  A `SparseTensor` or a `Tensor`, representing the sum.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If both `a` and `b` are `Output`s.  Use `tf.add()` instead.
+*  <b>`TypeError`</b>: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
 
 
 - - -

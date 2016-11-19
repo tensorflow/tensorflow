@@ -41,8 +41,8 @@ def assert_close(
   """Assert that that x and y are within machine epsilon of each other.
 
   Args:
-    x: Numeric `Output`
-    y: Numeric `Output`
+    x: Numeric `Tensor`
+    y: Numeric `Tensor`
     data: The tensors to print out if the condition is `False`. Defaults to
       error message and first few entries of `x` and `y`.
     summarize: Print this many entries of each tensor.
@@ -79,7 +79,7 @@ def assert_integer_form(
   """Assert that x has integer components (or floats equal to integers).
 
   Args:
-    x: Numeric `Output`
+    x: Numeric `Tensor`
     data: The tensors to print out if the condition is `False`. Defaults to
       error message and first few entries of `x` and `y`.
     summarize: Print this many entries of each tensor.
@@ -110,8 +110,8 @@ def get_logits_and_prob(
   """Converts logits to probabilities and vice-versa, and returns both.
 
   Args:
-    logits: Numeric `Output` representing log-odds.
-    p: Numeric `Output` representing probabilities.
+    logits: Numeric `Tensor` representing log-odds.
+    p: Numeric `Tensor` representing probabilities.
     multidimensional: `Boolean`, default `False`.
       If `True`, represents whether the last dimension of `logits` or `p`,
       a [N1, N2, ... k] dimensional tensor, represent the
@@ -185,14 +185,14 @@ def log_combinations(n, counts, name="log_combinations"):
   where `i` runs over all `k` classes.
 
   Args:
-    n: Numeric `Output` broadcastable with `counts`. This represents `n`
+    n: Numeric `Tensor` broadcastable with `counts`. This represents `n`
       outcomes.
-    counts: Numeric `Output` broadcastable with `n`. This represents counts
+    counts: Numeric `Tensor` broadcastable with `n`. This represents counts
       in `k` classes, where `k` is the last dimension of the tensor.
     name: A name for this operation (optional).
 
   Returns:
-    `Output` representing the multinomial coefficient between `n` and `counts`.
+    `Tensor` representing the multinomial coefficient between `n` and `counts`.
   """
   # First a bit about the number of ways counts could have come in:
   # E.g. if counts = [1, 2], then this is 3 choose 2.
@@ -247,16 +247,16 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   ```
 
   Args:
-    matrix:  Rank `R` `Output`, `R >= 2`, where the last two dimensions are
+    matrix:  Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
       equal.
-    transform:  Element-wise function mapping `Output`s to `Output`s.  To
+    transform:  Element-wise function mapping `Tensors` to `Tensors`.  To
       be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
       unchanged.  Defaults to `None`.
     name:  A name to give created ops.
       Defaults to "matrix_diag_transform".
 
   Returns:
-    An `Output` with same shape and `dtype` as `matrix`.
+    A `Tensor` with same shape and `dtype` as `matrix`.
   """
   with ops.name_scope(name, "matrix_diag_transform", [matrix]):
     matrix = ops.convert_to_tensor(matrix, name="matrix")
@@ -295,13 +295,13 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
     ```
 
   Args:
-    x: `Output`.
-    shift: `Output`. Number of dimensions to transpose left (shift<0) or
+    x: `Tensor`.
+    shift: `Tensor`. Number of dimensions to transpose left (shift<0) or
       transpose right (shift>0).
     name: `String`. The name to give this op.
 
   Returns:
-    rotated_x: Input `Output` with dimensions circularly rotated by shift.
+    rotated_x: Input `Tensor` with dimensions circularly rotated by shift.
 
   Raises:
     TypeError: if shift is not integer type.
@@ -348,18 +348,18 @@ def pick_vector(cond,
                 true_vector,
                 false_vector,
                 name="pick_vector"):
-  """Picks possibly different length row `Output`s based on condition.
+  """Picks possibly different length row `Tensor`s based on condition.
 
-  Value `Output`s should have exactly one dimension.
+  Value `Tensor`s should have exactly one dimension.
 
   If `cond` is a python Boolean or `tf.constant` then either `true_vector` or
   `false_vector` is immediately returned. I.e., no graph nodes are created and
   no validation happens.
 
   Args:
-    cond: `Output`. Must have `dtype=tf.bool` and be scalar.
-    true_vector: `Output` of one dimension. Returned when cond is `True`.
-    false_vector: `Output` of one dimension. Returned when cond is `False`.
+    cond: `Tensor`. Must have `dtype=tf.bool` and be scalar.
+    true_vector: `Tensor` of one dimension. Returned when cond is `True`.
+    false_vector: `Tensor` of one dimension. Returned when cond is `False`.
     name: `String`. The name to give this op.
 
   Example:
@@ -372,7 +372,7 @@ def pick_vector(cond,
   ```
 
   Returns:
-    true_or_false_vector: `Output`.
+    true_or_false_vector: `Tensor`.
 
   Raises:
     TypeError: if `cond.dtype != tf.bool`
@@ -439,14 +439,14 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
   `distribution_util_test.py`, function `_fill_lower_triangular`.
 
   Args:
-    x: `Output` representing lower triangular elements.
+    x: `Tensor` representing lower triangular elements.
     validate_args: `Boolean`, default `False`.  Whether to ensure the shape of
       `x` can be mapped to a lower triangular matrix (controls non-static checks
       only).
     name: `String`. The name to give this op.
 
   Returns:
-    tril: `Output` with lower triangular elements filled from `x`.
+    tril: `Tensor` with lower triangular elements filled from `x`.
 
   Raises:
     ValueError: if shape if `x` has static shape which cannot be mapped to a

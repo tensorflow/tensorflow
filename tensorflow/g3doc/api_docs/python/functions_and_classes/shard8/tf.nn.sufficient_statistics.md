@@ -9,9 +9,9 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`.
+*  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
-*  <b>`shift`</b>: An `Output` containing the value by which to shift the data for
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift
     close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
@@ -19,7 +19,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 
 ##### Returns:
 
-  Four `Output` objects of the same type as `x`:
+  Four `Tensor` objects of the same type as `x`:
 
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.

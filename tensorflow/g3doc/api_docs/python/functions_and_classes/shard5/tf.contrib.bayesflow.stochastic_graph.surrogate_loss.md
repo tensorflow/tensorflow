@@ -16,19 +16,19 @@ instantiated in `while_loop`s or other control structures.
     dimensionality of 1 or greater. All losses should have the same shape.
 *  <b>`stochastic_tensors`</b>: a list of `StochasticTensor`s to add loss terms for.
     If None, defaults to all `StochasticTensor`s in the graph upstream of
-    the `Output`s in `sample_losses`.
+    the `Tensor`s in `sample_losses`.
 *  <b>`name`</b>: the name with which to prepend created ops.
 
 ##### Returns:
 
-  `Output` loss, which is the sum of `sample_losses` and the
+  `Tensor` loss, which is the sum of `sample_losses` and the
   `loss_fn`s returned by the `StochasticTensor`s.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if `sample_losses` is not a list or tuple, or if its elements
-    are not `Output`s.
+    are not `Tensor`s.
 *  <b>`ValueError`</b>: if any loss in `sample_losses` does not have dimensionality 1
     or greater.
 

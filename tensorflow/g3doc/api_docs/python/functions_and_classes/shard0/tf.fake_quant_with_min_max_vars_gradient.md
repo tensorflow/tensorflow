@@ -5,23 +5,23 @@ Compute gradients for a FakeQuantWithMinMaxVars operation.
 ##### Args:
 
 
-*  <b>`gradients`</b>: An `Output` of type `float32`.
+*  <b>`gradients`</b>: A `Tensor` of type `float32`.
     Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
-*  <b>`inputs`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
     Values passed as inputs to the FakeQuantWithMinMaxVars operation.
     min, max: Quantization interval, scalar floats.
-*  <b>`min`</b>: An `Output` of type `float32`.
-*  <b>`max`</b>: An `Output` of type `float32`.
+*  <b>`min`</b>: A `Tensor` of type `float32`.
+*  <b>`max`</b>: A `Tensor` of type `float32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
+  A tuple of `Tensor` objects (backprops_wrt_input, backprop_wrt_min, backprop_wrt_max).
 
-*  <b>`backprops_wrt_input`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. inputs:
+*  <b>`backprops_wrt_input`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. inputs:
     `gradients * (inputs >= min && inputs <= max)`.
-*  <b>`backprop_wrt_min`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. min parameter:
+*  <b>`backprop_wrt_min`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. min parameter:
     `sum(gradients * (inputs < min))`.
-*  <b>`backprop_wrt_max`</b>: An `Output` of type `float32`. Backpropagated gradients w.r.t. max parameter:
+*  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter:
     `sum(gradients * (inputs > max))`.
 

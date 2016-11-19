@@ -18,7 +18,7 @@ s = svd(a, compute_uv=False)
 ##### Args:
 
 
-*  <b>`matrix`</b>: `Output` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
     `N`.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.

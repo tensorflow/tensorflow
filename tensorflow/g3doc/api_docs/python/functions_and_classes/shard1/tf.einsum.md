@@ -52,12 +52,12 @@ This function behaves like `numpy.einsum`, but does not support:
 
 *  <b>`equation`</b>: a `str` describing the contraction, in the same format as
     `numpy.einsum`.
-*  <b>`inputs`</b>: the inputs to contract (each one an `Output`), whose shapes should
+*  <b>`inputs`</b>: the inputs to contract (each one a `Tensor`), whose shapes should
     be consistent with `equation`.
 
 ##### Returns:
 
-  The contracted `Output`, with shape determined by `equation`.
+  The contracted `Tensor`, with shape determined by `equation`.
 
 ##### Raises:
 

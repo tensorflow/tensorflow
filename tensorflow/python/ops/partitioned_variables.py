@@ -255,11 +255,11 @@ def create_partitioned_variables(
       0 until all slack is absorbed.  The adjustment rules may change in the
       future, but as you can save/restore these variables with different
       slicing specifications this should not be a problem.
-    initializer: An `Output` of shape `shape` or a variable initializer
+    initializer: A `Tensor` of shape `shape` or a variable initializer
       function.  If a function, it will be called once for each slice,
       passing the shape and data type of the slice as parameters.  The
       function must return a tensor with the same shape as the slice.
-    dtype: Type of the variables. Ignored if `initializer` is an `Output`.
+    dtype: Type of the variables. Ignored if `initializer` is a `Tensor`.
     trainable: If True also add all the variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES`.
     collections: List of graph collections keys to add the variables to.

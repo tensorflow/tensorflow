@@ -18,13 +18,13 @@ tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Rank `k+1`, where `k >= 1`.
-*  <b>`diagonal`</b>: A `Output`. Must have the same type as `input`.
+*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
     Rank `k`, where `k >= 1`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   Rank `k+1`, with `output.shape = input.shape`.
 

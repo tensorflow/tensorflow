@@ -108,6 +108,7 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
                                               StatusCallback done) {
   const int64 total_bytes = device_tensor->TotalBytes();
   if (total_bytes > 0) {
+    device->eigen_sycl_device()->deallocate_all();
     const void* src_ptr = DMAHelper::base(device_tensor);
     void* dst_ptr = DMAHelper::base(cpu_tensor);
     switch (device_tensor->dtype()) {

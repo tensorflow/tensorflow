@@ -68,10 +68,10 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 ##### Args:
 
 
-*  <b>`input_`</b>: An `Output`.
-*  <b>`begin`</b>: An `int32` or `int64` `Output`.
-*  <b>`end`</b>: An `int32` or `int64` `Output`.
-*  <b>`strides`</b>: An `int32` or `int64` `Output`.
+*  <b>`input_`</b>: A `Tensor`.
+*  <b>`begin`</b>: An `int32` or `int64` `Tensor`.
+*  <b>`end`</b>: An `int32` or `int64` `Tensor`.
+*  <b>`strides`</b>: An `int32` or `int64` `Tensor`.
 *  <b>`begin_mask`</b>: An `int32` mask.
 *  <b>`end_mask`</b>: An `int32` mask.
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
@@ -82,5 +82,5 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 
 ##### Returns:
 
-  An `Output` the same type as `input`.
+  A `Tensor` the same type as `input`.
 

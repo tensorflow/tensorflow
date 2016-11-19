@@ -25,7 +25,7 @@ def my_op(a, b, c, name=None):
 
 *  <b>`name`</b>: The name argument that is passed to the op function.
 *  <b>`default_name`</b>: The default name to use if the `name` argument is `None`.
-*  <b>`values`</b>: The list of `Output` arguments that are passed to the op function.
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
 
 ##### Returns:
 

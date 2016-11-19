@@ -49,11 +49,11 @@ For example:
 ##### Args:
 
 
-*  <b>`indices`</b>: A list of at least 1 `Output` objects of type `int32`.
-*  <b>`data`</b>: A list with the same number of `Output` objects as `indices` of `Output` objects of the same type.
+*  <b>`indices`</b>: A list of at least 1 `Tensor` objects of type `int32`.
+*  <b>`data`</b>: A list with the same number of `Tensor` objects as `indices` of `Tensor` objects of the same type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `data`.
+  A `Tensor`. Has the same type as `data`.
 

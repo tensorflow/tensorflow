@@ -25,8 +25,8 @@ the dilation of `-value` by the reflected `kernel`.
 ##### Args:
 
 
-*  <b>`value`</b>: An `Output`. 4-D with shape `[batch, in_height, in_width, depth]`.
-*  <b>`kernel`</b>: An `Output`. Must have the same type as `value`.
+*  <b>`value`</b>: A `Tensor`. 4-D with shape `[batch, in_height, in_width, depth]`.
+*  <b>`kernel`</b>: A `Tensor`. Must have the same type as `value`.
     3-D with shape `[kernel_height, kernel_width, depth]`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
     1-D of length 4. The stride of the sliding window for each dimension of
@@ -41,7 +41,7 @@ the dilation of `-value` by the reflected `kernel`.
 
 ##### Returns:
 
-  An `Output`. Has the same type as `value`.
+  A `Tensor`. Has the same type as `value`.
   4-D with shape `[batch, out_height, out_width, depth]`.
 
 ##### Raises:

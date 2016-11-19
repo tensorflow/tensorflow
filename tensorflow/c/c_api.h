@@ -253,7 +253,7 @@ extern size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
 // `*dst` and `*dst_len` are undefined and an error is set in `status`.
 //
 // Does not read memory more than `src_len` bytes beyond `src`.
-extern size_t TF_DecodeString(const char* src, size_t src_len, char** dst,
+extern size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
                               size_t* dst_len, TF_Status* status);
 
 // Return the size in bytes required to encode a string `len` bytes long into a

@@ -8,10 +8,10 @@ basename portion of the pattern, not in the directory portion.
 ##### Args:
 
 
-*  <b>`pattern`</b>: An `Output` of type `string`. A (scalar) shell wildcard pattern.
+*  <b>`pattern`</b>: A `Tensor` of type `string`. A (scalar) shell wildcard pattern.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. A vector of matching filenames.
+  A `Tensor` of type `string`. A vector of matching filenames.
 

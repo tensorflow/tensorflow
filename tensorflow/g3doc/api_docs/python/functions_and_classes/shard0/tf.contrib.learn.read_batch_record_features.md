@@ -9,7 +9,7 @@ See more detailed description in `read_examples`.
 
 *  <b>`file_pattern`</b>: List of files or pattern of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-*  <b>`batch_size`</b>: An int or scalar `Output` specifying the batch size to use.
+*  <b>`batch_size`</b>: An int or scalar `Tensor` specifying the batch size to use.
 *  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
     `VarLenFeature` values.
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
@@ -23,7 +23,7 @@ See more detailed description in `read_examples`.
 
 ##### Returns:
 
-  A dict of `Output` or `SparseTensor` objects for each in `features`.
+  A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
 ##### Raises:
 

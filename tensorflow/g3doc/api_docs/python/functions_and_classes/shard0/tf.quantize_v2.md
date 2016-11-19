@@ -55,10 +55,10 @@ operations that have to perform further calculations on them.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `float32`.
-*  <b>`min_range`</b>: An `Output` of type `float32`.
+*  <b>`input`</b>: A `Tensor` of type `float32`.
+*  <b>`min_range`</b>: A `Tensor` of type `float32`.
     The minimum scalar value possibly produced for the input.
-*  <b>`max_range`</b>: An `Output` of type `float32`.
+*  <b>`max_range`</b>: A `Tensor` of type `float32`.
     The maximum scalar value possibly produced for the input.
 *  <b>`T`</b>: A `tf.DType` from: `tf.qint8, tf.quint8, tf.qint16, tf.quint16, tf.qint32`.
 *  <b>`mode`</b>: An optional `string` from: `"MIN_COMBINED", "MIN_FIRST"`. Defaults to `"MIN_COMBINED"`.
@@ -66,9 +66,9 @@ operations that have to perform further calculations on them.
 
 ##### Returns:
 
-  A tuple of `Output` objects (output, output_min, output_max).
+  A tuple of `Tensor` objects (output, output_min, output_max).
 
-*  <b>`output`</b>: A `Output` of type `T`. The quantized data produced from the float input.
-*  <b>`output_min`</b>: An `Output` of type `float32`. The actual minimum scalar value used for the output.
-*  <b>`output_max`</b>: An `Output` of type `float32`. The actual maximum scalar value used for the output.
+*  <b>`output`</b>: A `Tensor` of type `T`. The quantized data produced from the float input.
+*  <b>`output_min`</b>: A `Tensor` of type `float32`. The actual minimum scalar value used for the output.
+*  <b>`output_max`</b>: A `Tensor` of type `float32`. The actual maximum scalar value used for the output.
 

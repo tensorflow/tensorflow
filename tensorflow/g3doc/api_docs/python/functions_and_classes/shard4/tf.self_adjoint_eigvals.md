@@ -5,7 +5,7 @@ Computes the eigenvalues of one or more self-adjoint matrices.
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Output` of shape `[..., N, N]`.
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:

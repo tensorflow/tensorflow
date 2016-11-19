@@ -16,7 +16,7 @@ A TensorFlow computation, represented as a dataflow graph.
 A `Graph` contains a set of
 [`Operation`](../../api_docs/python/framework.md#Operation) objects,
 which represent units of computation; and
-[`Output`](../../api_docs/python/framework.md#Output) objects, which represent
+[`Tensor`](../../api_docs/python/framework.md#Tensor) objects, which represent
 the units of data that flow between operations.
 
 A default `Graph` is always registered, and accessible by calling
@@ -209,7 +209,7 @@ def my_func(pred, tensor):
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Output` objects which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
     defined in the context.  Can also be `None` to clear the control
     dependencies.
@@ -223,7 +223,7 @@ def my_func(pred, tensor):
 
 
 *  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or
-    `Output` objects.
+    `Tensor` objects.
 
 
 - - -
@@ -488,7 +488,7 @@ the collection list if it exists and never creates an empty collection.
 
 #### `tf.Graph.as_graph_element(obj, allow_tensor=True, allow_operation=True)` {#Graph.as_graph_element}
 
-Returns the object referred to by `obj`, as an `Operation` or `Output`.
+Returns the object referred to by `obj`, as an `Operation` or `Tensor`.
 
 This function validates that `obj` represents an element of this
 graph, and gives an informative error message if it is not.
@@ -502,15 +502,15 @@ This method may be called concurrently from multiple threads.
 ##### Args:
 
 
-*  <b>`obj`</b>: An `Output`, an `Operation`, or the name of a tensor or operation.
+*  <b>`obj`</b>: A `Tensor`, an `Operation`, or the name of a tensor or operation.
     Can also be any object with an `_as_graph_element()` method that returns
     a value of one of these types.
-*  <b>`allow_tensor`</b>: If true, `obj` may refer to an `Output`.
+*  <b>`allow_tensor`</b>: If true, `obj` may refer to a `Tensor`.
 *  <b>`allow_operation`</b>: If true, `obj` may refer to an `Operation`.
 
 ##### Returns:
 
-  The `Output` or `Operation` in the Graph corresponding to `obj`.
+  The `Tensor` or `Operation` in the Graph corresponding to `obj`.
 
 ##### Raises:
 
@@ -550,18 +550,18 @@ This method may be called concurrently from multiple threads.
 
 #### `tf.Graph.get_tensor_by_name(name)` {#Graph.get_tensor_by_name}
 
-Returns the `Output` with the given `name`.
+Returns the `Tensor` with the given `name`.
 
 This method may be called concurrently from multiple threads.
 
 ##### Args:
 
 
-*  <b>`name`</b>: The name of the `Output` to return.
+*  <b>`name`</b>: The name of the `Tensor` to return.
 
 ##### Returns:
 
-  The `Output` with the given `name`.
+  The `Tensor` with the given `name`.
 
 ##### Raises:
 
@@ -670,7 +670,7 @@ the default graph.
 
 *  <b>`op_type`</b>: The `Operation` type to create. This corresponds to the
     `OpDef.name` field for the proto that defines the operation.
-*  <b>`inputs`</b>: A list of `Output` objects that will be inputs to the `Operation`.
+*  <b>`inputs`</b>: A list of `Tensor` objects that will be inputs to the `Operation`.
 *  <b>`dtypes`</b>: A list of `DType` objects that will be the types of the tensors
     that the operation produces.
 *  <b>`input_types`</b>: (Optional.) A list of `DType`s that will be the types of
@@ -693,7 +693,7 @@ the default graph.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if any of the inputs is not an `Output`.
+*  <b>`TypeError`</b>: if any of the inputs is not a `Tensor`.
 *  <b>`ValueError`</b>: if colocation conflicts with existing device assignment.
 
 ##### Returns:
@@ -898,7 +898,7 @@ Marks the given `op` as unfetchable in this graph.
 Represents a graph node that performs computation on tensors.
 
 An `Operation` is a node in a TensorFlow `Graph` that takes zero or
-more `Output` objects as input, and produces zero or more `Output`
+more `Tensor` objects as input, and produces zero or more `Tensor`
 objects as output. Objects of type `Operation` are created by
 calling a Python op constructor (such as
 [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul))
@@ -931,7 +931,7 @@ The type of the op (e.g. `"MatMul"`).
 
 #### `tf.Operation.inputs` {#Operation.inputs}
 
-The list of `Output` objects representing the data inputs of this op.
+The list of `Tensor` objects representing the data inputs of this op.
 
 
 - - -
@@ -955,7 +955,7 @@ in the correct order.
 
 #### `tf.Operation.outputs` {#Operation.outputs}
 
-The list of `Output` objects representing the outputs of this op.
+The list of `Tensor` objects representing the outputs of this op.
 
 
 - - -
@@ -995,7 +995,7 @@ available, or `session` must be specified explicitly.
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run)
     for a description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
@@ -1053,9 +1053,9 @@ regular expression:
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
-*  <b>`inputs`</b>: list of `Output` objects. The inputs to this `Operation`.
+*  <b>`inputs`</b>: list of `Tensor` objects. The inputs to this `Operation`.
 *  <b>`output_types`</b>: list of `DType` objects.  List of the types of the
-    `Output`s computed by this operation.  The length of this list indicates
+    `Tensors` computed by this operation.  The length of this list indicates
     the number of output endpoints of the `Operation`.
 *  <b>`control_inputs`</b>: list of operations or tensors from which to have a
     control dependency.
@@ -1130,1030 +1130,29 @@ DEPRECATED: Use outputs.
 
 - - -
 
-### `class tf.Output` {#Output}
-
-Represents one of the outputs of an `Operation`.
-
-An `Output` is a symbolic handle to one of the outputs of an
-`Operation`. It does not hold the values of that operation's output,
-but instead provides a means of computing those values in a
-TensorFlow [`Session`](../../api_docs/python/client.md#Session).
-
-This class has two primary purposes:
-
-1. An `Output` can be passed as an input to another `Operation`.
-   This builds a dataflow connection between operations, which
-   enables TensorFlow to execute an entire `Graph` that represents a
-   large, multi-step computation.
-
-2. After the graph has been launched in a session, the value of the
-   `Output` can be computed by passing it to
-   [`Session.run()`](../../api_docs/python/client.md#Session.run).
-   `t.eval()` is a shortcut for calling
-   `tf.get_default_session().run(t)`.
-
-In the following example, `c`, `d`, and `e` are symbolic `Output`
-objects, whereas `result` is a numpy array that stores a concrete
-value:
-
-```python
-# Build a dataflow graph.
-c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
-d = tf.constant([[1.0, 1.0], [0.0, 1.0]])
-e = tf.matmul(c, d)
-
-# Construct a `Session` to execute the graph.
-sess = tf.Session()
-
-# Execute the graph and store the value that `e` represents in `result`.
-result = sess.run(e)
-```
-
-- - -
-
-#### `tf.Output.dtype` {#Output.dtype}
-
-The `DType` of elements in this tensor.
-
-
-- - -
-
-#### `tf.Output.name` {#Output.name}
-
-The string name of this tensor.
-
-
-- - -
-
-#### `tf.Output.value_index` {#Output.value_index}
-
-The index of this tensor in the outputs of its `Operation`.
-
-
-- - -
-
-#### `tf.Output.graph` {#Output.graph}
-
-The `Graph` that contains this tensor.
-
-
-- - -
-
-#### `tf.Output.op` {#Output.op}
-
-The `Operation` that produces this tensor as an output.
-
-
-- - -
-
-#### `tf.Output.consumers()` {#Output.consumers}
-
-Returns a list of `Operation`s that consume this tensor.
-
-##### Returns:
-
-  A list of `Operation`s.
-
-
-
-- - -
-
-#### `tf.Output.eval(feed_dict=None, session=None)` {#Output.eval}
-
-Evaluates this tensor in a `Session`.
-
-Calling this method will execute all preceding operations that
-produce the inputs needed for the operation that produces this
-tensor.
-
-*N.B.* Before invoking `Output.eval()`, its graph must have been
-launched in a session, and either a default session must be
-available, or `session` must be specified explicitly.
-
-##### Args:
-
-
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
-    See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
-    description of the valid feed values.
-*  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this tensor. If
-    none, the default session will be used.
-
-##### Returns:
-
-  A numpy array corresponding to the value of this tensor.
-
-
-
-- - -
-
-#### `tf.Output.get_shape()` {#Output.get_shape}
-
-Returns the `TensorShape` that represents the shape of this tensor.
-
-The shape is computed using shape inference functions that are
-registered for each `Operation` type using `tf.RegisterShape`.
-See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-details of what a shape represents.
-
-The inferred shape of a tensor is used to provide shape
-information without having to launch the graph in a session. This
-can be used for debugging, and providing early error messages. For
-example:
-
-```python
-c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-
-print(c.get_shape())
-==> TensorShape([Dimension(2), Dimension(3)])
-
-d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-
-print(d.get_shape())
-==> TensorShape([Dimension(4), Dimension(2)])
-
-# Raises a ValueError, because `c` and `d` do not have compatible
-# inner dimensions.
-e = tf.matmul(c, d)
-
-f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
-
-print(f.get_shape())
-==> TensorShape([Dimension(3), Dimension(4)])
-```
-
-In some cases, the inferred shape may have unknown dimensions. If
-the caller has additional information about the values of these
-dimensions, `Output.set_shape()` can be used to augment the
-inferred shape.
-
-##### Returns:
-
-  A `TensorShape` representing the shape of this tensor.
-
-
-- - -
-
-#### `tf.Output.set_shape(shape)` {#Output.set_shape}
-
-Updates the shape of this tensor.
-
-This method can be called multiple times, and will merge the given
-`shape` with the current shape of this tensor. It can be used to
-provide additional information about the shape of this tensor that
-cannot be inferred from the graph alone. For example, this can be used
-to provide additional information about the shapes of images:
-
-```python
-_, image_data = tf.TFRecordReader(...).read(...)
-image = tf.image.decode_png(image_data, channels=3)
-
-# The height and width dimensions of `image` are data dependent, and
-# cannot be computed without executing the op.
-print(image.get_shape())
-==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
-
-# We know that each image in this dataset is 28 x 28 pixels.
-image.set_shape([28, 28, 3])
-print(image.get_shape())
-==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
-```
-
-##### Args:
-
-
-*  <b>`shape`</b>: A `TensorShape` representing the shape of this tensor.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `shape` is not compatible with the current shape of
-    this tensor.
-
-
-
-#### Other Methods
-- - -
-
-#### `tf.Output.__abs__(x, name=None)` {#Output.__abs__}
-
-Computes the absolute value of a tensor.
-
-Given a tensor of real numbers `x`, this operation returns a tensor
-containing the absolute value of each element in `x`. For example, if x is
-an input element and y is an output element, this operation computes
-\\(y = |x|\\).
-
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
-    `int64`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` or `SparseTensor` the same size and type as `x` with absolute
-    values.
-
-
-- - -
-
-#### `tf.Output.__add__(x, y)` {#Output.__add__}
-
-Returns x + y element-wise.
-
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__and__(x, y)` {#Output.__and__}
-
-Returns the truth value of x AND y element-wise.
-
-*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__bool__()` {#Output.__bool__}
-
-Dummy method to prevent a tensor from being used as a Python `bool`.
-
-This overload raises a `TypeError` when the user inadvertently
-treats an `Output` as a boolean (e.g. in an `if` statement). For
-example:
-
-```python
-if tf.constant(True):  # Will raise.
-  # ...
-
-if tf.constant(5) < tf.constant(7):  # Will raise.
-  # ...
-```
-
-This disallows ambiguities between testing the Python value vs testing the
-dynamic condition of the `Output`.
-
-##### Raises:
-
-  `TypeError`.
-
-
-- - -
-
-#### `tf.Output.__div__(x, y)` {#Output.__div__}
-
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__eq__(other)` {#Output.__eq__}
-
-
-
-
-- - -
-
-#### `tf.Output.__floordiv__(x, y)` {#Output.__floordiv__}
-
-Divides `x / y` elementwise, rounding toward the most negative integer.
-
-The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
-floating point arguments so that the result is always an integer (though
-possibly an integer represented as floating point).  This op is generated by
-`x // y` floor division in Python 3 and in Python 2.7 with
-`from __future__ import division`.
-
-Note that for efficiency, `floordiv` uses C semantics for negative numbers
-(unlike Python and Numpy).
-
-`x` and `y` must have the same type, and the result will have the same type
-as well.
-
-##### Args:
-
-
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` rounded down (except possibly towards zero for negative integers).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If the inputs are complex.
-
-
-- - -
-
-#### `tf.Output.__ge__(x, y, name=None)` {#Output.__ge__}
-
-Returns the truth value of (x >= y) element-wise.
-
-*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__getitem__(tensor, slice_spec, var=None)` {#Output.__getitem__}
-
-Overload for Output.__getitem__.
-
-This operation extracts the specified region from the tensor.
-The notation is similar to NumPy with the restriction that
-currently only support basic indexing. That means that
-using a tensor as input is not currently allowed
-
-Some useful examples:
-
-```python
-# strip leading and trailing 2 elements
-foo = tf.constant([1,2,3,4,5,6])
-print(foo[2:-2].eval()) # => [3,4]
-
-# skip every row and reverse every column
-foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-print(foo[::2,::-1].eval()) # => [[3,2,1], [9,8,7]]
-
-# Insert another dimension
-foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-print(foo[tf.newaxis, :, :].eval()) # => [[[3,2,1], [9,8,7]]]
-print(foo[:, tf.newaxis, :].eval()) # => [[[3,2,1]], [[9,8,7]]]
-print(foo[:, :, tf.newaxis].eval()) # => [[[3],[2],[1]], [[9],[8],[7]]]
-
-# Ellipses (3 equivalent operations)
-print(foo[tf.newaxis, :, :].eval()) # => [[[3,2,1], [9,8,7]]]
-print(foo[tf.newaxis, ...].eval()) # => [[[3,2,1], [9,8,7]]]
-print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
-```
-
-##### Notes:
-
-  - `tf.newaxis` is `None` as in NumPy.
-  - An implicit ellipsis is placed at the end of the `slice_spec`
-  - NumPy advanced indexing is currently not supported.
-
-##### Args:
-
-
-*  <b>`tensor`</b>: An ops.Tensor object.
-*  <b>`slice_spec`</b>: The arguments to Output.__getitem__.
-*  <b>`var`</b>: In the case of variable slice assignment, the Variable
-    object to slice (i.e. tensor is the read-only view of this
-    variable).
-
-##### Returns:
-
-  The appropriate slice of "tensor", based on "slice_spec".
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If a slice range is negative size.
-*  <b>`TypeError`</b>: If the slice indices aren't int, slice, or Ellipsis.
-
-
-- - -
-
-#### `tf.Output.__gt__(x, y, name=None)` {#Output.__gt__}
-
-Returns the truth value of (x > y) element-wise.
-
-*NOTE*: `Greater` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__hash__()` {#Output.__hash__}
-
-
-
-
-- - -
-
-#### `tf.Output.__init__(op, value_index, dtype)` {#Output.__init__}
-
-Creates a new `Output`.
-
-##### Args:
-
-
-*  <b>`op`</b>: An `Operation`. `Operation` that computes this tensor.
-*  <b>`value_index`</b>: An `int`. Index of the operation's endpoint that produces
-    this tensor.
-*  <b>`dtype`</b>: A `DType`. Type of elements stored in this tensor.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If the op is not an `Operation`.
-
-
-- - -
-
-#### `tf.Output.__invert__(x, name=None)` {#Output.__invert__}
-
-Returns the truth value of NOT x element-wise.
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__iter__()` {#Output.__iter__}
-
-Dummy method to prevent iteration. Do not call.
-
-NOTE(mrry): If we register __getitem__ as an overloaded operator,
-Python will valiantly attempt to iterate over the Output from 0 to
-infinity.  Declaring this method prevents this unintended
-behavior.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: when invoked.
-
-
-- - -
-
-#### `tf.Output.__le__(x, y, name=None)` {#Output.__le__}
-
-Returns the truth value of (x <= y) element-wise.
-
-*NOTE*: `LessEqual` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__lt__(x, y, name=None)` {#Output.__lt__}
-
-Returns the truth value of (x < y) element-wise.
-
-*NOTE*: `Less` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__mod__(x, y)` {#Output.__mod__}
-
-Returns element-wise remainder of division.
-
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__mul__(x, y)` {#Output.__mul__}
-
-Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse".
-
-
-- - -
-
-#### `tf.Output.__neg__(x, name=None)` {#Output.__neg__}
-
-Computes numerical negative value element-wise.
-
-I.e., \\(y = -x\\).
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__nonzero__()` {#Output.__nonzero__}
-
-Dummy method to prevent a tensor from being used as a Python `bool`.
-
-This is the Python 2.x counterpart to `__bool__()` above.
-
-##### Raises:
-
-  `TypeError`.
-
-
-- - -
-
-#### `tf.Output.__or__(x, y)` {#Output.__or__}
-
-Returns the truth value of x OR y element-wise.
-
-*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__pow__(x, y)` {#Output.__pow__}
-
-Computes the power of one value to another.
-
-Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
-corresponding elements in `x` and `y`. For example:
-
-```
-# tensor 'x' is [[2, 2], [3, 3]]
-# tensor 'y' is [[8, 16], [2, 3]]
-tf.pow(x, y) ==> [[256, 65536], [9, 27]]
-```
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-   or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-   or `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output`.
-
-
-- - -
-
-#### `tf.Output.__radd__(y, x)` {#Output.__radd__}
-
-Returns x + y element-wise.
-
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__rand__(y, x)` {#Output.__rand__}
-
-Returns the truth value of x AND y element-wise.
-
-*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__rdiv__(y, x)` {#Output.__rdiv__}
-
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__repr__()` {#Output.__repr__}
-
-
-
-
-- - -
-
-#### `tf.Output.__rfloordiv__(y, x)` {#Output.__rfloordiv__}
-
-Divides `x / y` elementwise, rounding toward the most negative integer.
-
-The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
-floating point arguments so that the result is always an integer (though
-possibly an integer represented as floating point).  This op is generated by
-`x // y` floor division in Python 3 and in Python 2.7 with
-`from __future__ import division`.
-
-Note that for efficiency, `floordiv` uses C semantics for negative numbers
-(unlike Python and Numpy).
-
-`x` and `y` must have the same type, and the result will have the same type
-as well.
-
-##### Args:
-
-
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` rounded down (except possibly towards zero for negative integers).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If the inputs are complex.
-
-
-- - -
-
-#### `tf.Output.__rmod__(y, x)` {#Output.__rmod__}
-
-Returns element-wise remainder of division.
-
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__rmul__(y, x)` {#Output.__rmul__}
-
-Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse".
-
-
-- - -
-
-#### `tf.Output.__ror__(y, x)` {#Output.__ror__}
-
-Returns the truth value of x OR y element-wise.
-
-*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output` of type `bool`.
-
-
-- - -
-
-#### `tf.Output.__rpow__(y, x)` {#Output.__rpow__}
-
-Computes the power of one value to another.
-
-Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
-corresponding elements in `x` and `y`. For example:
-
-```
-# tensor 'x' is [[2, 2], [3, 3]]
-# tensor 'y' is [[8, 16], [2, 3]]
-tf.pow(x, y) ==> [[256, 65536], [9, 27]]
-```
-
-##### Args:
-
-
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-   or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-   or `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  An `Output`.
-
-
-- - -
-
-#### `tf.Output.__rsub__(y, x)` {#Output.__rsub__}
-
-Returns x - y element-wise.
-
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__rtruediv__(y, x)` {#Output.__rtruediv__}
-
-Divides x / y elementwise, always producing floating point results.
-
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
-
-
-- - -
-
-#### `tf.Output.__rxor__(y, x)` {#Output.__rxor__}
-
-x ^ y = (x | y) & ~(x & y).
-
-
-- - -
-
-#### `tf.Output.__str__()` {#Output.__str__}
-
-
-
-
-- - -
-
-#### `tf.Output.__sub__(x, y)` {#Output.__sub__}
-
-Returns x - y element-wise.
-
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Output`. Has the same type as `x`.
-
-
-- - -
-
-#### `tf.Output.__truediv__(x, y)` {#Output.__truediv__}
-
-Divides x / y elementwise, always producing floating point results.
-
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
-
-
-- - -
-
-#### `tf.Output.__xor__(x, y)` {#Output.__xor__}
-
-x ^ y = (x | y) & ~(x & y).
-
-
-- - -
-
-#### `tf.Output.device` {#Output.device}
-
-The name of the device on which this tensor will be produced, or None.
-
-
-
-- - -
-
 ### `class tf.Tensor` {#Tensor}
 
 Represents one of the outputs of an `Operation`.
 
-An `Output` is a symbolic handle to one of the outputs of an
+A `Tensor` is a symbolic handle to one of the outputs of an
 `Operation`. It does not hold the values of that operation's output,
 but instead provides a means of computing those values in a
 TensorFlow [`Session`](../../api_docs/python/client.md#Session).
 
 This class has two primary purposes:
 
-1. An `Output` can be passed as an input to another `Operation`.
+1. A `Tensor` can be passed as an input to another `Operation`.
    This builds a dataflow connection between operations, which
    enables TensorFlow to execute an entire `Graph` that represents a
    large, multi-step computation.
 
 2. After the graph has been launched in a session, the value of the
-   `Output` can be computed by passing it to
+   `Tensor` can be computed by passing it to
    [`Session.run()`](../../api_docs/python/client.md#Session.run).
    `t.eval()` is a shortcut for calling
    `tf.get_default_session().run(t)`.
 
-In the following example, `c`, `d`, and `e` are symbolic `Output`
+In the following example, `c`, `d`, and `e` are symbolic `Tensor`
 objects, whereas `result` is a numpy array that stores a concrete
 value:
 
@@ -2227,14 +1226,14 @@ Calling this method will execute all preceding operations that
 produce the inputs needed for the operation that produces this
 tensor.
 
-*N.B.* Before invoking `Output.eval()`, its graph must have been
+*N.B.* Before invoking `Tensor.eval()`, its graph must have been
 launched in a session, and either a default session must be
 available, or `session` must be specified explicitly.
 
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
     description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this tensor. If
@@ -2253,9 +1252,9 @@ available, or `session` must be specified explicitly.
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
-registered for each `Operation` type using `tf.RegisterShape`.
-See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-details of what a shape represents.
+registered in the Op for each `Operation`.  See
+[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+for more details of what a shape represents.
 
 The inferred shape of a tensor is used to provide shape
 information without having to launch the graph in a session. This
@@ -2285,7 +1284,7 @@ print(f.get_shape())
 
 In some cases, the inferred shape may have unknown dimensions. If
 the caller has additional information about the values of these
-dimensions, `Output.set_shape()` can be used to augment the
+dimensions, `Tensor.set_shape()` can be used to augment the
 inferred shape.
 
 ##### Returns:
@@ -2352,13 +1351,13 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
     `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` the same size and type as `x` with absolute
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
     values.
 
 
@@ -2374,13 +1373,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2395,13 +1394,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2411,7 +1410,7 @@ Returns the truth value of x AND y element-wise.
 Dummy method to prevent a tensor from being used as a Python `bool`.
 
 This overload raises a `TypeError` when the user inadvertently
-treats an `Output` as a boolean (e.g. in an `if` statement). For
+treats a `Tensor` as a boolean (e.g. in an `if` statement). For
 example:
 
 ```python
@@ -2423,7 +1422,7 @@ if tf.constant(5) < tf.constant(7):  # Will raise.
 ```
 
 This disallows ambiguities between testing the Python value vs testing the
-dynamic condition of the `Output`.
+dynamic condition of the `Tensor`.
 
 ##### Raises:
 
@@ -2442,13 +1441,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2479,8 +1478,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2505,20 +1504,20 @@ Returns the truth value of (x >= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
 
 #### `tf.Tensor.__getitem__(tensor, slice_spec, var=None)` {#Tensor.__getitem__}
 
-Overload for Output.__getitem__.
+Overload for Tensor.__getitem__.
 
 This operation extracts the specified region from the tensor.
 The notation is similar to NumPy with the restriction that
@@ -2558,7 +1557,7 @@ print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
 
 
 *  <b>`tensor`</b>: An ops.Tensor object.
-*  <b>`slice_spec`</b>: The arguments to Output.__getitem__.
+*  <b>`slice_spec`</b>: The arguments to Tensor.__getitem__.
 *  <b>`var`</b>: In the case of variable slice assignment, the Variable
     object to slice (i.e. tensor is the read-only view of this
     variable).
@@ -2586,13 +1585,13 @@ Returns the truth value of (x > y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2606,7 +1605,7 @@ Returns the truth value of (x > y) element-wise.
 
 #### `tf.Tensor.__init__(op, value_index, dtype)` {#Tensor.__init__}
 
-Creates a new `Output`.
+Creates a new `Tensor`.
 
 ##### Args:
 
@@ -2631,12 +1630,12 @@ Returns the truth value of NOT x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2646,7 +1645,7 @@ Returns the truth value of NOT x element-wise.
 Dummy method to prevent iteration. Do not call.
 
 NOTE(mrry): If we register __getitem__ as an overloaded operator,
-Python will valiantly attempt to iterate over the Output from 0 to
+Python will valiantly attempt to iterate over the Tensor from 0 to
 infinity.  Declaring this method prevents this unintended
 behavior.
 
@@ -2668,13 +1667,13 @@ Returns the truth value of (x <= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2689,13 +1688,13 @@ Returns the truth value of (x < y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2710,13 +1709,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2737,12 +1736,12 @@ I.e., \\(y = -x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2770,13 +1769,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2797,15 +1796,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -2820,13 +1819,13 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2841,13 +1840,13 @@ Returns the truth value of x AND y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2862,13 +1861,13 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2899,8 +1898,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2925,13 +1924,13 @@ Returns element-wise remainder of division.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -2953,13 +1952,13 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 
 
 - - -
@@ -2980,15 +1979,15 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
-*  <b>`y`</b>: An `Output` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
    or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output`.
+  A `Tensor`.
 
 
 - - -
@@ -3003,13 +2002,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -3032,8 +2031,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3072,13 +2071,13 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -3101,8 +2100,8 @@ and `int64` (matching the behavior of Numpy).
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of numeric type.
-*  <b>`y`</b>: `Output` denominator of numeric type.
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3137,7 +2136,7 @@ The name of the device on which this tensor will be produced, or None.
 
 ### `class tf.DType` {#DType}
 
-Represents the type of the elements in an `Output`.
+Represents the type of the elements in a `Tensor`.
 
 The following `DType` objects are defined:
 
@@ -3481,7 +2480,7 @@ def my_op(a, b, c, name=None):
 
 *  <b>`name`</b>: The name argument that is passed to the op function.
 *  <b>`default_name`</b>: The default name to use if the `name` argument is `None`.
-*  <b>`values`</b>: The list of `Output` arguments that are passed to the op function.
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
 
 ##### Returns:
 
@@ -3506,7 +2505,7 @@ for more details.
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Output` objects which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
     defined in the context.  Can also be `None` to clear the control
     dependencies.
@@ -3521,10 +2520,10 @@ for more details.
 
 ### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
 
-Converts the given `value` to an `Output`.
+Converts the given `value` to a `Tensor`.
 
-This function converts Python objects of various types to `Output`
-objects. It accepts `Output` objects, numpy arrays, Python lists,
+This function converts Python objects of various types to `Tensor`
+objects. It accepts `Tensor` objects, numpy arrays, Python lists,
 and Python scalars. For example:
 
 ```python
@@ -3544,17 +2543,17 @@ This function can be useful when composing a new operation in Python
 (such as `my_func` in the example above). All standard Python op
 constructors apply this function to each of their Tensor-valued
 inputs, which allows those ops to accept numpy arrays, Python lists,
-and scalars in addition to `Output` objects.
+and scalars in addition to `Tensor` objects.
 
 ##### Args:
 
 
-*  <b>`value`</b>: An object whose type has a registered `Output` conversion function.
+*  <b>`value`</b>: An object whose type has a registered `Tensor` conversion function.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
-*  <b>`name`</b>: Optional name to use if a new `Output` is created.
+*  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
 *  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Output` is created.
+    `Tensor` is created.
 *  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
     used when dtype is None. In some cases, a caller may not have a
     dtype in mind when converting to a tensor, so preferred_dtype
@@ -3563,7 +2562,7 @@ and scalars in addition to `Output` objects.
 
 ##### Returns:
 
-  An `Output` based on `value`.
+  A `Tensor` based on `value`.
 
 ##### Raises:
 
@@ -3576,10 +2575,10 @@ and scalars in addition to `Output` objects.
 
 ### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
 
-Converts the given object to an `Output` or an `IndexedSlices`.
+Converts the given object to a `Tensor` or an `IndexedSlices`.
 
 If `value` is an `IndexedSlices` or `SparseTensor` it is returned
-unmodified. Otherwise, it is converted to an `Output` using
+unmodified. Otherwise, it is converted to a `Tensor` using
 `convert_to_tensor()`.
 
 ##### Args:
@@ -3587,14 +2586,14 @@ unmodified. Otherwise, it is converted to an `Output` using
 
 *  <b>`value`</b>: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
     by `convert_to_tensor()`.
-*  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Output` or
+*  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
-*  <b>`name`</b>: (Optional.) A name to use if a new `Output` is created.
+*  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
 *  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
 
 ##### Returns:
 
-  An `Output`, `IndexedSlices`, or `SparseTensor` based on `value`.
+  An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
 ##### Raises:
 
@@ -3631,7 +2630,7 @@ Clears the default graph stack and resets the global default graph.
 NOTE: The default graph is a property of the current thread. This
 function applies only to the current thread.  Calling this function while
 a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
-behavior. Using any previously created `tf.Operation` or `tf.Output` objects
+behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
 after calling this function will result in undefined behavior.
 
 
@@ -3644,7 +2643,7 @@ Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
 This function provides a way to import a serialized TensorFlow
 [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
 protocol buffer, and extract individual objects in the `GraphDef` as
-[`Output`](#Output) and [`Operation`](#Operation) objects. See
+[`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
 [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
 `GraphDef` proto.
 
@@ -3654,11 +2653,11 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 *  <b>`graph_def`</b>: A `GraphDef` proto containing operations to be imported into
     the default graph.
 *  <b>`input_map`</b>: A dictionary mapping input names (as strings) in `graph_def`
-    to `Output` objects. The values of the named input tensors in the
-    imported graph will be re-mapped to the respective `Output` values.
+    to `Tensor` objects. The values of the named input tensors in the
+    imported graph will be re-mapped to the respective `Tensor` values.
 *  <b>`return_elements`</b>: A list of strings containing operation names in
     `graph_def` that will be returned as `Operation` objects; and/or
-    tensor names in `graph_def` that will be returned as `Output` objects.
+    tensor names in `graph_def` that will be returned as `Tensor` objects.
 *  <b>`name`</b>: (Optional.) A prefix that will be prepended to the names in
     `graph_def`. Defaults to `"import"`.
 *  <b>`op_dict`</b>: (Optional.) A dictionary mapping op type names to `OpDef` protos.
@@ -3673,14 +2672,14 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 
 ##### Returns:
 
-  A list of `Operation` and/or `Output` objects from the imported graph,
+  A list of `Operation` and/or `Tensor` objects from the imported graph,
   corresponding to the names in `return_elements`.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: If `graph_def` is not a `GraphDef` proto,
-    `input_map` is not a dictionary mapping strings to `Output` objects,
+    `input_map` is not a dictionary mapping strings to `Tensor` objects,
     or `return_elements` is not a list of strings.
 *  <b>`ValueError`</b>: If `input_map`, or `return_elements` contains names that
     do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
@@ -3846,7 +2845,7 @@ The following standard keys are defined:
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
   for more details.
-* `SUMMARIES`: the summary `Output` objects that have been created in the
+* `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
   [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
   for more details.
@@ -3875,9 +2874,9 @@ A decorator for registering the gradient function for an op type.
 
 This decorator is only used when defining a new op type. For an op
 with `m` inputs and `n` outputs, the gradient function is a function
-that takes the original `Operation` and `n` `Output` objects
+that takes the original `Operation` and `n` `Tensor` objects
 (representing the gradients with respect to each output of the op),
-and returns `m` `Output` objects (representing the partial gradients
+and returns `m` `Tensor` objects (representing the partial gradients
 with respect to each input of the op).
 
 For example, assuming that operations of type `"Sub"` take two
@@ -3993,24 +2992,8 @@ an attempt to request its gradient is made.
 
 A decorator for registering the shape function for an op type.
 
-This decorator is only used when defining a new op type. A shape
-function is a function from an `Operation` object to a list of
-`TensorShape` objects, with one `TensorShape` for each output of the
-operation.
-
-For example, assuming that operations of type `"Sub"` take two
-inputs `x` and `y`, and return a single output `x - y`, all with the
-same shape, the following shape function would be registered:
-
-```python
-@tf.RegisterShape("Sub")
-def _sub_shape(op):
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-```
-
-The decorator argument `op_type` is the string type of an
-operation. This corresponds to the `OpDef.name` field for the proto
-that defines the operation.
+Soon to be removed.  Shape functions should be registered via
+the SetShapeFn on the original Op specification in C++.
 - - -
 
 #### `tf.RegisterShape.__call__(f)` {#RegisterShape.__call__}
@@ -4030,10 +3013,10 @@ Saves the `op_type` as the `Operation` type.
 
 ### `class tf.TensorShape` {#TensorShape}
 
-Represents the shape of an `Output`.
+Represents the shape of a `Tensor`.
 
 A `TensorShape` represents a possibly-partial shape specification for a
-`Output`. It may be one of the following:
+`Tensor`. It may be one of the following:
 
 * *Fully-known shape:* has a known number of dimensions and a known size
   for each dimension.
@@ -4044,10 +3027,11 @@ A `TensorShape` represents a possibly-partial shape specification for a
 
 If a tensor is produced by an operation of type `"Foo"`, its shape
 may be inferred if there is a registered shape function for
-`"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
-for details of shape
-functions and how to register them. Alternatively, the shape may be set
-explicitly using [`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape).
+`"Foo"`. See [`Shape functions in
+C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
+details of shape functions and how to register them. Alternatively,
+the shape may be set explicitly using
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
 - - -
 
@@ -4838,7 +3822,7 @@ For details on how the graph-level seed interacts with op seeds, see
 
 ### `tf.register_tensor_conversion_function(base_type, conversion_func, priority=100)` {#register_tensor_conversion_function}
 
-Registers a function for converting objects of `base_type` to `Output`.
+Registers a function for converting objects of `base_type` to `Tensor`.
 
 The conversion function must have the following signature:
 
@@ -4847,15 +3831,15 @@ The conversion function must have the following signature:
       # ...
 ```
 
-It must return an `Output` with the given `dtype` if specified. If the
-conversion function creates a new `Output`, it should use the given
+It must return a `Tensor` with the given `dtype` if specified. If the
+conversion function creates a new `Tensor`, it should use the given
 `name` if specified. All exceptions will be propagated to the caller.
 
 The conversion function may return `NotImplemented` for some
 inputs. In this case, the conversion process will continue to try
 subsequent conversion functions.
 
-If `as_ref` is true, the function must return an `Output` reference,
+If `as_ref` is true, the function must return a `Tensor` reference,
 such as a `Variable`.
 
 NOTE: The conversion functions will execute in order of priority,
@@ -4869,7 +3853,7 @@ registered with a smaller priority than `G`.
 *  <b>`base_type`</b>: The base type or tuple of base types for all objects that
     `conversion_func` accepts.
 *  <b>`conversion_func`</b>: A function that converts instances of `base_type` to
-    `Output`.
+    `Tensor`.
 *  <b>`priority`</b>: Optional integer that indicates the priority for applying this
     conversion function. Conversion functions with smaller priority values
     run earlier than conversion functions with larger priority values.

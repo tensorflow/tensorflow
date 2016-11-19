@@ -50,7 +50,7 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   compute them approximately.
 
   Args:
-    true_classes: An `Output` of type `int64` and shape `[batch_size,
+    true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -108,7 +108,7 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   compute them approximately.
 
   Args:
-    true_classes: An `Output` of type `int64` and shape `[batch_size,
+    true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -163,7 +163,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
   compute them approximately.
 
   Args:
-    true_classes: An `Output` of type `int64` and shape `[batch_size,
+    true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -227,7 +227,7 @@ def fixed_unigram_candidate_sampler(true_classes,
   compute them approximately.
 
   Args:
-    true_classes: An `Output` of type `int64` and shape `[batch_size,
+    true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -290,7 +290,7 @@ def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
   well use full softmax or full logistic regression.
 
   Args:
-    true_classes: An `Output` of type `int64` and shape `[batch_size,
+    true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
     num_sampled: An `int`.  The number of possible classes.
@@ -341,7 +341,7 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
   target classes as noise classes for the same example.
 
   Args:
-    true_classes: An `Output` of type `int64` and shape `[batch_size,
+    true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.
       The sampled_candidates output of CandidateSampler.
@@ -350,11 +350,11 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
     name: A name for the operation (optional).
 
   Returns:
-    indices: An `Output` of type `int32` and shape `[num_accidental_hits]`.
+    indices: A `Tensor` of type `int32` and shape `[num_accidental_hits]`.
       Values indicate rows in `true_classes`.
-    ids: An `Output` of type `int64` and shape `[num_accidental_hits]`.
+    ids: A `Tensor` of type `int64` and shape `[num_accidental_hits]`.
       Values indicate positions in `sampled_candidates`.
-    weights: An `Output` of type `float` and shape `[num_accidental_hits]`.
+    weights: A `Tensor` of type `float` and shape `[num_accidental_hits]`.
       Each value is `-FLOAT_MAX`.
 
   """

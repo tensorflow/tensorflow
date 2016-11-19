@@ -23,7 +23,7 @@ import * as knn from './knn';
 import * as logging from './logging';
 import {DistanceMetricChangedListener, HoverListener, ProjectionChangedListener, ProjectorEventContext, SelectionChangedListener} from './projectorEventContext';
 import {ProjectorScatterPlotAdapter} from './projectorScatterPlotAdapter';
-import {Mode} from './scatterPlot';
+import {MouseMode} from './scatterPlot';
 import * as util from './util';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
@@ -130,8 +130,7 @@ export class Projector extends ProjectorPolymer implements
           .metadata[this.selectedLabelOption] as string;
     };
     this.metadataCard.setLabelOption(this.selectedLabelOption);
-    this.projectorScatterPlotAdapter.scatterPlot.setLabelAccessor(
-        labelAccessor);
+    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
     this.projectorScatterPlotAdapter.render();
   }
 
@@ -334,13 +333,13 @@ export class Projector extends ProjectorPolymer implements
   adjustSelectionAndHover(selectedPointIndices: number[], hoverIndex?: number) {
     this.notifySelectionChanged(selectedPointIndices);
     this.notifyHoverOverPoint(hoverIndex);
-    this.setMode(Mode.HOVER);
+    this.setMouseMode(MouseMode.CAMERA_AND_CLICK_SELECT);
   }
 
-  private setMode(mode: Mode) {
+  private setMouseMode(mouseMode: MouseMode) {
     let selectModeButton = this.querySelector('#selectMode');
-    (selectModeButton as any).active = (mode === Mode.SELECT);
-    this.projectorScatterPlotAdapter.scatterPlot.setMode(mode);
+    (selectModeButton as any).active = (mouseMode === MouseMode.AREA_SELECT);
+    this.projectorScatterPlotAdapter.scatterPlot.setMouseMode(mouseMode);
   }
 
   private setCurrentDataSet(ds: DataSet) {
@@ -374,7 +373,9 @@ export class Projector extends ProjectorPolymer implements
 
     let selectModeButton = this.querySelector('#selectMode');
     selectModeButton.addEventListener('click', (event) => {
-      this.setMode((selectModeButton as any).active ? Mode.SELECT : Mode.HOVER);
+      this.setMouseMode(
+          (selectModeButton as any).active ? MouseMode.AREA_SELECT :
+                                             MouseMode.CAMERA_AND_CLICK_SELECT);
     });
     let nightModeButton = this.querySelector('#nightDayMode');
     nightModeButton.addEventListener('click', () => {
@@ -400,8 +401,7 @@ export class Projector extends ProjectorPolymer implements
           '' + this.dataSet.points[i].metadata[this.selectedLabelOption];
       this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter(
           this.getScatterContainer(), this as ProjectorEventContext);
-      this.projectorScatterPlotAdapter.scatterPlot.setLabelAccessor(
-          labelAccessor);
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
     }
 
     this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(

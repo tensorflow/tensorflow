@@ -605,7 +605,7 @@ class BaseSession(SessionInterface):
 
     Use with the `with` keyword to specify that calls to
     [`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
-    [`Output.eval()`](../../api_docs/python/framework.md#Output.eval) should be
+    [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
     executed in this session.
 
     ```python
@@ -657,7 +657,7 @@ class BaseSession(SessionInterface):
 
     This method runs one "step" of TensorFlow computation, by
     running the necessary graph fragment to execute every `Operation`
-    and evaluate every `Output` in `fetches`, substituting the values in
+    and evaluate every `Tensor` in `fetches`, substituting the values in
     `feed_dict` for the corresponding input values.
 
     The `fetches` argument may be a single graph element, or an arbitrarily
@@ -666,7 +666,7 @@ class BaseSession(SessionInterface):
 
     * An [`Operation`](../../api_docs/python/framework.md#Operation).
       The corresponding fetched value will be `None`.
-    * A [`Output`](../../api_docs/python/framework.md#Output).
+    * A [`Tensor`](../../api_docs/python/framework.md#Tensor).
       The corresponding fetched value will be a numpy ndarray containing the
       value of that tensor.
     * A [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor).
@@ -707,7 +707,7 @@ class BaseSession(SessionInterface):
     the value of tensors in the graph. Each key in `feed_dict` can be
     one of the following types:
 
-    * If the key is a [`Output`](../../api_docs/python/framework.md#Output), the
+    * If the key is a [`Tensor`](../../api_docs/python/framework.md#Tensor), the
       value may be a Python scalar, string, list, or numpy ndarray
       that can be converted to the same `dtype` as that
       tensor. Additionally, if the key is a
@@ -717,7 +717,7 @@ class BaseSession(SessionInterface):
       [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
       the value should be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
-    * If the key is a nested tuple of `Output`s or `SparseTensor`s, the value
+    * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
       should be a nested tuple with the same structure that maps to their
       corresponding values as above.
 
@@ -752,7 +752,7 @@ class BaseSession(SessionInterface):
         closed).
       TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
       ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
-        `Output` that doesn't exist.
+        `Tensor` that doesn't exist.
     """
     run_metadata_ptr = tf_session.TF_NewBuffer()
     if options:
@@ -1102,7 +1102,7 @@ class Session(BaseSession):
   """A class for running TensorFlow operations.
 
   A `Session` object encapsulates the environment in which `Operation`
-  objects are executed, and `Output` objects are evaluated. For
+  objects are executed, and `Tensor` objects are evaluated. For
   example:
 
   ```python
@@ -1252,7 +1252,7 @@ class InteractiveSession(BaseSession):
 
   The only difference with a regular `Session` is that an `InteractiveSession`
   installs itself as the default session on construction.
-  The methods [`Output.eval()`](../../api_docs/python/framework.md#Output.eval)
+  The methods [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval)
   and [`Operation.run()`](../../api_docs/python/framework.md#Operation.run)
   will use that session to run ops.
 

@@ -78,7 +78,7 @@ def read_batch_examples(file_pattern, batch_size, reader,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
     randomize_input: Whether the input should be randomized.
@@ -88,14 +88,14 @@ def read_batch_examples(file_pattern, batch_size, reader,
       `tf.global_variables_initializer()` as shown in the tests.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
-    read_batch_size: An int or scalar `Output` specifying the number of
+    read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
 
   Returns:
-    String `Output` of batched `Example` proto.
+    String `Tensor` of batched `Example` proto.
 
   Raises:
     ValueError: for invalid inputs.
@@ -130,7 +130,7 @@ def read_keyed_batch_examples(
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
     randomize_input: Whether the input should be randomized.
@@ -140,7 +140,7 @@ def read_keyed_batch_examples(
       `tf.global_variables_initializer()` as shown in the tests.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
-    read_batch_size: An int or scalar `Output` specifying the number of
+    read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
@@ -148,8 +148,8 @@ def read_keyed_batch_examples(
 
   Returns:
     Returns tuple of:
-    - `Output` of string keys.
-    - String `Output` of batched `Example` proto.
+    - `Tensor` of string keys.
+    - String `Tensor` of batched `Example` proto.
 
   Raises:
     ValueError: for invalid inputs.
@@ -199,7 +199,7 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
     randomize_input: Whether the input should be randomized.
@@ -209,7 +209,7 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
       `tf.global_variables_initializer()` as shown in the tests.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
-    read_batch_size: An int or scalar `Output` specifying the number of
+    read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
@@ -217,8 +217,8 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
 
   Returns:
     Returns tuple of:
-    - `Output` of string keys.
-    - String `Output` of batched `Example` proto.
+    - `Tensor` of string keys.
+    - String `Tensor` of batched `Example` proto.
 
   Raises:
     ValueError: for invalid inputs.
@@ -323,7 +323,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
     randomize_input: Whether the input should be randomized.
@@ -333,7 +333,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
       `tf.global_variables_initializer()` as shown in the tests.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
-    read_batch_size: An int or scalar `Output` specifying the number of
+    read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
@@ -342,8 +342,8 @@ def _read_keyed_batch_examples_helper(file_pattern,
 
   Returns:
     Returns tuple of:
-    - `Output` of string keys.
-    - String `Output` of batched `Example` proto.
+    - `Tensor` of string keys.
+    - String `Tensor` of batched `Example` proto.
 
   Raises:
     ValueError: for invalid inputs.
@@ -447,7 +447,7 @@ def read_keyed_batch_features(file_pattern,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
     reader: A function or class that returns an object with
@@ -477,8 +477,8 @@ def read_keyed_batch_features(file_pattern,
 
   Returns:
     Returns tuple of:
-    - `Output` of string keys.
-    - A dict of `Output` or `SparseTensor` objects for each in `features`.
+    - `Tensor` of string keys.
+    - A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
   Raises:
     ValueError: for invalid inputs.
@@ -532,7 +532,7 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
     reader: A function or class that returns an object with
@@ -555,8 +555,8 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
 
   Returns:
     Returns tuple of:
-    - `Output` of string keys.
-    - A dict of `Output` or `SparseTensor` objects for each in `features`.
+    - `Tensor` of string keys.
+    - A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
   Raises:
     ValueError: for invalid inputs.
@@ -604,8 +604,8 @@ def queue_parsed_features(parsed_features,
   All ops are added to the default graph.
 
   Args:
-    parsed_features: A dict of string key to `Output` or `SparseTensor` objects.
-    keys: `Output` of string keys.
+    parsed_features: A dict of string key to `Tensor` or `SparseTensor` objects.
+    keys: `Tensor` of string keys.
     feature_queue_capacity: Capacity of the parsed features queue.
     num_queue_runners: Deprecated. Defaults to 2 if this and
       `num_enqueue_threads` are both `None`. This is the number of queue
@@ -622,8 +622,8 @@ def queue_parsed_features(parsed_features,
 
   Returns:
     Returns tuple of:
-    - `Output` corresponding to `keys` if provided, otherwise `None`.
-    -  A dict of string key to `Output` or `SparseTensor` objects corresponding
+    - `Tensor` corresponding to `keys` if provided, otherwise `None`.
+    -  A dict of string key to `Tensor` or `SparseTensor` objects corresponding
        to `parsed_features`.
   Raises:
     ValueError: for invalid inputs.
@@ -748,7 +748,7 @@ def read_batch_features(file_pattern,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
     reader: A function or class that returns an object with
@@ -767,7 +767,7 @@ def read_batch_features(file_pattern,
     name: Name of resulting op.
 
   Returns:
-    A dict of `Output` or `SparseTensor` objects for each in `features`.
+    A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
   Raises:
     ValueError: for invalid inputs.
@@ -793,7 +793,7 @@ def read_batch_record_features(file_pattern, batch_size, features,
   Args:
     file_pattern: List of files or pattern of file paths containing
         `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int or scalar `Output` specifying the batch size to use.
+    batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
     randomize_input: Whether the input should be randomized.
@@ -806,7 +806,7 @@ def read_batch_record_features(file_pattern, batch_size, features,
     name: Name of resulting op.
 
   Returns:
-    A dict of `Output` or `SparseTensor` objects for each in `features`.
+    A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
   Raises:
     ValueError: for invalid inputs.

@@ -273,7 +273,7 @@ class _RegressionHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(features, labels, train_op_fn, logits))
       eval_metric_ops = self._eval_metric_ops(features, labels, logits)
     signature_fn = self._signature_fn()
@@ -305,7 +305,7 @@ class _RegressionHead(_Head):
       name: Op name.
 
     Returns:
-      A loss `Output`.
+      A loss `Tensor`.
     """
     labels = _check_labels(labels, self._label_name)
 
@@ -349,10 +349,10 @@ class _RegressionHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` before applying possible centered bias.
+      logits: logits `Tensor` before applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
@@ -364,10 +364,10 @@ class _RegressionHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` after applying possible centered bias.
+      logits: logits `Tensor` after applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     predictions = {}
     if self.logits_dimension == 1:
@@ -458,7 +458,7 @@ class _MultiClassHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(features, labels, train_op_fn, logits))
       eval_metric_ops = self._eval_metric_ops(features, labels, logits)
     signature_fn = self._signature_fn()
@@ -490,7 +490,7 @@ class _MultiClassHead(_Head):
       name: Op name.
 
     Returns:
-      A loss `Output`.
+      A loss `Tensor`.
     """
     labels = _check_labels(labels, self._label_name)
 
@@ -534,10 +534,10 @@ class _MultiClassHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` before applying possible centered bias.
+      logits: logits `Tensor` before applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
@@ -549,10 +549,10 @@ class _MultiClassHead(_Head):
     """Returns a dict of predictions.
 
     Args:
-      logits: logits `Output` after applying possible centered bias.
+      logits: logits `Tensor` after applying possible centered bias.
 
     Returns:
-      Dict of prediction `Output` keyed by `PredictionKey`.
+      Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:

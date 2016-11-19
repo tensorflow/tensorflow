@@ -43,7 +43,7 @@ def _assert_same_base_type(items, expected_type=None):
   r"""Asserts all items are of the same base type.
 
   Args:
-    items: List of graph items (e.g., `Variable`, `Output`, `SparseTensor`,
+    items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,
         `Operation`, or `IndexedSlices`). Can include `None` elements, which
         will be ignored.
     expected_type: Expected type. If not specified, assert all items are
@@ -155,8 +155,8 @@ def remove_squeezable_dimensions(predictions, labels):
   operations, which could result in a performance hit.
 
   Args:
-    predictions: Predicted values, an `Output` of arbitrary dimensions.
-    labels: Label values, an `Output` whose dimensions match `predictions`.
+    predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    labels: Label values, a `Tensor` whose dimensions match `predictions`.
 
   Returns:
     Tuple of `predictions` and `labels`, possibly with last dim squeezed.
@@ -358,19 +358,19 @@ def with_shape(expected_shape, tensor):
 
 def convert_to_tensor_or_sparse_tensor(
     value, dtype=None, name=None, as_ref=False):
-  """Converts value to a `SparseTensor` or `Output`.
+  """Converts value to a `SparseTensor` or `Tensor`.
 
   Args:
     value: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
-      registered `Output` conversion function.
+      registered `Tensor` conversion function.
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
-    name: Optional name to use if a new `Output` is created.
+    name: Optional name to use if a new `Tensor` is created.
     as_ref: True if we want the result as a ref tensor. Only used if a new
-      `Output` is created.
+      `Tensor` is created.
 
   Returns:
-    A `SparseTensor` or `Output` based on `value`.
+    A `SparseTensor` or `Tensor` based on `value`.
 
   Raises:
     RuntimeError: If result type is incompatible with `dtype`.

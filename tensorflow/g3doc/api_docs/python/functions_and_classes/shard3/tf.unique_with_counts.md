@@ -23,15 +23,15 @@ count ==> [2, 1, 3, 1, 2]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. 1-D.
+*  <b>`x`</b>: A `Tensor`. 1-D.
 *  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (y, idx, count).
+  A tuple of `Tensor` objects (y, idx, count).
 
-*  <b>`y`</b>: A `Output`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Output` of type `out_idx`. 1-D.
-*  <b>`count`</b>: A `Output` of type `out_idx`. 1-D.
+*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
+*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
 

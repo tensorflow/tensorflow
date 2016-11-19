@@ -200,11 +200,11 @@ class TensorFlowBenchmark(Benchmark):
                        name=None,
                        extras=None,
                        mbs=0):
-    """Run an op or output in the given session.  Report the results.
+    """Run an op or tensor in the given session.  Report the results.
 
     Args:
       sess: `Session` object to use for timing.
-      op_or_tensor: `Operation` or `Output` to benchmark.
+      op_or_tensor: `Operation` or `Tensor` to benchmark.
       feed_dict: A `dict` of values to feed for each op iteration (see the
         `feed_dict` parameter of `Session.run`).
       burn_iters: Number of burn-in iterations to run.

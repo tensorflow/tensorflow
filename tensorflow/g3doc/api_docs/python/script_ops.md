@@ -2,7 +2,7 @@
 
 # Wraps python functions
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -48,10 +48,10 @@ y = tf.py_func(my_func, [inp], tf.float32)
 
 
 *  <b>`func`</b>: A Python function, which accepts a list of NumPy `ndarray` objects
-    having element types that match the corresponding `tf.Output` objects
+    having element types that match the corresponding `tf.Tensor` objects
     in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
     having element types that match the corresponding values in `Tout`.
-*  <b>`inp`</b>: A list of `Output` objects.
+*  <b>`inp`</b>: A list of `Tensor` objects.
 *  <b>`Tout`</b>: A list or tuple of tensorflow data types or a single tensorflow data
     type if there is only one, indicating what `func` returns.
 *  <b>`stateful`</b>: (Boolean.) If True, the function should be considered stateful.
@@ -63,6 +63,6 @@ y = tf.py_func(my_func, [inp], tf.float32)
 
 ##### Returns:
 
-  A list of `Output` or a single `Output` which `func` computes.
+  A list of `Tensor` or a single `Tensor` which `func` computes.
 
 

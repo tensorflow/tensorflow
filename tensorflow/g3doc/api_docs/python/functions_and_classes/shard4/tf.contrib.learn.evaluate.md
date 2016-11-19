@@ -3,7 +3,7 @@
 Evaluate a model loaded from a checkpoint.
 
 Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
-to restore variables from, and a `dict` of `Output`s to evaluate, run an eval
+to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
 loop for `max_steps` steps, or until an exception (generally, an
 end-of-input signal from a reader operation) is raised from running
 `eval_dict`.
@@ -26,7 +26,7 @@ and written to `output_dir`.
     returned. If `update_op` is None, then it's evaluated in every step. If
     `max_steps` is `None`, this should depend on a reader that will raise an
     end-of-input exception when the inputs are exhausted.
-*  <b>`update_op`</b>: An `Output` which is run in every step.
+*  <b>`update_op`</b>: A `Tensor` which is run in every step.
 *  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
     one is extracted from the graph using the same logic as in `Supervisor`.
     Used to place eval summaries on training curves.

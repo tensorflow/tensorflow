@@ -1,4 +1,4 @@
-Represents the type of the elements in an `Output`.
+Represents the type of the elements in a `Tensor`.
 
 The following `DType` objects are defined:
 

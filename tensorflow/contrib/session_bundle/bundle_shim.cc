@@ -33,6 +33,9 @@ namespace internal {
 
 void AddInputToSignatureDef(const string& tensor_name, const string& map_key,
                             SignatureDef* signature_def) {
+  if (tensor_name.empty()) {
+    return;
+  }
   TensorInfo tensor_info;
   tensor_info.set_name(tensor_name);
   (*signature_def->mutable_inputs())[map_key] = tensor_info;
@@ -40,6 +43,9 @@ void AddInputToSignatureDef(const string& tensor_name, const string& map_key,
 
 void AddOutputToSignatureDef(const string& tensor_name, const string& map_key,
                              SignatureDef* signature_def) {
+  if (tensor_name.empty()) {
+    return;
+  }
   TensorInfo tensor_info;
   tensor_info.set_name(tensor_name);
   (*signature_def->mutable_outputs())[map_key] = tensor_info;
