@@ -59,12 +59,12 @@ It is required that 1 <= N <= 3.
 ##### Args:
 
 
-*  <b>`input`</b>: An N-D `Output` of type `T`, of shape
+*  <b>`input`</b>: An N-D `Tensor` of type `T`, of shape
     `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
     not start with "NC" (default), or
     `[batch_size, in_channels] + input_spatial_shape` if data_format starts
     with "NC".
-*  <b>`filter`</b>: An N-D `Output` with the same type as `input` and shape
+*  <b>`filter`</b>: An N-D `Tensor` with the same type as `input` and shape
     `spatial_filter_shape + [in_channels, out_channels]`.
 *  <b>`padding`</b>: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
 *  <b>`strides`</b>: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
@@ -88,7 +88,7 @@ It is required that 1 <= N <= 3.
 
 ##### Returns:
 
-  An `Output` with the same type as `input` of shape
+  A `Tensor` with the same type as `input` of shape
 
       `[batch_size] + output_spatial_shape + [out_channels]`
 

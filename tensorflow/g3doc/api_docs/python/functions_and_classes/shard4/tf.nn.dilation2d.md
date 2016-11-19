@@ -29,9 +29,9 @@ negation of the erosion of `-input` by the reflected `filter`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     4-D with shape `[batch, in_height, in_width, depth]`.
-*  <b>`filter`</b>: A `Output`. Must have the same type as `input`.
+*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
     3-D with shape `[filter_height, filter_width, depth]`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
     The stride of the sliding window for each dimension of the input
@@ -45,6 +45,6 @@ negation of the erosion of `-input` by the reflected `filter`.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   4-D with shape `[batch, out_height, out_width, depth]`.
 

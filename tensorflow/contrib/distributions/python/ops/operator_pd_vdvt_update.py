@@ -88,9 +88,9 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     Args:
       operator:  Subclass of `OperatorPDBase`.  Represents the (batch) positive
         definite matrix `M` in `R^{k x k}`.
-      v: `Output` defining batch matrix of same `dtype` and `batch_shape` as
+      v: `Tensor` defining batch matrix of same `dtype` and `batch_shape` as
         `operator`, and last two dimensions of shape `(k, r)`.
-      diag:  Optional `Output` defining batch vector of same `dtype` and
+      diag:  Optional `Tensor` defining batch vector of same `dtype` and
         `batch_shape` as `operator`, and last dimension of size `r`.  If `None`,
         the update becomes `VV^T` rather than `VDV^T`.
       verify_pd:  `Boolean`.  If `True`, add asserts that `diag > 0`, which,

@@ -305,7 +305,7 @@ concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
   range [0, rank(values)).
 values: The `N` Tensors to concatenate. Their ranks and types must match,
   and their sizes must match in all dimensions except `concat_dim`.
-output: An `Output` with the concatenation of values stacked along the
+output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
 )doc");
@@ -325,7 +325,7 @@ values: List of `N` Tensors to concatenate. Their ranks and types must match,
   and their sizes must match in all dimensions except `concat_dim`.
 axis: 0-D.  The dimension along which to concatenate.  Must be in the
   range [0, rank(values)).
-output: An `Output` with the concatenation of values stacked along the
+output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
 )doc");
@@ -4395,7 +4395,7 @@ input_mins: The minimum scalar values for each of the input tensors.
 input_maxes: The maximum scalar values for each of the input tensors.
 output_min: The float value that the minimum quantized output value represents.
 output_max: The float value that the maximum quantized output value represents.
-output: An `Output` with the concatenation of values stacked along the
+output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
 )doc");
@@ -4512,7 +4512,7 @@ operator which extracts values or slices from a given tensor.
 TODO(simister): Add a link to Variable.__getitem__ documentation on slice
 syntax.
 
-`shape` is a `TensorShape` with rank `P` and `indices` is an `Output` of rank
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
 `Q`.
 
 `indices` must be integer tensor, containing indices into `shape`.

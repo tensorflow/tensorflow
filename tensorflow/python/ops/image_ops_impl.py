@@ -83,7 +83,7 @@ def _is_tensor(x):
     x: A python object to check.
 
   Returns:
-    `True` if `x` is a `tf.Output` or `tf.Variable`, otherwise `False`.
+    `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
   """
   return isinstance(x, (ops.Tensor, variables.Variable))
 

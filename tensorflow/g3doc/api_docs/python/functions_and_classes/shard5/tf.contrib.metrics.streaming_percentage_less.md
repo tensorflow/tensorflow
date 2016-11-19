@@ -17,9 +17,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`values`</b>: A numeric `Output` of arbitrary size.
+*  <b>`values`</b>: A numeric `Tensor` of arbitrary size.
 *  <b>`threshold`</b>: A scalar threshold.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `values`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update

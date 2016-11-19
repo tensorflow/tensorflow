@@ -13,7 +13,7 @@ Returns the appropriate graph to use for the given inputs.
 ##### Args:
 
 
-*  <b>`op_input_list`</b>: A list of inputs to an operation, which may include `Output`,
+*  <b>`op_input_list`</b>: A list of inputs to an operation, which may include `Tensor`,
     `Operation`, and other objects that may be converted to a graph element.
 *  <b>`graph`</b>: (Optional) The explicit graph to use.
 

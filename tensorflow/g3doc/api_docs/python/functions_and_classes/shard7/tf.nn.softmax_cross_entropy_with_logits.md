@@ -32,6 +32,6 @@ and the same dtype (either `float16`, `float32`, or `float64`).
 
 ##### Returns:
 
-  A 1-D `Output` of length `batch_size` of the same type as `logits` with the
+  A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
   softmax cross entropy loss.
 

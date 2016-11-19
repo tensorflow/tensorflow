@@ -75,7 +75,7 @@ class TensorArray(object):
 
     Args:
       dtype: (required) data type of the TensorArray.
-      size: (optional) int32 scalar `Output`: the size of the TensorArray.
+      size: (optional) int32 scalar `Tensor`: the size of the TensorArray.
         Required if handle is not provided.
       dynamic_size: (optional) Python bool: If true, writes to the TensorArray
         can grow the TensorArray past its initial size.  Default: False.
@@ -85,9 +85,9 @@ class TensorArray(object):
       tensor_array_name: (optional) Python string: the name of the TensorArray.
         This is used when creating the TensorArray handle.  If this value is
         set, handle should be None.
-      handle: (optional) An `Output` handle to an existing TensorArray.  If this
+      handle: (optional) A `Tensor` handle to an existing TensorArray.  If this
         is set, tensor_array_name should be None.
-      flow: (optional) A float `Output` scalar coming from an existing
+      flow: (optional) A float `Tensor` scalar coming from an existing
         `TensorArray.flow`.
       infer_shape: (optional, default: True) If True, shape inference
         is enabled.  In this case, all elements must have the same shape.
@@ -147,7 +147,7 @@ class TensorArray(object):
 
   @property
   def flow(self):
-    """The flow `Output` forcing ops leading to this TensorArray state."""
+    """The flow `Tensor` forcing ops leading to this TensorArray state."""
     return self._flow
 
   @property
@@ -230,7 +230,7 @@ class TensorArray(object):
       return ta
 
   def pack(self, name=None):
-    """Return the values in the TensorArray as a packed `Output`.
+    """Return the values in the TensorArray as a packed `Tensor`.
 
     All of the values must have been written and their shapes must all match.
 
@@ -245,13 +245,13 @@ class TensorArray(object):
         return self.gather(math_ops.range(0, self.size()), name=name)
 
   def gather(self, indices, name=None):
-    """Return selected values in the TensorArray as a packed `Output`.
+    """Return selected values in the TensorArray as a packed `Tensor`.
 
     All of selected values must have been written and their shapes
     must all match.
 
     Args:
-      indices: A `1-D` `Output` taking values in `[0, max_value)`.  If
+      indices: A `1-D` `Tensor` taking values in `[0, max_value)`.  If
         the `TensorArray` is not dynamic, `max_value=size()`.
       name: A name for the operation (optional).
 
@@ -275,7 +275,7 @@ class TensorArray(object):
       return value
 
   def concat(self, name=None):
-    """Return the values in the TensorArray as a concatenated `Output`.
+    """Return the values in the TensorArray as a concatenated `Tensor`.
 
     All of the values must have been written, their ranks must match, and
     and their shapes must all match for all dimensions except the first.
@@ -303,7 +303,7 @@ class TensorArray(object):
       return value
 
   def unpack(self, value, name=None):
-    """Pack the values of an `Output` in the TensorArray.
+    """Pack the values of a `Tensor` in the TensorArray.
 
     Args:
       value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
@@ -323,10 +323,10 @@ class TensorArray(object):
             indices=math_ops.range(0, num_elements), value=value, name=name)
 
   def scatter(self, indices, value, name=None):
-    """Scatter the values of an `Output` in specific indices of a `TensorArray`.
+    """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
 
     Args:
-      indices: A `1-D` `Output` taking values in `[0, max_value)`.  If
+      indices: A `1-D` `Tensor` taking values in `[0, max_value)`.  If
         the `TensorArray` is not dynamic, `max_value=size()`.
       value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
       name: A name for the operation (optional).
@@ -361,7 +361,7 @@ class TensorArray(object):
       return ta
 
   def split(self, value, lengths, name=None):
-    """Split the values of an `Output` into the TensorArray.
+    """Split the values of a `Tensor` into the TensorArray.
 
     Args:
       value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to split.

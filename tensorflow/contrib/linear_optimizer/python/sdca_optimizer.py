@@ -46,7 +46,7 @@ class SDCAOptimizer(object):
 
   Here the expectation is that the input_fn_* functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
-  as `key` whose value is an `Output` of shape [batch_size] and dtype string.
+  as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
   num_loss_partitions defines the number of partitions of the global loss
   function and should be set to (#concurrent train ops/per worker) x (#workers).
   Convergence of (global) loss is guaranteed if num_loss_partitions is larger or

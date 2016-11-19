@@ -20,10 +20,10 @@ If `input` is already real, it is returned unchanged.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output`. Must have numeric type.
+*  <b>`input`</b>: A `Tensor`. Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32` or `float64`.
+  A `Tensor` of type `float32` or `float64`.
 

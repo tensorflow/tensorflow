@@ -53,8 +53,8 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     """Construct a new AdagradDA optimizer.
 
     Args:
-      learning_rate: An `Output` or a floating point value.  The learning rate.
-      global_step: An `Output` containing the current training step number.
+      learning_rate: A `Tensor` or a floating point value.  The learning rate.
+      global_step: A `Tensor` containing the current training step number.
       initial_gradient_squared_accumulator_value: A floating point value.
         Starting value for the accumulators, must be positive.
       l1_regularization_strength: A float value, must be greater than or

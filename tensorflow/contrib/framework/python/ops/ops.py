@@ -36,7 +36,7 @@ def get_graph_from_inputs(op_input_list, graph=None):
      `op_input_list`, we attempt to use the default graph.
 
   Args:
-    op_input_list: A list of inputs to an operation, which may include `Output`,
+    op_input_list: A list of inputs to an operation, which may include `Tensor`,
       `Operation`, and other objects that may be converted to a graph element.
     graph: (Optional) The explicit graph to use.
 

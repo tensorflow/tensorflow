@@ -9,7 +9,7 @@ second variable called 'biases' is added to the result of the operation.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A 4-D `Output` of type `float` and shape
+*  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
     `[batch, height, width, in_channels]` for `NHWC` data format or
     `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`num_outputs`</b>: integer, the number of output filters.

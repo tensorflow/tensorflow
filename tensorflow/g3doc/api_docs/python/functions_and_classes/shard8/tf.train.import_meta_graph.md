@@ -56,7 +56,7 @@ device assignments have not changed.
 *  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
     the path) containing a `MetaGraphDef`.
 *  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
-    or `Output` during import.
+    or `Tensor` during import.
 *  <b>`import_scope`</b>: Optional `string`. Name scope to add. Only used when
     initializing from protocol buffer.
 *  <b>`**kwargs`</b>: Optional keyed arguments.

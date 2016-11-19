@@ -66,29 +66,31 @@ type Tensor struct {
 // that the resulting Tensor has a valid shape.
 func NewTensor(value interface{}) (*Tensor, error) {
 	val := reflect.ValueOf(value)
-	dims, dataType, err := dimsAndDataTypeOf(val.Type())
+	shape, dataType, err := shapeAndDataTypeOf(val)
 	if err != nil {
 		return nil, err
 	}
-	// TODO(ashankar): Remove the bytes.Buffer and endcode directly into
-	// C-memory, avoiding the memcpy and cutting down memory usage in half.
-	shape := make([]int64, dims)
-	buf := new(bytes.Buffer)
-	if err := encodeTensor(buf, shape, val); err != nil {
-		return nil, err
+	if dataType == String {
+		// TODO(ashankar): Handle this
+		return nil, fmt.Errorf("String Tensors are not currently supported")
 	}
+	nbytes := byteSizeOf(dataType, shape)
 	var shapePtr *C.int64_t
 	if len(shape) > 0 {
 		shapePtr = (*C.int64_t)(unsafe.Pointer(&shape[0]))
 	}
 	t := &Tensor{
-		c:     C.TF_AllocateTensor(C.TF_DataType(dataType), shapePtr, C.int(len(shape)), C.size_t(buf.Len())),
+		c:     C.TF_AllocateTensor(C.TF_DataType(dataType), shapePtr, C.int(len(shape)), C.size_t(nbytes)),
 		shape: shape,
 	}
 	runtime.SetFinalizer(t, (*Tensor).finalize)
-	if buf.Len() > 0 {
-		slice := buf.Bytes() // https://github.com/golang/go/issues/14210
-		C.memcpy(C.TF_TensorData(t.c), unsafe.Pointer(&slice[0]), C.size_t(buf.Len()))
+	raw := tensorData(t.c)
+	buf := bytes.NewBuffer(raw[:0:len(raw)])
+	if err := encodeTensor(buf, val); err != nil {
+		return nil, err
+	}
+	if uintptr(buf.Len()) != nbytes {
+		return nil, fmt.Errorf("BUG: Please report at https://github.com/tensorflow/tensorflow/issues with the note: NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v bytes, version %v", dataType, shape, nbytes, buf.Len(), Version())
 	}
 	return t, nil
 }
@@ -129,14 +131,18 @@ func (t *Tensor) Value() interface{} {
 		panic(err)
 	}
 	val := reflect.New(typ)
-	// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
-	cbytes := C.TF_TensorData(t.c)
-	length := int(C.TF_TensorByteSize(t.c))
-	slice := (*[1 << 30]byte)(unsafe.Pointer(cbytes))[:length:length]
-	if err := decodeTensor(bytes.NewReader(slice), t.Shape(), typ, val); err != nil {
+	if err := decodeTensor(bytes.NewReader(tensorData(t.c)), t.Shape(), typ, val); err != nil {
 		panic(err)
 	}
 	return reflect.Indirect(val).Interface()
+}
+
+func tensorData(c *C.TF_Tensor) []byte {
+	// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
+	cbytes := C.TF_TensorData(c)
+	length := int(C.TF_TensorByteSize(c))
+	slice := (*[1 << 30]byte)(unsafe.Pointer(cbytes))[:length:length]
+	return slice
 }
 
 var types = []struct {
@@ -158,20 +164,33 @@ var types = []struct {
 	// TODO(apassos): support DT_RESOURCE representation in go.
 }
 
-// dimsAndDataTypeOf returns the data type and dimensions of a Go type for use
-// when encoding. We fetch them separately from encoding to support 0-D tensors.
-func dimsAndDataTypeOf(typ reflect.Type) (int, DataType, error) {
-	dims := 0
-	elem := typ
-	for ; elem.Kind() == reflect.Array || elem.Kind() == reflect.Slice; elem = elem.Elem() {
-		dims++
+// shapeAndDataTypeOf returns the data type and shape of the Tensor
+// corresponding to a Go type.
+func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err error) {
+	typ := val.Type()
+	for typ.Kind() == reflect.Array || typ.Kind() == reflect.Slice {
+		shape = append(shape, int64(val.Len()))
+		// If slice elements are slices, verify that all of them have the same size.
+		// Go's type system makes that guarantee for arrays.
+		if val.Len() > 0 {
+			if val.Type().Elem().Kind() == reflect.Slice {
+				expected := val.Index(0).Len()
+				for i := 1; i < val.Len(); i++ {
+					if val.Index(i).Len() != expected {
+						return shape, dt, fmt.Errorf("mismatched slice lengths: %d and %d", val.Index(i).Len(), expected)
+					}
+				}
+			}
+			val = val.Index(0)
+		}
+		typ = typ.Elem()
 	}
 	for _, t := range types {
-		if elem.Kind() == t.typ.Kind() {
-			return dims, DataType(t.dataType), nil
+		if typ.Kind() == t.typ.Kind() {
+			return shape, DataType(t.dataType), nil
 		}
 	}
-	return 0, DataType(0), fmt.Errorf("unsupported type %v", typ)
+	return shape, dt, fmt.Errorf("unsupported type %v", typ)
 }
 
 // typeOf converts from a DataType and Shape to the equivalent Go type.
@@ -192,9 +211,25 @@ func typeOf(dt DataType, shape []int64) (reflect.Type, error) {
 	return ret, nil
 }
 
+// byteSizeOf returns the size (in bytes) of the raw encoding of a tensor with
+// the given shape and DataType. Only meant for non-String tensors.
+func byteSizeOf(dt DataType, shape []int64) uintptr {
+	var size uintptr
+	for _, t := range types {
+		if DataType(t.dataType) == dt {
+			size = t.typ.Size()
+			break
+		}
+	}
+	for _, d := range shape {
+		size *= uintptr(d)
+	}
+	return size
+}
+
 // encodeTensor writes v to the specified buffer using the format specified in
-// c_api.h
-func encodeTensor(w io.Writer, shape []int64, v reflect.Value) error {
+// c_api.h.
+func encodeTensor(w io.Writer, v reflect.Value) error {
 	switch v.Kind() {
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
@@ -213,9 +248,8 @@ func encodeTensor(w io.Writer, shape []int64, v reflect.Value) error {
 			}
 		}
 
-		shape[0] = int64(v.Len())
 		for i := 0; i < v.Len(); i++ {
-			err := encodeTensor(w, shape[1:], v.Index(i))
+			err := encodeTensor(w, v.Index(i))
 			if err != nil {
 				return err
 			}

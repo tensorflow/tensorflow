@@ -204,7 +204,7 @@ class SessionManager(object):
       wait_for_checkpoint: Whether to wait for checkpoint to become available.
       max_wait_secs: Maximum time to wait for checkpoints to become available.
       config: Optional `ConfigProto` proto used to configure the session.
-      init_feed_dict: Optional dictionary that maps `Output` objects to feed
+      init_feed_dict: Optional dictionary that maps `Tensor` objects to feed
         values.  This feed dictionary is passed to the session `run()` call when
         running the init op.
       init_fn: Optional callable used to initialize the model. Called after the

@@ -115,24 +115,24 @@ Creates the SequenceQueueingStateSaver.
 ##### Args:
 
 
-*  <b>`batch_size`</b>: int or int32 scalar `Output`, how large minibatches should
+*  <b>`batch_size`</b>: int or int32 scalar `Tensor`, how large minibatches should
     be when accessing the `state()` method and `context`, `sequences`, etc,
     properties.
 *  <b>`num_unroll`</b>: Python integer, how many time steps to unroll at a time.
     The input sequences of length `k` are then split into `k / num_unroll`
     many segments.
-*  <b>`input_length`</b>: An int32 scalar `Output`, the length of the sequence prior
+*  <b>`input_length`</b>: An int32 scalar `Tensor`, the length of the sequence prior
     to padding.  This value may be at most `padded_length` for any given
     input (see below for the definition of `padded_length`).
     Batched and total lengths of the current iteration are made accessible
     via the `length` and `total_length` properties.  The shape of
     input_length (scalar) must be fully specified.
-*  <b>`input_key`</b>: A string scalar `Output`, the **unique** key for the given
+*  <b>`input_key`</b>: A string scalar `Tensor`, the **unique** key for the given
     input.  This is used to keep track of the split minibatch elements
     of this input.  Batched keys of the current iteration are made
     accessible via the `key` property.  The shape of `input_key` (scalar)
     must be fully specified.
-*  <b>`input_sequences`</b>: A dict mapping string names to `Output` values.  The
+*  <b>`input_sequences`</b>: A dict mapping string names to `Tensor` values.  The
     values must all have matching first dimension, called `padded_length`.
     The `SequenceQueueingStateSaver` will split these tensors along
     this first dimension into minibatch elements of dimension
@@ -143,7 +143,7 @@ Creates the SequenceQueueingStateSaver.
     to input, but must always be a multiple of `num_unroll`.  The remainder
     of the shape (other than the first dimension) must be fully specified.
 
-*  <b>`input_context`</b>: A dict mapping string names to `Output` values.  The values
+*  <b>`input_context`</b>: A dict mapping string names to `Tensor` values.  The values
     are treated as "global" across all time splits of the given input,
     and will be copied across for all minibatch elements accordingly.
     Batched and copied context of the current iteration are made

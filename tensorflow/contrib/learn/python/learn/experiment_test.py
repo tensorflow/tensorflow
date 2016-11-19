@@ -148,6 +148,7 @@ class ExperimentTest(tf.test.TestCase):
     # Arrange.
     tf_config = {
         'cluster': self._cluster_spec(),
+        'environment': tf.contrib.learn.Environment.CLOUD,
         'task': {
             'type': tf.contrib.learn.TaskType.WORKER,
             'index': 1
@@ -211,7 +212,13 @@ class ExperimentTest(tf.test.TestCase):
     self.assertFalse(mock_server.called)
 
   def test_train_raises_if_job_name_is_missing(self):
-    tf_config = {'cluster': self._cluster_spec(), 'task': {'index': 1}}
+    tf_config = {
+        'cluster': self._cluster_spec(),
+        'environment': tf.contrib.learn.Environment.CLOUD,
+        'task': {
+            'index': 1
+        }
+    }
     with patch.dict(
         'os.environ',
         {'TF_CONFIG': json.dumps(tf_config)}), self.assertRaises(ValueError):

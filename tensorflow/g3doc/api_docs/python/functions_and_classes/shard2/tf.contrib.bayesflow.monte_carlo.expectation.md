@@ -9,21 +9,21 @@ n^{-1} sum_{i=1}^n f(z_i),  where z_i ~ p
 \approx E_p[f(Z)]
 ```
 
-User supplies either `Output` of samples `z`, or number of samples to draw `n`
+User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
 ##### Args:
 
 
-*  <b>`f`</b>: Callable mapping samples from `p` to `Output`s.
+*  <b>`f`</b>: Callable mapping samples from `p` to `Tensors`.
 *  <b>`p`</b>: `tf.contrib.distributions.Distribution`.
-*  <b>`z`</b>: `Output` of samples from `p`, produced by `p.sample_n`.
-*  <b>`n`</b>: Integer `Output`.  Number of samples to generate if `z` is not provided.
+*  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample_n`.
+*  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`name`</b>: A name to give this `Op`.
 
 ##### Returns:
 
-  An `Output` with the same `dtype` as `p`.
+  A `Tensor` with the same `dtype` as `p`.
 
 
 *  <b>`Example`</b>: 

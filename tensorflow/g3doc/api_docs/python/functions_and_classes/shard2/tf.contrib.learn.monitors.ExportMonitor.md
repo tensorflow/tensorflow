@@ -13,18 +13,18 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
       input_fn: A function that takes no argument and returns a tuple of
-        (features, labels), where features is a dict of string key to `Output`
-        and labels is an `Output` that's currently not used (and so can be
+        (features, labels), where features is a dict of string key to `Tensor`
+        and labels is a `Tensor` that's currently not used (and so can be
         `None`).
       input_feature_key: String key into the features dict returned by
-        `input_fn` that corresponds to the raw `Example` strings `Output` that
+        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
         the exported model will take as input. Can only be `None` if you're
         using a custom `signature_fn` that does not use the first arg
         (examples).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Output` of `Example` strings, `dict` of `Output`s
-        for features and `dict` of `Output`s for predictions.
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `dict` of `Tensor`s for predictions.
       default_batch_size: Default batch size of the `Example` placeholder.
 
     Raises:

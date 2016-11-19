@@ -2,7 +2,7 @@
 
 # Strings
 
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
@@ -28,13 +28,13 @@ to the same bucket. To prevent this problem, use a strong hash function with
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. The strings to assign a hash bucket.
+*  <b>`input`</b>: A `Tensor` of type `string`. The strings to assign a hash bucket.
 *  <b>`num_buckets`</b>: An `int` that is `>= 1`. The number of buckets.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `int64`.
+  A `Tensor` of type `int64`.
   A Tensor of the same shape as the input `string_tensor`.
 
 
@@ -58,7 +58,7 @@ time than `tf.string_to_hash_bucket_fast`.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. The strings to assign a hash bucket.
+*  <b>`input`</b>: A `Tensor` of type `string`. The strings to assign a hash bucket.
 *  <b>`num_buckets`</b>: An `int` that is `>= 1`. The number of buckets.
 *  <b>`key`</b>: A list of `ints`.
     The key for the keyed hash function passed as a list of two uint64
@@ -67,7 +67,7 @@ time than `tf.string_to_hash_bucket_fast`.
 
 ##### Returns:
 
-  An `Output` of type `int64`.
+  A `Tensor` of type `int64`.
   A Tensor of the same shape as the input `string_tensor`.
 
 
@@ -87,13 +87,13 @@ This functionality will be deprecated and it's recommended to use
 ##### Args:
 
 
-*  <b>`string_tensor`</b>: An `Output` of type `string`.
+*  <b>`string_tensor`</b>: A `Tensor` of type `string`.
 *  <b>`num_buckets`</b>: An `int` that is `>= 1`. The number of buckets.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `int64`.
+  A `Tensor` of type `int64`.
   A Tensor of the same shape as the input `string_tensor`.
 
 
@@ -136,9 +136,9 @@ tf.reduce_join(a, []) ==> ["abcd"]
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of type `string`.
+*  <b>`inputs`</b>: A `Tensor` of type `string`.
     The input to be joined.  All reduced indices must have non-zero size.
-*  <b>`reduction_indices`</b>: An `Output` of type `int32`.
+*  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
     order specified.  Omitting `reduction_indices` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
@@ -150,7 +150,7 @@ tf.reduce_join(a, []) ==> ["abcd"]
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
   Has shape equal to that of the input with reduced dimensions removed or
   set to `1` depending on `keep_dims`.
 
@@ -166,7 +166,7 @@ with the given separator (default is an empty separator).
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Output` objects of type `string`.
+*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of type `string`.
     A list of string tensors.  The tensors must all have the same shape,
     or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
     of non-scalar inputs.
@@ -176,7 +176,7 @@ with the given separator (default is an empty separator).
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
 
 
 
@@ -211,8 +211,8 @@ st.values = ['hello', 'world', 'a', 'b', 'c']
 ##### Args:
 
 
-*  <b>`source`</b>: `1-D` string `Output`, the strings to split.
-*  <b>`delimiter`</b>: `0-D` string `Output`, the delimiter character, the string should
+*  <b>`source`</b>: `1-D` string `Tensor`, the strings to split.
+*  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
     be length 0 or 1.
 
 ##### Returns:
@@ -231,9 +231,9 @@ st.values = ['hello', 'world', 'a', 'b', 'c']
 
 ### `tf.substr(input, pos, len, name=None)` {#substr}
 
-Return substrings from `Output` of strings.
+Return substrings from `Tensor` of strings.
 
-For each string in the input `Output`, creates a substring starting at index
+For each string in the input `Tensor`, creates a substring starting at index
 `pos` with a total length of `len`.
 
 If `len` defines a substring that would extend beyond the length of the input
@@ -310,16 +310,16 @@ output = [b'hir', b'ee', b'n"]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. Tensor of strings
-*  <b>`pos`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor` of type `string`. Tensor of strings
+*  <b>`pos`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     Scalar defining the position of first character in each substring
-*  <b>`len`</b>: A `Output`. Must have the same type as `pos`.
+*  <b>`len`</b>: A `Tensor`. Must have the same type as `pos`.
     Scalar defining the number of characters to include in each substring
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. Tensor of substrings
+  A `Tensor` of type `string`. Tensor of substrings
 
 
 
@@ -336,7 +336,7 @@ types and boolean.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `complex64`, `float32`, `float64`, `bool`, `int8`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `complex64`, `float32`, `float64`, `bool`, `int8`.
 *  <b>`precision`</b>: An optional `int`. Defaults to `-1`.
     The post-decimal precision to use for floating point numbers.
     Only used if precision > -1.
@@ -356,7 +356,7 @@ types and boolean.
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
 
 
 - - -
@@ -375,14 +375,14 @@ Web-safe means that the encoder uses - and _ instead of + and /.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. Strings to be encoded.
+*  <b>`input`</b>: A `Tensor` of type `string`. Strings to be encoded.
 *  <b>`pad`</b>: An optional `bool`. Defaults to `False`.
     Bool whether padding is applied at the ends.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. Input strings encoded in base64.
+  A `Tensor` of type `string`. Input strings encoded in base64.
 
 
 - - -
@@ -397,11 +397,11 @@ Web-safe means that input must use - and _ instead of + and /.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. Base64 strings to decode.
+*  <b>`input`</b>: A `Tensor` of type `string`. Base64 strings to decode.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. Decoded strings.
+  A `Tensor` of type `string`. Decoded strings.
 
 

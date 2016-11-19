@@ -28,7 +28,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`num_classes`</b>: The possible number of labels the prediction task can
     have. This value must be provided, since a confusion matrix of
     dimension = [num_classes, num_classes] will be allocated.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean_iou`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be

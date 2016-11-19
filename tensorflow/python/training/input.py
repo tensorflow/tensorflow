@@ -73,7 +73,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
   initialize local variables.
 
   Args:
-    tensor: Any `Output`.
+    tensor: Any `Tensor`.
     num_epochs: A positive integer (optional).  If specified, limits the number
       of steps the output tensor may be evaluated.
     name: A name for the operations (optional).
@@ -264,13 +264,13 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
 
 def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
                          capacity=32, shared_name=None, name=None):
-  """Produces a slice of each `Output` in `tensor_list`.
+  """Produces a slice of each `Tensor` in `tensor_list`.
 
   Implemented using a Queue -- a `QueueRunner` for the Queue
   is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
   Args:
-    tensor_list: A list of `Output` objects. Every `Output` in
+    tensor_list: A list of `Tensor` objects. Every `Tensor` in
       `tensor_list` must have the same size in the first dimension.
     num_epochs: An integer (optional). If specified, `slice_input_producer`
       produces each slice `num_epochs` times before generating
@@ -423,7 +423,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, shared_map_ops=None):
   objects created in the first call.
 
   Args:
-    tensor_list: List of `Output` and `SparseTensor` objects.
+    tensor_list: List of `Tensor` and `SparseTensor` objects.
     enqueue_many: Python `Boolean`.
     shared_map_ops: (optional) List of `Operation` objects from a previous
       call to `_store_sparse_tensors`.  If not `None`, the op types should be
@@ -432,7 +432,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, shared_map_ops=None):
 
   Returns:
     A tuple `(stored_list, sparse_info_list)` where `stored_list` is a list
-    of `Output` objects (same length as `tensor_list`) and `sparse_info_list`
+    of `Tensor` objects (same length as `tensor_list`) and `sparse_info_list`
     is a list of the same length of `_SparseMetaData` objects.
   """
   maybe_shared_map_ops = shared_map_ops or [None] * len(tensor_list)

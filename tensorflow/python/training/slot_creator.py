@@ -16,7 +16,7 @@
 """Standard functions for creating slots.
 
 A slot is a `Variable` created with the same shape as a primary variable or
-`Output`. A slot is always scoped in the namespace of the primary object and
+`Tensor`. A slot is always scoped in the namespace of the primary object and
 typically has the same device and type.
 
 Slots are typically used as accumulators to track values associated with
@@ -70,8 +70,8 @@ def create_slot(primary, val, name, colocate_with_primary=True):
   The type of the slot is determined by the given value.
 
   Args:
-    primary: The primary `Variable` or `Output`.
-    val: An `Output` specifying the initial value of the slot.
+    primary: The primary `Variable` or `Tensor`.
+    val: A `Tensor` specifying the initial value of the slot.
     name: Name to use for the slot variable.
     colocate_with_primary: Boolean.  If True the slot is located
       on the same device as `primary`.
@@ -92,7 +92,7 @@ def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
   """Create a slot initialized to 0 with same shape as the primary object.
 
   Args:
-    primary: The primary `Variable` or `Output`.
+    primary: The primary `Variable` or `Tensor`.
     name: Name to use for the slot variable.
     dtype: Type of the slot variable.  Defaults to the type of `primary`.
     colocate_with_primary: Boolean.  If True the slot is located

@@ -148,10 +148,10 @@ def py_func(func, inp, Tout, stateful=True, name=None):
 
   Args:
     func: A Python function, which accepts a list of NumPy `ndarray` objects
-      having element types that match the corresponding `tf.Output` objects
+      having element types that match the corresponding `tf.Tensor` objects
       in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
       having element types that match the corresponding values in `Tout`.
-    inp: A list of `Output` objects.
+    inp: A list of `Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
     stateful: (Boolean.) If True, the function should be considered stateful.
@@ -162,7 +162,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A list of `Output` or a single `Output` which `func` computes.
+    A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   token = _py_funcs.insert(func)
   # We tie the registered function's life-time with the current

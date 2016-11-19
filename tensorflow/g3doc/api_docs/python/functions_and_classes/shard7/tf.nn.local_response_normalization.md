@@ -17,7 +17,7 @@ For details, see
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `half`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
     4-D.
 *  <b>`depth_radius`</b>: An optional `int`. Defaults to `5`.
     0-D.  Half-width of the 1-D normalization window.
@@ -30,5 +30,5 @@ For details, see
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 

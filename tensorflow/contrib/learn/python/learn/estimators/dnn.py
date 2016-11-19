@@ -68,8 +68,8 @@ def _dnn_model_fn(features, labels, mode, params):
   """Deep Neural Net model_fn.
 
   Args:
-    features: `Output` or dict of `Output` (depends on data passed to `fit`).
-    labels: `Output` of shape [batch_size, 1] or [batch_size] labels of
+    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -91,7 +91,7 @@ def _dnn_model_fn(features, labels, mode, params):
       * num_ps_replicas: The number of parameter server replicas.
 
   Returns:
-    predictions: A dict of `Output` objects.
+    predictions: A dict of `Tensor` objects.
     loss: A scalar containing the loss of the step.
     train_op: The op for training.
   """
@@ -211,7 +211,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     otherwise there will be a `KeyError`:
 
   * if `weight_column_name` is not `None`, a feature with
-     `key=weight_column_name` whose value is an `Output`.
+     `key=weight_column_name` whose value is a `Tensor`.
   * for each `column` in `feature_columns`:
     - if `column` is a `SparseColumn`, a feature with `key=column.name`
       whose `value` is a `SparseTensor`.
@@ -219,7 +219,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       `key` the id column name, the second with `key` the weight column name.
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-      whose `value` is an `Output`.
+      whose `value` is a `Tensor`.
   """
 
   def __init__(self,
@@ -401,7 +401,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       name: string, name of the tensor.
 
     Returns:
-      `Output` object.
+      `Tensor` object.
     """
     return self._estimator.get_variable_value(name)
 
@@ -510,7 +510,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     otherwise there will be a `KeyError`:
 
   * if `weight_column_name` is not `None`, a feature with
-    `key=weight_column_name` whose value is an `Output`.
+    `key=weight_column_name` whose value is a `Tensor`.
   * for each `column` in `feature_columns`:
     - if `column` is a `SparseColumn`, a feature with `key=column.name`
       whose `value` is a `SparseTensor`.
@@ -518,7 +518,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       `key` the id column name, the second with `key` the weight column name.
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-      whose `value` is an `Output`.
+      whose `value` is a `Tensor`.
   """
 
   def __init__(self,

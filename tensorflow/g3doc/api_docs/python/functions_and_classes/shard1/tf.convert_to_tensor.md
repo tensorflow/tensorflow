@@ -1,9 +1,9 @@
 ### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
 
-Converts the given `value` to an `Output`.
+Converts the given `value` to a `Tensor`.
 
-This function converts Python objects of various types to `Output`
-objects. It accepts `Output` objects, numpy arrays, Python lists,
+This function converts Python objects of various types to `Tensor`
+objects. It accepts `Tensor` objects, numpy arrays, Python lists,
 and Python scalars. For example:
 
 ```python
@@ -23,17 +23,17 @@ This function can be useful when composing a new operation in Python
 (such as `my_func` in the example above). All standard Python op
 constructors apply this function to each of their Tensor-valued
 inputs, which allows those ops to accept numpy arrays, Python lists,
-and scalars in addition to `Output` objects.
+and scalars in addition to `Tensor` objects.
 
 ##### Args:
 
 
-*  <b>`value`</b>: An object whose type has a registered `Output` conversion function.
+*  <b>`value`</b>: An object whose type has a registered `Tensor` conversion function.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
-*  <b>`name`</b>: Optional name to use if a new `Output` is created.
+*  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
 *  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Output` is created.
+    `Tensor` is created.
 *  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
     used when dtype is None. In some cases, a caller may not have a
     dtype in mind when converting to a tensor, so preferred_dtype
@@ -42,7 +42,7 @@ and scalars in addition to `Output` objects.
 
 ##### Returns:
 
-  An `Output` based on `value`.
+  A `Tensor` based on `value`.
 
 ##### Raises:
 

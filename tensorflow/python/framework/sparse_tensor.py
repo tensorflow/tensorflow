@@ -210,7 +210,7 @@ class SparseTensor(_TensorLike):
     available, or `session` must be specified explicitly.
 
     Args:
-      feed_dict: A dictionary that maps `Output` objects to feed values.
+      feed_dict: A dictionary that maps `Tensor` objects to feed values.
         See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this sparse

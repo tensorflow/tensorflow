@@ -12,12 +12,12 @@ Web-safe means that the encoder uses - and _ instead of + and /.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. Strings to be encoded.
+*  <b>`input`</b>: A `Tensor` of type `string`. Strings to be encoded.
 *  <b>`pad`</b>: An optional `bool`. Defaults to `False`.
     Bool whether padding is applied at the ends.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. Input strings encoded in base64.
+  A `Tensor` of type `string`. Input strings encoded in base64.
 

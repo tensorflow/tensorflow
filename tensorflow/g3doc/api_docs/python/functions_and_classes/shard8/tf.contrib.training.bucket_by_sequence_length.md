@@ -10,7 +10,7 @@ bucket the given `input_length` belongs to.  See the documentation for
 ##### Args:
 
 
-*  <b>`input_length`</b>: `int32` scalar `Output`, the sequence length of tensors.
+*  <b>`input_length`</b>: `int32` scalar `Tensor`, the sequence length of tensors.
 *  <b>`tensors`</b>: The list or dictionary of tensors, representing a single element,
     to bucket.  Nested lists are not supported.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue
@@ -41,7 +41,7 @@ bucket the given `input_length` belongs to.  See the documentation for
 ##### Returns:
 
   A tuple `(sequence_length, outputs)` where `sequence_length` is
-  a 1-D `Output` of size `batch_size` and `outputs` is a list or dictionary
+  a 1-D `Tensor` of size `batch_size` and `outputs` is a list or dictionary
   of batched, bucketed, outputs corresponding to elements of `tensors`.
 
 ##### Raises:

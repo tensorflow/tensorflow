@@ -10,9 +10,9 @@ subtraction, it usually shouldn't hurt much either.
 ##### Args:
 
 
-*  <b>`regularizer`</b>: A function that takes a single `Output` argument and returns
-    a scalar `Output` output.
-*  <b>`weights_list`</b>: List of weights `Output`s or `Variables` to apply
+*  <b>`regularizer`</b>: A function that takes a single `Tensor` argument and returns
+    a scalar `Tensor` output.
+*  <b>`weights_list`</b>: List of weights `Tensors` or `Variables` to apply
     `regularizer` over. Defaults to the `GraphKeys.WEIGHTS` collection if
     `None`.
 

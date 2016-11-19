@@ -27,7 +27,6 @@
   * [`NotDifferentiable`](../../api_docs/python/framework.md#NotDifferentiable)
   * [`op_scope`](../../api_docs/python/framework.md#op_scope)
   * [`Operation`](../../api_docs/python/framework.md#Operation)
-  * [`Output`](../../api_docs/python/framework.md#Output)
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`RegisterShape`](../../api_docs/python/framework.md#RegisterShape)

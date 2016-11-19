@@ -136,15 +136,15 @@ def elbo_ratio(log_p,
        <= Log[p(x)]
   ```
 
-  User supplies either `Output` of samples `z`, or number of samples to draw `n`
+  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    log_p:  Callable mapping samples from `q` to `Output`s with
+    log_p:  Callable mapping samples from `q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     q:  `tf.contrib.distributions.Distribution`.
-    z:  `Output` of samples from `q`, produced by `q.sample_n`.
-    n:  Integer `Output`.  Number of samples to generate if `z` is not provided.
+    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     form:  Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
       or `ELBOForms.sample` (sample estimate of entropy), or `ELBOForms.default`
@@ -153,7 +153,7 @@ def elbo_ratio(log_p,
     name:  A name to give this `Op`.
 
   Returns:
-    Scalar `Output` holding sample mean KL divergence.  `shape` is the batch
+    Scalar `Tensor` holding sample mean KL divergence.  `shape` is the batch
       shape of `q`, and `dtype` is the same as `q`.
 
   Raises:
@@ -189,12 +189,12 @@ def entropy_shannon(p,
       = Entropy[p]
   ```
 
-  User supplies either `Output` of samples `z`, or number of samples to draw `n`
+  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
     p:  `tf.contrib.distributions.Distribution`
-    z:  `Output` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
-    n:  Integer `Output`.  Number of samples to generate if `z` is not provided.
+    z:  `Tensor` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
+    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     form:  Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
       or `ELBOForms.sample` (sample estimate of entropy), or `ELBOForms.default`
@@ -203,7 +203,7 @@ def entropy_shannon(p,
     name:  A name to give this `Op`.
 
   Returns:
-    An `Output` with same `dtype` as `p`, and shape equal to `p.batch_shape`.
+    A `Tensor` with same `dtype` as `p`, and shape equal to `p.batch_shape`.
 
   Raises:
     ValueError:  If `form` not handled by this function.
@@ -316,24 +316,24 @@ def renyi_ratio(log_p, q, alpha, z=None, n=None, seed=None, name='renyi_ratio'):
 
   #### Call signature
 
-  User supplies either `Output` of samples `z`, or number of samples to draw `n`
+  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    log_p:  Callable mapping samples from `q` to `Output`s with
+    log_p:  Callable mapping samples from `q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     q: `tf.contrib.distributions.Distribution`.
        `float64` `dtype` recommended.
        `log_p` and `q` should be supported on the same set.
-    alpha:  `Output` with shape `q.batch_shape` and values not equal to 1.
-    z:  `Output` of samples from `q`, produced by `q.sample_n`.
-    n:  Integer `Output`.  The number of samples to use if `z` is not provided.
+    alpha:  `Tensor` with shape `q.batch_shape` and values not equal to 1.
+    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    n:  Integer `Tensor`.  The number of samples to use if `z` is not provided.
       Note that this can be highly biased for small `n`, see docstring.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
 
   Returns:
-    renyi_result:  The scaled log of sample mean.  `Output` with `shape` equal
+    renyi_result:  The scaled log of sample mean.  `Tensor` with `shape` equal
       to batch shape of `q`, and `dtype` = `q.dtype`.
   """
   with ops.name_scope(name, values=[alpha, n, z]):
@@ -362,7 +362,7 @@ def renyi_alpha(step,
                 alpha_min,
                 alpha_max=0.99999,
                 name='renyi_alpha'):
-  r"""Exponentially decaying `Output` appropriate for Renyi ratios.
+  r"""Exponentially decaying `Tensor` appropriate for Renyi ratios.
 
   When minimizing the Renyi divergence for `0 <= alpha < 1` (or maximizing the
   Renyi equivalent of elbo) in high dimensions, it is not uncommon to experience
@@ -382,17 +382,17 @@ def renyi_alpha(step,
   ```
 
   Args:
-    step:  Non-negative scalar `Output`.  Typically the global step or an
+    step:  Non-negative scalar `Tensor`.  Typically the global step or an
       offset version thereof.
-    decay_time:  Positive scalar `Output`.
-    alpha_min:  `float` or `double` `Output`.
+    decay_time:  Positive scalar `Tensor`.
+    alpha_min:  `float` or `double` `Tensor`.
       The minimal, final value of `alpha`, achieved when `step >= decay_time`
-    alpha_max:  `Output` of same `dtype` as `alpha_min`.
+    alpha_max:  `Tensor` of same `dtype` as `alpha_min`.
       The maximal, beginning value of `alpha`, achieved when `step == 0`
     name:  A name to give this `Op`.
 
   Returns:
-    alpha:  An `Output` of same `dtype` as `alpha_min`.
+    alpha:  A `Tensor` of same `dtype` as `alpha_min`.
   """
   with ops.name_scope(name, values=[step, decay_time, alpha_min, alpha_max]):
     alpha_min = ops.convert_to_tensor(alpha_min, name='alpha_min')

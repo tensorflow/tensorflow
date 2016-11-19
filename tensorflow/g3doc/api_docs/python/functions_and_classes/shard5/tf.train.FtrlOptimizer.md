@@ -12,7 +12,7 @@ Construct a new FTRL optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A float value or a constant float `Output`.
+*  <b>`learning_rate`</b>: A float value or a constant float `Tensor`.
 *  <b>`learning_rate_power`</b>: A float value, must be less or equal to zero.
 *  <b>`initial_accumulator_value`</b>: The starting value for accumulators.
     Only positive values are allowed.

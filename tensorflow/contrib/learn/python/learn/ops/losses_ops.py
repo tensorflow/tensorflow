@@ -66,7 +66,7 @@ def softmax_classifier(tensor_in,
     name: Operation name.
 
   Returns:
-    `tuple` of softmax predictions and loss `Output`s.
+    `tuple` of softmax predictions and loss `Tensor`s.
   """
   with ops.name_scope(name, 'softmax_classifier', [tensor_in, labels]):
     logits = nn.xw_plus_b(tensor_in, weights, biases)

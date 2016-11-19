@@ -44,7 +44,7 @@ class FeedingQueueRunner(qr.QueueRunner):
       close_op: Op to close the queue. Pending enqueue ops are preserved.
       cancel_op: Op to close the queue and cancel pending enqueue ops.
       feed_fns: a list of functions that return a dictionary mapping fed
-        `Output`s to values. Must be the same length as `enqueue_ops`.
+        `Tensor`s to values. Must be the same length as `enqueue_ops`.
       queue_closed_exception_types: Optional tuple of Exception types that
         indicate that the queue has been closed when raised during an enqueue
         operation.  Defaults to

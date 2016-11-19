@@ -18,10 +18,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Output` of arbitrary shape.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Output` whose dimensions must
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -31,7 +31,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`precision`</b>: Scalar float `Output` with the value of `true_positives`
+*  <b>`precision`</b>: Scalar float `Tensor` with the value of `true_positives`
     divided by the sum of `true_positives` and `false_positives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_positives` variables appropriately and whose value matches

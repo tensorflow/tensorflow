@@ -12,9 +12,9 @@ If `adjoint` is `True` then each output matrix satisfies
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Output`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
     Shape is `[..., M, M]`.
-*  <b>`rhs`</b>: A `Output`. Must have the same type as `matrix`.
+*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
     Boolean indicating whether to solve with `matrix` or its (block-wise)
@@ -23,5 +23,5 @@ If `adjoint` is `True` then each output matrix satisfies
 
 ##### Returns:
 
-  A `Output`. Has the same type as `matrix`. Shape is `[..., M, K]`.
+  A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 

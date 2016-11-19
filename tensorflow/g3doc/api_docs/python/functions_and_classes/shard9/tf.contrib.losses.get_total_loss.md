@@ -13,7 +13,7 @@ Notice that the function adds the given losses to the regularization losses.
 
 ##### Returns:
 
-  An `Output` whose value represents the total loss.
+  A `Tensor` whose value represents the total loss.
 
 ##### Raises:
 

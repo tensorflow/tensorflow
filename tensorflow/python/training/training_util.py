@@ -43,7 +43,7 @@ def global_step(sess, global_step_tensor):
 
   Args:
     sess: A TensorFlow `Session` object.
-    global_step_tensor:  `Output` or the `name` of the operation that contains
+    global_step_tensor:  `Tensor` or the `name` of the operation that contains
       the global step.
 
   Returns:
@@ -87,10 +87,10 @@ def get_global_step(graph=None):
 
 
 def assert_global_step(global_step_tensor):
-  """Asserts `global_step_tensor` is a scalar int `Variable` or `Output`.
+  """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
   Args:
-    global_step_tensor: `Output` to test.
+    global_step_tensor: `Tensor` to test.
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor)):

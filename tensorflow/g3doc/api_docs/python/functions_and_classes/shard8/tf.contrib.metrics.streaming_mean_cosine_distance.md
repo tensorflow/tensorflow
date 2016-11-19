@@ -17,10 +17,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of the same shape as `labels`.
-*  <b>`labels`</b>: An `Output` of arbitrary shape.
+*  <b>`predictions`</b>: A `Tensor` of the same shape as `labels`.
+*  <b>`labels`</b>: A `Tensor` of arbitrary shape.
 *  <b>`dim`</b>: The dimension along which the cosine distance is computed.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`,
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`,
     and whose dimension `dim` is 1.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.

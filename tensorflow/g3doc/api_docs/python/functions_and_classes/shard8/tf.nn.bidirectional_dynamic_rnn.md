@@ -43,8 +43,8 @@ given.
     which would typically not fit on a single GPU, with very minimal (or no)
     performance penalty.
 *  <b>`time_major`</b>: The shape format of the `inputs` and `outputs` Tensors.
-    If true, these `Output`s must be shaped `[max_time, batch_size, depth]`.
-    If false, these `Output`s must be shaped `[batch_size, max_time, depth]`.
+    If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+    If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
     Using `time_major = True` is a bit more efficient because it avoids
     transposes at the beginning and end of the RNN calculation.  However,
     most TensorFlow data is batch-major, so by default this function
@@ -58,18 +58,18 @@ given.
   A tuple (outputs, output_states) where:
 
 *  <b>`outputs`</b>: A tuple (output_fw, output_bw) containing the forward and
-      the backward rnn output `Output`.
+      the backward rnn output `Tensor`.
       If time_major == False (default),
-        output_fw will be an `Output` shaped:
+        output_fw will be a `Tensor` shaped:
         `[batch_size, max_time, cell_fw.output_size]`
-        and output_bw will be an `Output` shaped:
+        and output_bw will be a `Tensor` shaped:
         `[batch_size, max_time, cell_bw.output_size]`.
       If time_major == True,
-        output_fw will be an `Output` shaped:
+        output_fw will be a `Tensor` shaped:
         `[max_time, batch_size, cell_fw.output_size]`
-        and output_bw will be an `Output` shaped:
+        and output_bw will be a `Tensor` shaped:
         `[max_time, batch_size, cell_bw.output_size]`.
-      It returns a tuple instead of a single concatenated `Output`, unlike
+      It returns a tuple instead of a single concatenated `Tensor`, unlike
       in the `bidirectional_rnn`. If the concatenated one is preferred,
       the forward and backward outputs can be concatenated as
       `tf.concat(2, outputs)`.

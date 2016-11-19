@@ -10,13 +10,13 @@ deconvolution.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` of type `float` and shape
+*  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
     `[batch, height, width, in_channels]` for `NHWC` data format or
     `[batch, in_channels, height, width]` for `NCHW` data format.
-*  <b>`filter`</b>: A 4-D `Output` with the same type as `value` and shape
+*  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
     `[height, width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
-*  <b>`output_shape`</b>: A 1-D `Output` representing the output shape of the
+*  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
     deconvolution op.
 *  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
     dimension of the input tensor.
@@ -27,7 +27,7 @@ deconvolution.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 
 ##### Raises:
 

@@ -54,9 +54,9 @@ c = tf.matmul(a, b) => [[[ 94 100]
 ##### Args:
 
 
-*  <b>`a`</b>: `Output` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+*  <b>`a`</b>: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
     `complex128` and rank > 1.
-*  <b>`b`</b>: `Output` with same type as `a`.
+*  <b>`b`</b>: `Tensor` with same type and rank as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
 *  <b>`adjoint_a`</b>: If `True`, `a` is conjugated and transposed before
@@ -69,7 +69,7 @@ c = tf.matmul(a, b) => [[[ 94 100]
 
 ##### Returns:
 
-  An `Output` of the same type as `a` and `b` where each inner-most matrix is
+  A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
   the product of the corresponding matrices in `a` and `b, e.g. if all
   transpose or adjoint attributes are `False`:
 

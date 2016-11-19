@@ -38,15 +38,15 @@ result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
-*  <b>`min_range`</b>: An `Output` of type `float32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`min_range`</b>: A `Tensor` of type `float32`.
     The minimum scalar value possibly produced for the input.
-*  <b>`max_range`</b>: An `Output` of type `float32`.
+*  <b>`max_range`</b>: A `Tensor` of type `float32`.
     The maximum scalar value possibly produced for the input.
 *  <b>`mode`</b>: An optional `string` from: `"MIN_COMBINED", "MIN_FIRST"`. Defaults to `"MIN_COMBINED"`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 

@@ -19,7 +19,7 @@ See also `group` and `with_dependencies`.
 ##### Args:
 
 
-*  <b>`tensors`</b>: A list of `Output`s or `IndexedSlices`, some entries can be `None`.
+*  <b>`tensors`</b>: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
 *  <b>`name`</b>: (optional) A name to use as a `name_scope` for the operation.
 *  <b>`control_inputs`</b>: List of additional ops to finish before returning.
 
@@ -30,7 +30,7 @@ See also `group` and `with_dependencies`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `tensors` does not contain any `Output` or `IndexedSlices`.
-*  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or `Output`
+*  <b>`ValueError`</b>: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
+*  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or `Tensor`
     objects.
 

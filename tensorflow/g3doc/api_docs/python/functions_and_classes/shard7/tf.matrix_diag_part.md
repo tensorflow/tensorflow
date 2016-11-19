@@ -34,12 +34,12 @@ which has shape (2, 4)
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Rank `k` tensor where `k >= 2`.
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor where `k >= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   The extracted diagonal(s) having shape
   `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
 

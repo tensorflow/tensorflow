@@ -11,7 +11,7 @@ Instructions for updating:
 
   Args:
     predictions: An arbitrary matrix.
-    labels: An `Output` whose shape matches 'predictions'
+    labels: A `Tensor` whose shape matches 'predictions'
     dim: The dimension along which the cosine distance is computed.
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
@@ -20,7 +20,7 @@ Instructions for updating:
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or

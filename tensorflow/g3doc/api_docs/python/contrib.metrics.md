@@ -8,14 +8,14 @@
 ### API
 
 This module provides functions for computing streaming metrics: metrics computed
-on dynamically valued `Output`s. Each metric declaration returns a
+on dynamically valued `Tensors`. Each metric declaration returns a
 "value_tensor", an idempotent operation that returns the current value of the
 metric, and an "update_op", an operation that accumulates the information
-from the current value of the `Output`s being measured as well as returns the
+from the current value of the `Tensors` being measured as well as returns the
 value of the "value_tensor".
 
 To use any of these metrics, one need only declare the metric, call `update_op`
-repeatedly to accumulate data over the desired number of `Output` values (often
+repeatedly to accumulate data over the desired number of `Tensor` values (often
 each one is a single batch) and finally evaluate the value_tensor. For example,
 to use the `streaming_mean`:
 
@@ -101,7 +101,7 @@ idempotent operation that simply divides `total` by `count`.
 
 For estimation of the metric  over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the `accuracy`.
-Internally, an `is_correct` operation computes an `Output` with elements 1.0
+Internally, an `is_correct` operation computes a `Tensor` with elements 1.0
 where the corresponding elements of `predictions` and `labels` match and 0.0
 otherwise. Then `update_op` increments `total` with the reduced sum of the
 product of `weights` and `is_correct`, and it increments `count` with the
@@ -112,10 +112,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, an `Output` of any shape.
-*  <b>`labels`</b>: The ground truth values, an `Output` whose shape matches
+*  <b>`predictions`</b>: The predicted values, a `Tensor` of any shape.
+*  <b>`labels`</b>: The ground truth values, a `Tensor` whose shape matches
     `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `accuracy` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -160,8 +160,8 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`values`</b>: An `Output` of arbitrary dimensions.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `values`.
+*  <b>`values`</b>: A `Tensor` of arbitrary dimensions.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`
@@ -204,10 +204,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Output` of arbitrary shape.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Output` whose dimensions must
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -217,7 +217,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`recall`</b>: Scalar float `Output` with the value of `true_positives` divided
+*  <b>`recall`</b>: Scalar float `Tensor` with the value of `true_positives` divided
     by the sum of `true_positives` and `false_negatives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_negatives` variables appropriately and whose value matches
@@ -254,10 +254,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Output` of arbitrary shape.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Output` whose dimensions must
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -267,7 +267,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`precision`</b>: Scalar float `Output` with the value of `true_positives`
+*  <b>`precision`</b>: Scalar float `Tensor` with the value of `true_positives`
     divided by the sum of `true_positives` and `false_positives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_positives` variables appropriately and whose value matches
@@ -315,10 +315,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: A floating point `Output` of arbitrary shape and whose values
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
     are in the range `[0, 1]`.
-*  <b>`labels`</b>: A `bool` `Output` whose shape matches `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`num_thresholds`</b>: The number of thresholds to use when discretizing the roc
     curve.
 *  <b>`metrics_collections`</b>: An optional list of collections that `auc` should be
@@ -364,7 +364,7 @@ Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] 
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
-  `recall_at_<k>`. Internally, an `in_top_k` operation computes an `Output` with
+  `recall_at_<k>`. Internally, an `in_top_k` operation computes a `Tensor` with
   shape [batch_size] whose elements indicate whether or not the corresponding
   label is in the top `k` `predictions`. Then `update_op` increments `total`
   with the reduced sum of `weights` where `in_top_k` is `True`, and it
@@ -377,7 +377,7 @@ Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] 
     labels: A tensor of dimension [batch_size] whose type is in `int32`,
       `int64`.
     k: The number of top elements to look at for computing recall.
-    weights: An optional `Output` whose shape is broadcastable to `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall_at_k`
       should be added to.
     updates_collections: An optional list of collections `update_op` should be
@@ -422,9 +422,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary shape.
-*  <b>`labels`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_absolute_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -480,7 +480,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`num_classes`</b>: The possible number of labels the prediction task can
     have. This value must be provided, since a confusion matrix of
     dimension = [num_classes, num_classes] will be allocated.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean_iou`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
@@ -527,10 +527,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary shape.
-*  <b>`labels`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`normalizer`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`normalizer`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_relative_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -579,9 +579,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary shape.
-*  <b>`labels`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -630,9 +630,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary shape.
-*  <b>`labels`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `root_mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -688,8 +688,8 @@ variables and returns the updated covariance.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary size.
-*  <b>`labels`</b>: An `Output` of the same size as `predictions`.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary size.
+*  <b>`labels`</b>: A `Tensor` of the same size as `predictions`.
 *  <b>`weights`</b>: An optional set of weights which indicates the frequency with which
     an example is sampled. Must be broadcastable with `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
@@ -701,7 +701,7 @@ variables and returns the updated covariance.
 ##### Returns:
 
 
-*  <b>`covariance`</b>: An `Output` representing the current unbiased sample covariance,
+*  <b>`covariance`</b>: A `Tensor` representing the current unbiased sample covariance,
     `comoment` / (`count` - 1).
 *  <b>`update_op`</b>: An operation that updates the local variables appropriately.
 
@@ -739,8 +739,8 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary size.
-*  <b>`labels`</b>: An `Output` of the same size as predictions.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary size.
+*  <b>`labels`</b>: A `Tensor` of the same size as predictions.
 *  <b>`weights`</b>: An optional set of weights which indicates the frequency with which
     an example is sampled. Must be broadcastable with `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
@@ -786,10 +786,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of the same shape as `labels`.
-*  <b>`labels`</b>: An `Output` of arbitrary shape.
+*  <b>`predictions`</b>: A `Tensor` of the same shape as `labels`.
+*  <b>`labels`</b>: A `Tensor` of arbitrary shape.
 *  <b>`dim`</b>: The dimension along which the cosine distance is computed.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`,
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`,
     and whose dimension `dim` is 1.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
@@ -835,9 +835,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`values`</b>: A numeric `Output` of arbitrary size.
+*  <b>`values`</b>: A numeric `Tensor` of arbitrary size.
 *  <b>`threshold`</b>: A scalar threshold.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `values`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -886,11 +886,11 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 ##### Args:
 
 
-*  <b>`predictions`</b>: A floating point `Output` of arbitrary shape and whose values
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
     are in the range `[0, 1]`.
-*  <b>`labels`</b>: A `bool` `Output` whose shape matches `predictions`.
+*  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`specificity`</b>: A scalar value in range `[0, 1]`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
     specificity.
 *  <b>`metrics_collections`</b>: An optional list of collections that `sensitivity`
@@ -934,7 +934,7 @@ are used to compute the frequency. This frequency is ultimately returned as
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the
-`precision_at_<k>`. Internally, a `top_k` operation computes an `Output`
+`precision_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
 indicating the top `k` `predictions`. Set operations applied to `top_k` and
 `labels` calculate the true positives and false positives weighted by
 `weights`. Then `update_op` increments `true_positive_at_<k>` and
@@ -945,11 +945,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: Float `Output` with shape [D1, ... DN, num_classes] where
+*  <b>`predictions`</b>: Float `Tensor` with shape [D1, ... DN, num_classes] where
     N >= 1. Commonly, N=1 and `predictions` has shape
     [batch size, num_classes]. The final dimension contains the logit values
     for each class. [D1, ... DN] must match `labels`.
-*  <b>`labels`</b>: `int64` `Output` or `SparseTensor` with shape
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
@@ -958,7 +958,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     range are ignored.
 *  <b>`k`</b>: Integer, k for @k metric. This will calculate an average precision for
     range `[1,k]`, as documented above.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
@@ -969,7 +969,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_average_precision`</b>: Scalar `float64` `Output` with the mean average
+*  <b>`mean_average_precision`</b>: Scalar `float64` `Tensor` with the mean average
     precision values.
 *  <b>`update`</b>: `Operation` that increments  variables appropriately, and whose
     value matches `metric`.
@@ -998,7 +998,7 @@ the precision@k frequency. This frequency is ultimately returned as
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the
-`precision_at_<k>`. Internally, a `top_k` operation computes an `Output`
+`precision_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
 indicating the top `k` `predictions`. Set operations applied to `top_k` and
 `labels` calculate the true positives and false positives weighted by
 `weights`. Then `update_op` increments `true_positive_at_<k>` and
@@ -1009,11 +1009,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: Float `Output` with shape [D1, ... DN, num_classes] where
+*  <b>`predictions`</b>: Float `Tensor` with shape [D1, ... DN, num_classes] where
     N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
     The final dimension contains the logit values for each class. [D1, ... DN]
     must match `labels`.
-*  <b>`labels`</b>: `int64` `Output` or `SparseTensor` with shape
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
@@ -1025,7 +1025,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes], where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
@@ -1036,7 +1036,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`precision`</b>: Scalar `float64` `Output` with the value of `true_positives`
+*  <b>`precision`</b>: Scalar `float64` `Tensor` with the value of `true_positives`
     divided by the sum of `true_positives` and `false_positives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_positives` variables appropriately, and whose value matches
@@ -1082,11 +1082,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`top_k_predictions`</b>: Integer `Output` with shape [D1, ... DN, k] where
+*  <b>`top_k_predictions`</b>: Integer `Tensor` with shape [D1, ... DN, k] where
     N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
     The final dimension contains the indices of top-k labels. [D1, ... DN]
     must match `labels`.
-*  <b>`labels`</b>: `int64` `Output` or `SparseTensor` with shape
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
@@ -1097,7 +1097,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
@@ -1108,7 +1108,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`precision`</b>: Scalar `float64` `Output` with the value of `true_positives`
+*  <b>`precision`</b>: Scalar `float64` `Tensor` with the value of `true_positives`
     divided by the sum of `true_positives` and `false_positives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_positives` variables appropriately, and whose value matches
@@ -1145,7 +1145,7 @@ the recall_at_k frequency. This frequency is ultimately returned as
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the
-`recall_at_<k>`. Internally, a `top_k` operation computes an `Output`
+`recall_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
 indicating the top `k` `predictions`. Set operations applied to `top_k` and
 `labels` calculate the true positives and false negatives weighted by
 `weights`. Then `update_op` increments `true_positive_at_<k>` and
@@ -1156,11 +1156,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: Float `Output` with shape [D1, ... DN, num_classes] where
+*  <b>`predictions`</b>: Float `Tensor` with shape [D1, ... DN, num_classes] where
     N >= 1. Commonly, N=1 and predictions has shape [batch size, num_classes].
     The final dimension contains the logit values for each class. [D1, ... DN]
     must match `labels`.
-*  <b>`labels`</b>: `int64` `Output` or `SparseTensor` with shape
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match `predictions`.
@@ -1171,7 +1171,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If class_id is outside this range, the method returns NAN.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
@@ -1182,7 +1182,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`recall`</b>: Scalar `float64` `Output` with the value of `true_positives` divided
+*  <b>`recall`</b>: Scalar `float64` `Tensor` with the value of `true_positives` divided
     by the sum of `true_positives` and `false_negatives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_negatives` variables appropriately, and whose value matches
@@ -1222,11 +1222,11 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 ##### Args:
 
 
-*  <b>`predictions`</b>: A floating point `Output` of arbitrary shape and whose values
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
     are in the range `[0, 1]`.
-*  <b>`labels`</b>: A `bool` `Output` whose shape matches `predictions`.
+*  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`sensitivity`</b>: A scalar value in range `[0, 1]`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
     sensitivity.
 *  <b>`metrics_collections`</b>: An optional list of collections that `specificity`
@@ -1321,10 +1321,10 @@ numbers of bins and comparing results.
 ##### Args:
 
 
-*  <b>`boolean_labels`</b>: 1-D boolean `Output`.  Entry is `True` if the corresponding
+*  <b>`boolean_labels`</b>: 1-D boolean `Tensor`.  Entry is `True` if the corresponding
     record is in class.
-*  <b>`scores`</b>: 1-D numeric `Output`, same shape as boolean_labels.
-*  <b>`score_range`</b>: `Output` of shape `[2]`, same dtype as `scores`.  The min/max
+*  <b>`scores`</b>: 1-D numeric `Tensor`, same shape as boolean_labels.
+*  <b>`score_range`</b>: `Tensor` of shape `[2]`, same dtype as `scores`.  The min/max
     values of score that we expect.  Scores outside range will be clipped.
 *  <b>`nbins`</b>: Integer number of bins to use.  Accuracy strictly increases as the
     number of bins increases.
@@ -1337,7 +1337,7 @@ numbers of bins and comparing results.
 ##### Returns:
 
 
-*  <b>`auc`</b>: `float32` scalar `Output`.  Fetching this converts internal histograms
+*  <b>`auc`</b>: `float32` scalar `Tensor`.  Fetching this converts internal histograms
     to auc value.
 *  <b>`update_op`</b>: `Op`, when run, updates internal histograms.
 
@@ -1352,15 +1352,15 @@ Computes the percentage of times that predictions matches labels.
 ##### Args:
 
 
-*  <b>`predictions`</b>: the predicted values, an `Output` whose dtype and shape
+*  <b>`predictions`</b>: the predicted values, a `Tensor` whose dtype and shape
                matches 'labels'.
-*  <b>`labels`</b>: the ground truth values, an `Output` of any shape and
+*  <b>`labels`</b>: the ground truth values, a `Tensor` of any shape and
           bool, integer, or string dtype.
-*  <b>`weights`</b>: None or `Output` of float values to reweight the accuracy.
+*  <b>`weights`</b>: None or `Tensor` of float values to reweight the accuracy.
 
 ##### Returns:
 
-  Accuracy `Output`.
+  Accuracy `Tensor`.
 
 ##### Raises:
 
@@ -1417,7 +1417,7 @@ resulting in a 5x5 confusion matrix.
                using both predictions and labels array.
 *  <b>`dtype`</b>: Data type of the confusion matrix.
 *  <b>`name`</b>: Scope name.
-*  <b>`weights`</b>: An optional `Output` whose shape matches `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape matches `predictions`.
 
 ##### Returns:
 
@@ -1503,9 +1503,9 @@ All but the last dimension of `a` and `b` must match.
 ##### Args:
 
 
-*  <b>`a`</b>: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+*  <b>`a`</b>: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
       must be sorted in row-major order.
-*  <b>`b`</b>: `Output` or `SparseTensor` of the same type as `a`. Must be
+*  <b>`b`</b>: `Tensor` or `SparseTensor` of the same type as `a`. Must be
       `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
       sorted in row-major order.
 *  <b>`aminusb`</b>: Whether to subtract `b` from `a`, vs vice versa.
@@ -1530,9 +1530,9 @@ All but the last dimension of `a` and `b` must match.
 ##### Args:
 
 
-*  <b>`a`</b>: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+*  <b>`a`</b>: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
       must be sorted in row-major order.
-*  <b>`b`</b>: `Output` or `SparseTensor` of the same type as `a`. Must be
+*  <b>`b`</b>: `Tensor` or `SparseTensor` of the same type as `a`. Must be
       `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
       sorted in row-major order.
 *  <b>`validate_indices`</b>: Whether to validate the order and range of sparse indices
@@ -1560,7 +1560,7 @@ Compute number of unique elements along last dimension of `a`.
 
 ##### Returns:
 
-  `int32` `Output` of set sizes. For `a` ranked `n`, this is an `Output` with
+  `int32` `Tensor` of set sizes. For `a` ranked `n`, this is a `Tensor` with
   rank `n-1`, and the same 1st `n-1` dimensions as `a`. Each value is the
   number of unique elements in the corresponding `[0...n-1]` dimension of `a`.
 
@@ -1581,9 +1581,9 @@ All but the last dimension of `a` and `b` must match.
 ##### Args:
 
 
-*  <b>`a`</b>: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+*  <b>`a`</b>: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
       must be sorted in row-major order.
-*  <b>`b`</b>: `Output` or `SparseTensor` of the same type as `a`. Must be
+*  <b>`b`</b>: `Tensor` or `SparseTensor` of the same type as `a`. Must be
       `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
       sorted in row-major order.
 *  <b>`validate_indices`</b>: Whether to validate the order and range of sparse indices

@@ -19,12 +19,12 @@ If `x` is real, it is returned unchanged.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` to conjugate.  Must have numeric type.
+*  <b>`x`</b>: `Tensor` to conjugate.  Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` that is the conjugate of `x` (with the same type).
+  A `Tensor` that is the conjugate of `x` (with the same type).
 
 ##### Raises:
 

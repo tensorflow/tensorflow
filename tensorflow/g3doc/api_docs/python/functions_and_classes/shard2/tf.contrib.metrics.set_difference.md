@@ -7,9 +7,9 @@ All but the last dimension of `a` and `b` must match.
 ##### Args:
 
 
-*  <b>`a`</b>: `Output` or `SparseTensor` of the same type as `b`. If sparse, indices
+*  <b>`a`</b>: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
       must be sorted in row-major order.
-*  <b>`b`</b>: `Output` or `SparseTensor` of the same type as `a`. Must be
+*  <b>`b`</b>: `Tensor` or `SparseTensor` of the same type as `a`. Must be
       `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
       sorted in row-major order.
 *  <b>`aminusb`</b>: Whether to subtract `b` from `a`, vs vice versa.

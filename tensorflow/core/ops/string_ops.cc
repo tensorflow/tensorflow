@@ -308,9 +308,9 @@ REGISTER_OP("Substr")
       return shape_inference::BroadcastBinaryOpShapeFn(c);
     })
     .Doc(R"doc(
-Return substrings from `Output` of strings.
+Return substrings from `Tensor` of strings.
 
-For each string in the input `Output`, creates a substring starting at index 
+For each string in the input `Tensor`, creates a substring starting at index 
 `pos` with a total length of `len`. 
 
 If `len` defines a substring that would extend beyond the length of the input 

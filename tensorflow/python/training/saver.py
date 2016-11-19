@@ -1253,7 +1253,7 @@ class Saver(object):
         `sharded`, this is the prefix of the sharded checkpoint filename.
       global_step: If provided the global step number is appended to
         `save_path` to create the checkpoint filename. The optional argument
-        can be an `Output`, an `Output` name or an integer.
+        can be a `Tensor`, a `Tensor` name or an integer.
       latest_filename: Optional name for the protocol buffer file that will
         contains the list of most recent checkpoint filenames.  That file,
         kept in the same directory as the checkpoint files, is automatically
@@ -1353,7 +1353,7 @@ class Saver(object):
       as_text: If `True`, writes the meta_graph as an ASCII proto.
       export_scope: Optional `string`. Name scope to remove.
       clear_devices: Whether or not to clear the device field for an `Operation`
-        or `Output` during export.
+        or `Tensor` during export.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1504,7 +1504,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
     clear_devices: Whether or not to clear the device field for an `Operation`
-      or `Output` during import.
+      or `Tensor` during import.
     import_scope: Optional `string`. Name scope to add. Only used when
       initializing from protocol buffer.
     **kwargs: Optional keyed arguments.
@@ -1568,7 +1568,7 @@ def export_meta_graph(filename=None,
       for easy import later into new name scopes. If `None`, the whole graph
       is exported. graph_def and export_scope cannot both be specified.
     clear_devices: Whether or not to clear the device field for an `Operation`
-      or `Output` during export.
+      or `Tensor` during export.
     **kwargs: Optional keyed arguments.
 
   Returns:

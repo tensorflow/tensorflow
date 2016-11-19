@@ -38,17 +38,17 @@ ELBO ~= E[ Log[p(Z, x)] - Log[q(Z)] ]
      <= Log[p(x)]
 ```
 
-User supplies either `Output` of samples `z`, or number of samples to draw `n`
+User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
 ##### Args:
 
 
-*  <b>`log_p`</b>: Callable mapping samples from `q` to `Output`s with
+*  <b>`log_p`</b>: Callable mapping samples from `q` to `Tensors` with
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
 *  <b>`q`</b>: `tf.contrib.distributions.Distribution`.
-*  <b>`z`</b>: `Output` of samples from `q`, produced by `q.sample_n`.
-*  <b>`n`</b>: Integer `Output`.  Number of samples to generate if `z` is not provided.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`form`</b>: Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
     or `ELBOForms.sample` (sample estimate of entropy), or `ELBOForms.default`
@@ -58,7 +58,7 @@ User supplies either `Output` of samples `z`, or number of samples to draw `n`
 
 ##### Returns:
 
-  Scalar `Output` holding sample mean KL divergence.  `shape` is the batch
+  Scalar `Tensor` holding sample mean KL divergence.  `shape` is the batch
     shape of `q`, and `dtype` is the same as `q`.
 
 ##### Raises:

@@ -160,17 +160,17 @@ def parse_example(serialized, features, name=None, example_names=None):
   protos. These may be useful for debugging purposes, but they have no effect on
   the output. If not `None`, `example_names` must be the same length as `serialized`.
 
-  This op parses serialized examples into a dictionary mapping keys to `Output`
+  This op parses serialized examples into a dictionary mapping keys to `Tensor`
   and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
   and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
-  `SparseTensor`, and each `FixedLenFeature` is mapped to an `Output`.
+  `SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
 
   Each `VarLenFeature` maps to a `SparseTensor` of the specified type
   representing a ragged matrix. Its indices are `[batch, index]` where `batch`
   is the batch entry the value is from in `serialized`, and `index` is the
   value's index in the list of values associated with that feature and example.
 
-  Each `FixedLenFeature` `df` maps to an `Output` of the specified type (or
+  Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
   `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
 
   `FixedLenFeature` entries with a `default_value` are optional. With no default
@@ -291,7 +291,7 @@ def parse_example(serialized, features, name=None, example_names=None):
       the serialized protos in the batch.
 
   Returns:
-    A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+    A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
   Raises:
     ValueError: if any feature is invalid.
@@ -328,11 +328,11 @@ def _parse_example_raw(serialized,
       Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
       and `tf.string` (`BytesList`) are supported.
     dense_keys: A list of string keys in the examples' features.
-      The results for these keys will be returned as `Output`s
+      The results for these keys will be returned as `Tensor`s
     dense_types: A list of DTypes of the same length as `dense_keys`.
       Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
       and `tf.string` (`BytesList`) are supported.
-    dense_defaults: A dict mapping string keys to `Output`s.
+    dense_defaults: A dict mapping string keys to `Tensor`s.
       The keys of the dict must match the dense_keys of the feature.
     dense_shapes: A list of tuples with the same length as `dense_keys`.
       The shape of the data for each dense feature referenced by `dense_keys`.
@@ -341,7 +341,7 @@ def _parse_example_raw(serialized,
     name: A name for this operation (optional).
 
   Returns:
-    A `dict` mapping keys to `Output`s and `SparseTensor`s.
+    A `dict` mapping keys to `Tensor`s and `SparseTensor`s.
 
   Raises:
     ValueError: If sparse and dense key sets intersect, or input lengths do not
@@ -419,7 +419,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
 
   Similar to `parse_example`, except:
 
-  For dense tensors, the returned `Output` is identical to the output of
+  For dense tensors, the returned `Tensor` is identical to the output of
   `parse_example`, except there is no batch dimension, the output shape is the
   same as the shape given in `dense_shape`.
 
@@ -438,7 +438,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
       See `_parse_single_example_raw` documentation for more details.
 
   Returns:
-    A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+    A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
   Raises:
     ValueError: if any feature is invalid.
@@ -478,7 +478,7 @@ def _parse_single_example_raw(serialized,
     name: A name for this operation (optional).
 
   Returns:
-    A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+    A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
   Raises:
     ValueError: if any feature is invalid.
@@ -550,7 +550,7 @@ def parse_single_sequence_example(
   proto given in `serialized`.
 
   This op parses a serialize sequence example into a tuple of dictionaries
-  mapping keys to `Output` and `SparseTensor` objects respectively.
+  mapping keys to `Tensor` and `SparseTensor` objects respectively.
   The first dictionary contains mappings for keys appearing in
   `context_features`, and the second dictionary contains mappings for keys
   appearing in `sequence_features`.
@@ -568,16 +568,16 @@ def parse_single_sequence_example(
 
   `context_features` contains `VarLenFeature` and `FixedLenFeature` objects.
   Each `VarLenFeature` is mapped to a `SparseTensor`, and each `FixedLenFeature`
-  is mapped to an `Output`, of the specified type, shape, and default value.
+  is mapped to a `Tensor`, of the specified type, shape, and default value.
 
   `sequence_features` contains `VarLenFeature` and `FixedLenSequenceFeature`
   objects. Each `VarLenFeature` is mapped to a `SparseTensor`, and each
-  `FixedLenSequenceFeature` is mapped to an `Output`, each of the specified type.
+  `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
   The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
-  For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Output` of
+  For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
   static shape `[None]` and dynamic shape `[T]`, while
-  `FixedLenSequenceFeature([k])` (for `int k >= 1`) yields a 2-D matrix `Output`
+  `FixedLenSequenceFeature([k])` (for `int k >= 1`) yields a 2-D matrix `Tensor`
   of static shape `[None, k]` and dynamic shape `[T, k]`.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
@@ -608,7 +608,7 @@ def parse_single_sequence_example(
     name: A name for this operation (optional).
 
   Returns:
-    A tuple of two `dict`s, each mapping keys to `Output`s and `SparseTensor`s.
+    A tuple of two `dict`s, each mapping keys to `Tensor`s and `SparseTensor`s.
     The first dict contains the context key/values.
     The second dict contains the feature_list key/values.
 
@@ -663,11 +663,11 @@ def _parse_single_sequence_example_raw(serialized,
       Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
       and `tf.string` (`BytesList`) are supported.
     context_dense_keys: A list of string keys in the examples' features.
-      The results for these keys will be returned as `Output`s
+      The results for these keys will be returned as `Tensor`s
     context_dense_types: A list of DTypes, same length as `context_dense_keys`.
       Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
       and `tf.string` (`BytesList`) are supported.
-    context_dense_defaults: A dict mapping string keys to `Output`s.
+    context_dense_defaults: A dict mapping string keys to `Tensor`s.
       The keys of the dict must match the context_dense_keys of the feature.
     context_dense_shapes: A list of tuples, same length as `context_dense_keys`.
       The shape of the data for each context_dense feature referenced by
@@ -680,7 +680,7 @@ def _parse_single_sequence_example_raw(serialized,
       Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
       and `tf.string` (`BytesList`) are supported.
     feature_list_dense_keys: A list of string keys in the `SequenceExample`'s
-      features_lists. The results for these keys will be returned as `Output`s.
+      features_lists. The results for these keys will be returned as `Tensor`s.
     feature_list_dense_types: A list of `DTypes`, same length as
       `feature_list_dense_keys`.  Only `tf.float32` (`FloatList`),
       `tf.int64` (`Int64List`), and `tf.string` (`BytesList`) are supported.
@@ -696,7 +696,7 @@ def _parse_single_sequence_example_raw(serialized,
     name: A name for this operation (optional).
 
   Returns:
-    A tuple of two `dict`s, each mapping keys to `Output`s and `SparseTensor`s.
+    A tuple of two `dict`s, each mapping keys to `Tensor`s and `SparseTensor`s.
     The first dict contains the context key/values.
     The second dict contains the feature_list key/values.
 

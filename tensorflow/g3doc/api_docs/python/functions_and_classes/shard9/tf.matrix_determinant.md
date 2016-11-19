@@ -9,11 +9,11 @@ for all input submatrices `[..., :, :]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     Shape is `[..., M, M]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`. Shape is `[...]`.
+  A `Tensor`. Has the same type as `input`. Shape is `[...]`.
 

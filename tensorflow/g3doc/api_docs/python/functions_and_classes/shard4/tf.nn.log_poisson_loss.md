@@ -26,15 +26,15 @@ loss is
 ##### Args:
 
 
-*  <b>`log_input`</b>: An `Output` of type `float32` or `float64`.
-*  <b>`targets`</b>: An `Output` of the same type and shape as `log_input`.
+*  <b>`log_input`</b>: A `Tensor` of type `float32` or `float64`.
+*  <b>`targets`</b>: A `Tensor` of the same type and shape as `log_input`.
 *  <b>`compute_full_loss`</b>: whether to compute the full loss. If false, a constant
     term is dropped in favor of more efficient optimization.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of the same shape as `log_input` with the componentwise
+  A `Tensor` of the same shape as `log_input` with the componentwise
   logistic losses.
 
 ##### Raises:

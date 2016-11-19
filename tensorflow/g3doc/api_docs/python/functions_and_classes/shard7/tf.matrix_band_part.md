@@ -45,17 +45,17 @@ Useful special cases:
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Rank `k` tensor.
-*  <b>`num_lower`</b>: An `Output` of type `int64`.
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
+*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
     0-D tensor. Number of subdiagonals to keep. If negative, keep entire
     lower triangle.
-*  <b>`num_upper`</b>: An `Output` of type `int64`.
+*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
     0-D tensor. Number of superdiagonals to keep. If negative, keep
     entire upper triangle.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   Rank `k` tensor of the same shape as input. The extracted banded tensor.
 

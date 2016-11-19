@@ -9,7 +9,7 @@ in `tensor` such that
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Output` of shape `[..., N, N]`. Only the lower triangular part of
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
     each inner inner matrix is referenced.
 *  <b>`name`</b>: string, optional name of the operation.
 

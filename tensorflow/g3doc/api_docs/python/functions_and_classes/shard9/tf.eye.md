@@ -21,16 +21,16 @@ tf.eye(2, num_columns=3)
 ##### Args:
 
 
-*  <b>`num_rows`</b>: Non-negative `int32` scalar `Output` giving the number of rows
+*  <b>`num_rows`</b>: Non-negative `int32` scalar `Tensor` giving the number of rows
     in each batch matrix.
-*  <b>`num_columns`</b>: Optional non-negative `int32` scalar `Output` giving the number
+*  <b>`num_columns`</b>: Optional non-negative `int32` scalar `Tensor` giving the number
     of columns in each batch matrix.  Defaults to `num_rows`.
-*  <b>`batch_shape`</b>: `int32` `Output`.  If provided, returned `Output` will have
+*  <b>`batch_shape`</b>: `int32` `Tensor`.  If provided, returned `Tensor` will have
     leading batch dimensions of this shape.
-*  <b>`dtype`</b>: The type of an element in the resulting `Output`
+*  <b>`dtype`</b>: The type of an element in the resulting `Tensor`
 *  <b>`name`</b>: A name for this `Op`.  Defaults to "eye".
 
 ##### Returns:
 
-  An `Output` of shape `batch_shape + [num_rows, num_columns]`
+  A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
 

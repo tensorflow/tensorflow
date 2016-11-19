@@ -1596,13 +1596,13 @@ Report a benchmark.
 
 #### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
 
-Run an op or output in the given session.  Report the results.
+Run an op or tensor in the given session.  Report the results.
 
 ##### Args:
 
 
 *  <b>`sess`</b>: `Session` object to use for timing.
-*  <b>`op_or_tensor`</b>: `Operation` or `Output` to benchmark.
+*  <b>`op_or_tensor`</b>: `Operation` or `Tensor` to benchmark.
 *  <b>`feed_dict`</b>: A `dict` of values to feed for each op iteration (see the
     `feed_dict` parameter of `Session.run`).
 *  <b>`burn_iters`</b>: Number of burn-in iterations to run.

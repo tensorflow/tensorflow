@@ -20,13 +20,13 @@ Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
 ##### Args:
 
 
-*  <b>`weights`</b>: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+*  <b>`weights`</b>: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-sharded) class embeddings.
-*  <b>`biases`</b>: An `Output` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: An `Output` of shape `[batch_size, dim]`.  The forward
+*  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
       activations of the input network.
-*  <b>`labels`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.  Note that this format differs from
       the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.

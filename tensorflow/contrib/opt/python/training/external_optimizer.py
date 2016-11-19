@@ -48,13 +48,13 @@ class ExternalOptimizerInterface(object):
     """Initialize a new interface instance.
 
     Args:
-      loss: A scalar `Output` to be minimized.
+      loss: A scalar `Tensor` to be minimized.
       var_list: Optional list of `Variable` objects to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKeys.TRAINABLE_VARIABLES`.
-      equalities: Optional list of equality constraint scalar `Output`s to be
+      equalities: Optional list of equality constraint scalar `Tensor`s to be
         held equal to zero.
-      inequalities: Optional list of inequality constraint scalar `Output`s
+      inequalities: Optional list of inequality constraint scalar `Tensor`s
         to be kept nonnegative.
       **optimizer_kwargs: Other subclass-specific keyword arguments.
     """
@@ -101,7 +101,7 @@ class ExternalOptimizerInterface(object):
 
   def minimize(self, session=None, feed_dict=None, fetches=None,
                step_callback=None, loss_callback=None):
-    """Minimize a scalar `Output`.
+    """Minimize a scalar `Tensor`.
 
     Variables subject to optimization are updated in-place at the end of
     optimization.
@@ -113,7 +113,7 @@ class ExternalOptimizerInterface(object):
     Args:
       session: A `Session` instance.
       feed_dict: A feed dict to be passed to calls to `session.run`.
-      fetches: A list of `Output`s to fetch and supply to `loss_callback`
+      fetches: A list of `Tensor`s to fetch and supply to `loss_callback`
         as positional arguments.
       step_callback: A function to be called at each optimization step;
         arguments are the current values of all optimization variables
@@ -196,7 +196,7 @@ class ExternalOptimizerInterface(object):
 
   @classmethod
   def _pack(cls, tensors):
-    """Pack a list of `Output`s into a single, flattened, rank-1 `Output`."""
+    """Pack a list of `Tensor`s into a single, flattened, rank-1 `Tensor`."""
     if not tensors:
       return None
     elif len(tensors) == 1:
@@ -207,13 +207,13 @@ class ExternalOptimizerInterface(object):
 
   def _make_eval_func(self, tensors, session, feed_dict, fetches,
                       callback=None):
-    """Construct a function that evaluates an `Output` or list of `Output`s."""
+    """Construct a function that evaluates a `Tensor` or list of `Tensor`s."""
     if not isinstance(tensors, list):
       tensors = [tensors]
     num_tensors = len(tensors)
 
     def eval_func(x):
-      """Function to evaluate an `Output`."""
+      """Function to evaluate a `Tensor`."""
       augmented_feed_dict = {
           var: x[packing_slice].reshape(_get_shape_tuple(var))
           for var, packing_slice in zip(self._vars, self._packing_slices)

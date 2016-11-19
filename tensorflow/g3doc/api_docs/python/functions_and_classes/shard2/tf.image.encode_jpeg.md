@@ -22,7 +22,7 @@ in function of the number of channels in `image`:
 ##### Args:
 
 
-*  <b>`image`</b>: An `Output` of type `uint8`.
+*  <b>`image`</b>: A `Tensor` of type `uint8`.
     3-D with shape `[height, width, channels]`.
 *  <b>`format`</b>: An optional `string` from: `"", "grayscale", "rgb"`. Defaults to `""`.
     Per pixel image format.
@@ -47,5 +47,5 @@ in function of the number of channels in `image`:
 
 ##### Returns:
 
-  An `Output` of type `string`. 0-D. JPEG-encoded image.
+  A `Tensor` of type `string`. 0-D. JPEG-encoded image.
 

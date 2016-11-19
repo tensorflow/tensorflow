@@ -82,12 +82,12 @@ while True:
 ##### Args:
 
 
-*  <b>`input_key`</b>: A string scalar `Output`, the **unique** key for the given
+*  <b>`input_key`</b>: A string scalar `Tensor`, the **unique** key for the given
     input example.  This is used to keep track of the split minibatch elements
     of this input.  Batched keys of the current iteration are made
     accessible via the `key` property.  The shape of `input_key` (scalar) must
     be fully specified.
-*  <b>`input_sequences`</b>: A dict mapping string names to `Output` values.  The values
+*  <b>`input_sequences`</b>: A dict mapping string names to `Tensor` values.  The values
     must all have matching first dimension, called `value_length`. They may
     vary from input to input. The remainder of the shape (other than the first
     dimension) must be fully specified.
@@ -99,7 +99,7 @@ while True:
     **Note**: if `pad=False`, then `value_length` must always be a multiple
       of `num_unroll`.
 
-*  <b>`input_context`</b>: A dict mapping string names to `Output` values.  The values
+*  <b>`input_context`</b>: A dict mapping string names to `Tensor` values.  The values
     are treated as "global" across all time splits of the given input example,
     and will be copied across for all minibatch elements accordingly.
     Batched and copied context of the current iteration are made
@@ -107,7 +107,7 @@ while True:
 
     **Note**: All input_context values must have fully defined shapes.
 
-*  <b>`input_length`</b>: None or an int32 scalar `Output`, the length of the sequence
+*  <b>`input_length`</b>: None or an int32 scalar `Tensor`, the length of the sequence
     prior to padding. If `input_length=None` and `pad=True` then the length
     will be inferred and will be equal to `value_length`. If `pad=False` then
     `input_length` cannot be `None`: `input_length` must be specified. Its
@@ -125,7 +125,7 @@ while True:
 *  <b>`num_unroll`</b>: Python integer, how many time steps to unroll at a time.
     The input sequences of length k are then split into k / num_unroll many
     segments.
-*  <b>`batch_size`</b>: int or int32 scalar `Output`, how large minibatches should
+*  <b>`batch_size`</b>: int or int32 scalar `Tensor`, how large minibatches should
     be when accessing the `state()` method and `context`, `sequences`, etc,
     properties.
 *  <b>`num_threads`</b>: The int number of threads enqueuing input examples into a

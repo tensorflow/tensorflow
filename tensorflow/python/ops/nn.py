@@ -351,14 +351,14 @@ def log_poisson_loss(log_input, targets, compute_full_loss=False, name=None):
       = exp(c) - z * c [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
 
   Args:
-    log_input: An `Output` of type `float32` or `float64`.
-    targets: An `Output` of the same type and shape as `log_input`.
+    log_input: A `Tensor` of type `float32` or `float64`.
+    targets: A `Tensor` of the same type and shape as `log_input`.
     compute_full_loss: whether to compute the full loss. If false, a constant
       term is dropped in favor of more efficient optimization.
     name: A name for the operation (optional).
 
   Returns:
-    An `Output` of the same shape as `log_input` with the componentwise
+    A `Tensor` of the same shape as `log_input` with the componentwise
     logistic losses.
 
   Raises:
@@ -421,12 +421,12 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
   `logits` and `targets` must have the same type and shape.
 
   Args:
-    logits: An `Output` of type `float32` or `float64`.
-    targets: An `Output` of the same type and shape as `logits`.
+    logits: A `Tensor` of type `float32` or `float64`.
+    targets: A `Tensor` of the same type and shape as `logits`.
     name: A name for the operation (optional).
 
   Returns:
-    An `Output` of the same shape as `logits` with the componentwise
+    A `Tensor` of the same shape as `logits` with the componentwise
     logistic losses.
 
   Raises:
@@ -492,13 +492,13 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
   `logits` and `targets` must have the same type and shape.
 
   Args:
-    logits: An `Output` of type `float32` or `float64`.
-    targets: An `Output` of the same type and shape as `logits`.
+    logits: A `Tensor` of type `float32` or `float64`.
+    targets: A `Tensor` of the same type and shape as `logits`.
     pos_weight: A coefficient to use on the positive examples.
     name: A name for the operation (optional).
 
   Returns:
-    An `Output` of the same shape as `logits` with the componentwise
+    A `Tensor` of the same shape as `logits` with the componentwise
     weighted logistic losses.
 
   Raises:
@@ -560,7 +560,7 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
   dimension `dim`.
 
   Args:
-    x: An `Output`.
+    x: A `Tensor`.
     dim: Dimension along which to normalize.  A scalar or a vector of
       integers.
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
@@ -568,7 +568,7 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
     name: A name for this operation (optional).
 
   Returns:
-    An `Output` with the same shape as `x`.
+    A `Tensor` with the same shape as `x`.
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -636,7 +636,7 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     name: A name for this operation (optional).
 
   Returns:
-    A 4-D `Output` of shape
+    A 4-D `Tensor` of shape
     `[batch, out_height, out_width, in_channels * channel_multiplier].`
   """
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
@@ -672,11 +672,11 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
   horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
-    input: 4-D `Output` with shape `[batch, in_height, in_width, in_channels]`.
-    depthwise_filter: 4-D `Output` with shape
+    input: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
+    depthwise_filter: 4-D `Tensor` with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
       Contains `in_channels` convolutional filters of depth 1.
-    pointwise_filter: 4-D `Output` with shape
+    pointwise_filter: 4-D `Tensor` with shape
       `[1, 1, channel_multiplier * in_channels, out_channels]`.  Pointwise
       filter to mix channels after `depthwise_filter` has convolved spatially.
     strides: 1-D of size 4.  The strides for the depthwise convolution for
@@ -687,7 +687,7 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     name: A name for this operation (optional).
 
   Returns:
-    A 4-D `Output` of shape `[batch, out_height, out_width, out_channels]`.
+    A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
   Raises:
     ValueError: If channel_multiplier * in_channels > out_channels,
@@ -737,16 +737,16 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
   Args:
-    x: An `Output`.
+    x: A `Tensor`.
     axes: Array of ints. Axes along which to compute mean and variance.
-    shift: An `Output` containing the value by which to shift the data for
+    shift: A `Tensor` containing the value by which to shift the data for
       numerical stability, or `None` if no shift is to be performed. A shift
       close to the true mean provides the most numerically stable results.
     keep_dims: produce statistics with the same dimensionality as the input.
     name: Name used to scope the operations that compute the sufficient stats.
 
   Returns:
-    Four `Output` objects of the same type as `x`:
+    Four `Tensor` objects of the same type as `x`:
 
     * the count (number of elements to average over).
     * the (possibly shifted) sum of the elements in the array.
@@ -782,17 +782,17 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   """Calculate the mean and variance of based on the sufficient statistics.
 
   Args:
-    counts: An `Output` containing a the total count of the data (one value).
-    mean_ss: An `Output` containing the mean sufficient statistics: the
-      (possibly shifted) sum of the elements to average over.
-    variance_ss: An `Output` containing the variance sufficient statistics: the
+    counts: A `Tensor` containing a the total count of the data (one value).
+    mean_ss: A `Tensor` containing the mean sufficient statistics: the (possibly
+      shifted) sum of the elements to average over.
+    variance_ss: A `Tensor` containing the variance sufficient statistics: the
       (possibly shifted) squared sum of the data to compute the variance over.
-    shift: An `Output` containing the value by which the data is shifted for
+    shift: A `Tensor` containing the value by which the data is shifted for
       numerical stability, or `None` if no shift was performed.
     name: Name used to scope the operations that compute the moments.
 
   Returns:
-    Two `Output` objects: `mean` and `variance`.
+    Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.name_scope(name, "normalize", [counts, mean_ss, variance_ss, shift]):
     divisor = math_ops.reciprocal(counts, name="divisor")
@@ -823,17 +823,17 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
    * for simple batch normalization pass `axes=[0]` (batch only).
 
   Args:
-    x: An `Output`.
+    x: A `Tensor`.
     axes: Array of ints.  Axes along which to compute mean and
       variance.
-    shift: An `Output` containing the value by which to shift the data for
+    shift: A `Tensor` containing the value by which to shift the data for
       numerical stability, or `None` if no shift is to be performed. A shift
       close to the true mean provides the most numerically stable results.
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
 
   Returns:
-    Two `Output` objects: `mean` and `variance`.
+    Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.name_scope(name, "moments", [x, axes, shift]):
     # The dynamic range of fp16 is too limited to support the collection of
@@ -965,12 +965,12 @@ def batch_normalization(x,
       thereof during inference.
 
   Args:
-    x: Input `Output` of arbitrary dimensionality.
-    mean: A mean `Output`.
-    variance: A variance `Output`.
-    offset: An offset `Output`, often denoted \\(\beta\\) in equations, or
+    x: Input `Tensor` of arbitrary dimensionality.
+    mean: A mean `Tensor`.
+    variance: A variance `Tensor`.
+    offset: An offset `Tensor`, often denoted \\(\beta\\) in equations, or
       None. If present, will be added to the normalized tensor.
-    scale: A scale `Output`, often denoted \\(\gamma\\) in equations, or
+    scale: A scale `Tensor`, often denoted \\(\gamma\\) in equations, or
       `None`. If present, the scale is applied to the normalized tensor.
     variance_epsilon: A small float number to avoid dividing by 0.
     name: A name for this operation (optional).
@@ -998,11 +998,11 @@ def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
   As described in http://arxiv.org/abs/1502.03167.
 
   Args:
-    x: Input `Output` of 4 dimensions.
-    scale: An `Output` of 1 dimension for scaling.
-    offset: An `Output` of 1 dimension for bias.
-    mean: An `Output` of 1 dimension for population mean used for inference.
-    variance: An `Output` of 1 dimension for population variance
+    x: Input `Tensor` of 4 dimensions.
+    scale: A `Tensor` of 1 dimension for scaling.
+    offset: A `Tensor` of 1 dimension for bias.
+    mean: A `Tensor` of 1 dimension for population mean used for inference.
+    variance: A `Tensor` of 1 dimension for population variance
               used for inference.
     epsilon: A small float number added to the variance of x.
     data_format: The data format for x. Either "NHWC" (default) or "NCHW".
@@ -1117,13 +1117,13 @@ def _compute_sampled_logits(weights,
   sum to 1 per-example.
 
   Args:
-    weights: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+    weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
         `[num_classes, dim]`.  The (possibly-partitioned) class embeddings.
-    biases: An `Output` of shape `[num_classes]`.  The class biases.
-    inputs: An `Output` of shape `[batch_size, dim]`.  The forward
+    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
-    labels: An `Output` of type `int64` and shape `[batch_size,
+    labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -1143,7 +1143,7 @@ def _compute_sampled_logits(weights,
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
   Returns:
-    out_logits, out_labels: `Output` objects each with shape
+    out_logits, out_labels: `Tensor` objects each with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
         `nn.sigmoid_cross_entropy_with_logits` (NCE) or
         `nn.softmax_cross_entropy_with_logits` (sampled softmax).
@@ -1292,13 +1292,13 @@ def nce_loss(weights,
   with an otherwise unused class.
 
   Args:
-    weights: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+    weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
         [num_classes, dim].  The (possibly-partitioned) class embeddings.
-    biases: An `Output` of shape `[num_classes]`.  The class biases.
-    inputs: An `Output` of shape `[batch_size, dim]`.  The forward
+    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
-    labels: An `Output` of type `int64` and shape `[batch_size,
+    labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
@@ -1370,13 +1370,13 @@ def sampled_softmax_loss(weights,
   ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
   Args:
-    weights: An `Output` of shape `[num_classes, dim]`, or a list of `Output`
+    weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
         [num_classes, dim].  The (possibly-sharded) class embeddings.
-    biases: An `Output` of shape `[num_classes]`.  The class biases.
-    inputs: An `Output` of shape `[batch_size, dim]`.  The forward
+    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
-    labels: An `Output` of type `int64` and shape `[batch_size,
+    labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.

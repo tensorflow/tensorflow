@@ -14,12 +14,12 @@ precise description.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
     N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
     where spatial_shape has `M` dimensions.
-*  <b>`block_shape`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`block_shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with shape `[M]`, all values must be >= 1.
-*  <b>`paddings`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D with shape `[M, 2]`, all values must be >= 0.
       `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
       `i + 1`, which corresponds to spatial dimension `i`.  It is required that
@@ -133,5 +133,5 @@ precise description.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 

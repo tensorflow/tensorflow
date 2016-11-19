@@ -19,12 +19,12 @@ element of the tensor. Rank is also known as "order", "degree", or "ndims."
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` or `SparseTensor`.
+*  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `int32`.
+  A `Tensor` of type `int32`.
 
 @compatibility(numpy)
 Equivalent to np.ndim

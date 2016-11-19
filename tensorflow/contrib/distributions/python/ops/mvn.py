@@ -47,7 +47,7 @@ __all__ = [
 ]
 
 _mvn_prob_note = """
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -372,7 +372,7 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
     Args:
       mu:  Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
-      diag_stdev: Rank `N + 1` `Output` with same `dtype` and shape as `mu`,
+      diag_stdev: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
         representing the standard deviations.  Must be positive.
       validate_args: `Boolean`, default `False`.  Whether to validate
         input with asserts.  If `validate_args` is `False`,
@@ -612,7 +612,7 @@ class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
     Args:
       mu: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
-      chol: `(N+2)-D` `Output` with same `dtype` as `mu` and shape
+      chol: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
         `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
         though it is zero), and the diagonal must be positive.
       validate_args: `Boolean`, default `False`.  Whether to validate input
@@ -696,7 +696,7 @@ class MultivariateNormalFull(_MultivariateNormalOperatorPD):
     Args:
       mu: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
-      sigma: `(N+2)-D` `Output` with same `dtype` as `mu` and shape
+      sigma: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
         `[N1,...,Nb, k, k]`.  Each batch member must be positive definite.
       validate_args: `Boolean`, default `False`.  Whether to validate input
         with asserts.  If `validate_args` is `False`, and the inputs are

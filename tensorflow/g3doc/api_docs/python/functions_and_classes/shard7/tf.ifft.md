@@ -7,12 +7,12 @@ dimension of `input`.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `complex64`.
+  A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most
   dimension of `input` is replaced with its inverse 1D Fourier Transform.
 

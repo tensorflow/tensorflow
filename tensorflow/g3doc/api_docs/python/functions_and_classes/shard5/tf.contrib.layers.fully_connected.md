@@ -4,7 +4,7 @@ Adds a fully connected layer.
 
 `fully_connected` creates a variable called `weights`, representing a fully
 connected weight matrix, which is multiplied by the `inputs` to produce a
-`Output` of hidden units. If a `normalizer_fn` is provided (such as
+`Tensor` of hidden units. If a `normalizer_fn` is provided (such as
 `batch_norm`), it is then applied. Otherwise, if `normalizer_fn` is
 None and a `biases_initializer` is provided then a `biases` variable would be
 created and added the hidden units. Finally, if `activation_fn` is not `None`,

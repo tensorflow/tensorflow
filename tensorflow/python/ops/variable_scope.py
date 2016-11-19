@@ -218,7 +218,7 @@ class _VariableStore(object):
     it as a value and derive the shape from the initializer.
 
     If a partitioner is provided, a `PartitionedVariable` is returned.
-    Accessing this object as an `Output` returns the shards concatenated along
+    Accessing this object as a `Tensor` returns the shards concatenated along
     the partition axis.
 
     Some useful partitioners are available.  See, e.g.,
@@ -965,7 +965,7 @@ def get_variable(name,
   then by default no regularization is performed).
 
   If a partitioner is provided, a `PartitionedVariable` is returned.
-  Accessing this object as an `Output` returns the shards concatenated along
+  Accessing this object as a `Tensor` returns the shards concatenated along
   the partition axis.
 
   Some useful partitioners are available.  See, e.g.,
@@ -1331,7 +1331,7 @@ def variable_scope(name_or_scope,
     default_name: The default name to use if the `name_or_scope` argument is
       `None`, this name will be uniquified. If name_or_scope is provided it
       won't be used and therefore it is not required and can be None.
-    values: The list of `Output` arguments that are passed to the op function.
+    values: The list of `Tensor` arguments that are passed to the op function.
     initializer: default initializer for variables within this scope.
     regularizer: default regularizer for variables within this scope.
     caching_device: default caching device for variables within this scope.

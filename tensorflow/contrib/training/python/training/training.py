@@ -146,9 +146,9 @@ def create_train_op(total_loss,
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
-    total_loss: An `Output` representing the total loss.
+    total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
-    global_step: An `Output` representing the global step variable. If left as
+    global_step: A `Tensor` representing the global step variable. If left as
       `None`, then slim.variables.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
@@ -169,8 +169,8 @@ def create_train_op(total_loss,
       with the ops that generated them.
 
   Returns:
-    An `Output` that when evaluated, computes the gradients and returns the
-      total loss value.
+    A `Tensor` that when evaluated, computes the gradients and returns the total
+      loss value.
   """
   if global_step is None:
     global_step = variables.get_or_create_global_step()
@@ -244,7 +244,7 @@ def train(
   """Runs the training loop.
 
   Args:
-    train_op: An `Output` that, when executed, will apply the gradients and
+    train_op: A `Tensor` that, when executed, will apply the gradients and
       return the loss value.
     logdir: The directory where the graph and checkpoints are saved.
     master: The URL of the master.

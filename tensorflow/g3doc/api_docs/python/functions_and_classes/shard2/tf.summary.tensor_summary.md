@@ -18,6 +18,6 @@ has one summary value containing the input tensor.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
