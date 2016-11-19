@@ -644,7 +644,7 @@ class BaseEstimator(
       logging.debug('Given features for mode %s: %s, required signatures: %s.',
                     mode, str(features), str(self._features_info[mode]))
 
-      if not tensor_signature.tensors_compatible(features, self._features_info):
+      if not tensor_signature.tensors_compatible(features, self._features_info[mode]):
         raise ValueError('Features for mode %s are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
                          (mode, str(features), str(self._features_info[mode])))
@@ -661,7 +661,7 @@ class BaseEstimator(
                            (mode, str(labels), str(self._labels_info[mode])))
       else:
         self._labels_info[mode] = tensor_signature.create_signatures(labels)
-        logging.debug('Setting labels for mode %s info to %s', mode, str(self._labels_info[mode]))
+        logging.debug('Setting labels info for mode %s to %s', mode, str(self._labels_info[mode]))
 
   def _train_model(self,
                    input_fn,
@@ -836,6 +836,19 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
+
+      for mode in self._features_info.keys():
+        if tensor_signature.tensors_compatible(features, self._features_info[mode]):
+          self._features_info[ModeKeys.INFER] = self._features_info[mode]
+          # Below is set so self._get_predict_ops can work to return inder_ops
+          self._labels_info[ModeKeys.INFER] = self._labels_info[mode]
+          break
+
+      if ModeKeys.INFER not in self._features_info:
+        raise ValueError('Features for mode %s are incompatible with neither train mode nor eval mode.'
+                         ' Given features: %s,\n train signatures: %s, eval signatures: %s .' %
+                         (ModeKeys.INFER, str(features), str(self._features_info[ModeKeys.TRAIN]),
+                          str(self._features_info[ModeKeys.EVAL])))
 
       # The default return type of _get_predict_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
@@ -1110,7 +1123,7 @@ class Estimator(BaseEstimator):
       `ModelFnOps` object.
     """
     labels = tensor_signature.create_placeholders_from_signatures(
-        self._labels_info)
+        self._labels_info[ModeKeys.INFER])
     return self._call_model_fn(features, labels, ModeKeys.INFER)
 
 
