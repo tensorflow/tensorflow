@@ -567,7 +567,8 @@ class StreamingDataFeeder(DataFeeder):
         else [1] + list(x_first_el.shape)
 
     y_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in y_first_el.items()]) if y_is_dict \
-        else ([1] + list(y_first_el.shape) if y is not None else None)
+        else ([1] + list(y_first_el[0].shape if isinstance(y_first_el, list) else y_first_el.shape)
+              if y is not None else None)
 
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape( x_first_el_shape, y_first_el_shape,
           n_classes, batch_size)
@@ -579,7 +580,10 @@ class StreamingDataFeeder(DataFeeder):
     # Output dtype of y_first_el.
     def check_y_dtype(el):
       if isinstance(el, list) or isinstance(el, np.ndarray):
-        return _check_dtype(np.dtype(type(el[0])))
+        if isinstance(el, np.ndarray) and el.ndim == 0:
+          return el.dtype
+        else:
+          return _check_dtype(np.dtype(type(el[0])))
       else:
         return _check_dtype(np.dtype(type(el)))
 
@@ -634,7 +638,7 @@ class StreamingDataFeeder(DataFeeder):
            if len(dest.shape) > 1:
              dest[index, :] = source
            else:
-             dest[index] = source
+             dest[index] = source[0] if isinstance(source, list) else source
          return dest
 
       def put_data_array_or_dict(holder, index, data=None, n_classes=None):
