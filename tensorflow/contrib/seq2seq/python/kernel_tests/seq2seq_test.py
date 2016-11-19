@@ -21,7 +21,7 @@ from __future__ import print_function
 # pylint: enable=unused-import
 
 import tensorflow as tf
-from tf.contrib import layers
+from tensorflow.contrib import layers
 
 class Seq2SeqTest(tf.test.TestCase):
 
@@ -36,34 +36,35 @@ class Seq2SeqTest(tf.test.TestCase):
                              tf.constant_initializer(0.5)) as varscope:
         # Define inputs/outputs to model
         batch_size = 2
-        input_size = 3
-        decoder_input_size = 4
-        encoder_size = 8
-        decoder_size = encoder_size
-        input_sequence_length = 8
-        decoder_sequence_length = 9
-        output_size = 20
-        start_of_sequence_id = end_of_sequence_id = 3
+        encoder_embedding_size = 3
+        decoder_embedding_size = 4
+        encoder_hidden_size = 5
+        decoder_hidden_size = encoder_hidden_size
+        input_sequence_length = 6
+        decoder_sequence_length = 7
+        num_decoder_symbols = 20
+        start_of_sequence_id = end_of_sequence_id = 1
         decoder_embeddings = tf.get_variable('decoder_embeddings',
-            [output_size, decoder_input_size],
+            [num_decoder_symbols, decoder_embedding_size],
             initializer=tf.random_normal_initializer(stddev=0.1))
         inputs = tf.constant(0.5, shape=[input_sequence_length, batch_size,
-                                         input_size])
+                                         encoder_embedding_size])
         decoder_inputs = tf.constant(0.4, shape=[decoder_sequence_length,
                                                  batch_size,
-                                                 decoder_input_size])
+                                                 decoder_embedding_size])
         decoder_length = tf.constant(decoder_sequence_length, dtype=tf.int32,
                                      shape=[batch_size,])
         # setting up weights for computing the final output
-        output_fn = lambda x: layers.linear(x, output_size, scope=varscope)
+        output_fn = lambda x: layers.linear(x, num_decoder_symbols,
+                                            scope=varscope)
 
         # Define model
         encoder_outputs, encoder_state = tf.nn.dynamic_rnn(
-            cell=tf.nn.rnn_cell.GRUCell(encoder_size), inputs=inputs,
+            cell=tf.nn.rnn_cell.GRUCell(encoder_hidden_size), inputs=inputs,
             dtype=tf.float32, time_major=True, scope="rnn")
 
         # Train decoder
-        decoder_cell = tf.nn.rnn_cell.GRUCell(decoder_size)
+        decoder_cell = tf.nn.rnn_cell.GRUCell(decoder_hidden_size)
         decoder_fn_train = tf.contrib.seq2seq.simple_decoder_fn_train(
             encoder_state=encoder_state)
         decoder_outputs_train, decoder_state_train = (
@@ -71,7 +72,7 @@ class Seq2SeqTest(tf.test.TestCase):
               cell=decoder_cell,
               decoder_fn=decoder_fn_train,
               inputs=decoder_inputs,
-              sequence_lengths=decoder_length,
+              sequence_length=decoder_length,
               time_major=True))
         decoder_outputs_train = output_fn(decoder_outputs_train)
 
@@ -85,6 +86,7 @@ class Seq2SeqTest(tf.test.TestCase):
             end_of_sequence_id=end_of_sequence_id,
             #TODO: find out why it goes to +1
             maximum_length=decoder_sequence_length-1,
+            num_decoder_symbols=num_decoder_symbols,
             dtype=tf.int32)
         decoder_outputs_inference, decoder_state_inference = (
             tf.contrib.seq2seq.dynamic_rnn_decoder(
@@ -100,13 +102,14 @@ class Seq2SeqTest(tf.test.TestCase):
             [decoder_outputs_inference, decoder_state_inference])
 
         # Assert outputs
-        self.assertEqual((decoder_sequence_length, batch_size, output_size),
+        self.assertEqual((decoder_sequence_length, batch_size,
+                          num_decoder_symbols),
                          decoder_outputs_train_res.shape)
-        self.assertEqual((batch_size, output_size),
+        self.assertEqual((batch_size, num_decoder_symbols),
                          decoder_outputs_inference_res.shape[1:3])
-        self.assertEqual((batch_size, decoder_size),
+        self.assertEqual((batch_size, decoder_hidden_size),
                          decoder_state_train_res.shape)
-        self.assertEqual((batch_size, decoder_size),
+        self.assertEqual((batch_size, decoder_hidden_size),
                          decoder_state_inference_res.shape)
         # The dynamic decoder might end earlier than `maximal_length`
         # under inference

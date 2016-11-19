@@ -25,7 +25,7 @@ import tensorflow as tf
 
 class DecoderFnTest(tf.test.TestCase):
 
-  def testDeocerFn(self):
+  def testDecoderFn(self):
     pass
 
 

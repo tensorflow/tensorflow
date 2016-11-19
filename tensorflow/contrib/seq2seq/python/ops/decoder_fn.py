@@ -187,10 +187,9 @@ def simple_decoder_fn_inference(output_fn, encoder_state, embeddings,
     The main difference between this decoder function and the `decoder_fn` in
     `simple_decoder_fn_train` is how `next_cell_input` is calculated. In this
     decoder function we calculate the next input by applying an argmax across
-    the feature dimension of the output from the decoder. This approach is
-    taken from popular neural machine translation litterature such as:
-    Bahhdanau et al., 2014 (https://arxiv.org/abs/1409.0473) and Sutskever
-    et al., 2014 (https://arxiv.org/abs/1409.3215).
+    the feature dimension of the output from the decoder. This is a
+    greedy-search approach. (Bahdanau et al., 2014) & (Sutskever et al., 2014)
+    use beam-search instead.
 
     Args:
       time: positive integer constant reflecting the current timestep.

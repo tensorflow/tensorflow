@@ -31,7 +31,7 @@ from tensorflow.python.ops import variable_scope as vs
 
 __all__ = ["dynamic_rnn_decoder"]
 
-def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
+def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_length=None,
                         parallel_iterations=None, swap_memory=False,
                         time_major=False, scope=None, name=None):
   """ Dynamic RNN decoder for a sequence-to-sequence model specified by
@@ -53,12 +53,9 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
   slice of the supplied input is fed to the `decoder_fn`, which modifies and
   returns the input for the next time step.
 
-  `sequence_lengths` is optional an only used if the `decoder_fn` returns
-  `None` for early stopping. `sequence_lengths` determines how many time steps
-  to compute. `sequence_lengths` allows variable length samples in a batch by
-  early stopping and is usually used when training. If `inputs` is not `None`
-  and sequence_lengths=None` it is inferred from the `inputs` as the maximal
-  possible sequence length.
+  `sequence_length` is needed at training time, i.e., when `inputs` is not
+  None, for dynamic unrolling. At test time, when `inputs` is None,
+  `sequence_length` is not needed.
 
   Under inference `inputs` is expected to be `None` and the input is inferred
   solely from the `decoder_fn`.
@@ -79,7 +76,9 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
 
       The input to `cell` at each time step will be a `Tensor` with dimensions
         `[batch_size, ...]`.
-    sequence_lengths: (optional) An int32/int64 vector sized `[batch_size]`.
+    sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
+      if `inputs` is not None and `sequence_length` is None it is inferred
+      from the `inputs` as the maximal possible sequence length.
     parallel_iterations: (Default: 32).  The number of iterations to run in
       parallel.  Those operations which do not have any temporal dependency
       and can be run in parallel, will be.  This parameter trades off
@@ -119,7 +118,7 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
     ValueError: if inputs is not None and has less than three dimensions.
   """
   with ops.name_scope(name, "dynamic_rnn_decoder",
-                      [cell, decoder_fn, inputs, sequence_lengths,
+                      [cell, decoder_fn, inputs, sequence_length,
                        parallel_iterations, swap_memory, time_major, scope]):
     if inputs is not None:
       # Convert to tensor
@@ -186,7 +185,7 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_lengths=None,
 
       # check if we are done
       if next_done is None:  # training
-        next_done = time >= sequence_lengths
+        next_done = time >= sequence_length
 
       # build next_loop_state
       if next_context_state is None:

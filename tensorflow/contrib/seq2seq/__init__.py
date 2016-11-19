@@ -23,6 +23,6 @@ import sys
 
 # pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.seq2seq.python.ops.decoder_fn import *
-from tensorflow.contrib.seq2seq.python.ops.layers import * 
 from tensorflow.contrib.seq2seq.python.ops.loss import *
+from tensorflow.contrib.seq2seq.python.ops.seq2seq import *
 # pylint: enable=unused-import,line-too-long
