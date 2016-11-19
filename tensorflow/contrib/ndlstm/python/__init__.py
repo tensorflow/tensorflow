@@ -22,3 +22,4 @@ from __future__ import print_function
 from tensorflow.contrib.ndlstm.python.lstm1d import *
 from tensorflow.contrib.ndlstm.python.lstm2d import *
 from tensorflow.contrib.ndlstm.python.misc import *
+# pylint: enable=wildcard-import

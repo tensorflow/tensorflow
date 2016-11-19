@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
@@ -145,6 +147,58 @@ class MetricSpecTest(tf.test.TestCase):
                                        weight_key="feature2").create_metric_ops,
                             features, labels, predictions)
 
+  def test_str(self):
+    metric_spec = MetricSpec(metric_fn=test_metric,
+                             label_key="label1",
+                             prediction_key="pred1",
+                             weight_key="feature2")
+    string = str(metric_spec)
+    self.assertIn("test_metric", string)
+    self.assertIn("label1", string)
+    self.assertIn("pred1", string)
+    self.assertIn("feature2", string)
+
+  def test_partial_str(self):
+    def custom_metric(predictions, labels, stuff, weights=None):
+      return predictions, labels, weights, stuff
+
+    partial_metric = functools.partial(custom_metric, stuff=5)
+    metric_spec = MetricSpec(metric_fn=partial_metric,
+                             label_key="label1",
+                             prediction_key="pred1",
+                             weight_key="feature2")
+    self.assertIn("custom_metric", str(metric_spec))
+
+  def test_partial(self):
+    features = {"feature1": "feature1_tensor", "feature2": "feature2_tensor"}
+    labels = {"label1": "label1_tensor"}
+    predictions = {"pred1": "pred1_tensor", "pred2": "pred2_tensor"}
+
+    def custom_metric(predictions, labels, stuff, weights=None):
+      if stuff:
+        return predictions, labels, weights
+      else:
+        raise ValueError("Nooooo")
+
+    partial_metric = functools.partial(custom_metric, stuff=5)
+    passed = MetricSpec(metric_fn=partial_metric,
+                        label_key="label1",
+                        prediction_key="pred1",
+                        weight_key="feature2").create_metric_ops(features,
+                                                                 labels,
+                                                                 predictions)
+    self.assertEqual(passed[0], "pred1_tensor")
+    self.assertEqual(passed[1], "label1_tensor")
+    self.assertEqual(passed[2], "feature2_tensor")
+
+    broken_partial_metric = functools.partial(custom_metric, stuff=0)
+    self.assertRaisesRegexp(ValueError,
+                            "Nooooo",
+                            MetricSpec(metric_fn=broken_partial_metric,
+                                       prediction_key="pred1",
+                                       label_key="label1",
+                                       weight_key="feature2").create_metric_ops,
+                            features, labels, predictions)
 
 if __name__ == "__main__":
   tf.test.main()

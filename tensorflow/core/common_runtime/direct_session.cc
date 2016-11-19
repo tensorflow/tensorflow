@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
@@ -56,6 +55,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -392,11 +395,12 @@ Status DirectSession::Run(const RunOptions& run_options,
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
 
+#ifndef NOTFDBG
   // EXPERIMENTAL: Options that allow the client to insert nodes into partition
   // graphs for debugging.
-  if (!run_options.debug_tensor_watch_opts().empty()) {
-    run_state_args.debug_tensor_watches = run_options.debug_tensor_watch_opts();
-  }
+  run_state_args.debugger_state.reset(
+      new DebuggerState(run_options.debug_tensor_watch_opts()));
+#endif
 
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
@@ -405,6 +409,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Create a run state and start execution.
   RunState run_state(input_tensor_names, output_names);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
+  CancellationManager step_cancellation_manager;
 
   // Send inputs.
   TF_RETURN_IF_ERROR(SendInputs(inputs, executors_and_keys, run_state.rendez));
@@ -423,7 +428,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
   args.rendezvous = run_state.rendez;
-  args.cancellation_manager = cancellation_manager_;
+  args.cancellation_manager = &step_cancellation_manager;
   args.runner = [this, pool](Executor::Args::Closure c) {
     SchedClosure(pool, std::move(c));
   };
@@ -453,25 +458,54 @@ Status DirectSession::Run(const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
+#if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
     tracer.reset(CreateGPUTracer());
     // tracer will be NULL on non-GPU platforms.
     if (tracer) tracer->Start();
   }
+#endif  // GOOGLE_CUDA
+
+  // Register this step with session's cancellation manager, so that
+  // `Session::Close()` will cancel the step.
+  CancellationToken cancellation_token =
+      cancellation_manager_->get_cancellation_token();
+  bool already_cancelled = !cancellation_manager_->RegisterCallback(
+      cancellation_token, [&step_cancellation_manager]() {
+        step_cancellation_manager.StartCancel();
+      });
+  if (already_cancelled) {
+    // NOTE(mrry): If we don't explicitly notify
+    // `run_state.executors_done`, the RunState destructor would
+    // block on this notification.
+    run_state.executors_done.Notify();
+    delete barrier;
+    return errors::Cancelled("Run call was cancelled");
+  }
 
   for (const auto& item : executors_and_keys->items) {
     item.executor->RunAsync(args, barrier->Get());
   }
 
-  WaitForNotification(&run_state, run_options.timeout_in_ms() > 0
-                                      ? run_options.timeout_in_ms()
-                                      : operation_timeout_in_ms_);
+  WaitForNotification(&run_state, &step_cancellation_manager,
+                      run_options.timeout_in_ms() > 0
+                          ? run_options.timeout_in_ms()
+                          : operation_timeout_in_ms_);
 
+  if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
+    // The step has been cancelled: make sure we don't attempt to receive the
+    // outputs as this would make it block forever.
+    mutex_lock l(run_state.mu_);
+    run_state.status.Update(errors::Cancelled("Run call was cancelled"));
+  }
+
+#if GOOGLE_CUDA
   if (tracer) {
     tracer->Stop();
     tracer->Collect(args.stats_collector);
   }
+#endif  // GOOGLE_CUDA
 
   {
     mutex_lock l(run_state.mu_);
@@ -681,7 +715,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
               run_state->pending_outputs.size() == 0);
     }
     if (done) {
-      WaitForNotification(run_state, operation_timeout_in_ms_);
+      WaitForNotification(run_state, cancellation_manager_,
+                          operation_timeout_in_ms_);
       partial_runs_.erase(handle);
     }
   }
@@ -747,7 +782,8 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
     s = Rendezvous::ParseKey(output_key, &parsed);
     if (s.ok()) {
       // Fetch data from the Rendezvous.
-      s = rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead);
+      s = rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead,
+                       operation_timeout_in_ms_);
       if (is_dead && s.ok()) {
         s = errors::InvalidArgument("The tensor returned for ", output_name,
                                     " was not valid.");
@@ -840,10 +876,17 @@ Status DirectSession::GetOrCreateExecutors(
   std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
   std::sort(tn_sorted.begin(), tn_sorted.end());
 
-  const string key = strings::StrCat(str_util::Join(inputs_sorted, ","), "->",
-                                     str_util::Join(outputs_sorted, ","), "/",
-                                     str_util::Join(tn_sorted, ","), "/",
-                                     run_state_args->is_partial_run);
+  string debug_tensor_watches_summary;
+#ifndef NOTFDBG
+  if (run_state_args->debugger_state) {
+    debug_tensor_watches_summary =
+        run_state_args->debugger_state->SummarizeDebugTensorWatches();
+  }
+#endif
+  const string key = strings::StrCat(
+      str_util::Join(inputs_sorted, ","), "->",
+      str_util::Join(outputs_sorted, ","), "/", str_util::Join(tn_sorted, ","),
+      "/", run_state_args->is_partial_run, "/", debug_tensor_watches_summary);
 
   // Set the handle.
   run_state_args->handle =
@@ -938,12 +981,13 @@ Status DirectSession::GetOrCreateExecutors(
     partition_graph = iter->second.release();
     optimizer.Optimize(lib, options_.env, device, &partition_graph);
 
-    // EXPERIMENTAL: tfdb inserts debug nodes (i.e., probes) to the graph
-    if (!run_state_args->debug_tensor_watches.empty()) {
-      TF_RETURN_IF_ERROR(
-          DebugNodeInserter::InsertNodes(run_state_args->debug_tensor_watches,
-                                         partition_graph, params.device));
+    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
+#ifndef NOTFDBG
+    if (run_state_args->debugger_state) {
+      TF_RETURN_IF_ERROR(run_state_args->debugger_state->InsertNodes(
+          partition_graph, params.device));
     }
+#endif
     iter->second.reset(partition_graph);
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
@@ -1148,26 +1192,31 @@ DirectSession::RunState::~RunState() {
 }
 
 void DirectSession::WaitForNotification(RunState* run_state,
+                                        CancellationManager* cm,
                                         int64 timeout_in_ms) {
+  Status status =
+      WaitForNotification(&run_state->executors_done, timeout_in_ms);
+  if (!status.ok()) {
+    {
+      mutex_lock l(run_state->mu_);
+      run_state->status.Update(status);
+    }
+    cm->StartCancel();
+  }
+}
+
+::tensorflow::Status DirectSession::WaitForNotification(
+    Notification* notification, int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(&run_state->executors_done,
-                                                   timeout_in_ms);
+    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_ms);
     if (!notified) {
-      {
-        mutex_lock l(run_state->mu_);
-        run_state->status.Update(Status(error::DEADLINE_EXCEEDED,
-                                        "Timed out waiting for notification"));
-      }
-      // TODO(sherrym): This cancels all steps in the session, even ones that
-      // have not exceeded their deadline. An alternative would be to use a
-      // two-level cancellation manager with a Session-global one containing
-      // several step-local ones. Probably the RunState should have its own
-      // CancellationManager.
-      cancellation_manager_->StartCancel();
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Timed out waiting for notification");
     }
   } else {
-    run_state->executors_done.WaitForNotification();
+    notification->WaitForNotification();
   }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

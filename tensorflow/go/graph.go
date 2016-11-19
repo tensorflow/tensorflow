@@ -158,7 +158,7 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			C.TF_AddInput(cdesc, in.c())
 		case OutputList:
 			size := len(in)
-			list := make([]C.TF_Port, size)
+			list := make([]C.TF_Output, size)
 			for i, v := range in {
 				list[i] = v.c()
 			}
@@ -192,15 +192,15 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 	switch value := value.(type) {
 	case string:
 		cstr := C.CString(value)
-		C.TF_SetAttrString(cdesc, cAttrName, unsafe.Pointer(cstr), C.int(len(value)))
+		C.TF_SetAttrString(cdesc, cAttrName, unsafe.Pointer(cstr), C.size_t(len(value)))
 		C.free(unsafe.Pointer(cstr))
 	case []string:
 		size := len(value)
 		list := make([]unsafe.Pointer, size)
-		lens := make([]C.int, size)
+		lens := make([]C.size_t, size)
 		for i, s := range value {
 			list[i] = unsafe.Pointer(C.CString(s))
-			lens[i] = C.int(len(s))
+			lens[i] = C.size_t(len(s))
 		}
 		C.TF_SetAttrStringList(cdesc, cAttrName, &list[0], &lens[0], C.int(size))
 		for _, s := range list {
@@ -245,7 +245,7 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		list := (*C.TF_DataType)(&value[0])
 		C.TF_SetAttrTypeList(cdesc, cAttrName, list, C.int(len(value)))
 	case *Tensor:
-		C.TF_SetAttrTensor(cdesc, cAttrName, value.c(), status.c)
+		C.TF_SetAttrTensor(cdesc, cAttrName, value.c, status.c)
 		if err := status.Err(); err != nil {
 			return fmt.Errorf("bad value for attribute %q: %v", name, err)
 		}
@@ -253,7 +253,7 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		size := len(value)
 		list := make([]*C.TF_Tensor, size)
 		for i, v := range value {
-			list[i] = v.c()
+			list[i] = v.c
 		}
 		C.TF_SetAttrTensorList(cdesc, cAttrName, &list[0], C.int(size), status.c)
 		if err := status.Err(); err != nil {

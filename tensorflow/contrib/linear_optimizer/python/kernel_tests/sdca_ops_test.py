@@ -22,10 +22,11 @@ from threading import Thread
 
 import tensorflow as tf
 
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _ShardedMutableHashTable
+from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _ShardedMutableDenseHashTable
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SparseFeatureColumn
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.ops import gen_sdca_ops
 from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
@@ -180,7 +181,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -228,7 +229,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
               num_loss_partitions=num_loss_partitions)
 
           lr = SdcaModel(examples, variables, options)
-          tf.initialize_all_variables().run()
+          tf.global_variables_initializer().run()
           unregularized_loss = lr.unregularized_loss(examples)
           loss = lr.regularized_loss(examples)
           predictions = lr.predictions(examples)
@@ -287,7 +288,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -342,7 +343,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -381,7 +382,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         with self.assertRaisesOpError(
             'Only labels of 0.0 or 1.0 are supported right now.'):
           lr.minimize().run()
@@ -413,7 +414,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -454,7 +455,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -493,7 +494,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                        loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -528,7 +529,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           loss_type='logistic_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       train_op = lr.minimize()
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, 'indices.*'):
         train_op.run()
@@ -549,7 +550,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='logistic_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       train_op = lr.minimize()
       with self.assertRaisesRegexp(
           tf.errors.InvalidArgumentError,
@@ -582,7 +583,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
       train_op = lr.minimize()
       for _ in range(_MAX_ITERATIONS):
@@ -628,7 +629,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -663,7 +664,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=4.0,
                      loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       prediction = lr.predictions(examples)
       loss = lr.regularized_loss(examples)
 
@@ -700,7 +701,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -734,7 +735,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -765,7 +766,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -810,7 +811,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Before minimization, the weights default to zero. There is no loss due
       # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
@@ -848,7 +849,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
 
@@ -879,7 +880,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
 
@@ -909,7 +910,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
       train_op = model.minimize()
@@ -952,7 +953,7 @@ class SdcaWithSmoothHingeLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='smooth_hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Before minimization, the weights default to zero. There is no loss due
       # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
@@ -1013,46 +1014,64 @@ class SdcaFprintTest(SdcaModelTest):
   def testFprint(self):
     with self._single_threaded_test_session():
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
-      out_data = tf.sdca.sdca_fprint(in_data)
-      self.assertAllEqual(
-          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13',
-           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9',
-           b'"0\xe00"\x18_\x08\x12?\xa0\x17'], out_data.eval())
+      out_data = gen_sdca_ops._sdca_fprint(in_data)
+      self.assertAllEqual([[4143508125394299908, -6879828354153669051],
+                           [5849691694103072671, -4874542629849009556],
+                           [603227410218889250, 8762207001949257490]],
+                          out_data.eval())
 
 
-class ShardedMutableHashTableTest(SdcaModelTest):
+class ShardedMutableDenseHashTableTest(SdcaModelTest):
   """Tests for the _ShardedMutableHashTable class."""
 
   def testShardedMutableHashTable(self):
     for num_shards in [1, 3, 10]:
       with self._single_threaded_test_session():
         default_val = -1
-        keys = tf.constant(['brain', 'salad', 'surgery'])
+        empty_key = 0
+        keys = tf.constant([11, 12, 13], tf.int64)
         values = tf.constant([0, 1, 2], tf.int64)
-        table = _ShardedMutableHashTable(tf.string,
-                                         tf.int64,
-                                         default_val,
-                                         num_shards=num_shards)
+        table = _ShardedMutableDenseHashTable(
+            tf.int64, tf.int64, default_val, empty_key, num_shards=num_shards)
         self.assertAllEqual(0, table.size().eval())
 
         table.insert(keys, values).run()
         self.assertAllEqual(3, table.size().eval())
 
-        input_string = tf.constant(['brain', 'salad', 'tank'])
+        input_string = tf.constant([11, 12, 14], tf.int64)
         output = table.lookup(input_string)
         self.assertAllEqual([3], output.get_shape())
+        self.assertAllEqual([0, 1, -1], output.eval())
 
-        result = output.eval()
-        self.assertAllEqual([0, 1, -1], result)
+  def testShardedMutableHashTableVectors(self):
+    for num_shards in [1, 3, 10]:
+      with self._single_threaded_test_session():
+        default_val = [-0.1, 0.2]
+        empty_key = [0, 1]
+        keys = tf.constant([[11, 12], [13, 14], [15, 16]], tf.int64)
+        values = tf.constant([[0.5, 0.6], [1.5, 1.6], [2.5, 2.6]], tf.float32)
+        table = _ShardedMutableDenseHashTable(
+            tf.int64, tf.float32, default_val, empty_key, num_shards=num_shards)
+        self.assertAllEqual(0, table.size().eval())
+
+        table.insert(keys, values).run()
+        self.assertAllEqual(3, table.size().eval())
+
+        input_string = tf.constant([[11, 12], [13, 14], [11, 14]], tf.int64)
+        output = table.lookup(input_string)
+        self.assertAllEqual([3, 2], output.get_shape())
+        self.assertAllClose([[0.5, 0.6], [1.5, 1.6], [-0.1, 0.2]],
+                            output.eval())
 
   def testExportSharded(self):
     with self._single_threaded_test_session():
+      empty_key = -2
       default_val = -1
       num_shards = 2
-      keys = tf.constant(['a1', 'b1', 'c2'])
-      values = tf.constant([0, 1, 2], tf.int64)
-      table = _ShardedMutableHashTable(
-          tf.string, tf.int64, default_val, num_shards=num_shards)
+      keys = tf.constant([10, 11, 12], tf.int64)
+      values = tf.constant([2, 3, 4], tf.int64)
+      table = _ShardedMutableDenseHashTable(
+          tf.int64, tf.int64, default_val, empty_key, num_shards=num_shards)
       self.assertAllEqual(0, table.size().eval())
 
       table.insert(keys, values).run()
@@ -1062,10 +1081,12 @@ class ShardedMutableHashTableTest(SdcaModelTest):
       self.assertAllEqual(num_shards, len(keys_list))
       self.assertAllEqual(num_shards, len(values_list))
 
-      self.assertAllEqual(set([b'b1', b'c2']), set(keys_list[0].eval()))
-      self.assertAllEqual([b'a1'], keys_list[1].eval())
-      self.assertAllEqual(set([1, 2]), set(values_list[0].eval()))
-      self.assertAllEqual([0], values_list[1].eval())
+      # Exported keys include empty key buckets set to the empty_key
+      self.assertAllEqual(set([-2, 10, 12]), set(keys_list[0].eval().flatten()))
+      self.assertAllEqual(set([-2, 11]), set(keys_list[1].eval().flatten()))
+      # Exported values include empty value buckets set to 0
+      self.assertAllEqual(set([0, 2, 4]), set(values_list[0].eval().flatten()))
+      self.assertAllEqual(set([0, 3]), set(values_list[1].eval().flatten()))
 
 
 if __name__ == '__main__':

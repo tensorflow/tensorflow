@@ -96,7 +96,7 @@ class ConcatBenchmark(tf.test.Benchmark):
         optimizer_options=tf.OptimizerOptions(
             opt_level=tf.OptimizerOptions.L0)))
     with tf.Session(graph=graph, config=config) as session:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       _ = session.run(outputs)  # warm up.
       start_time = time.time()
       for _ in range(num_iters):
@@ -125,17 +125,16 @@ class ConcatBenchmark(tf.test.Benchmark):
 
   def benchmark_concat(self):
     print("Forward vs backward concat")
-    shapes = [[2000, 8], [8, 2000], [100, 18], [1000, 18], [10000, 18],
-              [100, 97], [1000, 97], [10000, 97], [10000, 1], [1, 10000],
-              [100000, 1], [1, 100000]]
+    shapes = [[2000, 8], [8, 2000], [100, 18], [1000, 18], [100, 97],
+              [1000, 97], [10000, 1], [1, 10000]]
     axis_ = [0, 1]
-    num_inputs = 100
+    num_inputs = 256
     num_iters = [20] * len(shapes)
     variable = [False, True]  # fixed input size or not
     for shape, iters in zip(shapes, num_iters):
       for axis in axis_:
         for v in variable:
-          self._run_graph("gpu", shape, v, num_inputs, axis, False, iters)
+          self._run_graph("gpu", shape, v, num_inputs, axis, True, iters)
 
 
 if __name__ == "__main__":

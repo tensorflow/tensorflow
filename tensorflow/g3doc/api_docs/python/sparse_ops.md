@@ -95,6 +95,17 @@ Creates a `SparseTensor`.
 
 - - -
 
+#### `tf.SparseTensor.get_shape()` {#SparseTensor.get_shape}
+
+Get the `TensorShape` that represents the shape of the dense tensor.
+
+##### Returns:
+
+  A `TensorShape` object.
+
+
+- - -
+
 #### `tf.SparseTensor.indices` {#SparseTensor.indices}
 
 The indices of non-zero values in the represented dense tensor.
@@ -1001,7 +1012,7 @@ then the output will be a `SparseTensor` of shape `[5, 4]` and
 ## Reduction
 - - -
 
-### `tf.sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False)` {#sparse_reduce_sum}
+### `tf.sparse_reduce_sum(sp_input, axis=None, keep_dims=False, reduction_axes=None)` {#sparse_reduce_sum}
 
 Computes the sum of elements across dimensions of a SparseTensor.
 
@@ -1035,9 +1046,10 @@ tf.sparse_reduce_sum(x, [0, 1]) ==> 3
 
 
 *  <b>`sp_input`</b>: The SparseTensor to reduce. Should have numeric type.
-*  <b>`reduction_axes`</b>: The dimensions to reduce; list or scalar. If `None` (the
+*  <b>`axis`</b>: The dimensions to reduce; list or scalar. If `None` (the
     default), reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retain reduced dimensions with length 1.
+*  <b>`reduction_axes`</b>: Deprecated name of axis.
 
 ##### Returns:
 
@@ -1046,7 +1058,7 @@ tf.sparse_reduce_sum(x, [0, 1]) ==> 3
 
 - - -
 
-### `tf.sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False)` {#sparse_reduce_sum_sparse}
+### `tf.sparse_reduce_sum_sparse(sp_input, axis=None, keep_dims=False, reduction_axes=None)` {#sparse_reduce_sum_sparse}
 
 Computes the sum of elements across dimensions of a SparseTensor.
 
@@ -1067,9 +1079,10 @@ which are interpreted according to the indexing rules in Python.
 
 
 *  <b>`sp_input`</b>: The SparseTensor to reduce. Should have numeric type.
-*  <b>`reduction_axes`</b>: The dimensions to reduce; list or scalar. If `None` (the
+*  <b>`axis`</b>: The dimensions to reduce; list or scalar. If `None` (the
     default), reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retain reduced dimensions with length 1.
+*  <b>`reduction_axes`</b>: Deprecated name of axis
 
 ##### Returns:
 
@@ -1368,8 +1381,8 @@ Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
 Example:
 
 ```python
-sp_zero = ops.SparseTensor([[0]], [0], [7])
-sp_one = ops.SparseTensor([[1]], [1], [7])
+sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
+sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
 res = tf.sparse_maximum(sp_zero, sp_one).eval()
 # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
 ```
@@ -1399,8 +1412,8 @@ Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
 Example:
 
 ```python
-sp_zero = ops.SparseTensor([[0]], [0], [7])
-sp_one = ops.SparseTensor([[1]], [1], [7])
+sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
+sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
 res = tf.sparse_minimum(sp_zero, sp_one).eval()
 # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
 ```

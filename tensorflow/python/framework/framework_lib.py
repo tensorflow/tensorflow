@@ -73,10 +73,10 @@ from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-from tensorflow.python.framework.ops import Output
-from tensorflow.python.framework.ops import SparseTensor
-from tensorflow.python.framework.ops import SparseTensorValue
 from tensorflow.python.framework.ops import IndexedSlices
+
+from tensorflow.python.framework.sparse_tensor import SparseTensor
+from tensorflow.python.framework.sparse_tensor import SparseTensorValue
 
 # Utilities used when building a Graph.
 from tensorflow.python.framework.ops import device
@@ -94,6 +94,7 @@ from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import convert_to_tensor_or_indexed_slices
 from tensorflow.python.framework.random_seed import get_seed
 from tensorflow.python.framework.random_seed import set_random_seed
+from tensorflow.python.framework.subscribe import subscribe
 from tensorflow.python.framework.importer import import_graph_def
 
 # Needed when you defined a new Op in C++.

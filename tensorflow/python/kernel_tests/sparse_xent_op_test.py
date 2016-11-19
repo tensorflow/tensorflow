@@ -232,9 +232,8 @@ def _sparse_vs_dense_xent_benchmark_dense(labels, logits):
     num_entries = tf.shape(logits)[1]
     length = batch_size * num_entries
     labels += num_entries * tf.range(batch_size)
-    target = sparse_ops.sparse_to_dense(
-        labels, tf.pack([length]), 1.0, 0.0)
-  target = tf.reshape(target, tf.pack([-1, num_entries]))
+    target = sparse_ops.sparse_to_dense(labels, tf.stack([length]), 1.0, 0.0)
+  target = tf.reshape(target, tf.stack([-1, num_entries]))
   crossent = tf.nn.softmax_cross_entropy_with_logits(
       logits, target, name="SequenceLoss/CrossEntropy")
   crossent_sum = tf.reduce_sum(crossent)

@@ -30,10 +30,10 @@ class RegressionModelHeadTest(tf.test.TestCase):
     head = head_lib._regression_head()
     with tf.Graph().as_default(), tf.Session() as sess:
       prediction = tf.constant([[1.], [1.], [3.]])
-      targets = tf.constant([[0.], [1.], [1.]])
-      model_fn_ops = head.head_ops({}, targets,
+      labels = tf.constant([[0.], [1.], [1.]])
+      model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=prediction)
+                                   _noop_train_op, logits=prediction)
       self.assertAlmostEqual(5. / 3, sess.run(model_fn_ops.loss))
 
   def testRegressionWithWeights(self):
@@ -42,24 +42,24 @@ class RegressionModelHeadTest(tf.test.TestCase):
     with tf.Graph().as_default(), tf.Session() as sess:
       features = {"label_weight": tf.constant([[2.], [5.], [0.]])}
       prediction = tf.constant([[1.], [1.], [3.]])
-      targets = tf.constant([[0.], [1.], [1.]])
-      model_fn_ops = head.head_ops(features, targets,
+      labels = tf.constant([[0.], [1.], [1.]])
+      model_fn_ops = head.head_ops(features, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=prediction)
+                                   _noop_train_op, logits=prediction)
       self.assertAlmostEqual(2. / 3, sess.run(model_fn_ops.loss), places=3)
 
-  def testErrorInSparseTensorTarget(self):
+  def testErrorInSparseTensorLabels(self):
     head = head_lib._regression_head()
     with tf.Graph().as_default():
       prediction = tf.constant([[1.], [1.], [3.]])
-      targets = tf.SparseTensor(
+      labels = tf.SparseTensor(
           indices=tf.constant([[0, 0], [1, 0], [2, 0]], dtype=tf.int64),
           values=tf.constant([0., 1., 1.]),
           shape=[3, 1])
       with self.assertRaisesRegexp(
-          ValueError, "SparseTensor is not supported as a target"):
-        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN, None,
-                      logits=prediction)
+          ValueError, "SparseTensor is not supported as labels."):
+        head.head_ops({}, labels, tf.contrib.learn.ModeKeys.TRAIN,
+                      _noop_train_op, logits=prediction)
 
 
 class MultiClassModelHeadTest(tf.test.TestCase):
@@ -68,26 +68,27 @@ class MultiClassModelHeadTest(tf.test.TestCase):
     head = head_lib._multi_class_head(n_classes=2)
     with tf.Graph().as_default(), tf.Session() as sess:
       logits = tf.constant([[1.], [1.]])
-      targets = tf.constant([[1.], [0.]])
+      labels = tf.constant([[1.], [0.]])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops({}, targets,
+      model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
-      self.assertAlmostEqual(.81326163, sess.run(model_fn_ops.loss))
+                                   _noop_train_op, logits=logits)
+      self.assertAlmostEqual(0.81326175, sess.run(model_fn_ops.loss),
+                             delta=1e-6)
 
-  def testErrorInSparseTensorTarget(self):
+  def testErrorInSparseTensorLabels(self):
     head = head_lib._multi_class_head(n_classes=2)
     with tf.Graph().as_default():
       prediction = tf.constant([[1.], [1.], [3.]])
-      targets = tf.SparseTensor(
+      labels = tf.SparseTensor(
           indices=tf.constant([[0, 0], [1, 0], [2, 0]], dtype=tf.int64),
           values=tf.constant([0, 1, 1]),
           shape=[3, 1])
       with self.assertRaisesRegexp(
-          ValueError, "SparseTensor is not supported as a target"):
-        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN, None,
-                      logits=prediction)
+          ValueError, "SparseTensor is not supported as labels."):
+        head.head_ops({}, labels, tf.contrib.learn.ModeKeys.TRAIN,
+                      _noop_train_op, logits=prediction)
 
   def testBinaryClassificationWithWeights(self):
     head = head_lib._multi_class_head(
@@ -95,24 +96,25 @@ class MultiClassModelHeadTest(tf.test.TestCase):
     with tf.Graph().as_default(), tf.Session() as sess:
       features = {"label_weight": tf.constant([[1.], [0.]])}
       logits = tf.constant([[1.], [1.]])
-      targets = tf.constant([[1.], [0.]])
+      labels = tf.constant([[1.], [0.]])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(features, targets,
+      model_fn_ops = head.head_ops(features, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
-      self.assertAlmostEqual(.31326166 / 2, sess.run(model_fn_ops.loss))
+                                   _noop_train_op, logits=logits)
+      self.assertAlmostEqual(.31326166 / 2, sess.run(model_fn_ops.loss),
+                             delta=1e-6)
 
   def testMultiClass(self):
     head = head_lib._multi_class_head(n_classes=3)
     with tf.Graph().as_default(), tf.Session() as sess:
       logits = tf.constant([[1., 0., 0.]])
-      targets = tf.constant([2])
+      labels = tf.constant([2])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops({}, targets,
+      model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
+                                   _noop_train_op, logits=logits)
       self.assertAlmostEqual(1.5514446, sess.run(model_fn_ops.loss))
 
   def testMultiClassWithWeight(self):
@@ -121,12 +123,12 @@ class MultiClassModelHeadTest(tf.test.TestCase):
     with tf.Graph().as_default(), tf.Session() as sess:
       features = {"label_weight": tf.constant([0.1])}
       logits = tf.constant([[1., 0., 0.]])
-      targets = tf.constant([2])
+      labels = tf.constant([2])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(features, targets,
+      model_fn_ops = head.head_ops(features, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
-                                   None, logits=logits)
+                                   _noop_train_op, logits=logits)
       self.assertAlmostEqual(.15514446, sess.run(model_fn_ops.loss))
 
   def testMultiClassWithInvalidNClass(self):
@@ -143,10 +145,10 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
   def testBinarySVMDefaultWeights(self):
     head = head_lib._binary_svm_head()
     predictions = tf.constant([[-0.5], [1.2]])
-    targets = tf.constant([0, 1])
-    model_fn_ops = head.head_ops({}, targets,
+    labels = tf.constant([0, 1])
+    model_fn_ops = head.head_ops({}, labels,
                                  tf.contrib.learn.ModeKeys.TRAIN,
-                                 None, logits=predictions)
+                                 _noop_train_op, logits=predictions)
     # Prediction for first example is in the right side of the hyperplane (i.e.,
     # < 0) but it is within the [-1,1] margin. There is a 0.5 loss incurred by
     # this example. The 2nd prediction is outside the margin so it incurs no
@@ -158,17 +160,20 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
     head = head_lib._binary_svm_head(
         weight_column_name="weights")
     predictions = tf.constant([[-0.7], [0.2]])
-    targets = tf.constant([0, 1])
+    labels = tf.constant([0, 1])
     features = {"weights": tf.constant([2.0, 10.0])}
-    model_fn_ops = head.head_ops(features, targets,
+    model_fn_ops = head.head_ops(features, labels,
                                  tf.contrib.learn.ModeKeys.TRAIN,
-                                 None, logits=predictions)
+                                 _noop_train_op, logits=predictions)
     # Prediction for both examples are in the right side of the hyperplane but
     # within the margin. The (weighted) loss incurred is 2*0.3=0.6 and 10*0.8=8
     # respectively. The overall (normalized) loss is therefore 8.6/12.
     with tf.Session() as sess:
       self.assertAlmostEqual(8.6 / 2, sess.run(model_fn_ops.loss), places=3)
 
+
+def _noop_train_op(unused_loss):
+  return tf.no_op()
 
 if __name__ == "__main__":
   tf.test.main()

@@ -26,8 +26,13 @@ installed the NDK and SDK. Otherwise an error such as:
 be reported.
 
 The TensorFlow `GraphDef` that contains the model definition and weights
-is not packaged in the repo because of its size. Instead, you must
-first download the file to the `assets` directory in the source tree:
+is not packaged in the repo because of its size. It will be downloaded
+automatically via a new_http_archive defined in WORKSPACE.
+
+**Optional**: If you wish to place the model in your assets manually (E.g. for
+non-Bazel builds), remove the
+`inception_5` entry in `BUILD` and download the archive yourself to the
+`assets` directory in the source tree:
 
 ```bash
 $ curl -L https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -o /tmp/inception5h.zip
@@ -38,8 +43,8 @@ $ unzip /tmp/inception5h.zip -d tensorflow/examples/android/assets/
 The labels file describing the possible classification will also be in the
 assets directory.
 
-Then, after editing your WORKSPACE file, you must build the APK. Run this from
-your workspace root:
+After editing your WORKSPACE file to update the SDK/NDK configuration,
+you may build the APK. Run this from your workspace root:
 
 ```bash
 $ bazel build //tensorflow/examples/android:tensorflow_demo

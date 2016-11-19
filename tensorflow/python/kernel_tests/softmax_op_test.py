@@ -120,9 +120,8 @@ class SoftmaxTest(tf.test.TestCase):
 
   def testDouble(self):
     self._testSoftmax(
-        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
-        use_gpu=False)
-    self._testOverflow(use_gpu=False)
+        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64))
+    self._testOverflow()
 
   def test1DTesnorAsInput(self):
     self._testSoftmax(

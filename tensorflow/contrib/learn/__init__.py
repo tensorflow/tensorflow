@@ -22,14 +22,14 @@ Train and evaluate TensorFlow models.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
 @@ModeKeys
 @@DNNClassifier
 @@DNNRegressor
-@@TensorFlowEstimator
 @@LinearClassifier
 @@LinearRegressor
-@@TensorFlowRNNClassifier
-@@TensorFlowRNNRegressor
+@@LogisticRegressor
 
 ## Graph actions
 
@@ -64,6 +64,7 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
+# pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import make_all
 
 __all__ = make_all(__name__)

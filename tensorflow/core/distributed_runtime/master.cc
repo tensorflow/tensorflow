@@ -91,8 +91,8 @@ void Master::GC() {
     std::vector<string> handles;
     const int64 num_micros = static_cast<int64>(session_gc_seconds_ * 1000000);
     for (const auto& entry : sessions_) {
-      auto lat = entry.second->last_access_time_usec();
-      if (env->NowMicros() - lat > num_micros) {
+      int64 lat = entry.second->last_access_time_usec();
+      if (static_cast<int64>(env->NowMicros()) - lat > num_micros) {
         handles.push_back(entry.first);
         auto* sess = entry.second;
         SchedClosure([this, sess]() {
@@ -282,6 +282,7 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  mu_.unlock();
 
   SchedClosure([session, req, resp, done]() {
     Status status = ValidateExternalGraphDefSyntax(req->graph_def());
@@ -290,7 +291,22 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     }
     done(status);
   });
+}
+
+void Master::PartialRunSetup(const PartialRunSetupRequest* req,
+                             PartialRunSetupResponse* resp, MyClosure done) {
+  mu_.lock();
+  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  if (session == nullptr) {
+    mu_.unlock();
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
   mu_.unlock();
+
+  SchedClosure([this, session, req, resp, done]() {
+    done(session->PartialRunSetup(req, resp));
+  });
 }
 
 void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
@@ -303,6 +319,7 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, req, resp);
@@ -312,7 +329,6 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
     last_1000_steps_.AddValue((done_time - start_time) / 1e9);
     ++step_count_;
   });
-  mu_.unlock();
 }
 
 void Master::CloseSession(const CloseSessionRequest* req,
@@ -383,7 +399,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
       }
       ++c;
     }
-    for (int i = 0; i < n.size(); ++i) {
+    for (size_t i = 0; i < n.size(); ++i) {
       n[i].WaitForNotification();
     }
   }

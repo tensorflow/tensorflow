@@ -27,6 +27,7 @@ import numbers
 
 import six
 
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -35,7 +36,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.training import queue_runner
@@ -1411,9 +1411,8 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
         allow_small_batch=allow_small_batch)
 
     barrier = stateful_reader.barrier
-    logging_ops.scalar_summary(
-        "queue/%s/ready_segment_batches_" % barrier.name,
-        math_ops.cast(barrier.ready_size(), dtypes.float32))
+    summary.scalar("queue/%s/ready_segment_batches_" % barrier.name,
+                   math_ops.cast(barrier.ready_size(), dtypes.float32))
 
     q_runner = queue_runner.QueueRunner(
         stateful_reader, [stateful_reader.prefetch_op]*num_threads,

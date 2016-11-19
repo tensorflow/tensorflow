@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy
 import tensorflow as tf
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 
@@ -74,10 +75,10 @@ class VariableScopeTest(tf.test.TestCase):
       with tf.variable_scope("tower") as tower:
         with tf.variable_scope("foo", dtype=tf.float16):
           v = tf.get_variable("v", [])
-          self.assertEqual(v.dtype, tf.float16_ref)
+          self.assertEqual(v.dtype, dtypes.float16_ref)
         with tf.variable_scope(tower, dtype=tf.float16):
           w = tf.get_variable("w", [])
-          self.assertEqual(w.dtype, tf.float16_ref)
+          self.assertEqual(w.dtype, dtypes.float16_ref)
 
   def testInitFromNonTensorValue(self):
     with self.test_session() as sess:
@@ -637,19 +638,19 @@ class VariableScopeTest(tf.test.TestCase):
 
   def testGetVarWithDevice(self):
     g = tf.Graph()
-    varname_shape = []
+    varname_type = []
 
     def device_func(op):
       if op.type == "Variable":
-        varname_shape.append((op.name, tf.TensorShape(op.get_attr("shape"))))
+        varname_type.append((op.name, op.get_attr("dtype")))
       return "/gpu:0"
 
     with g.as_default():
       with tf.device(device_func):
-        _ = tf.get_variable("x", (100, 200))  # init fn
-        _ = tf.get_variable("y", initializer=numpy.arange(73))  # init constant
-    self.assertEqual(varname_shape[0], ("x", tf.TensorShape([100, 200])))
-    self.assertEqual(varname_shape[1], ("y", tf.TensorShape([73])))
+        _ = tf.get_variable("x", (100, 200))
+        _ = tf.get_variable("y", dtype=tf.int64, initializer=numpy.arange(73))
+    self.assertEqual(varname_type[0], ("x", tf.float32))
+    self.assertEqual(varname_type[1], ("y", tf.int64))
 
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
@@ -677,7 +678,7 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
       self.assertEqual(v.name, "scope0/name0")
       v_concat = v.as_tensor()
       self.assertEqual(v_concat.name, "scope0/name0:0")
-      variables = tf.get_collection(tf.GraphKeys.VARIABLES)
+      variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
       self.assertTrue("scope0/name0/part_0:0" in [x.name for x in variables])
       self.assertTrue("scope0/name0/part_1:0" in [x.name for x in variables])
       self.assertFalse("scope0/name0/part_2:0" in [x.name for x in variables])
@@ -793,7 +794,7 @@ class VariableScopeWithCustomGetterTest(tf.test.TestCase):
     self.assertEqual("scope/v/1:0", true_vars[1].name)
     self.assertEqual("custom_getter/add:0", v.name)
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       np_vars, np_v = sess.run([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 

@@ -19,4 +19,4 @@ from __future__ import print_function
 
 from tensorflow.tensorboard.plugins.projector.plugin import ProjectorPlugin
 # Map of registered plugins in TensorBoard.
-REGISTERED_PLUGINS = {'projector': ProjectorPlugin}
+REGISTERED_PLUGINS = {'projector': ProjectorPlugin()}

@@ -55,7 +55,7 @@ class ScatterAddSubTest(tf.test.TestCase):
       ind = tf.constant(indices, dtype=tf.int32)
       p2 = scatter_op(p, ind, vals, name="updated_p")
       # p = init
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # p += vals
       result = p2.eval()
     # Compute the expected 'p' using numpy operations.
@@ -228,6 +228,26 @@ class EmbeddingLookupTest(tf.test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  def testMaxNorm(self):
+    with self.test_session():
+      embeddings = tf.constant([[2.0]])
+
+      ids = tf.constant([0], dtype=tf.int32)
+      embedding = tf.nn.embedding_lookup([embeddings], ids, max_norm=1.0)
+
+      self.assertAllEqual(embedding.eval(), [[1.0]])
+
+  def testMaxNormNontrivial(self):
+    with self.test_session():
+      embeddings = tf.constant([[2.0, 4.0], [3.0, 1.0]])
+
+      ids = tf.constant([0, 1], dtype=tf.int32)
+      embedding = tf.nn.embedding_lookup([embeddings], ids, max_norm=2.0)
+
+      norms = tf.sqrt(tf.reduce_sum(embeddings * embeddings, axis=1))
+      normalized = embeddings/tf.stack([norms, norms], axis=1)
+      self.assertAllEqual(embedding.eval(), 2 * normalized.eval())
+
   def testSimpleShardedPartitionedVariable(self):
     with self.test_session() as sess:
       num_shards = 2
@@ -239,7 +259,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
       ids = tf.constant(list(id_vals), dtype=tf.int32)
       print("Construct ids", ids.get_shape())
       embedding = tf.nn.embedding_lookup(p_variable, ids)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
       p_var_val = sess.run(list(p_variable))
@@ -333,7 +353,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
       # will test that aspect.
       id_vals = np.random.randint(vocab_size, size=num_vals)
       ids = tf.constant(list(id_vals), dtype=tf.int32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       embedding = tf.nn.embedding_lookup(
           p_variable, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)

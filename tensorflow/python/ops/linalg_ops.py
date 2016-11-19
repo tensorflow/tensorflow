@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -28,17 +27,6 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
-
-ops.RegisterShape("Cholesky")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CholeskyGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixInverse")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDeterminant")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SelfAdjointEig")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SelfAdjointEigV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Svd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSolve")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixTriangularSolve")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSolveLs")(common_shapes.call_cpp_shape_fn)
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -239,7 +227,7 @@ def self_adjoint_eigvals(tensor, name=None):
   return e
 
 
-def svd(tensor, compute_uv=True, full_matrices=False, name=None):
+def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   """Computes the singular value decompositions of one or more matrices.
 
   Computes the SVD of each inner matrix in `tensor` such that
@@ -258,12 +246,12 @@ def svd(tensor, compute_uv=True, full_matrices=False, name=None):
   Args:
     matrix: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
       `N`.
-    compute_uv: If `True` then left and right singular vectors will be
-      computed and returned in `u` and `v`, respectively. Otherwise, only the
-      singular values will be computed, which can be significantly faster.
     full_matrices: If true, compute full-sized `u` and `v`. If false
       (the default), compute only the leading `P` singular vectors.
       Ignored if `compute_uv` is `False`.
+    compute_uv: If `True` then left and right singular vectors will be
+      computed and returned in `u` and `v`, respectively. Otherwise, only the
+      singular values will be computed, which can be significantly faster.
     name: string, optional name of the operation.
 
   Returns:

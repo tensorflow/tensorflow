@@ -22,7 +22,7 @@ import numpy as np
 
 import tensorflow as tf
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import importer
 from tensorflow.python.ops import array_ops
 
 
@@ -36,7 +36,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   x_values = x[non_zero]
   x_shape = x.shape
 
-  return ops.SparseTensor(
+  return tf.SparseTensor(
       indices=x_indices, values=x_values, shape=x_shape), len(x_values)
 
 class ShapeOpsTest(tf.test.TestCase):
@@ -340,6 +340,32 @@ class TileTest(tf.test.TestCase):
       result = tiled.eval()
     self.assertEqual(result.shape, (10, 0))
     self.assertEqual([10, 0], tiled.get_shape())
+
+  def testUnknownInputShape(self):
+    """Importing can call _TileShape without shape of <multiples> known."""
+    with self.test_session():
+      inp = tf.placeholder(tf.float32)  # unknown shape
+      multiples = tf.constant([1, 2, 3, 4], dtype=np.int32)
+      tiled = tf.tile(inp, multiples)
+      gdef = tiled.graph.as_graph_def()
+
+      # Move the tile op to the start of the graph so that shapes of its inputs
+      # are not available when the shape function runs on import.
+      swapped = False
+      for i, n in enumerate(gdef.node):
+        if n.op == "Tile":
+          # Swap tile op to be first in gdef.node
+          assert i != 0
+          new_node = tf.NodeDef()
+          new_node.CopyFrom(gdef.node[i])
+          gdef.node[i].CopyFrom(gdef.node[0])
+          gdef.node[0].CopyFrom(new_node)
+          swapped = True
+      assert swapped
+
+      tiled_imported, = importer.import_graph_def(gdef,
+                                                  return_elements=[tiled.name])
+      self.assertEqual(4, tiled_imported.get_shape().ndims)
 
   def testTypes(self):
     types_to_test = {

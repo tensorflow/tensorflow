@@ -30,19 +30,14 @@ constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 // SavedModel text format proto filename.
 constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 
+// SavedModel legacy init op key.
+constexpr char kSavedModelLegacyInitOpKey[] = "legacy_init_op";
+
 // Directory in which to save the SavedModel variables.
 constexpr char kSavedModelVariablesDirectory[] = "variables";
 
 // SavedModel variables filename.
 constexpr char kSavedModelVariablesFilename[] = "variables";
-
-// SavedModel sharded variables filename.
-constexpr char kSavedModelVariablesShardedFilename[] =
-    "variables-\?\?\?\?\?-of-\?\?\?\?\?";
-
-// Commonly used tags.
-constexpr char kSavedModelTagServe[] = "serve";
-constexpr char kSavedModelTagTrain[] = "train";
 
 }  // namespace tensorflow
 

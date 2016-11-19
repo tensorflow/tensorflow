@@ -35,8 +35,8 @@ import tensorflow as tf
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
@@ -97,6 +97,12 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # Set up the assets collection.
     assets_filepath = tf.constant(original_assets_filepath)
     tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, assets_filepath)
+    filename_tensor = tf.Variable(
+        original_assets_filename,
+        name="filename_tensor",
+        trainable=False,
+        collections=[])
+    assign_filename_op = filename_tensor.assign(original_assets_filename)
 
     # Set up the signature for regression with input and output tensor
     # specification.
@@ -112,14 +118,14 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
         signature_constants.REGRESS_METHOD_NAME)
 
     # Initialize all variables and then save the SavedModel.
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     builder.add_meta_graph_and_variables(
-        sess, [constants.TAG_SERVING],
+        sess, [tag_constants.SERVING],
         signature_def_map={
-            signature_constants.REGRESS_METHOD_NAME:
-                signature_def
+            signature_constants.REGRESS_METHOD_NAME: signature_def
         },
-        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS))
+        assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
+        legacy_init_op=tf.group(assign_filename_op))
     builder.save(as_text)
 
 

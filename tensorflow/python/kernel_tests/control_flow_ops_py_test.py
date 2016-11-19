@@ -27,12 +27,14 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.client import device_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
@@ -80,7 +82,7 @@ class ControlFlowTest(tf.test.TestCase):
 
       self.assertTrue(check_op_order(v.graph))
       self.assertTrue(isinstance(v2, tf.Tensor))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(9, v2.eval())
 
   def testRefEnter(self):
@@ -93,7 +95,7 @@ class ControlFlowTest(tf.test.TestCase):
       op = tf.assign(enter_v, enter_nine)
       v2 = control_flow_ops.with_dependencies([op], enter_v)
       v3 = control_flow_ops.exit(v2)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(9, v3.eval())
 
   def testRefSwitch(self):
@@ -101,9 +103,9 @@ class ControlFlowTest(tf.test.TestCase):
       v = tf.Variable(7)
 
       p = tf.constant(True)
-      v1 = control_flow_ops._SwitchRefOrTensor(v.ref(), p)
+      v1 = control_flow_ops._SwitchRefOrTensor(v._ref(), p)  # pylint: disable=protected-access
       v2 = tf.assign(v1[1], 9)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(9, v2.eval())
 
   def testEnterMulExit(self):
@@ -252,6 +254,15 @@ class ControlFlowTest(tf.test.TestCase):
       result = exit_i.eval()
     self.assertAllEqual(10, result)
 
+  def testDifferentFrame(self):
+    with self.test_session():
+      data = tf.placeholder(tf.float32, shape=[])
+      enter_1 = control_flow_ops.enter(data, "foo_1", False)
+      enter_2 = control_flow_ops.enter(data, "foo_2", False)
+      res = tf.add(enter_1, enter_2)
+      with self.assertRaisesOpError("has inputs from different frames"):
+        res.eval(feed_dict={data: 1.0})
+
   def testCondBool(self):
     values = tf.constant(10)
     fn1 = lambda: tf.add(values, 1)
@@ -372,7 +383,7 @@ class ControlFlowTest(tf.test.TestCase):
       fn2 = lambda: [tf.assign(v3, 3).op, tf.constant(10).op]
       r = tf.cond(pred, fn1, fn2)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(len(r), 2)
       result = r[1].eval()
       self.assertTrue(check_op_order(age.graph))
@@ -405,7 +416,7 @@ class ControlFlowTest(tf.test.TestCase):
       fn2 = lambda: v1
       r = tf.cond(pred, fn1, fn2)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = r.eval()
       self.assertAllEqual(np.array([7]), result)
 
@@ -421,7 +432,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testCondRef(self):
     with self.test_session():
-      x = state_ops.variable_op([1], tf.float32)
+      x = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="x", container="", shared_name="")
       true_fn = lambda: x
       false_fn = lambda: tf.constant([2.0])
       r = tf.cond(tf.constant(False), true_fn, false_fn)
@@ -429,7 +441,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
-      v = state_ops.variable_op([1], tf.float32)
+      v = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+          name="v", container="", shared_name="")      
       inited = state_ops.is_variable_initialized(v)
       v_f, v_t = control_flow_ops.ref_switch(v, inited)
       # Both v_f and v_t are uninitialized references. However, an actual use
@@ -495,7 +508,7 @@ class ControlFlowTest(tf.test.TestCase):
       fn2 = lambda: tf.gather(v1, [1, 1])
       r = tf.cond(pred, fn1, fn2)
       grad = tf.gradients(r, [v1])[0]
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # Should just be [1, 1], but possibly a sparse representation
       gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 1})
       dense_gv = [sum([y for (x, y) in zip(gi, gv) if x == i]) for i in range(2)
@@ -507,7 +520,7 @@ class ControlFlowTest(tf.test.TestCase):
                  ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
-  # Microbenchmark: 250,000 iterations/s.
+  # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
     with self.test_session():
       n = tf.constant(0)
@@ -518,22 +531,22 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testWhileWithRefs_1(self):
     with self.test_session() as sess:
-      x = tf.Variable(0).ref()
+      x = tf.Variable(0)._ref()  # pylint: disable=protected-access
       i = tf.constant(0)
       c = lambda i, x: tf.less(i, 100)
 
-      self.assertEqual(x.dtype, tf.int32_ref)
+      self.assertEqual(x.dtype, dtypes.int32_ref)
 
       def b(i, x):
-        self.assertEqual(x.dtype, tf.int32_ref)
+        self.assertEqual(x.dtype, dtypes.int32_ref)
         return (i+1, gen_array_ops._ref_identity(x))
 
       r = tf.while_loop(c, b, [i, x], parallel_iterations=5)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(r[0].dtype, tf.int32)
-      self.assertEqual(r[1].dtype, tf.int32_ref)
+      self.assertEqual(r[1].dtype, dtypes.int32_ref)
 
       value_i, value_x = sess.run(r)
 
@@ -664,7 +677,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = np.array([0])  # Note, [0] would not work here; that is a list
       c = lambda x: x[0] < 10000
-      b = lambda x: tf.pack([x[0] + 1])
+      b = lambda x: tf.stack([x[0] + 1])
       r = tf.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], r.eval())
 
@@ -856,7 +869,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.cond(tf.constant(False),
                   lambda: tf.constant(1.0),
                   false_branch)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(6.0, r.eval())
       self.assertEqual(99, v.eval())
 
@@ -955,7 +968,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.while_loop(loop_iterator, loop_body, [n],
                         parallel_iterations=1)
       self.assertTrue(check_op_order(n.graph))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(3, r.eval())
       result = select.eval()
       self.assertAllClose(np.array([10.0, 10.0, 10.0]), result)
@@ -980,7 +993,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.while_loop(loop_iterator, loop_body, [n],
                         parallel_iterations=1)
       self.assertTrue(check_op_order(n.graph))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(3, r.eval())
       result1 = select1.eval()
       self.assertAllClose(np.array([10.0, 10.0, 10.0]), result1)
@@ -1003,7 +1016,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.while_loop(loop_iterator, loop_body,
                         [n, tf.identity(select)],
                         parallel_iterations=1)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = r[1].eval()
     self.assertTrue(check_op_order(n.graph))
     self.assertAllClose(np.array([10.0, 10.0, 10.0]), result)
@@ -1013,7 +1026,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       var_a = tf.Variable(0, name="a")
       var_b = tf.Variable(0, name="b")
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       c = tf.constant(0, name="c")
       asn1 = tf.assign_add(var_a, 1, name="a_add")
@@ -1040,7 +1053,7 @@ class ControlFlowTest(tf.test.TestCase):
       # Create some variables.
       var_a = tf.Variable(0, name="a")
       var_b = tf.Variable(0, name="b")
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Change condition to check var_b
       def pred(_):
@@ -1069,7 +1082,7 @@ class ControlFlowTest(tf.test.TestCase):
       var_a = tf.Variable(0, name="a")
       var_b = tf.Variable(0, name="b")
       c = tf.constant(0)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       # Loop condition
       def pred(i):
@@ -1253,7 +1266,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.while_loop(c, b, [v], parallel_iterations=1)
 
       r = tf.gradients(r, a)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose(216.0, r[0].eval())
 
   def testWhile_NestedInput(self):
@@ -1353,7 +1366,7 @@ class ControlFlowTest(tf.test.TestCase):
       tensors = tf.while_loop(cond=cond, body=body, loop_vars=loop_vars)
       cost = tf.reduce_sum(tensors[2])
       grad = tf.gradients(cost, [variable])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose(np.ones([2, 3]), sess.run(grad[0]))
 
   def testWhileGrad_Const(self):
@@ -1499,7 +1512,7 @@ class ControlFlowTest(tf.test.TestCase):
       res = outer_loop(inp)
       optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
       train_op = optimizer.minimize(tf.reduce_mean(tf.square(res)))
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(train_op)
       self.assertAllClose(2.999, var.eval())
 
@@ -1557,7 +1570,7 @@ class ControlFlowTest(tf.test.TestCase):
           [i0.get_shape(), tensor_shape.TensorShape([None, 2])])
       s = tf.reduce_sum(h)
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       optimizer = tf.train.GradientDescentOptimizer(0.01)
       op = optimizer.minimize(s)
       sess.run(op)
@@ -1565,27 +1578,27 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testWhileWithRefsWithGradients_1(self):
     with self.test_session() as sess:
-      x = tf.Variable(0).ref()
+      x = tf.Variable(0)._ref()  # pylint: disable=protected-access
       i = tf.constant(0)
       c = lambda i, x: tf.less(i, 10)
 
-      self.assertEqual(x.dtype, tf.int32_ref)
+      self.assertEqual(x.dtype, dtypes.int32_ref)
 
       # pylint: disable=protected-access
       def body(i, x):
-        self.assertEqual(x.dtype, tf.int32_ref)
+        self.assertEqual(x.dtype, dtypes.int32_ref)
         return [i+1, gen_array_ops._ref_identity(x)]
       # pylint: enable=protected-access
 
       r = tf.while_loop(c, body, [i, x], parallel_iterations=5)
 
-      grad_ys = [tf.Variable(73).ref()]
+      grad_ys = [tf.Variable(73)._ref()]  # pylint: disable=protected-access
       grad = tf.gradients([r[1]], [x], grad_ys=grad_ys)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(r[0].dtype, tf.int32)
-      self.assertEqual(r[1].dtype, tf.int32_ref)
+      self.assertEqual(r[1].dtype, dtypes.int32_ref)
 
       value_i, value_x, value_x_grad = sess.run(r + grad)
 
@@ -1832,17 +1845,17 @@ class ControlFlowTest(tf.test.TestCase):
       r1 = tf.case(((x > y, a), (x < y, b)), default=c, exclusive=True)
       r2 = tf.case(((x > y, a), (x > y, b)), default=c, exclusive=True)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
       self.assertEqual(2, r2.eval())
       self.assertAllEqual(sess.run([v0, v1, v2]), [-1, -1, 2])
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
       self.assertEqual(1, r1.eval())
       self.assertAllEqual(sess.run([v0, v1, v2]), [-1, 1, -1])
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
       self.assertEqual(0, r0.eval())
       self.assertAllEqual(sess.run([v0, v1, v2]), [0, -1, -1])
@@ -1863,7 +1876,7 @@ class ControlFlowTest(tf.test.TestCase):
 
       i = tf.cond(p, a, b)
       self.assertTrue(isinstance(i, tf.Tensor))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(0, v.eval())
 
@@ -1888,7 +1901,7 @@ class ControlFlowTest(tf.test.TestCase):
       # while asking for c
       real_v = control_flow_ops.with_dependencies(
           name="real_tensor",
-          output_tensor=v.ref(),
+          output_tensor=v._ref(),  # pylint: disable=protected-access
           dependencies=[v.initializer])
       c_val, real_v_val = sess.run([c, real_v])
 
@@ -2137,11 +2150,11 @@ class TupleTest(tf.test.TestCase):
       with self.test_session():
         v1 = tf.Variable([1.0])
         add1 = tf.add(
-            control_flow_ops.with_dependencies([v1.initializer], v1.ref()),
+            control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             2.0)
         v2 = tf.Variable([10.0])
         add2 = tf.add(
-            control_flow_ops.with_dependencies([v2.initializer], v2.ref()),
+            control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             20.0)
         t1, _, t2 = control_flow_ops.tuple([add1, None, add2])
 
@@ -2169,14 +2182,14 @@ class TupleTest(tf.test.TestCase):
             np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(
                 np.float32))
         v1_at_1 = tf.IndexedSlices(
-            control_flow_ops.with_dependencies([v1.initializer], v1.ref()),
+            control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             tf.constant([1]))
 
         v2 = tf.Variable(
             np.array([[0.1, 1.1], [10.1, 11.1], [20.1, 21.1]]).astype(
                 np.float32))
         v2_at_1 = tf.IndexedSlices(
-            control_flow_ops.with_dependencies([v2.initializer], v2.ref()),
+            control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             tf.constant([1]))
 
         st1, st2 = control_flow_ops.tuple([v1_at_1, v2_at_1])

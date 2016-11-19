@@ -37,18 +37,18 @@ class FeatureEngineeringFunctionTest(tf.test.TestCase):
     def input_fn():
       return {"x": tf.constant([1.])}, {"y": tf.constant([11.])}
 
-    def feature_engineering_fn(features, targets):
-      _, _ = features, targets
+    def feature_engineering_fn(features, labels):
+      _, _ = features, labels
       return {
           "transformed_x": tf.constant([9.])
       }, {
           "transformed_y": tf.constant([99.])
       }
 
-    def model_fn(features, targets):
+    def model_fn(features, labels):
       # dummy variable:
       _ = tf.Variable([0.])
-      _ = targets
+      _ = labels
       predictions = features["transformed_x"]
       loss = tf.constant([2.])
       return predictions, loss, tf.no_op()
@@ -66,14 +66,14 @@ class FeatureEngineeringFunctionTest(tf.test.TestCase):
     def input_fn():
       return {"x": tf.constant([1.])}, {"y": tf.constant([11.])}
 
-    def feature_engineering_fn(features, targets):
-      _, _ = features, targets
+    def feature_engineering_fn(features, labels):
+      _, _ = features, labels
       return {"x": tf.constant([9.])}, {"y": tf.constant([99.])}
 
-    def model_fn(features, targets):
+    def model_fn(features, labels):
       # dummy variable:
       _ = tf.Variable([0.])
-      _ = targets
+      _ = labels
       predictions = features["x"]
       loss = tf.constant([2.])
       return predictions, loss, tf.no_op()

@@ -582,6 +582,22 @@ REGISTER_OP("ReadFile")
 Reads and outputs the entire contents of the input filename.
 )doc");
 
+REGISTER_OP("WriteFile")
+    .Input("filename: string")
+    .Input("contents: string")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Writes contents to the file at input filename. Creates file if not existing.
+
+filename: scalar. The name of the file to which we write the contents.
+contents: scalar. The content to be written to the output file.
+)doc");
+
 REGISTER_OP("MatchingFiles")
     .Input("pattern: string")
     .Output("filenames: string")

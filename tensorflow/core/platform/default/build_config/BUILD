@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
+load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 
 cc_library(
     name = "gtest",
@@ -76,13 +77,29 @@ cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
+        ":gif",
+        ":jpeg",
         "//tensorflow/core:protos_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-        "@gif_archive//:gif",
         "@highwayhash//:sip_hash",
-        "@jpeg_archive//:jpeg",
         "@png_archive//:png",
+    ],
+)
+
+cc_library(
+    name = "gif",
+    copts = tf_copts(),
+    deps = [
+        "@gif_archive//:gif",
+    ],
+)
+
+cc_library(
+    name = "jpeg",
+    copts = tf_copts(),
+    deps = [
+        "@jpeg//:jpeg",
     ],
 )
 
@@ -124,6 +141,21 @@ cc_library(
     }),
     deps = [
         "@local_config_cuda//cuda:cudart",
+    ],
+)
+
+cc_library(
+    name = "sycl",
+    data = [
+        "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
+    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_sycl/sycl/lib",
+        ],
+    }),
+    deps = [
+        "@local_config_sycl//sycl:syclrt",
     ],
 )
 

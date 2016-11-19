@@ -48,7 +48,7 @@ class Dimension(object):
     """Returns true if `other` has the same known value as this Dimension."""
     try:
       other = as_dimension(other)
-    except ValueError:
+    except (TypeError, ValueError):
       return NotImplemented
     if self._value is None or other.value is None:
       return None
@@ -58,7 +58,7 @@ class Dimension(object):
     """Returns true if `other` has a different known value from `self`."""
     try:
       other = as_dimension(other)
-    except ValueError:
+    except (TypeError, ValueError):
       return NotImplemented
     if self._value is None or other.value is None:
       return None
@@ -393,10 +393,11 @@ class TensorShape(object):
 
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
-  `"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
-  for details of shape
-  functions and how to register them. Alternatively, the shape may be set
-  explicitly using [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
+  `"Foo"`. See [`Shape functions in
+  C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
+  details of shape functions and how to register them. Alternatively,
+  the shape may be set explicitly using
+  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
   @@merge_with
   @@concatenate
@@ -416,6 +417,7 @@ class TensorShape(object):
   @@assert_same_rank
   @@assert_is_compatible_with
   @@assert_is_fully_defined
+
   """
 
   def __init__(self, dims):

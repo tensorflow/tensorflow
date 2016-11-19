@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_SESSION_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_SESSION_H_
 
+#include <atomic>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -72,6 +73,10 @@ class MasterSession {
   // Extend() may block the caller thread for a long time.
   Status Extend(const ExtendSessionRequest* req, ExtendSessionResponse* resp);
 
+  // Setup a partial run call.
+  Status PartialRunSetup(const PartialRunSetupRequest* req,
+                         PartialRunSetupResponse* resp);
+
   // Run one step.
   Status Run(CallOptions* opts, const RunStepRequest* req,
              RunStepResponse* resp);
@@ -101,6 +106,8 @@ class MasterSession {
 
   std::atomic_ulong last_access_time_usec_;
 
+  std::atomic<int64> partial_run_handle_counter_ = {0};
+
   mutex mu_;
   std::unique_ptr<SimpleGraphExecutionState> execution_state_;
   int64 graph_version_;
@@ -112,8 +119,38 @@ class MasterSession {
   // scope and lose their state.
   class ReffedClientGraph;
   typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
-  RCGMap runs_ GUARDED_BY(mu_);
-  RCGMap obsolete_ GUARDED_BY(mu_);
+  RCGMap run_graphs_ GUARDED_BY(mu_);
+  RCGMap partial_run_graphs_ GUARDED_BY(mu_);
+
+  struct PerStepState {
+    bool collect_costs = false;
+    bool collect_timeline = false;
+    bool collect_rpcs = false;
+    Microseconds start_micros = Microseconds(0);
+    Microseconds end_micros = Microseconds(0);
+    std::vector<StepStats> step_stats;  // per partition
+    StepStats rpc_stats;                // for RPC layer
+    CostGraphDef cost_graph;
+  };
+
+  struct RunState {
+    std::unordered_set<string> pending_inputs;
+    std::unordered_set<string> pending_outputs;
+    ReffedClientGraph* rcg = nullptr;
+    uint64 step_id;
+    int64 count = 0;
+    PerStepState pss;
+    std::unique_ptr<ProfileHandler> ph;
+    bool step_started = false;
+
+    RunState(const std::vector<string>& input_names,
+             const std::vector<string>& output_names, ReffedClientGraph* rcg,
+             const uint64 step_id, const int64 count);
+
+    ~RunState();
+  };
+  std::unordered_map<string, std::unique_ptr<RunState>> partial_runs_
+      GUARDED_BY(mu_);
 
   // Active RunStep calls.
   condition_variable num_running_is_zero_;
@@ -131,13 +168,17 @@ class MasterSession {
   // Private dtor. The client must call Close().
   virtual ~MasterSession();
 
-  Status StartStep(const RunStepRequest& req, BuildGraphOptions* opts,
-                   int64* count, ReffedClientGraph** graph);
+  Status StartStep(const BuildGraphOptions& opts, int64* count,
+                   ReffedClientGraph** graph, bool is_partial);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status DoRunWithLocalExecution(CallOptions* opts, const RunStepRequest* req,
                                  RunStepResponse* resp);
+  Status DoPartialRun(CallOptions* opts, const RunStepRequest* req,
+                      RunStepResponse* resp);
   void UpdateLastAccessTime();
+
+  Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
 
   TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
 };

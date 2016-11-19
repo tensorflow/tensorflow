@@ -92,6 +92,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 
 @@matching_files
 @@read_file
+@@write_file
 
 ## Input pipeline
 
@@ -141,7 +142,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
@@ -208,18 +208,6 @@ def _restore_slice(file_pattern, tensor_name, shape_and_slice, tensor_type,
   return gen_io_ops._restore_slice(
       file_pattern, tensor_name, shape_and_slice, base_type,
       preferred_shard, name=name)
-
-
-ops.RegisterShape("Restore")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RestoreSlice")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Save")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SaveSlices")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ShardedFilename")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ShardedFilespec")(common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("SaveV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RestoreV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MergeV2Checkpoints")(common_shapes.call_cpp_shape_fn)
 
 
 class ReaderBase(object):
@@ -505,20 +493,3 @@ class IdentityReader(ReaderBase):
 
 
 ops.NotDifferentiable("IdentityReader")
-
-
-ops.RegisterShape("FixedLengthRecordReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IdentityReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TextLineReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("WholeFileReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TFRecordReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderNumRecordsProduced")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderNumWorkUnitsCompleted")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderSerializeState")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderRead")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderReadUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderReset")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderRestoreState")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReadFile")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatchingFiles")(common_shapes.call_cpp_shape_fn)

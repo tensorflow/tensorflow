@@ -23,11 +23,11 @@ import functools
 
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
@@ -37,7 +37,7 @@ def linear_regression_zero_init(x, y):
 
   Args:
     x: tensor or placeholder for input features.
-    y: tensor or placeholder for target.
+    y: tensor or placeholder for labels.
 
   Returns:
     Predictions and loss tensors.
@@ -50,7 +50,7 @@ def logistic_regression_zero_init(x, y):
 
   Args:
     x: tensor or placeholder for input features.
-    y: tensor or placeholder for target.
+    y: tensor or placeholder for labels.
 
   Returns:
     Predictions and loss tensors.
@@ -63,7 +63,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
 
   Args:
     x: tensor or placeholder for input features.
-    y: tensor or placeholder for target.
+    y: tensor or placeholder for labels.
     init_mean: the mean value to use for initialization.
     init_stddev: the standard devation to use for initialization.
 
@@ -80,8 +80,8 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
   """
   with vs.variable_scope('linear_regression'):
     scope_name = vs.get_variable_scope().name
-    logging_ops.histogram_summary('%s.x' % scope_name, x)
-    logging_ops.histogram_summary('%s.y' % scope_name, y)
+    summary.histogram('%s.x' % scope_name, x)
+    summary.histogram('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     y_shape = y.get_shape()
     if len(y_shape) == 1:
@@ -102,8 +102,8 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
-    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
+    summary.histogram('%s.weights' % scope_name, weights)
+    summary.histogram('%s.bias' % scope_name, bias)
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
@@ -117,7 +117,7 @@ def logistic_regression(x,
   Args:
     x: tensor or placeholder for input features,
        shape should be [batch_size, n_features].
-    y: tensor or placeholder for target,
+    y: tensor or placeholder for labels (one-hot),
        shape should be [batch_size, n_classes].
     class_weight: tensor, [n_classes], where for each class
                   it has weight of the class. If not provided
@@ -139,8 +139,8 @@ def logistic_regression(x,
   """
   with vs.variable_scope('logistic_regression'):
     scope_name = vs.get_variable_scope().name
-    logging_ops.histogram_summary('%s.x' % scope_name, x)
-    logging_ops.histogram_summary('%s.y' % scope_name, y)
+    summary.histogram('%s.x' % scope_name, x)
+    summary.histogram('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     # Set up the requested initialization.
     if init_mean is None:
@@ -157,8 +157,8 @@ def logistic_regression(x,
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
-    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
+    summary.histogram('%s.weights' % scope_name, weights)
+    summary.histogram('%s.bias' % scope_name, bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:
@@ -306,7 +306,8 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     attn_length: integer, the size of attention vector attached to rnn cells.
     attn_size: integer, the size of an attention window attached to rnn cells.
     attn_vec_size: integer, the number of convolutional features calculated on
-      attention state and the size of the hidden layer built from base cell state.
+      attention state and the size of the hidden layer built from base cell
+      state.
 
   Returns:
     A function that creates the subgraph.
@@ -324,7 +325,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
           nn.rnn_cell.BasicLSTMCell, state_is_tuple=False)
     else:
       raise ValueError('cell_type {} is not supported. '.format(cell_type))
-    # TODO: state_is_tuple=False is deprecated
+    # TODO(ipolosukhin): state_is_tuple=False is deprecated
     if bidirectional:
       # forward direction cell
       fw_cell = cell_fn(rnn_size)
@@ -332,11 +333,11 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
       # attach attention cells if specified
       if attn_length is not None:
         fw_cell = contrib_rnn.AttentionCellWrapper(
-          fw_cell, attn_length=attn_length, attn_size=attn_size,
-          attn_vec_size=attn_vec_size, state_is_tuple=False)
+            fw_cell, attn_length=attn_length, attn_size=attn_size,
+            attn_vec_size=attn_vec_size, state_is_tuple=False)
         bw_cell = contrib_rnn.AttentionCellWrapper(
-          bw_cell, attn_length=attn_length, attn_size=attn_size,
-          attn_vec_size=attn_vec_size, state_is_tuple=False)
+            bw_cell, attn_length=attn_length, attn_size=attn_size,
+            attn_vec_size=attn_vec_size, state_is_tuple=False)
       rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers,
                                              state_is_tuple=False)
       # backward direction cell

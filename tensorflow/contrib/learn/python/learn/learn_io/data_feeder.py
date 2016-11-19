@@ -29,6 +29,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -224,9 +225,9 @@ class DataFeeder(object):
 
     Args:
       x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]`.
-      y: Target vector, either floats for regression or class id for
+      y: Label vector, either floats for regression or class id for
         classification. If matrix, will consider as a sequence
-        of targets. Can be `None` for unsupervised setting.
+        of labels. Can be `None` for unsupervised setting.
       n_classes: Number of classes, 0 and 1 are considered regression, `None`
         will pass through the input labels without one-hot conversion.
       batch_size: Mini-batch size to accumulate.
@@ -237,7 +238,7 @@ class DataFeeder(object):
 
     Attributes:
       x: Input features.
-      y: Input target.
+      y: Input label.
       n_classes: Number of classes (if `None`, pass through indices without
         one-hot conversion).
       batch_size: Mini-batch size to accumulate.
@@ -247,7 +248,7 @@ class DataFeeder(object):
       output_dtype: DType of output.
     """
     self._x = check_array(x, dtype=x.dtype)
-    # self.n_classes is None means we're passing in raw target indices.
+    # self.n_classes is None means we're passing in raw label indices.
     y_dtype = (
         np.int64 if n_classes is not None and n_classes > 1 else np.float32)
     if n_classes is not None:
@@ -263,7 +264,7 @@ class DataFeeder(object):
         batch_size)
     # Input dtype matches dtype of x.
     self._input_dtype = _check_dtype(self._x.dtype)
-    # self.n_classes is None means we're passing in raw target indices
+    # self.n_classes is None means we're passing in raw label indices
     if n_classes is not None or self._y is None:
       self._output_dtype = np.float32
     else:
@@ -401,7 +402,7 @@ class DataFeeder(object):
       out = np.zeros(self.output_shape, dtype=self._output_dtype)
       for i in xrange(out.shape[0]):
         sample = batch_indices[i]
-        # self.n_classes is None means we're passing in raw target indices
+        # self.n_classes is None means we're passing in raw label indices
         if self.n_classes is None:
           out[i] = _access(self._y, sample)
         else:
@@ -435,12 +436,12 @@ class StreamingDataFeeder(DataFeeder):
       x: iterator that returns for each element, returns features.
       y: iterator that returns for each element, returns 1 or many classes /
          regression values.
-      n_classes: indicator of how many classes the target has.
+      n_classes: indicator of how many classes the label has.
       batch_size: Mini batch size to accumulate.
 
     Attributes:
       x: input features.
-      y: input target.
+      y: input label.
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
       input_shape: shape of the input.
@@ -458,20 +459,19 @@ class StreamingDataFeeder(DataFeeder):
       y_first_el = None
       self._y = None
     self.n_classes = n_classes
+    x_first_el = ops.convert_to_tensor(x_first_el)
+    y_first_el = ops.convert_to_tensor(y_first_el) if y is not None else None
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-        [1] + list(x_first_el.shape),
-        [1] + list(y_first_el.shape) if y is not None else None,
+        [1] + list(x_first_el.get_shape()),
+        [1] + list(y_first_el.get_shape()) if y is not None else None,
         n_classes,
         batch_size)
-    self._input_dtype = _check_dtype(x_first_el.dtype)
+    self._input_dtype = _check_dtype(x_first_el.dtype).as_numpy_dtype
     # Output types are floats, due to both softmaxes and regression req.
     if n_classes is not None and n_classes > 0:
       self._output_dtype = np.float32
     elif y is not None:
-      if isinstance(y_first_el, list) or isinstance(y_first_el, np.ndarray):
-        self._output_dtype = _check_dtype(np.dtype(type(y_first_el[0])))
-      else:
-        self._output_dtype = _check_dtype(np.dtype(type(y_first_el)))
+      self._output_dtype = _check_dtype(y_first_el.dtype).as_numpy_dtype
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
@@ -498,7 +498,11 @@ class StreamingDataFeeder(DataFeeder):
       """
       if self.stopped:
         raise StopIteration
-      inp = np.zeros(self.input_shape, dtype=self._input_dtype)
+      try:
+        inp = np.zeros(self.input_shape, dtype=self._input_dtype)
+      except TypeError as exc:
+        raise TypeError('Unrecognized dtype: {}. {}'.format(
+            self._input_dtype, exc))
       if self._y is not None:
         out = np.zeros(self.output_shape, dtype=self._output_dtype)
       for i in xrange(self._batch_size):
@@ -523,7 +527,13 @@ class StreamingDataFeeder(DataFeeder):
               for idx, value in enumerate(y):
                 out.itemset(tuple([i, idx, value]), 1.0)
           else:
-            out[i] = y
+            # The y itertor can sometimes return scalars or singleton lists.
+            try:
+              out[i] = y
+            except ValueError as _:
+              assert len(y) == 1, ('Expected singleton label, got {}'
+                                   .format(repr(y)))
+              out[i] = y[0]
       if self._y is None:
         return {self._input_placeholder.name: inp}
       return {self._input_placeholder.name: inp,
@@ -548,7 +558,7 @@ class DaskDataFeeder(object):
       x: iterator that returns for each element, returns features.
       y: iterator that returns for each element, returns 1 or many classes /
         regression values.
-      n_classes: indicator of how many classes the target has.
+      n_classes: indicator of how many classes the label has.
       batch_size: Mini batch size to accumulate.
       shuffle: Whether to shuffle the inputs.
       random_state: random state for RNG. Note that it will mutate so use a
@@ -557,7 +567,7 @@ class DaskDataFeeder(object):
 
     Attributes:
       x: input features.
-      y: input target.
+      y: input label.
       n_classes: number of classes.
       batch_size: mini batch size to accumulate.
       input_shape: shape of the input.
@@ -613,7 +623,7 @@ class DaskDataFeeder(object):
 
     Args:
       input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output targets.
+      output_placeholder: tf.Placeholder for output labels.
 
     Returns:
       A function that when called samples a random subset of batch size

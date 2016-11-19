@@ -18,7 +18,7 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   test_installation.sh [--virtualenv] [--gpu]
+#   test_installation.sh [--virtualenv] [--gpu] [--mac]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine
@@ -26,6 +26,9 @@
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
 # appropriate test blacklists can be applied accordingly.
+#
+# The --mac flag informs the script that this is running on mac. Mac does not
+# have flock, so we should skip using parallel_gpu_execute on mac.
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST, PY_TEST_GPU_BLACKLIST,
@@ -46,10 +49,6 @@
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
-#
-# TF_BUILD_SERIAL_INSTALL_TESTS, if set to any non-empty and non-0 value,
-# will force the Python install tests to run serially, overriding than the
-# concurrent testing behavior.
 #
 # TF_GPU_COUNT, Set the number of GPUs in the system. We run only this many
 # concurrent tests when running GPU tests.
@@ -137,11 +136,14 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-8}
 # Process input arguments
 IS_VIRTUALENV=0
 IS_GPU=0
+IS_MAC=0
 while true; do
   if [[ "$1" == "--virtualenv" ]]; then
     IS_VIRTUALENV=1
   elif [[ "$1" == "--gpu" ]]; then
     IS_GPU=1
+  elif [[ "$1" == "--mac" ]]; then
+    IS_MAC=1
   fi
   shift
 
@@ -411,21 +413,25 @@ SKIP_COUNTER=0
 FAILED_TESTS=""
 FAILED_TEST_LOGS=""
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-if [[ -z ${N_JOBS} ]]; then
-  # Try the Mac way of getting number of CPUs
-  N_JOBS=$(sysctl -n hw.ncpu)
-fi
+if [[ "${IS_GPU}" == "1" ]]; then
+  if [[ "${IS_MAC}" == "1" ]]; then
+    N_JOBS=1
+  else
+    N_JOBS=$TF_GPU_COUNT
+  fi
+else
+  N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -z ${N_JOBS} ]]; then
+    # Try the Mac way of getting number of CPUs
+    N_JOBS=$(sysctl -n hw.ncpu)
+  fi
 
-if [[ -z ${N_JOBS} ]]; then
-  N_JOBS=8
-  echo "Cannot determine the number of processors"
-  echo "Using default concurrent job counter ${N_JOBS}"
-fi
-
-if [[ ! -z "${TF_BUILD_SERIAL_INSTALL_TESTS}" ]] &&
-   [[ "${TF_BUILD_SERIAL_INSTALL_TESTS}" != "0" ]]; then
-  N_JOBS=$TF_GPU_COUNT
+  # If still cannot determine the number of CPUs, pick 8.
+  if [[ -z ${N_JOBS} ]]; then
+    N_JOBS=8
+    echo "Cannot determine the number of processors"
+    echo "Using default concurrent job counter ${N_JOBS}"
+  fi
 fi
 
 echo "Running Python tests-on-install with ${N_JOBS} concurrent jobs..."
@@ -485,9 +491,16 @@ while true; do
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
 
     # Launch test asynchronously
-    "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
+    if [[ "${IS_GPU}" == "1" ]] && [[ "${IS_MAC}" == "0" ]]; then
+      # Only use this script without mac. This uses flock, which is not
+      # available in MacOSX.
+      "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
+        "${SCRIPT_DIR}/py_test_delegate.sh" \
+        "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    else
       "${SCRIPT_DIR}/py_test_delegate.sh" \
-      "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+        "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    fi
 
     if [[ "${TEST_COUNTER}" -ge "${N_PAR_TESTS}" ]]; then
       # Run in exclusive mode

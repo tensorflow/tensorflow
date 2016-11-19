@@ -16,6 +16,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
 import numpy as np
 import pandas
@@ -31,17 +32,17 @@ EMBEDDING_SIZE = 50
 n_words = 0
 
 
-def input_op_fn(x):
+def input_op_fn(features):
   """Customized function to transform batched x into embeddings."""
   # Convert indexes of words into embeddings.
   # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
   # maps word indexes of the sequence into [batch_size, sequence_length,
   # EMBEDDING_SIZE].
-  word_vectors = learn.ops.categorical_variable(x, n_classes=n_words,
-      embedding_size=EMBEDDING_SIZE, name='words')
+  word_vectors = tf.contrib.layers.embed_sequence(
+      features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE, scope='words')
   # Split into list of embedding per word, while removing doc length dim.
   # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-  word_list = tf.unpack(word_vectors, axis=1)
+  word_list = tf.unstack(word_vectors, axis=1)
   return word_list
 
 
@@ -84,6 +85,5 @@ if __name__ == '__main__':
       help='Test the example code with fake data.',
       action='store_true'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

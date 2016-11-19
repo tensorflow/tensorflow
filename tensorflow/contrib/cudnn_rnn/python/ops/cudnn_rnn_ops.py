@@ -18,16 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
-from tensorflow.python.framework import common_shapes
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import resource_loader
 
-_cudnn_rnn_ops_so = load_library.load_op_library(
+_cudnn_rnn_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
-assert _cudnn_rnn_ops_so, "Could not load _cudnn_rnn_ops.so."
 
 _cudnn_rnn_common_doc_string = """
   Cudnn RNN has an opaque parameter buffer that can be used for inference and
@@ -316,8 +314,3 @@ def _cudnn_rnn_backward(op, *grad):
       rnn_mode=op.get_attr("rnn_mode"),
       input_mode=op.get_attr("input_mode"),
       direction=op.get_attr("direction"))
-
-
-ops.RegisterShape("CudnnRNNParamsSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)

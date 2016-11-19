@@ -25,42 +25,128 @@ limitations under the License.
 
 namespace tensorflow {
 
+static const char* const kPrefix = "ipfs://solarsystem";
+
+// A file system that has Planets, Satellites and Sub Satellites. Sub satellites
+// cannot have children further.
 class InterPlanetaryFileSystem : public NullFileSystem {
  public:
-  Status IsDirectory(const string& dirname) override {
-    if (dirname == "ipfs://solarsystem" ||
-        dirname == "ipfs://solarsystem/Earth" ||
-        dirname == "ipfs://solarsystem/Jupiter") {
+  Status FileExists(const string& fname) override {
+    string parsed_path;
+    ParsePath(fname, &parsed_path);
+    if (BodyExists(parsed_path)) {
       return Status::OK();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+    return Status(tensorflow::error::NOT_FOUND, "File does not exist");
+  }
+
+  // Adds the dir to the parent's children list and creates an entry for itself.
+  Status CreateDir(const string& dirname) override {
+    string parsed_path;
+    ParsePath(dirname, &parsed_path);
+    // If the directory already exists then ignore.
+    if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
+      return Status::OK();
+    }
+    std::vector<string> split_path = str_util::Split(parsed_path, '/');
+    // If the path is too long then we don't support it.
+    if (split_path.size() > 3) {
+      return Status(tensorflow::error::INVALID_ARGUMENT, "Bad dirname");
+    }
+    if (split_path.empty()) {
+      return Status::OK();
+    }
+    if (split_path.size() == 1) {
+      celestial_bodies_[""].insert(parsed_path);
+      celestial_bodies_.insert(
+          std::pair<string, std::set<string>>(parsed_path, {}));
+      return Status::OK();
+    }
+    if (split_path.size() == 2) {
+      if (!BodyExists(split_path[0])) {
+        return Status(tensorflow::error::FAILED_PRECONDITION,
+                      "Base dir not created");
+      }
+      celestial_bodies_[split_path[0]].insert(split_path[1]);
+      celestial_bodies_.insert(
+          std::pair<string, std::set<string>>(parsed_path, {}));
+      return Status::OK();
+    }
+    if (split_path.size() == 3) {
+      const string& parent_path = io::JoinPath(split_path[0], split_path[1]);
+      if (!BodyExists(parent_path)) {
+        return Status(tensorflow::error::FAILED_PRECONDITION,
+                      "Base dir not created");
+      }
+      celestial_bodies_[parent_path].insert(split_path[2]);
+      celestial_bodies_.insert(
+          std::pair<string, std::set<string>>(parsed_path, {}));
+      return Status::OK();
+    }
+    return Status(tensorflow::error::FAILED_PRECONDITION, "Failed to create");
+  }
+
+  Status IsDirectory(const string& dirname) override {
+    string parsed_path;
+    ParsePath(dirname, &parsed_path);
+    std::vector<string> split_path = str_util::Split(parsed_path, '/');
+    if (split_path.size() > 2) {
+      return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+    }
+    if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
+      return Status::OK();
+    }
+    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
   }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
-    std::vector<string> celestial_bodies;
-    if (dir == "ipfs://solarsystem") {
-      celestial_bodies = {"Mercury",  "Venus",   "Earth",  "Mars",
-                          "Jupiter",  "Saturn",  "Uranus", "Neptune",
-                          ".PlanetX", "Planet0", "Planet1"};
-
-    } else if (dir == "ipfs://solarsystem/Earth") {
-      celestial_bodies = {"Moon"};
-    } else if (dir == "ipfs://solarsystem/Jupiter") {
-      celestial_bodies = {"Europa", "Io", "Ganymede"};
-    }
-    result->insert(result->end(), celestial_bodies.begin(),
-                   celestial_bodies.end());
+    TF_RETURN_IF_ERROR(IsDirectory(dir));
+    string parsed_path;
+    ParsePath(dir, &parsed_path);
+    result->insert(result->begin(), celestial_bodies_[parsed_path].begin(),
+                   celestial_bodies_[parsed_path].end());
     return Status::OK();
   }
+
+ private:
+  bool BodyExists(const string& name) {
+    return celestial_bodies_.find(name) != celestial_bodies_.end();
+  }
+
+  void ParsePath(const string& name, string* parsed_path) {
+    StringPiece scheme, host, path;
+    io::ParseURI(name, &scheme, &host, &path);
+    ASSERT_EQ(scheme, "ipfs");
+    ASSERT_EQ(host, "solarsystem");
+    path.Consume("/");
+    *parsed_path = path.ToString();
+  }
+
+  std::map<string, std::set<string>> celestial_bodies_ = {
+      std::pair<string, std::set<string>>(
+          "", {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn",
+               "Uranus", "Neptune"}),
+      std::pair<string, std::set<string>>("Mercury", {}),
+      std::pair<string, std::set<string>>("Venus", {}),
+      std::pair<string, std::set<string>>("Earth", {"Moon"}),
+      std::pair<string, std::set<string>>("Mars", {}),
+      std::pair<string, std::set<string>>("Jupiter",
+                                          {"Europa", "Io", "Ganymede"}),
+      std::pair<string, std::set<string>>("Saturn", {}),
+      std::pair<string, std::set<string>>("Uranus", {}),
+      std::pair<string, std::set<string>>("Neptune", {}),
+      std::pair<string, std::set<string>>("Earth/Moon", {}),
+      std::pair<string, std::set<string>>("Jupiter/Europa", {}),
+      std::pair<string, std::set<string>>("Jupiter/Io", {}),
+      std::pair<string, std::set<string>>("Jupiter/Ganymede", {})};
 };
 
 // Returns all the matched entries as a comma separated string removing the
 // common prefix of BaseDir().
-string Match(const string& base_dir, const string& suffix_pattern) {
-  InterPlanetaryFileSystem fs;
+string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
   std::vector<string> results;
   Status s =
-      fs.GetMatchingPaths(io::JoinPath(base_dir, suffix_pattern), &results);
+      ipfs->GetMatchingPaths(io::JoinPath(kPrefix, suffix_pattern), &results);
   if (!s.ok()) {
     return s.ToString();
   } else {
@@ -68,7 +154,7 @@ string Match(const string& base_dir, const string& suffix_pattern) {
     std::sort(results.begin(), results.end());
     for (const string& result : results) {
       StringPiece trimmed_result(result);
-      EXPECT_TRUE(trimmed_result.Consume(base_dir + "/"));
+      EXPECT_TRUE(trimmed_result.Consume(strings::StrCat(kPrefix, "/")));
       trimmed_results.push_back(trimmed_result);
     }
     return str_util::Join(trimmed_results, ",");
@@ -76,17 +162,76 @@ string Match(const string& base_dir, const string& suffix_pattern) {
 }
 
 TEST(TestFileSystem, IPFSMatch) {
-  // Make sure we only get the 11 planets and not all their children.
-  EXPECT_EQ(Match("ipfs://solarsystem", "*"),
-            ".PlanetX,Earth,Jupiter,Mars,Mercury,Neptune,Planet0,Planet1,"
-            "Saturn,Uranus,Venus");
+  InterPlanetaryFileSystem ipfs;
+  EXPECT_EQ(Match(&ipfs, "thereisnosuchfile"), "");
+  EXPECT_EQ(Match(&ipfs, "*"),
+            "Earth,Jupiter,Mars,Mercury,Neptune,Saturn,Uranus,Venus");
   // Returns Jupiter's moons.
-  EXPECT_EQ(Match("ipfs://solarsystem", "Jupiter/*"),
+  EXPECT_EQ(Match(&ipfs, "Jupiter/*"),
             "Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
   // Returns Jupiter's and Earth's moons.
-  EXPECT_EQ(Match("ipfs://solarsystem", "*/*"),
+  EXPECT_EQ(Match(&ipfs, "*/*"),
             "Earth/Moon,Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
-  EXPECT_EQ(Match("ipfs://solarsystem", "Planet[0-1]"), "Planet0,Planet1");
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "Planet0")));
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "Planet1")));
+  EXPECT_EQ(Match(&ipfs, "Planet[0-1]"), "Planet0,Planet1");
+  EXPECT_EQ(Match(&ipfs, "Planet?"), "Planet0,Planet1");
+}
+
+TEST(TestFileSystem, MatchSimple) {
+  InterPlanetaryFileSystem ipfs;
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-00")));
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-0a")));
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-01")));
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-aaa")));
+
+  EXPECT_EQ(Match(&ipfs, "match-*"), "match-00,match-01,match-0a,match-aaa");
+  EXPECT_EQ(Match(&ipfs, "match-0[0-9]"), "match-00,match-01");
+  EXPECT_EQ(Match(&ipfs, "match-?[0-9]"), "match-00,match-01");
+  EXPECT_EQ(Match(&ipfs, "match-?a*"), "match-0a,match-aaa");
+  EXPECT_EQ(Match(&ipfs, "match-??"), "match-00,match-01,match-0a");
+}
+
+TEST(TestFileSystem, MatchDirectory) {
+  InterPlanetaryFileSystem ipfs;
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/x")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-0a/abc/x")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/x")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-aaa/abc/x")));
+
+  EXPECT_EQ(Match(&ipfs, "match-*/abc/x"),
+            "match-00/abc/x,match-01/abc/x,match-0a/abc/x,match-aaa/abc/x");
+  EXPECT_EQ(Match(&ipfs, "match-0[0-9]/abc/x"),
+            "match-00/abc/x,match-01/abc/x");
+  EXPECT_EQ(Match(&ipfs, "match-?[0-9]/abc/x"),
+            "match-00/abc/x,match-01/abc/x");
+  EXPECT_EQ(Match(&ipfs, "match-?a*/abc/x"), "match-0a/abc/x,match-aaa/abc/x");
+  EXPECT_EQ(Match(&ipfs, "match-?[^a]/abc/x"), "match-00/abc/x,match-01/abc/x");
+}
+
+TEST(TestFileSystem, MatchMultipleWildcards) {
+  InterPlanetaryFileSystem ipfs;
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/00")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/01")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/09")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/00")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/04")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/10")));
+  TF_EXPECT_OK(
+      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-02/abc/00")));
+
+  EXPECT_EQ(Match(&ipfs, "match-0[0-1]/abc/0[0-8]"),
+            "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
 }
 
 }  // namespace tensorflow

@@ -22,10 +22,17 @@ py_library(
 )
 
 py_library(
+    name = "tag_constants",
+    srcs = ["tag_constants.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "builder",
     srcs = ["builder.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -48,6 +55,17 @@ py_library(
     ],
 )
 
+py_library(
+    name = "main_op",
+    srcs = ["main_op.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
 py_test(
     name = "saved_model_test",
     size = "small",
@@ -59,6 +77,8 @@ py_test(
     deps = [
         ":builder",
         ":loader",
+        ":main_op",
+        ":tag_constants",
         ":utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
@@ -74,8 +94,20 @@ py_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/core:protos_all_py"],
+)
+
+py_test(
+    name = "utils_test",
+    size = "small",
+    srcs = [
+        "utils_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/core:protos_all_py",
+        ":utils",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

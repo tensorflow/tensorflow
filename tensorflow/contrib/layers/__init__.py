@@ -79,6 +79,31 @@ The layers module defines convenience functions `summarize_variables`,
 of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 
 @@summarize_activations
+
+## Feature columns
+
+Feature columns provide a mechanism to map data to a model.
+
+@@bucketized_column
+@@check_feature_columns
+@@create_feature_spec_for_parsing
+@@crossed_column
+@@embedding_column
+@@hashed_embedding_column
+@@input_from_feature_columns
+@@joint_weighted_sum_from_feature_columns
+@@make_place_holder_tensors_for_base_features
+@@one_hot_column
+@@parse_feature_columns_from_examples
+@@parse_feature_columns_from_sequence_examples
+@@real_valued_column
+@@shared_embedding_columns
+@@sparse_column_with_hash_bucket
+@@sparse_column_with_integerized_feature
+@@sparse_column_with_keys
+@@weighted_sparse_column
+@@weighted_sum_from_feature_columns
+
 """
 
 from __future__ import absolute_import
@@ -89,6 +114,8 @@ import sys
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.layers.python.layers import *
+from tensorflow.contrib.layers.python.ops import sparse_ops
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

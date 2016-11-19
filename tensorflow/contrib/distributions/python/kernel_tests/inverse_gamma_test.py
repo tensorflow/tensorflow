@@ -203,7 +203,7 @@ class InverseGammaTest(tf.test.TestCase):
       beta = tf.constant(beta_v)
       n = 100000
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha, beta=beta)
-      samples = inv_gamma.sample_n(n, seed=137)
+      samples = inv_gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
@@ -222,7 +222,7 @@ class InverseGammaTest(tf.test.TestCase):
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
                                                         beta=beta_v)
       n = 10000
-      samples = inv_gamma.sample_n(n, seed=137)
+      samples = inv_gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n, 10, 100))
       self.assertEqual(sample_values.shape, (n, 10, 100))
@@ -257,7 +257,7 @@ class InverseGammaTest(tf.test.TestCase):
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=[7., 11.],
                                                         beta=[[5.], [6.]])
       num = 50000
-      samples = inv_gamma.sample_n(num, seed=137)
+      samples = inv_gamma.sample(num, seed=137)
       pdfs = inv_gamma.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))

@@ -156,7 +156,8 @@ void StepStatsCollector::BuildCostModel(
           cm->RecordMaxMemorySize(node, i, Bytes(output.tensor_description()
                                                      .allocation_description()
                                                      .allocated_bytes()),
-                                  stats.output(i).tensor_description().shape());
+                                  stats.output(i).tensor_description().shape(),
+                                  node->output_types()[i]);
           cm->RecordAllocationId(node, i, output.tensor_description()
                                               .allocation_description()
                                               .allocation_id());
@@ -182,7 +183,8 @@ void StepStatsCollector::Save(const string& device, NodeExecStats* nt) {
   VLOG(1) << "Save dev " << device << " nt " << nt;
   {
     mutex_lock l(mu_);
-    if (!step_stats_) {
+    if (!step_stats_ || collectedNodes >= kMaxCollectedNodes) {
+      VLOG(1) << "step_stats_ nullptr or already collected too many nodes.";
       delete nt;
       return;
     }
@@ -201,6 +203,7 @@ void StepStatsCollector::Save(const string& device, NodeExecStats* nt) {
       dss->set_device(device);
     }
     nt->Swap(dss->add_node_stats());
+    collectedNodes++;
   }
   delete nt;
 }
@@ -209,6 +212,7 @@ void StepStatsCollector::Swap(StepStats* ss) {
   mutex_lock l(mu_);
   CHECK(step_stats_);
   ss->Swap(step_stats_);
+  collectedNodes = 0;
 }
 
 }  // namespace tensorflow

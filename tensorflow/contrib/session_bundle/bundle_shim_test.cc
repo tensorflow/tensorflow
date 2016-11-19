@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
-#include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
-#include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -146,7 +145,7 @@ TEST(BundleShimTest, DefaultSignatureRegression) {
   ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
-      meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
                              .find(kRegressInputs)
                              ->second.name());
@@ -174,7 +173,7 @@ TEST(BundleShimTest, DefaultSignatureClassification) {
   ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
-      meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
                              .find(kClassifyInputs)
                              ->second.name());
@@ -261,7 +260,7 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
   ConvertNamedSignaturesToSignatureDef(signatures, &meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
-      meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
   EXPECT_EQ(
       "foo-input",
       actual_signature_def->second.inputs().find("foo-input")->second.name());
@@ -322,7 +321,7 @@ TEST(BundleShimTest, BasicExportSessionBundle) {
   const string session_bundle_export_dir =
       test_util::TestSrcDirPath(kSessionBundlePath);
   LoadAndValidateSavedModelBundle(session_bundle_export_dir, {"tag"},
-                                  kDefaultSignatureDefKey);
+                                  kDefaultServingSignatureDefKey);
 }
 
 // Checks a basic load for half plus two for SavedModelBundle.
@@ -343,6 +342,22 @@ TEST(BundleShimTest, InvalidPath) {
       session_options, run_options, invalid_export_dir, {kSavedModelTagServe},
       &saved_model_bundle);
   EXPECT_EQ(error::Code::NOT_FOUND, status.code());
+}
+
+// Checks that if loading a session bundle fails, the error is propagated to
+// LoadSessionBundleOrSavedModelBundle().
+TEST(BundleShimTest, LoadSessionBundleError) {
+  const string session_bundle_export_dir =
+      test_util::TestSrcDirPath(kSessionBundlePath);
+  SessionOptions session_options;
+  RunOptions run_options;
+  // Invalid threadpool index to use for session-run calls.
+  run_options.set_inter_op_thread_pool(100);
+  SavedModelBundle saved_model_bundle;
+  EXPECT_FALSE(LoadSessionBundleOrSavedModelBundle(session_options, run_options,
+                                                   session_bundle_export_dir,
+                                                   {"tag"}, &saved_model_bundle)
+                   .ok());
 }
 
 }  // namespace

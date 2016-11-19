@@ -15,25 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/platform/net.h"
 
-#include <cerrno>
 #include <cstdlib>
 #include <unordered_set>
 
 #include <sys/types.h>
-#include <winsock.h>
+#include <winsock2.h>
 
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/windows/error.h"
 
 #undef ERROR
+
+#pragma comment(lib,"Ws2_32.lib")
 
 namespace tensorflow {
 namespace internal {
 
 namespace {
+
 bool IsPortAvailable(int* port, bool is_tcp) {
   const int protocol = is_tcp ? IPPROTO_TCP : 0;
-  const int fd = socket(AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, protocol);
+  SOCKET sock = socket(AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, protocol);
 
   struct sockaddr_in addr;
   int addr_len = static_cast<int>(sizeof(addr));
@@ -41,17 +43,20 @@ bool IsPortAvailable(int* port, bool is_tcp) {
 
   CHECK_GE(*port, 0);
   CHECK_LE(*port, 65535);
-  if (fd < 0) {
-    LOG(ERROR) << "socket() failed: " << strerror(errno);
+  if (sock == INVALID_SOCKET) {
+    LOG(ERROR) << "socket() failed: " <<
+        GetWindowsErrorMessage(WSAGetLastError());
     return false;
   }
 
-  // SO_REUSEADDR lets us start up a server immediately after it exists.
-  int one = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&one, sizeof(one)) <
-      0) {
-    LOG(ERROR) << "setsockopt() failed: " << strerror(errno);
-    closesocket(fd);
+  // SO_REUSEADDR lets us start up a server immediately after it exits.
+  const int one = 1;
+  int result = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+                          reinterpret_cast<const char*>(&one), sizeof(one));
+  if (result == SOCKET_ERROR) {
+    LOG(ERROR) << "setsockopt() failed: " <<
+        GetWindowsErrorMessage(WSAGetLastError());
+    closesocket(sock);
     return false;
   }
 
@@ -59,18 +64,23 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_port = htons((uint16_t)*port);
-  if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-    LOG(WARNING) << "bind(port=" << *port << ") failed: " << strerror(errno);
-    closesocket(fd);
+  result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
+  if (result == SOCKET_ERROR) {
+    LOG(WARNING) << "bind(port=" << *port << ") failed: " <<
+        GetWindowsErrorMessage(WSAGetLastError());
+    closesocket(sock);
     return false;
   }
 
   // Get the bound port number.
-  if (getsockname(fd, (struct sockaddr*)&addr, &addr_len) < 0) {
-    LOG(WARNING) << "getsockname() failed: " << strerror(errno);
-    closesocket(fd);
+  result = getsockname(sock, (struct sockaddr*)&addr, &addr_len);
+  if (result == SOCKET_ERROR) {
+    LOG(WARNING) << "getsockname() failed: " <<
+        GetWindowsErrorMessage(WSAGetLastError());
+    closesocket(sock);
     return false;
   }
+
   CHECK_LE(addr_len, sizeof(addr));
   actual_port = ntohs(addr.sin_port);
   CHECK_GT(actual_port, 0);
@@ -79,7 +89,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   } else {
     CHECK_EQ(*port, actual_port);
   }
-  closesocket(fd);
+
+  closesocket(sock);
   return true;
 }
 
@@ -89,6 +100,12 @@ const int kMaximumTrials = 1000;
 }  // namespace
 
 int PickUnusedPortOrDie() {
+  WSADATA wsaData;
+  if (WSAStartup(MAKEWORD(2, 2), &wsaData) != NO_ERROR) {
+    LOG(ERROR) << "Error at WSAStartup()";
+    return false;
+  }
+
   static std::unordered_set<int> chosen_ports;
 
   // Type of port to first pick in the next iteration.
@@ -121,6 +138,7 @@ int PickUnusedPortOrDie() {
     }
 
     chosen_ports.insert(port);
+    WSACleanup();
     return port;
   }
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 
 import numpy as np
 import tensorflow as tf
@@ -36,7 +37,7 @@ class LocalVariableTest(tf.test.TestCase):
       variables = tf.local_variables()
       self.assertEquals(2, len(variables))
       self.assertRaises(tf.OpError, sess.run, variables)
-      tf.initialize_variables(variables).run()
+      tf.variables_initializer(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
   def testLocalVariableNameAndShape(self):
@@ -51,7 +52,7 @@ class LocalVariableTest(tf.test.TestCase):
     with self.test_session():
       with tf.variable_scope('A'):
         a = tf.contrib.framework.local_variable(0)
-        self.assertFalse(a in tf.all_variables())
+        self.assertFalse(a in tf.global_variables())
         self.assertTrue(a in tf.local_variables())
 
   def testLocalVariableNotInVariablesToRestore(self):
@@ -82,7 +83,7 @@ class LocalVariableTest(tf.test.TestCase):
   def testInitializedVariableValue(self):
     with self.test_session() as sess:
       a = tf.contrib.framework.local_variable([0, 0, 0, 0, 0], name='a')
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.local_variables_initializer())
       self.assertAllEqual(a.eval(), [0]*5)
 
 
@@ -157,7 +158,7 @@ class VariablesTest(tf.test.TestCase):
         a = tf.contrib.framework.variable('a', [5])
         self.assertEquals(a.op.name, 'A/a')
         self.assertListEqual(a.get_shape().as_list(), [5])
-        self.assertTrue(a in tf.get_collection(tf.GraphKeys.VARIABLES))
+        self.assertTrue(a in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES))
         self.assertFalse(a in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES))
         self.assertFalse(a in tf.local_variables())
 
@@ -170,6 +171,14 @@ class VariablesTest(tf.test.TestCase):
       self.assertEquals([a, b], tf.contrib.framework.get_variables())
       self.assertEquals([a], tf.contrib.framework.get_variables('A'))
       self.assertEquals([b], tf.contrib.framework.get_variables('B'))
+
+  def testGetVariablesWithScope(self):
+    with self.test_session():
+      with tf.variable_scope('A') as var_scope:
+        a = tf.contrib.framework.variable('a', [5])
+        b = tf.contrib.framework.variable('b', [5])
+      self.assertSetEqual(set([a, b]),
+                          set(tf.contrib.framework.get_variables(var_scope)))
 
   def testGetVariablesSuffix(self):
     with self.test_session():
@@ -439,7 +448,7 @@ class ModelVariablesTest(tf.test.TestCase):
     with self.test_session():
       with tf.variable_scope('A'):
         a = tf.contrib.framework.model_variable('a', [5])
-        self.assertTrue(a in tf.all_variables())
+        self.assertTrue(a in tf.global_variables())
         self.assertTrue(a in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES))
         self.assertFalse(a in tf.local_variables())
 
@@ -473,8 +482,8 @@ class ModelVariablesTest(tf.test.TestCase):
   def testInitializedVariableValue(self):
     with self.test_session() as sess:
       a = tf.contrib.framework.model_variable(
-          'a', [5], initializer=tf.ones_initializer)
-      sess.run(tf.initialize_all_variables())
+          'a', [5], initializer=tf.ones_initializer())
+      sess.run(tf.global_variables_initializer())
       self.assertAllEqual(a.eval(), [1]*5)
 
   def testDeviceFn(self):
@@ -667,7 +676,7 @@ class AssignFromValuesTest(tf.test.TestCase):
           var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(assign_op, feed_dict)
@@ -697,7 +706,7 @@ class AssignFromValuesTest(tf.test.TestCase):
           var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(assign_op, feed_dict)
@@ -725,7 +734,7 @@ class AssignFromValuesFnTest(tf.test.TestCase):
       init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -754,7 +763,7 @@ class AssignFromValuesFnTest(tf.test.TestCase):
       init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -786,17 +795,19 @@ class AssignFromCheckpointTest(tf.test.TestCase):
         var_value = var_names_to_values[var_name]
         var_list.append(tf.Variable(var_value, name=var_name))
       saver = tf.train.Saver(var_list)
-      init_op = tf.initialize_variables(var_list)
+      init_op = tf.variables_initializer(var_list)
       sess.run(init_op)
       # Save the initialized values in the file at 'checkpoint_dir'
       return saver.save(sess, checkpoint_dir, global_step=global_step)
 
   def testLoadExistingVariables(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_existing_variables'))
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -808,7 +819,7 @@ class AssignFromCheckpointTest(tf.test.TestCase):
           model_path, vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(op, feed_dict)
@@ -818,11 +829,13 @@ class AssignFromCheckpointTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testRaisesValueErrorIfAVariableIsntFound(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'raises_value_error_if_var_isnt_found'))
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session():
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -836,13 +849,16 @@ class AssignFromCheckpointTest(tf.test.TestCase):
                                                               vars_to_restore)
 
   def testInitFromCheckpointWithScopes(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'init_from_checkpoint_with_scopes'))
+
     init_value0 = np.asarray([1.0, 3.0, 9.0],
                              dtype=np.float32).reshape((1, 3, 1))
     init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0],
                              dtype=np.float32).reshape((2, 1, 2))
 
     var_names_to_values = {'layer0/v0': init_value0, 'layer1/v1': init_value1}
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
+
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -859,7 +875,7 @@ class AssignFromCheckpointTest(tf.test.TestCase):
           vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       sess.run(op, feed_dict)
@@ -890,17 +906,21 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
         var_value = var_names_to_values[var_name]
         var_list.append(tf.Variable(var_value, name=var_name))
       saver = tf.train.Saver(var_list)
-      init_op = tf.initialize_variables(var_list)
+      init_op = tf.variables_initializer(var_list)
       sess.run(init_op)
       # Save the initialized values in the file at 'checkpoint_dir'
       return saver.save(sess, checkpoint_dir, global_step=global_step)
 
   def testLoadExistingVariables(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_existing_variables'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -912,7 +932,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           model_path, vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -922,11 +942,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testLoadExistingVariablesDifferentShapeDefaultDoesNotAllowReshape(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_existing_vars_no_reshape'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = [[10.0, 11.0]]
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -938,18 +962,23 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           model_path, vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       with self.assertRaises(tf.errors.InvalidArgumentError):
         init_fn(sess)
 
   def testLoadExistingVariablesDifferentShapeAllowReshape(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(),
+        'load_existing_variables_different_shape_allow_reshape'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = [[10.0, 11.0]]
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -961,7 +990,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           model_path, vars_to_restore, reshape_variables=True)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -971,11 +1000,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testNotFoundError(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'not_found_error'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -989,18 +1022,22 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           vars_to_restore)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       with self.assertRaises(tf.errors.NotFoundError):
         init_fn(sess)
 
   def testMissingVariablesList(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'missing_variables_list'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -1015,7 +1052,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           ignore_missing_vars=True)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)
@@ -1025,11 +1062,15 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value1, var1.eval())
 
   def testMissingVariablesDict(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'missing_variables_dict'))
+    if tf.gfile.Exists(model_dir):
+      tf.gfile.DeleteRecursively(model_dir)
+
     init_value0 = 10.0
     init_value1 = 20.0
     var_names_to_values = {'v0': init_value0, 'v1': init_value1}
 
-    model_dir = os.path.join(self.get_temp_dir(), 'model')
     with self.test_session() as sess:
       model_path = self.create_checkpoint_from_values(var_names_to_values,
                                                       model_dir)
@@ -1044,7 +1085,7 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
           ignore_missing_vars=True)
 
       # Initialize the variables.
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       # Perform the assignment.
       init_fn(sess)

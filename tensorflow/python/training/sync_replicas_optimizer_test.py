@@ -20,15 +20,14 @@ from __future__ import print_function
 
 import time
 
+import portpicker
 import tensorflow as tf
-
-from tensorflow.python.util import net_lib
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   """Create local GRPC servers and return them."""
-  worker_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_workers)]
-  ps_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_ps)]
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
       "worker": ["localhost:%s" % port for port in worker_ports],
       "ps": ["localhost:%s" % port for port in ps_ports]}
@@ -68,8 +67,8 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
         # This is to test against sparse gradients.
         grads_sparse = tf.IndexedSlices(
             tf.constant([0.1+worker_id*0.2], shape=[1, 1]),
-            tf.constant([1], dtype=tf.int64),
-            tf.constant([2, 1], dtype=tf.int64))
+            tf.constant([1]),
+            tf.constant([2, 1]))
         sgd_opt = tf.train.GradientDescentOptimizer(2.0)
         sync_rep_opt = tf.train.SyncReplicasOptimizerV2(
             sgd_opt, replicas_to_aggregate=replicas_to_aggregate,
@@ -78,7 +77,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
             zip([grads_0, grads_1, grads_sparse], [var_0, var_1, var_sparse]),
             global_step=global_step)]
 
-        init_op = tf.initialize_all_variables()
+        init_op = tf.global_variables_initializer()
         # Needed ops from the sync_rep optimizer. This is mainly for the
         # local_step initialization.
         local_init_op = sync_rep_opt.local_step_init_op

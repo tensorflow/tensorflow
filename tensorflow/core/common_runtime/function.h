@@ -26,13 +26,36 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Registers a default customizable kernel creator for a function call.
+//
+// If 'cb()' returns a non-OK, we still fall back to an executor-based
+// interpreter op kernel to execute a function. If 'cb()' returns OK,
+// takes ownership of the returned OpKernel.
+//
+// TODO(zhifengc/phawkins): b/32379046
+typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
+                             std::unique_ptr<OpKernel>*)>
+    CustomKernelCreator;
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
+
 // Creates a FunctionLibraryRuntime, which instantiates functions
 // defined in "lib_def" and executes functions on the "device".
-// "device_mgr" must contain the "device".
+// "device_mgr" must contain the "device". If not nullptr,
+// "custom_kernel_creator" is consulted by the returned runtime to
+// create kernels.
 //
 // The returned object does not take ownerships of "device" or
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
 // the returned object.
+FunctionLibraryRuntime* NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator);
+
+// Same as above except that the returned runtime consults with the
+// global default custom kernel creator registered by
+// RegisterDefaultCustomKernelCreator.
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,

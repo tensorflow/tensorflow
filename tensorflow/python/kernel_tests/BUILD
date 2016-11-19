@@ -12,6 +12,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "sycl_py_test")
 
 # CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
@@ -213,14 +214,14 @@ tf_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     srcs = ["matrix_triangular_solve_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "parameterized_truncated_normal_op_test",
     size = "small",
     srcs = ["parameterized_truncated_normal_op_test.py"],
@@ -256,10 +257,28 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "resource_variable_ops_test",
+    size = "small",
+    srcs = ["resource_variable_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "scatter_nd_ops_test",
+    size = "medium",
+    srcs = ["scatter_nd_ops_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    tags = ["noasan"],  # http://b/32635055
 )
 
 tf_py_test(
@@ -336,6 +355,13 @@ tf_py_test(
     name = "string_split_op_test",
     size = "small",
     srcs = ["string_split_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "substr_op_test",
+    size = "small",
+    srcs = ["substr_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -1264,7 +1290,19 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["notsan"],  # http://b/30445083
+)
+
+cuda_py_test(
+    name = "large_concat_op_test",
+    size = "small",
+    srcs = ["large_concat_op_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
 )
 
 cuda_py_test(
@@ -1322,6 +1360,14 @@ cuda_py_test(
     srcs = ["svd_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 20,
+    tags = ["nomsan"],  # fails in msan from numpy calls
+)
+
+sycl_py_test(
+    name = "basic_gpu_test",
+    size = "small",
+    srcs = ["basic_gpu_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
 filegroup(

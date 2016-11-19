@@ -83,6 +83,8 @@ class Uniform(distribution.Distribution):
     Raises:
       InvalidArgumentError: if `a >= b` and `validate_args=False`.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       with ops.control_dependencies([
           check_ops.assert_less(
@@ -91,15 +93,15 @@ class Uniform(distribution.Distribution):
         self._a = array_ops.identity(a, name="a")
         self._b = array_ops.identity(b, name="b")
         contrib_tensor_util.assert_same_float_dtype((self._a, self._b))
-        super(Uniform, self).__init__(
-            dtype=self._a.dtype,
-            parameters={"a": self._a,
-                        "b": self._b},
-            is_reparameterized=True,
-            is_continuous=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Uniform, self).__init__(
+        dtype=self._a.dtype,
+        is_reparameterized=True,
+        is_continuous=True,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._a, self._b],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):

@@ -254,6 +254,8 @@ TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
       EXPECT_EQ(2, shape.dim_size());
       EXPECT_EQ(2, shape.dim(0).size());
       EXPECT_EQ(1, shape.dim(1).size());
+      const DataType& dtype = node.output_info(0).dtype();
+      EXPECT_EQ(DT_FLOAT, dtype);
     }
     EXPECT_LE(0, node.compute_cost());
     EXPECT_GE(run_duration_micros, node.compute_cost());

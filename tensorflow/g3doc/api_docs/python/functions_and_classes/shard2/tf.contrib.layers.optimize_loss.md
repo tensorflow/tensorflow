@@ -21,9 +21,14 @@ Various ways of passing optimizers, include:
 ##### Args:
 
 
-*  <b>`loss`</b>: Tensor, 0 dimensional.
-*  <b>`global_step`</b>: Tensor, step counter for each update.
-*  <b>`learning_rate`</b>: float or Tensor, magnitude of update per each training step.
+*  <b>`loss`</b>: Scalar `Tensor`.
+*  <b>`global_step`</b>: Scalar int `Tensor`, step counter for each update. If not
+               supplied, it will be fetched from the default graph (see
+               `tf.contrib.framework.get_global_step` for details). If it's
+               not been created, no step will be incremented with each weight
+               update. `learning_rate_decay_fn` requires `global_step`.
+*  <b>`learning_rate`</b>: float or `Tensor`, magnitude of update per each training
+                 step. Can be `None`.
 *  <b>`optimizer`</b>: string, class or optimizer instance, used as trainer.
              string should be name of optimizer, like 'SGD',
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
@@ -37,12 +42,17 @@ Various ways of passing optimizers, include:
 *  <b>`gradient_multipliers`</b>: dict of variables or variable names to floats.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
-*  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
+*  <b>`clip_gradients`</b>: float, callable or `None`. If float, is provided, a global
+    clipping is applied to prevent the norm of the gradient to exceed this
+    value. Alternatively, a callable can be provided e.g.: adaptive_clipping.
+    This callable takes a `list` of `(gradients, variables)` `tuple`s and
+    returns the same thing with the gradients modified.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
                           For example: `tf.train.exponential_decay`.
+                          Ignored if `learning_rate` is not supplied.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
               uses elements of UPDATE_OPS collection. The order of execution
               between `update_ops` and `loss` is non-deterministic.
@@ -62,5 +72,12 @@ Various ways of passing optimizers, include:
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if optimizer is wrong type.
+*  <b>`ValueError`</b>: if:
+      * `loss` is an invalid type or shape.
+      * `global_step` is an invalid type or shape.
+      * `learning_rate` is an invalid type or value.
+      * `optimizer` is wrong type.
+      * `clip_gradients` is not float or callable.
+      * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
+        `global_step` is available.
 

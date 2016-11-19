@@ -18,14 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import numpy as np
 from scipy import special
 import tensorflow as tf
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import tensor_util
 
 
-class DistributionUtilTest(tf.test.TestCase):
+class AssertCloseTest(tf.test.TestCase):
 
   def testAssertCloseIntegerDtype(self):
     x = [1, 5, 10, 15, 20]
@@ -109,6 +111,9 @@ class DistributionUtilTest(tf.test.TestCase):
         with tf.control_dependencies([
             distribution_util.assert_integer_form(w)]):
           tf.identity(w).eval()
+
+
+class GetLogitsAndProbTest(tf.test.TestCase):
 
   def testGetLogitsAndProbImproperArguments(self):
     with self.test_session():
@@ -229,6 +234,9 @@ class DistributionUtilTest(tf.test.TestCase):
           p=p4, multidimensional=True, validate_args=False)
       prob.eval()
 
+
+class LogCombinationsTest(tf.test.TestCase):
+
   def testLogCombinationsBinomial(self):
     n = [2, 5, 12, 15]
     k = [1, 2, 4, 11]
@@ -251,6 +259,9 @@ class DistributionUtilTest(tf.test.TestCase):
       counts = [[[1., 1, 0, 0], [2., 2, 1, 0]], [[4., 4, 1, 3], [10, 1, 1, 4]]]
       log_binom = distribution_util.log_combinations(n, counts)
       self.assertEqual([2, 2], log_binom.get_shape())
+
+
+class RotateTransposeTest(tf.test.TestCase):
 
   def _np_rotate_transpose(self, x, shift):
     if not isinstance(x, np.ndarray):
@@ -283,7 +294,10 @@ class DistributionUtilTest(tf.test.TestCase):
               sess.run(distribution_util.rotate_transpose(x, shift),
                        feed_dict={x: x_value, shift: shift_value}))
 
-  def testChooseVector(self):
+
+class PickVectorTest(tf.test.TestCase):
+
+  def testCorrectlyPicksVector(self):
     with self.test_session():
       x = np.arange(10, 12)
       y = np.arange(15, 18)
@@ -299,6 +313,53 @@ class DistributionUtilTest(tf.test.TestCase):
       self.assertAllEqual(
           y, distribution_util.pick_vector(
               tf.constant(False), x, y))  # No eval.
+
+
+class FillLowerTriangularTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def _fill_lower_triangular(self, x):
+    """Numpy implementation of `fill_lower_triangular`."""
+    x = np.asarray(x)
+    d = x.shape[-1]
+    # d = n(n+1)/2 implies n is:
+    n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))
+    ids = np.tril_indices(n)
+    y = np.zeros(list(x.shape[:-1]) + [n, n], dtype=x.dtype)
+    y[..., ids[0], ids[1]] = x
+    return y
+
+  def testCorrectlyMakes1x1LowerTril(self):
+    with self.test_session():
+      x = tf.convert_to_tensor(self._rng.randn(3, 1))
+      expected = self._fill_lower_triangular(tensor_util.constant_value(x))
+      actual = distribution_util.fill_lower_triangular(x, validate_args=True)
+      self.assertAllEqual(expected.shape, actual.get_shape())
+      self.assertAllEqual(expected, actual.eval())
+
+  def testCorrectlyMakesNoBatchLowerTril(self):
+    with self.test_session():
+      x = tf.convert_to_tensor(self._rng.randn(10))
+      expected = self._fill_lower_triangular(tensor_util.constant_value(x))
+      actual = distribution_util.fill_lower_triangular(x, validate_args=True)
+      self.assertAllEqual(expected.shape, actual.get_shape())
+      self.assertAllEqual(expected, actual.eval())
+      g = tf.gradients(distribution_util.fill_lower_triangular(x), x)
+      self.assertAllEqual(np.tri(4).reshape(-1), g[0].values.eval())
+
+  def testCorrectlyMakesBatchLowerTril(self):
+    with self.test_session():
+      x = tf.convert_to_tensor(self._rng.randn(2, 2, 6))
+      expected = self._fill_lower_triangular(tensor_util.constant_value(x))
+      actual = distribution_util.fill_lower_triangular(x, validate_args=True)
+      self.assertAllEqual(expected.shape, actual.get_shape())
+      self.assertAllEqual(expected, actual.eval())
+      self.assertAllEqual(
+          np.ones((2, 2, 6)),
+          tf.gradients(distribution_util.fill_lower_triangular(
+              x), x)[0].eval())
 
 
 if __name__ == "__main__":

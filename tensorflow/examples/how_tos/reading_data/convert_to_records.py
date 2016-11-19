@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import os
+import sys
 
 import tensorflow as tf
 
@@ -45,6 +46,7 @@ def _bytes_feature(value):
 
 
 def convert_to(data_set, name):
+  """Converts a dataset to tfrecords."""
   images = data_set.images
   labels = data_set.labels
   num_examples = data_set.num_examples
@@ -71,7 +73,7 @@ def convert_to(data_set, name):
   writer.close()
 
 
-def main(argv):
+def main(unused_argv):
   # Get the data.
   data_sets = mnist.read_data_sets(FLAGS.directory,
                                    dtype=tf.uint8,
@@ -101,6 +103,5 @@ if __name__ == '__main__':
       set.\
       """
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

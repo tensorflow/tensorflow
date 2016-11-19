@@ -22,13 +22,12 @@ from __future__ import print_function
 ASSETS_DIRECTORY = "assets"
 ASSETS_KEY = "saved_model_assets"
 
+LEGACY_INIT_OP_KEY = "legacy_init_op"
+MAIN_OP_KEY = "saved_model_main_op"
+
 SAVED_MODEL_SCHEMA_VERSION = 1
 SAVED_MODEL_FILENAME_PB = "saved_model.pb"
 SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
 
-TAG_SERVING = "serve"
-TAG_TRAINING = "train"
-
 VARIABLES_DIRECTORY = "variables"
 VARIABLES_FILENAME = "variables"
-VARIABLES_FILENAME_SHARDED = VARIABLES_FILENAME + "-?????-of-?????"

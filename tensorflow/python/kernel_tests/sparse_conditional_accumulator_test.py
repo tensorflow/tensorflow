@@ -52,7 +52,6 @@ class IndexedSlicesConditionalAccumulatorTest(tf.test.TestCase):
     with tf.Graph().as_default():
       q = tf.SparseConditionalAccumulator(tf.float32, name="Q")
     self.assertTrue(isinstance(q.accumulator_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.accumulator_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'SparseConditionalAccumulator'
       attr { key: 'dtype' value { type: DT_FLOAT } }
@@ -66,7 +65,6 @@ class IndexedSlicesConditionalAccumulatorTest(tf.test.TestCase):
       q = tf.SparseConditionalAccumulator(
           tf.float32, name="Q", shape=tf.TensorShape([1, 5, 2, 8]))
     self.assertTrue(isinstance(q.accumulator_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.accumulator_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'SparseConditionalAccumulator'
       attr { key: 'dtype' value { type: DT_FLOAT } }
@@ -310,7 +308,7 @@ class IndexedSlicesConditionalAccumulatorTest(tf.test.TestCase):
       self._assertEqual_nparray([[0, elems_ave], [0, 0]], results[0], sess)
 
   def _blocking_takeg(self, sess, takeg_op):
-    with self.assertRaisesOpError("TakeGrad operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(takeg_op)
 
   def testAccumulatorCancel(self):

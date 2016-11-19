@@ -119,6 +119,11 @@ class PosixEnv : public Env {
     return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
                                                       symbol);
   }
+
+  string FormatLibraryFileName(const string& name,
+                               const string& version) override {
+    return tensorflow::internal::FormatLibraryFileName(name, version);
+  }
 };
 
 }  // namespace

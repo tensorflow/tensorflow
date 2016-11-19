@@ -20,6 +20,7 @@ import "C"
 
 import (
 	"errors"
+	"unsafe"
 )
 
 // Operation that has been added to the graph.
@@ -43,6 +44,21 @@ func (op *Operation) Type() string {
 // NumOutputs returns the number of outputs of op.
 func (op *Operation) NumOutputs() int {
 	return int(C.TF_OperationNumOutputs(op.c))
+}
+
+// OutputListSize returns the size of the list of Outputs that is produced by a
+// named output of op.
+//
+// An Operation has multiple named outputs, each of which produces either
+// a single tensor or a list of tensors. This method returns the size of
+// the list of tensors for a specific output of the operation, identified
+// by its name.
+func (op *Operation) OutputListSize(output string) (int, error) {
+	cname := C.CString(output)
+	defer C.free(unsafe.Pointer(cname))
+	status := newStatus()
+	n := C.TF_OperationOutputListLength(op.c, cname, status.c)
+	return int(n), status.Err()
 }
 
 // Output returns the i-th output of op.
@@ -94,8 +110,8 @@ func (p Output) Shape() (shape []int64, err error) {
 	return ret, nil
 }
 
-func (p Output) c() C.TF_Port {
-	return C.TF_Port{oper: p.Op.c, index: C.int(p.Index)}
+func (p Output) c() C.TF_Output {
+	return C.TF_Output{oper: p.Op.c, index: C.int(p.Index)}
 }
 
 func (p Output) canBeAnInput() {}

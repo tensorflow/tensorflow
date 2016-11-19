@@ -22,15 +22,15 @@
 TensorFlow provides a set of functions to help manage the set of variables
 collected in the graph.
 
-@@all_variables
-@@trainable_variables
+@@global_variables
 @@local_variables
 @@model_variables
+@@trainable_variables
 @@moving_average_variables
 
-@@initialize_all_variables
-@@initialize_variables
-@@initialize_local_variables
+@@global_variables_initializer
+@@local_variables_initializer
+@@variables_initializer
 @@is_variable_initialized
 @@report_uninitialized_variables
 @@assert_variables_initialized
@@ -69,6 +69,7 @@ create variables contingent on certain conditions.
 @@uniform_unit_scaling_initializer
 @@zeros_initializer
 @@ones_initializer
+@@orthogonal_initializer
 
 ## Variable Partitioners for Sharding
 
@@ -95,6 +96,9 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@scatter_mul
 @@scatter_div
+@@scatter_nd_update
+@@scatter_nd_add
+@@scatter_nd_sub
 @@sparse_mask
 @@IndexedSlices
 
@@ -108,14 +112,21 @@ automatically by the optimizers in most cases.
 @@export_meta_graph
 @@import_meta_graph
 
+# Deprecated functions (removed after 2017-03-02). Please don't use them.
+
+@@all_variables
+@@initialize_all_variables
+@@initialize_local_variables
+@@initialize_variables
+
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -146,6 +157,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   Returns:
     A variable tensor.
   """
+  if not set_shape:
+    shape = tensor_shape.unknown_shape()
   ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
                                 container=container, shared_name=shared_name)
   # TODO(mrry): Move this to where it is used, so we can get rid of this op
@@ -153,13 +166,6 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   if set_shape:
     ret.set_shape(shape)
   return ret
-
-
-# NOTE(mrry): Shapes are conditionally set in the Python wrapper.
-ops.RegisterShape("Variable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IsVariableInitialized")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TemporaryVariable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DestroyTemporaryVariable")(common_shapes.call_cpp_shape_fn)
 
 
 def init_variable(v, init, name="init"):
@@ -195,14 +201,3 @@ def init_variable(v, init, name="init"):
         else:
           init = ops.convert_to_tensor(init, name="init")
           return gen_state_ops.assign(v, init, name=scope)
-
-
-ops.RegisterShape("Assign")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CountUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterMul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterUpdate")(common_shapes.call_cpp_shape_fn)

@@ -188,12 +188,13 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(z, np.log, tf.log)
+    self._compareBoth(z, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(y, np.sign, tf.sign)
@@ -230,12 +231,13 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(x, self._inv, tf.inv)
+    self._compareBoth(x, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(x, np.sqrt, tf.sqrt)
     self._compareBoth(x, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(x, np.log, tf.log)
+    self._compareBoth(x, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(x, np.sign, tf.sign)
@@ -267,12 +269,13 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(z, np.log, tf.log)
+    self._compareBoth(z, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(y, np.sign, tf.sign)
@@ -305,12 +308,13 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareBoth(y, self._inv, tf.inv)
+    self._compareBoth(y, self._inv, tf.reciprocal)
     self._compareBoth(x, np.square, tf.square)
     self._compareBoth(z, np.sqrt, tf.sqrt)
     self._compareBoth(z, self._rsqrt, tf.rsqrt)
     self._compareBoth(x, np.exp, tf.exp)
     self._compareBoth(z, np.log, tf.log)
+    self._compareBoth(z, np.log1p, tf.log1p)
     self._compareBoth(x, np.tanh, tf.tanh)
     self._compareBoth(x, self._sigmoid, tf.sigmoid)
     self._compareBoth(y, np.sign, tf.sign)
@@ -368,12 +372,13 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(y, self._inv, tf.reciprocal)
     self._compareCpu(x, np.square, tf.square)
     self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
     self._compareCpu(x, np.exp, tf.exp)
     self._compareCpu(y, np.log, tf.log)
+    self._compareCpu(y, np.log1p, tf.log1p)
     self._compareCpu(x, np.tanh, tf.tanh)
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
@@ -399,12 +404,13 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(y, self._inv, tf.reciprocal)
     self._compareCpu(x, np.square, tf.square)
     self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
     self._compareCpu(x, np.exp, tf.exp)
     self._compareCpu(y, np.log, tf.log)
+    self._compareCpu(y, np.log1p, tf.log1p)
     self._compareCpu(x, np.tanh, tf.tanh)
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
@@ -427,7 +433,7 @@ class UnaryOpTest(tf.test.TestCase):
     shape = (5,)
     dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
-    op_range = [(gen_math_ops._inv_grad, [-2, 2]),
+    op_range = [(gen_math_ops._reciprocal_grad, [-2, 2]),
                 (gen_math_ops._rsqrt_grad, [0.1, 3]),
                 (gen_math_ops._sigmoid_grad, [-2, 2]),
                 (gen_math_ops._sqrt_grad, [0.1, 3]),
@@ -473,7 +479,7 @@ class BinaryOpTest(tf.test.TestCase):
       if also_compare_variables:
         var_x = tf.Variable(x)
         var_y = tf.Variable(y)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         print(type(x), type(y), type(var_x), type(var_y))
         print(type(tf_func(x, var_y)), type(tf_func(var_x, y)))
         np_var_left = tf_func(x, var_y).eval()
@@ -1356,6 +1362,18 @@ class SelectOpTest(tf.test.TestCase):
     elif x.dtype == np.float64:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
+  def testScalar(self):
+    c = True
+    x = np.random.rand(1, 3, 2) * 100
+    y = np.random.rand(1, 3, 2) * 100
+    for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
+              np.complex64, np.complex128]:
+      xt = x.astype(t)
+      yt = y.astype(t)
+      self._compare(c, xt, yt, use_gpu=False)
+      if t in [np.float16, np.float32, np.float64]:
+        self._compare(c, xt, yt, use_gpu=True)
+
   def testBasic(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100
@@ -1738,12 +1756,39 @@ class IsFiniteInfNanTest(tf.test.TestCase):
   def testDouble(self):
     self._testDtype(np.float64)
 
+  def testSqrt(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      fi = np.finfo(dtype)
+      for size in [1, 3, 4, 7, 8, 63, 64, 65]:
+        # For float32 Eigen uses Carmack's fast vectorized sqrt algorithm.
+        # It is not accurate for very large arguments, so we test for
+        # fi.max/100 instead of fi.max here.
+        for value in [fi.min, -2, -1, 0, fi.tiny, 1, 2, 1000, fi.max/100]:
+          x = np.full((size,), value, dtype=dtype)
+          np_y = np.sqrt(x)
+          np_nan = np.isnan(np_y)
+          with self.test_session(use_gpu=True):
+            tf_y = tf.sqrt(x)
+            tf_nan = tf.is_nan(tf_y)
+            if value < 0:
+              self.assertAllEqual(np_nan, tf_nan.eval())
+            else:
+              self.assertAllCloseAccordingToType(np_y, tf_y.eval())
+
 
 class RoundingTest(tf.test.TestCase):
 
-  def _compare(self, x, use_gpu):
+  def _compare_values(self, x, y=None):
+    y = np.rint(x) if y is None else np.asarray(y)
+    with self.test_session() as sess:
+      tf_rint = tf.rint(x)
+      np_rint = sess.run(tf_rint)
+    self.assertAllEqual(y, np_rint)
+    self.assertShapeEqual(y, tf_rint)
+
+  def _compare(self, x):
     np_floor, np_ceil = np.floor(x), np.ceil(x)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session() as sess:
       inx = tf.convert_to_tensor(x)
       ofloor, oceil = tf.floor(inx), tf.ceil(inx)
       tf_floor, tf_ceil = sess.run([ofloor, oceil])
@@ -1753,9 +1798,20 @@ class RoundingTest(tf.test.TestCase):
     self.assertShapeEqual(np_ceil, oceil)
 
   def _testDtype(self, dtype):
-    data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)
-    self._compare(data, use_gpu=True)
-    self._compare(data, use_gpu=True)
+    data = (np.arange(-3, 3) / 4.).reshape(1, 3, 2).astype(dtype)
+    self._compare(data)
+    # TODO: rint op is not supported for float16
+    if dtype is np.float16:
+      return
+    self._compare_values(data)
+    x = [0.5, 0.5000001]
+    y = [0.0, 1.0]
+    self._compare_values(x, y=y)
+
+    # numpy example
+    x = [-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]
+    y = [-2., -2., -0.,  0.,  2.,  2.,  2.]
+    self._compare_values(x, y=y)
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64]:

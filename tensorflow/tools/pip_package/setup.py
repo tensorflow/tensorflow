@@ -26,13 +26,20 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.11.0rc0'
+_VERSION = '0.11.0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
     'protobuf == 3.1.0',
 ]
+
+project_name = 'tensorflow'
+if '--project_name' in sys.argv:
+  project_name_idx = sys.argv.index('--project_name')
+  project_name = sys.argv[project_name_idx + 1]
+  sys.argv.remove('--project_name')
+  sys.argv.pop(project_name_idx)
 
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
@@ -53,8 +60,8 @@ TEST_PACKAGES = [
 ]
 
 class BinaryDistribution(Distribution):
-  def is_pure(self):
-    return False
+  def has_ext_modules(self):
+    return True
 
 
 class InstallCommand(InstallCommandBase):
@@ -141,6 +148,10 @@ def find_files(pattern, root):
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 
+if os.name == 'nt':
+  EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
+else:
+  EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'google/protobuf/src')) +
@@ -149,7 +160,7 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
 
 
 setup(
-    name='tensorflow',
+    name=project_name,
     version=_VERSION,
     description='TensorFlow helps the tensors flow',
     long_description='',
@@ -167,7 +178,7 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': ['python/_pywrap_tensorflow.so',
+        'tensorflow': [EXTENSION_NAME,
                        'tensorboard/dist/bazel-html-imports.html',
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',

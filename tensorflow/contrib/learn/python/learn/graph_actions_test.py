@@ -26,9 +26,10 @@ import tensorflow as tf
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 
 
@@ -100,10 +101,9 @@ class GraphActionsTest(tf.test.TestCase):
     learn.graph_actions.clear_summary_writers()
 
   def _assert_summaries(
-      self, output_dir, expected_summaries=None, expected_graphs=None,
+      self, output_dir, writer, expected_summaries=None, expected_graphs=None,
       expected_meta_graphs=None,
       expected_session_logs=None):
-    writer = learn.graph_actions.get_summary_writer(output_dir)
     self.assertTrue(isinstance(writer, testing.FakeSummaryWriter))
     writer.assert_summaries(
         self, expected_logdir=output_dir, expected_graph=tf.get_default_graph(),
@@ -128,7 +128,8 @@ class GraphActionsTest(tf.test.TestCase):
 
   # TODO(ptucker): Test lock, multi-threaded access?
   def test_summary_writer(self):
-    self._assert_summaries('log/dir/0')
+    writer = learn.graph_actions.get_summary_writer('log/dir/0')
+    self._assert_summaries('log/dir/0', writer)
     self.assertTrue(
         learn.graph_actions.get_summary_writer('log/dir/0') is
         learn.graph_actions.get_summary_writer('log/dir/0'))
@@ -195,6 +196,19 @@ class GraphActionsTest(tf.test.TestCase):
         pass
       self.assertTrue(request_stop.called)
 
+  def test_run_feeds_iter_calls_resources_init(self):
+    with tf.Graph().as_default() as g:
+      in0, _, _ = self._build_inference_graph()
+      handle = test_ops.stub_resource_handle_op(container='a', shared_name='b')
+      resources.register_resource(
+          handle=handle,
+          create_op=test_ops.resource_create_op(handle),
+          is_initialized_op=test_ops.resource_initialized_op(handle))
+
+      for _ in learn.graph_actions.run_feeds_iter({'in0': in0},
+                                                  feed_dicts=[{}]):
+        self.assertTrue(test_ops.resource_initialized_op(handle).eval())
+
   def test_infer_different_default_graph(self):
     with self.test_session():
       self._assert_ckpt(self._output_dir, False)
@@ -241,21 +255,23 @@ class GraphActionsTest(tf.test.TestCase):
   def test_evaluate(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, max_steps=1)
       self.assertEqual(({'a': 6.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 6.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
       feeder = _Feeder(in0, 3)
       results = learn.graph_actions.evaluate(
@@ -264,14 +280,15 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(3, feeder.step)
       self.assertEqual(({'a': 25.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 25.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 25.0}},
           expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn_with_exhaustion(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       feeder = _Feeder(in0, 2)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
@@ -279,21 +296,21 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(2, feeder.step)
       self.assertEqual(({'a': 15.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 15.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 15.0}},
           expected_session_logs=[])
 
   def test_evaluate_with_saver(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
       tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
-
-      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, max_steps=1)
       self.assertEqual(({'a': 6.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 6.0}},
+          self._output_dir, writer, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
 
   def test_train_invalid_args(self):
@@ -339,7 +356,8 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      self._assert_summaries(self._output_dir)
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
@@ -349,7 +367,7 @@ class GraphActionsTest(tf.test.TestCase):
           steps=1)
       meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(2.0, loss)
-      self._assert_summaries(self._output_dir, expected_graphs=[g],
+      self._assert_summaries(self._output_dir, writer, expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def])
       self._assert_ckpt(self._output_dir, True)
 
@@ -363,7 +381,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -376,7 +394,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(25, step)
 
@@ -390,7 +408,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -403,7 +421,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(15, step)
 
@@ -417,7 +435,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -430,7 +448,7 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -441,7 +459,8 @@ class GraphActionsTest(tf.test.TestCase):
       train_op = tf.group(
           tf.assign_add(tf.contrib.framework.get_global_step(), 1),
           tf.assign_add(loss_var, -1.0))
-      self._assert_summaries(self._output_dir)
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
@@ -451,7 +470,7 @@ class GraphActionsTest(tf.test.TestCase):
           steps=6)
       meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(4.0, loss)
-      self._assert_summaries(self._output_dir, expected_graphs=[g],
+      self._assert_summaries(self._output_dir, writer, expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def])
       self._assert_ckpt(self._output_dir, True)
 
@@ -460,8 +479,9 @@ class GraphActionsTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
-      self._assert_summaries(self._output_dir)
+      tf.summary.scalar('loss', loss_op)
+      writer = learn.graph_actions.get_summary_writer(self._output_dir)
+      self._assert_summaries(self._output_dir, writer)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
@@ -471,7 +491,7 @@ class GraphActionsTest(tf.test.TestCase):
           steps=1)
       meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(2.0, loss)
-      self._assert_summaries(self._output_dir,
+      self._assert_summaries(self._output_dir, writer,
                              expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def],
                              expected_summaries={1: {'loss': 2.0}})
@@ -612,7 +632,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -622,7 +642,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(25, step)
 
@@ -633,7 +653,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 max_steps=10)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(10, step)
 
@@ -643,7 +663,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       learn.graph_actions.train(g, output_dir=self._output_dir,
                                 train_op=train_op, loss_op=tf.constant(2.0),
                                 max_steps=15)
-      step = checkpoints.load_variable(
+      step = tf.contrib.framework.load_variable(
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(15, step)
 
@@ -671,7 +691,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       self._assert_summaries(self._output_dir)
       self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions.train(
@@ -692,7 +712,7 @@ class GraphActionsTrainTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       chief_exclusive_monitor = _BaseMonitorWrapper(False)
       all_workers_monitor = _BaseMonitorWrapper(True)
       loss = learn.graph_actions.train(
@@ -714,10 +734,10 @@ class GraphActionsTrainTest(tf.test.TestCase):
       global_step = tf.contrib.framework.create_global_step(g)
       train_op = tf.assign_add(global_step, 1)
       loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
+      tf.summary.scalar('loss', loss_op)
       # Add explicit "local" init op to initialize all variables
       # as there's no chief to init here.
-      init_op = variables.initialize_all_variables()
+      init_op = variables.global_variables_initializer()
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, init_op)
       # Create worker monitors where one should be active on the worker
       # and the other chief exclusive.

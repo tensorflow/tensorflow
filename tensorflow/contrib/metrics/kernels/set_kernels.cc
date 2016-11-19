@@ -611,7 +611,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
     int64 compare_groups;
     CompareGroups(ctx, set1_group_indices, set2_group_indices, &compare_groups);
-    const std::vector<int64>* group_indices;
+    const std::vector<int64>* group_indices = nullptr;
 
     // Get values from set1, if applicable.
     set1_group_set.clear();

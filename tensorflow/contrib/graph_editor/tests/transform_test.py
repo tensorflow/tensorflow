@@ -131,7 +131,7 @@ class TransformTest(tf.test.TestCase):
     a_new = tf.constant(2.0, name="a_new")
     c_new = ge.graph_replace(c, {a: a_new})
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       c_val, c_new_val = sess.run([c, c_new])
     self.assertNear(c_val, 2.001, ERROR_TOLERANCE)
     self.assertNear(c_new_val, 3.001, ERROR_TOLERANCE)
@@ -146,7 +146,7 @@ class TransformTest(tf.test.TestCase):
     c_new = ge.graph_replace({"c": c}, {a: a_new})
     self.assertTrue(isinstance(c_new, dict))
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       c_val, c_new_val = sess.run([c, c_new])
     self.assertTrue(isinstance(c_new_val, dict))
     self.assertNear(c_val, 2.001, ERROR_TOLERANCE)

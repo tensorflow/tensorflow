@@ -20,10 +20,12 @@ from __future__ import print_function
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 class Variable(object):
@@ -80,16 +82,16 @@ class Variable(object):
   ```
 
   The most common initialization pattern is to use the convenience function
-  `initialize_all_variables()` to add an Op to the graph that initializes
+  `global_variable_initializers()` to add an Op to the graph that initializes
   all the variables. You then run that Op after launching the graph.
 
   ```python
-  # Add an Op to initialize all variables.
-  init_op = tf.initialize_all_variables()
+  # Add an Op to initialize global variables.
+  init_op = tf.global_variable_initializers()
 
   # Launch the graph in a session.
   with tf.Session() as sess:
-      # Run the Op that initializes all variables.
+      # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
   ```
@@ -100,8 +102,8 @@ class Variable(object):
 
   All variables are automatically collected in the graph where they are
   created. By default, the constructor adds the new variable to the graph
-  collection `GraphKeys.VARIABLES`. The convenience function
-  `all_variables()` returns the contents of that collection.
+  collection `GraphKeys.GLOBAL_VARIABLES`. The convenience function
+  `global_variables()` returns the contents of that collection.
 
   When building a machine learning model it is often convenient to distinguish
   between variables holding the trainable model parameters and other variables
@@ -152,11 +154,12 @@ class Variable(object):
                name=None,
                variable_def=None,
                dtype=None,
-               expected_shape=None):
+               expected_shape=None,
+               import_scope=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
-    which defaults to `[GraphKeys.VARIABLES]`.
+    which defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 
     If `trainable` is `True` the variable is also added to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES`.
@@ -175,7 +178,7 @@ class Variable(object):
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
       collections: List of graph collections keys. The new variable is added to
-        these collections. Defaults to `[GraphKeys.VARIABLES]`.
+        these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -194,6 +197,8 @@ class Variable(object):
         a Tensor), or `convert_to_tensor` will decide.
       expected_shape: A TensorShape. If set, initial_value is expected
         to have this shape.
+      import_scope: Optional `string`. Name scope to add to the
+        `Variable.` Only used when initializing from protocol buffer.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -205,7 +210,7 @@ class Variable(object):
       if initial_value:
         raise ValueError("variable_def and initial_value are mutually "
                          "exclusive.")
-      self._init_from_proto(variable_def)
+      self._init_from_proto(variable_def, import_scope=import_scope)
     else:
       # Create from initial_value.
       self._init_from_args(
@@ -217,6 +222,9 @@ class Variable(object):
           name=name,
           dtype=dtype,
           expected_shape=expected_shape)
+
+  def __str__(self):
+    return str(self._snapshot)
 
   def _init_from_args(self,
                       initial_value=None,
@@ -240,7 +248,7 @@ class Variable(object):
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
       collections: List of graph collections keys. The new variable is added to
-        these collections. Defaults to `[GraphKeys.VARIABLES]`.
+        these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -270,13 +278,14 @@ class Variable(object):
           "dtype must also be specified when initial_value is callable.")
 
     if collections is None:
-      collections = [ops.GraphKeys.VARIABLES]
+      collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if not isinstance(collections, (list, tuple, set)):
       raise ValueError(
           "collections argument to Variable constructor must be a list, tuple, "
           "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
+    expected_shape = tensor_shape.as_shape(expected_shape)
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
@@ -284,6 +293,13 @@ class Variable(object):
         # Get the initial value from a callable function. The real shape of the
         # variable will be set later, since under the init_from_fn case, the
         # shape won't be known until after the function is invoked.
+        #
+        # NOTE: The current Variable OpKernel does not support
+        # partially defined shapes, so we only set the shape if it is
+        # fully defined. For historical reasons, we use the scalar
+        # shape (`[]`) to represent an unknown or partially known
+        # shape. A future version of the Variable ops will remove this
+        # limitation.
         def full_shape_to_list(shape):
           """Returns shape as a list if shape is fully defined."""
           if shape and shape.is_fully_defined():
@@ -299,8 +315,10 @@ class Variable(object):
 
         if init_from_fn:
           expected_shape_list = full_shape_to_list(expected_shape)
+          set_shape = validate_shape and expected_shape.is_fully_defined()
           self._variable = state_ops.variable_op(
-              expected_shape_list, dtype.base_dtype, set_shape=False, name=name)
+              expected_shape_list, dtype.base_dtype, set_shape=set_shape,
+              name=name)
           with ops.colocate_with(self._variable.op):
             with ops.name_scope("Initializer"):
               # Colocate the tensors created by the initial_value() function
@@ -314,12 +332,14 @@ class Variable(object):
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
           assert_expected_shape()
+          set_shape = (validate_shape
+                       and self._initial_value.get_shape().is_fully_defined())
           # In this case, the variable op can't be created until after the
           # initial_value has been converted to a Tensor with a known type.
           self._variable = state_ops.variable_op(
               full_shape_to_list(self._initial_value.get_shape()),
               self._initial_value.dtype.base_dtype,
-              set_shape=False,
+              set_shape=set_shape,
               name=name)
 
         # Manually overrides the variable's shape with the initial value's.
@@ -353,18 +373,25 @@ class Variable(object):
     self._caching_device = caching_device
     self._save_slice_info = None
 
-  def _init_from_proto(self, variable_def):
+  def _init_from_proto(self, variable_def, import_scope=None):
     """Creates a new variable from `VariableDef` protocol buffer.
 
     Args:
       variable_def: `VariableDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(variable_def, variable_pb2.VariableDef)
     # Create from variable_def.
     g = ops.get_default_graph()
-    self._variable = g.as_graph_element(variable_def.variable_name)
-    self._initializer_op = g.as_graph_element(variable_def.initializer_name)
-    self._snapshot = g.as_graph_element(variable_def.snapshot_name)
+    self._variable = g.as_graph_element(
+        ops.prepend_name_scope(variable_def.variable_name,
+                               import_scope=import_scope))
+    self._initializer_op = g.as_graph_element(
+        ops.prepend_name_scope(variable_def.initializer_name,
+                               import_scope=import_scope))
+    self._snapshot = g.as_graph_element(
+        ops.prepend_name_scope(variable_def.snapshot_name,
+                               import_scope=import_scope))
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = Variable.SaveSliceInfo(
           save_slice_info_def=variable_def.save_slice_info_def)
@@ -376,7 +403,7 @@ class Variable(object):
     """Conversion function for Graph.as_graph_element()."""
     return self._variable
 
-  def _AsTensor(self):
+  def _AsTensor(self):  # pylint: disable=invalid-name
     """Converts this variable to a Tensor.
 
     See [`value()`](#Variable.value).
@@ -419,7 +446,18 @@ class Variable(object):
     """
     return self._snapshot
 
-  def ref(self):
+  def read_value(self):
+    """Returns the value of this variable, read in the current context.
+
+    Can be different from value() if it's on another device, with control
+    dependencies, etc.
+
+    Returns:
+      A `Tensor` containing the value of the variable.
+    """
+    return array_ops.identity(self._variable, name="read")
+
+  def _ref(self):
     """Returns a reference to this variable.
 
     You usually do not need to call this method as all ops that need a reference
@@ -435,6 +473,15 @@ class Variable(object):
     """
     return self._variable
 
+  def set_shape(self, shape):
+    """Overrides the shape for this variable.
+
+    Args:
+      shape: the `TensorShape` representing the overridden shape.
+    """
+    self._ref().set_shape(shape)
+    self.value().set_shape(shape)
+
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
 
@@ -447,7 +494,7 @@ class Variable(object):
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.initialize_all_variables()
+    init = tf.global_variable_initializers()
 
     with tf.Session() as sess:
         sess.run(init)
@@ -606,7 +653,7 @@ class Variable(object):
 
   # Conversion to tensor.
   @staticmethod
-  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
+  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):  # pylint: disable=invalid-name
     """Utility function for converting a Variable to a Tensor."""
     _ = name
     if dtype and not dtype.is_compatible_with(v.dtype):
@@ -614,12 +661,12 @@ class Variable(object):
           "Incompatible type conversion requested to type '%s' for variable "
           "of type '%s'" % (dtype.name, v.dtype.name))
     if as_ref:
-      return v.ref()
+      return v._ref()  # pylint: disable=protected-access
     else:
       return v.value()
 
   @staticmethod
-  def _OverloadAllOperators():
+  def _OverloadAllOperators():  # pylint: disable=invalid-name
     """Register overloads for all operators."""
     for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
       Variable._OverloadOperator(operator)
@@ -629,7 +676,7 @@ class Variable(object):
     setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
 
   @staticmethod
-  def _OverloadOperator(operator):
+  def _OverloadOperator(operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
 
     We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
@@ -696,24 +743,37 @@ class Variable(object):
     """
     return self._variable.get_shape()
 
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
 
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
+
     Returns:
-      A `VariableDef` protocol buffer.
+      A `VariableDef` protocol buffer, or `None` if the `Variable` is not
+      in the specified name scope.
     """
-    var_def = variable_pb2.VariableDef()
-    var_def.variable_name = self._variable.name
-    var_def.initializer_name = self.initializer.name
-    var_def.snapshot_name = self._snapshot.name
-    if self._save_slice_info:
-      var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto())
-    return var_def
+    if (export_scope is None or
+        self._variable.name.startswith(export_scope)):
+      var_def = variable_pb2.VariableDef()
+      var_def.variable_name = ops.strip_name_scope(
+          self._variable.name, export_scope)
+      var_def.initializer_name = ops.strip_name_scope(
+          self.initializer.name, export_scope)
+      var_def.snapshot_name = ops.strip_name_scope(
+          self._snapshot.name, export_scope)
+      if self._save_slice_info:
+        var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto(
+            export_scope=export_scope))
+      return var_def
+    else:
+      return None
 
   @staticmethod
-  def from_proto(variable_def):
+  def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return Variable(variable_def=variable_def)
+    return Variable(variable_def=variable_def,
+                    import_scope=import_scope)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
@@ -734,7 +794,8 @@ class Variable(object):
                  full_shape=None,
                  var_offset=None,
                  var_shape=None,
-                 save_slice_info_def=None):
+                 save_slice_info_def=None,
+                 import_scope=None):
       """Create a `SaveSliceInfo`.
 
       Args:
@@ -748,10 +809,13 @@ class Variable(object):
           recreates the SaveSliceInfo object its contents.
           `save_slice_info_def` and other arguments are mutually
           exclusive.
+        import_scope: Optional `string`. Name scope to add. Only used
+          when initializing from protocol buffer.
       """
       if save_slice_info_def:
         assert isinstance(save_slice_info_def, variable_pb2.SaveSliceInfoDef)
-        self.full_name = save_slice_info_def.full_name
+        self.full_name = ops.prepend_name_scope(
+            save_slice_info_def.full_name, import_scope=import_scope)
         self.full_shape = [i for i in save_slice_info_def.full_shape]
         self.var_offset = [i for i in save_slice_info_def.var_offset]
         self.var_shape = [i for i in save_slice_info_def.var_shape]
@@ -770,17 +834,30 @@ class Variable(object):
       ])
       return full_shape_str + sl_spec
 
-    def to_proto(self):
-      """Returns a SaveSliceInfoDef() proto."""
-      save_slice_info_def = variable_pb2.SaveSliceInfoDef()
-      save_slice_info_def.full_name = self.full_name
-      for i in self.full_shape:
-        save_slice_info_def.full_shape.append(i)
-      for i in self.var_offset:
-        save_slice_info_def.var_offset.append(i)
-      for i in self.var_shape:
-        save_slice_info_def.var_shape.append(i)
-      return save_slice_info_def
+    def to_proto(self, export_scope=None):
+      """Returns a SaveSliceInfoDef() proto.
+
+      Args:
+        export_scope: Optional `string`. Name scope to remove.
+
+      Returns:
+        A `SaveSliceInfoDef` protocol buffer, or None if the `Variable` is not
+        in the specified name scope.
+      """
+      if (export_scope is None or
+          self.full_name.startswith(export_scope)):
+        save_slice_info_def = variable_pb2.SaveSliceInfoDef()
+        save_slice_info_def.full_name = ops.strip_name_scope(
+            self.full_name, export_scope)
+        for i in self.full_shape:
+          save_slice_info_def.full_shape.append(i)
+        for i in self.var_offset:
+          save_slice_info_def.var_offset.append(i)
+        for i in self.var_shape:
+          save_slice_info_def.var_shape.append(i)
+        return save_slice_info_def
+      else:
+        return None
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `Variable`.
@@ -936,16 +1013,12 @@ class PartitionedVariable(object):
     Returns:
       `Tensor` containing the concatenated value.
     """
-    if self._as_tensor is None:
-      # Be sure to cache the concatenated tensor to not do extraneous
-      # computations.
-      with ops.control_dependencies(None):
-        self._as_tensor = self._concat()
-
-    return self._as_tensor
+    with ops.control_dependencies(None):
+      return self._concat()
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
+    # pylint: disable=invalid-name
     _ = name
     if dtype is not None and not dtype.is_compatible_with(v.dtype):
       raise ValueError(
@@ -980,17 +1053,28 @@ class PartitionedVariable(object):
         "assign() has not been implemented for PartitionedVariable.")
 
 
-def all_variables():
-  """Returns all variables that must be saved/restored.
+def global_variables():
+  """Returns global variables.
 
-  The `Variable()` constructor automatically adds new variables to the graph
-  collection `GraphKeys.VARIABLES`. This convenience function returns the
-  contents of that collection.
+  Global variables are variables that are shared across machines in a
+  distributed environment. The `Variable()` constructor or `get_variable()`
+  automatically adds new variables to the graph collection
+  `GraphKeys.GLOBAL_VARIABLES`.
+  This convenience function returns the contents of that collection.
+
+  An alternative to global variables are local variables. See
+  [`tf.local_variables()`](../../api_docs/python/state_ops.md#local_variables)
 
   Returns:
     A list of `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.VARIABLES)
+  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+
+
+@deprecated("2016-03-02", "Please use tf.global_variables instead.")
+def all_variables():
+  """See `tf.global_variables`."""
+  return global_variables()
 
 
 def _all_saveable_objects():
@@ -1000,8 +1084,37 @@ def _all_saveable_objects():
     A list of `Variable` and `SaveableObject` to be checkpointed
   """
   # TODO(andreasst): make this function public once things are settled.
-  return ops.get_collection(ops.GraphKeys.VARIABLES) + ops.get_collection(
-      ops.GraphKeys.SAVEABLE_OBJECTS)
+  return (ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
+          ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
+
+
+def local_variables():
+  """Returns local variables.
+
+  Local variables - per process variables, usually not saved/restored to
+  checkpoint and used for temporary or intermediate values.
+  For example, they can be used as counters for metrics computation or
+  number of epochs this machine has read data.
+  The `local_variable()` automatically adds new variable to
+  `GraphKeys.LOCAL_VARIABLES`.
+  This convenience function returns the contents of that collection.
+
+  An alternative to local variables are global variables. See
+  [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
+
+  Returns:
+    A list of local `Variable` objects.
+  """
+  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
+
+def model_variables():
+  """Returns all variables in the MODEL_VARIABLES collection.
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
 
 
 def trainable_variables():
@@ -1018,24 +1131,6 @@ def trainable_variables():
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
 
-def local_variables():
-  """Returns all variables created with collection=[LOCAL_VARIABLES].
-
-  Returns:
-    A list of local Variable objects.
-  """
-  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
-
-
-def model_variables():
-  """Returns all variables in the MODEL_VARIABLES collection.
-
-  Returns:
-    A list of local Variable objects.
-  """
-  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
-
-
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.
 
@@ -1050,7 +1145,7 @@ def moving_average_variables():
   return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES)
 
 
-def initialize_variables(var_list, name="init"):
+def variables_initializer(var_list, name="init"):
   """Returns an Op that initializes a list of variables.
 
   After you launch the graph in a session, you can run the returned Op to
@@ -1075,26 +1170,44 @@ def initialize_variables(var_list, name="init"):
   return control_flow_ops.no_op(name=name)
 
 
-def initialize_all_variables():
-  """Returns an Op that initializes all variables.
+@deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
+def initialize_variables(var_list, name="init"):
+  """See `tf.variables_initializer`."""
+  return variables_initializer(var_list, name=name)
 
-  This is just a shortcut for `initialize_variables(all_variables())`
+
+def global_variables_initializer():
+  """Returns an Op that initializes global variables.
+
+  This is just a shortcut for `variable_initializers(global_variables())`
 
   Returns:
-    An Op that initializes all variables in the graph.
+    An Op that initializes global variables in the graph.
   """
-  return initialize_variables(all_variables())
+  return variables_initializer(global_variables())
 
 
-def initialize_local_variables():
+@deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
+def initialize_all_variables():
+  """See `tf.global_variables_initializer`."""
+  return global_variables_initializer()
+
+
+def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
-  This is just a shortcut for `initialize_variables(local_variables())`
+  This is just a shortcut for `variable_initializers(local_variables())`
 
   Returns:
     An Op that initializes all local variables in the graph.
   """
-  return initialize_variables(local_variables())
+  return variables_initializer(local_variables())
+
+
+@deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
+def initialize_local_variables():
+  """See `tf.local_variables_initializer`."""
+  return local_variables_initializer()
 
 
 def is_variable_initialized(variable):
@@ -1125,13 +1238,13 @@ def assert_variables_initialized(var_list=None):
 
   Args:
     var_list: List of `Variable` objects to check. Defaults to the
-      value of `all_variables().`
+      value of `global_variables().`
 
   Returns:
     An Op, or None if there are no variables.
   """
   if var_list is None:
-    var_list = all_variables() + local_variables()
+    var_list = global_variables() + local_variables()
   # Backwards compatibility for old-style variables. TODO(touts): remove.
   if not var_list:
     var_list = []
@@ -1160,7 +1273,7 @@ def report_uninitialized_variables(var_list=None,
 
   Args:
     var_list: List of `Variable` objects to check. Defaults to the
-      value of `all_variables() + local_variables()`
+      value of `global_variables() + local_variables()`
     name: Optional name of the `Operation`.
 
   Returns:
@@ -1168,7 +1281,7 @@ def report_uninitialized_variables(var_list=None,
     1-D tensor if there are no variables or no uninitialized variables.
   """
   if var_list is None:
-    var_list = all_variables() + local_variables()
+    var_list = global_variables() + local_variables()
     # Backwards compatibility for old-style variables. TODO(touts): remove.
     if not var_list:
       var_list = []
@@ -1200,7 +1313,7 @@ ops.register_tensor_conversion_function(
 
 ops.register_dense_tensor_like_type(Variable)
 ops.register_proto_function(
-    ops.GraphKeys.VARIABLES,
+    ops.GraphKeys.GLOBAL_VARIABLES,
     proto_type=variable_pb2.VariableDef,
     to_proto=Variable.to_proto,
     from_proto=Variable.from_proto)

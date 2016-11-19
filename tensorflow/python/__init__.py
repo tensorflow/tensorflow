@@ -71,6 +71,7 @@ from tensorflow.core.util.event_pb2 import *
 from tensorflow.python.framework.framework_lib import *
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import graph_util
 
 # Session
 from tensorflow.python.client.client_lib import *
@@ -78,8 +79,11 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# pylint: enable=wildcard-import
+
 # Bring in subpackages.
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
@@ -116,6 +120,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
@@ -153,10 +158,14 @@ _allowed_symbols = [
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
+    'mul',  # use tf.multiply instead.
+    'neg',  # use tf.negative instead.
+    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
+    'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
@@ -174,47 +183,27 @@ _allowed_symbols.extend([
 _allowed_symbols.extend([
     'QUANTIZED_DTYPES',
     'bfloat16',
-    'bfloat16_ref',
     'bool',
-    'bool_ref',
     'complex64',
-    'complex64_ref',
     'complex128',
-    'complex128_ref',
     'double',
-    'double_ref',
     'half',
-    'half_ref',
     'float16',
-    'float16_ref',
     'float32',
-    'float32_ref',
     'float64',
-    'float64_ref',
     'int16',
-    'int16_ref',
     'int32',
-    'int32_ref',
     'int64',
-    'int64_ref',
     'int8',
-    'int8_ref',
     'qint16',
-    'qint16_ref',
     'qint32',
-    'qint32_ref',
     'qint8',
-    'qint8_ref',
     'quint16',
-    'quint16_ref',
     'quint8',
-    'quint8_ref',
     'string',
-    'string_ref',
     'uint16',
-    'uint16_ref',
     'uint8',
-    'uint8_ref',
+    'resource',
 ])
 
 # Export modules and constants.
@@ -224,11 +213,13 @@ _allowed_symbols.extend([
     'errors',
     'flags',
     'gfile',
+    'graph_util',
     'image',
     'logging',
     'newaxis',
     'nn',
     'python_io',
+    'resources',
     'resource_loader',
     'sdca',
     'summary',
@@ -250,9 +241,9 @@ _allowed_symbols.extend([
 remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
                      compat, constant_op, control_flow_ops, functional_ops,
-                     histogram_ops, io_ops, math_ops, nn, script_ops,
-                     session_ops, sparse_ops, state_ops, string_ops,
-                     summary, tensor_array_ops, train])
+                     histogram_ops, io_ops, math_ops, nn, resource_loader,
+                     resources, script_ops, session_ops, sparse_ops, state_ops,
+                     string_ops, summary, tensor_array_ops, train])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

@@ -74,7 +74,7 @@ class ConcatOpTest(tf.test.TestCase):
       v1 = tf.Variable(p1)
       v2 = tf.Variable(p2)
       c = tf.concat(0, [v1, v2])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = c.eval()
 
     self.assertEqual(result.shape, c.get_shape())
@@ -287,9 +287,9 @@ class ConcatOpTest(tf.test.TestCase):
       tf.concat(3, [tf.constant(10.0, shape=[4, 4, 4]),
                     tf.constant(20.0, shape=[4, 4, 4])])
 
-    # concat_dim < 0
+    # concat_dim out of range
     with self.assertRaises(ValueError):
-      tf.concat(-1, [tf.constant(10.0, shape=[4, 4, 4]),
+      tf.concat(-4, [tf.constant(10.0, shape=[4, 4, 4]),
                      tf.constant(20.0, shape=[4, 4, 4])])
 
   def testShapeWithUnknownConcatDim(self):
@@ -406,29 +406,6 @@ class ConcatOpTest(tf.test.TestCase):
           ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
         tf.concat(dim, [scalar, scalar, scalar])
 
-  def testConcatGradNumNodes(self):
-    g = tf.Graph()
-    n = 10
-    with g.as_default():
-      x = tf.constant([1, 1])
-      y = tf.concat(0, [x] * n)
-      before = len(g.get_operations())
-      _ = tf.gradients([y], [x], [y])
-      after = len(g.get_operations())
-      self.assertEqual(2 * n + 2, after - before)
-      print("graph = ", [x.name for x in g.get_operations()])
-
-  def testConcatLargeTensors(self):
-    # CPU-only test, because it fails on GPUs with <= 4GB memory.
-    with tf.device("/cpu:0"):
-      a = tf.ones([2**31 + 6], dtype=tf.int8)
-      b = tf.zeros([1024], dtype=tf.int8)
-      onezeros = tf.concat(0, [a, b])
-    with self.test_session(use_gpu=False):
-      # TODO(dga):  Add more depth to this test to validate correctness,
-      # not just non-crashingness, once other large tensor fixes have gone in.
-      _ = onezeros.eval()
-
   # important as gpu implementation could fail if
   # shared memory is not large for all the inputs
   def testConcatLargeNumberOfTensors(self):
@@ -464,6 +441,46 @@ class ConcatOpTest(tf.test.TestCase):
                                     cur_offset + params[p[i]].shape[concat_dim])
           cur_offset += params[p[i]].shape[concat_dim]
           self.assertAllEqual(result[index], params[p[i]])
+
+  def testConcatNegativeAxis(self):
+    with self.test_session(use_gpu=True):
+      t1 = [[1, 2, 3], [4, 5, 6]]
+      t2 = [[7, 8, 9], [10, 11, 12]]
+      output = tf.concat(-2, [t1, t2]).eval()
+      self.assertAllEqual(
+          [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+          output)
+      output = tf.concat(-1, [t1, t2]).eval()
+      self.assertAllEqual(
+          [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
+          output)
+
+  def testConcatV2Empty(self):
+    with self.test_session(use_gpu=True):
+      t1 = []
+      t2 = []
+      output = gen_array_ops._concat_v2([t1, t2], 0).eval()
+      self.assertFalse(output)  # Checks that output is empty
+
+  def testConcatV2InvalidAxis(self):
+    with self.assertRaises(ValueError):
+      with self.test_session(use_gpu=True):
+        t1 = [1]
+        t2 = [2]
+        gen_array_ops._concat_v2([t1, t2], 1).eval()
+
+  def testConcatV2NegativeAxis(self):
+    with self.test_session(use_gpu=True):
+      t1 = [[1, 2, 3], [4, 5, 6]]
+      t2 = [[7, 8, 9], [10, 11, 12]]
+      output = gen_array_ops._concat_v2([t1, t2], -2).eval()
+      self.assertAllEqual(
+          [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+          output)
+      output = gen_array_ops._concat_v2([t1, t2], -1).eval()
+      self.assertAllEqual(
+          [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
+          output)
 
 
 class ConcatOffsetTest(tf.test.TestCase):
@@ -515,8 +532,10 @@ class ConcatOffsetTest(tf.test.TestCase):
       s0 = tf.constant([2, 3, 5], tf.int32)
       s1 = tf.constant([2, 7, 10], tf.int32)
       off = gen_array_ops._concat_offset(cdim, [s0, s1])
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   r"mismatch: 5 vs. 10"):
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          r"All dimensions except 1 must match. Input 1 has shape \[2 7 10\] "
+          r"and doesn't match input 0 with shape \[2 3 5\]."):
         sess.run(off)
 
 if __name__ == "__main__":

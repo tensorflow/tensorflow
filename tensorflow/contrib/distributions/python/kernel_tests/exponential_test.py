@@ -87,7 +87,7 @@ class ExponentialTest(tf.test.TestCase):
       n = tf.constant(100000)
       exponential = tf.contrib.distributions.Exponential(lam=lam)
 
-      samples = exponential.sample_n(n, seed=137)
+      samples = exponential.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertFalse(np.any(sample_values < 0.0))
@@ -106,7 +106,7 @@ class ExponentialTest(tf.test.TestCase):
       exponential = tf.contrib.distributions.Exponential(lam=lam)
 
       n = 100000
-      samples = exponential.sample_n(n, seed=138)
+      samples = exponential.sample(n, seed=138)
       self.assertEqual(samples.get_shape(), (n, batch_size, 2))
 
       sample_values = samples.eval()

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
+#if TENSORFLOW_USE_SYCL
+#define EIGEN_USE_SYCL
+#endif
 
 #include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -91,6 +94,18 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#define REGISTER_SYCL_KERNEL(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Assign")                              \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<type>("T"),                 \
+                          AssignOpT<SYCLDevice, type>);
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 #if GOOGLE_CUDA
 // Only register 'Assign' on GPU for the subset of types also supported by

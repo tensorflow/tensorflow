@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 py_library(
     name = "ndlstm",
     srcs = [
+        "__init__.py",
         "python/__init__.py",
         "python/lstm1d.py",
         "python/lstm2d.py",

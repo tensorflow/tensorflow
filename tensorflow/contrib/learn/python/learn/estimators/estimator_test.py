@@ -21,14 +21,18 @@ from __future__ import print_function
 
 import functools
 import itertools
+import json
 import tempfile
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 
 
 _BOSTON_INPUT_DIM = 13
@@ -40,15 +44,24 @@ def boston_input_fn(num_epochs=None):
   features = tf.train.limit_epochs(
       tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM]),
       num_epochs=num_epochs)
-  target = tf.reshape(tf.constant(boston.target), [-1, 1])
-  return features, target
+  labels = tf.reshape(tf.constant(boston.target), [-1, 1])
+  return features, labels
 
 
 def iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
-  target = tf.reshape(tf.constant(iris.target), [-1])
-  return features, target
+  labels = tf.reshape(tf.constant(iris.target), [-1])
+  return features, labels
+
+
+def iris_input_fn_labels_dict():
+  iris = tf.contrib.learn.datasets.load_iris()
+  features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
+  labels = {
+      'labels': tf.reshape(tf.constant(iris.target), [-1])
+  }
+  return features, labels
 
 
 def boston_eval_fn():
@@ -56,17 +69,17 @@ def boston_eval_fn():
   n_examples = len(boston.target)
   features = tf.reshape(
       tf.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
-  target = tf.reshape(tf.constant(boston.target), [n_examples, 1])
-  return tf.concat(0, [features, features]), tf.concat(0, [target, target])
+  labels = tf.reshape(tf.constant(boston.target), [n_examples, 1])
+  return tf.concat(0, [features, features]), tf.concat(0, [labels, labels])
 
 
-def linear_model_params_fn(features, target, mode, params):
+def linear_model_params_fn(features, labels, mode, params):
   assert mode in (
       tf.contrib.learn.ModeKeys.TRAIN,
       tf.contrib.learn.ModeKeys.EVAL,
       tf.contrib.learn.ModeKeys.INFER)
   prediction, loss = (
-      tf.contrib.learn.models.linear_regression_zero_init(features, target)
+      tf.contrib.learn.models.linear_regression_zero_init(features, labels)
   )
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
@@ -74,13 +87,13 @@ def linear_model_params_fn(features, target, mode, params):
   return prediction, loss, train_op
 
 
-def linear_model_fn(features, target, mode):
+def linear_model_fn(features, labels, mode):
   assert mode in (
       tf.contrib.learn.ModeKeys.TRAIN,
       tf.contrib.learn.ModeKeys.EVAL,
       tf.contrib.learn.ModeKeys.INFER)
   prediction, loss = (
-      tf.contrib.learn.models.linear_regression_zero_init(features, target)
+      tf.contrib.learn.models.linear_regression_zero_init(features, labels)
   )
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
@@ -88,10 +101,30 @@ def linear_model_fn(features, target, mode):
   return prediction, loss, train_op
 
 
-def logistic_model_no_mode_fn(features, target):
-  target = tf.one_hot(target, 3, 1, 0)
+def linear_model_fn_with_model_fn_ops(features, labels, mode):
+  """Same as linear_model_fn, but returns `ModelFnOps`."""
+  assert mode in (
+      tf.contrib.learn.ModeKeys.TRAIN,
+      tf.contrib.learn.ModeKeys.EVAL,
+      tf.contrib.learn.ModeKeys.INFER)
   prediction, loss = (
-      tf.contrib.learn.models.logistic_regression_zero_init(features, target)
+      tf.contrib.learn.models.linear_regression_zero_init(features, labels)
+  )
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=0.1)
+  return model_fn.ModelFnOps(mode=mode,
+                             predictions=prediction,
+                             loss=loss,
+                             train_op=train_op)
+
+
+def logistic_model_no_mode_fn(features, labels):
+  if isinstance(labels, dict):
+    labels = labels['labels']
+  labels = tf.one_hot(labels, 3, 1, 0)
+  prediction, loss = (
+      tf.contrib.learn.models.logistic_regression_zero_init(features, labels)
   )
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
@@ -127,30 +160,32 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 class EstimatorTest(tf.test.TestCase):
 
   def testInvalidModelFn_no_train_op(self):
-    def _invalid_model_fn(features, target):
+    def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
-      tf.Variable(42.0, 'weight')
-      return None, None, None
+      w = tf.Variable(42.0, 'weight')
+      loss = 100.0 - w
+      return None, loss, None
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
-    with self.assertRaisesRegexp(ValueError, 'Missing train_op'):
+    with self.assertRaisesRegexp(ValueError, 'Missing training_op'):
       est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_loss(self):
-    def _invalid_model_fn(features, target, mode):
+    def _invalid_model_fn(features, labels, mode):
       # pylint: disable=unused-argument
       w = tf.Variable(42.0, 'weight')
       loss = 100.0 - w
       train_op = w.assign_add(loss / 100.0)
+      predictions = loss
       if mode == tf.contrib.learn.ModeKeys.EVAL:
         loss = None
-      return None, loss, train_op
+      return predictions, loss, train_op
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
     est.fit(input_fn=boston_input_fn, steps=1)
     with self.assertRaisesRegexp(ValueError, 'Missing loss'):
       est.evaluate(input_fn=boston_eval_fn, steps=1)
 
   def testInvalidModelFn_no_prediction(self):
-    def _invalid_model_fn(features, target):
+    def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
       w = tf.Variable(42.0, 'weight')
       loss = 100.0 - w
@@ -158,7 +193,8 @@ class EstimatorTest(tf.test.TestCase):
       return None, loss, train_op
     est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
     est.fit(input_fn=boston_input_fn, steps=1)
-    est.evaluate(input_fn=boston_eval_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
+      est.evaluate(input_fn=boston_eval_fn, steps=1)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
       est.predict(input_fn=boston_input_fn)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
@@ -186,25 +222,26 @@ class EstimatorTest(tf.test.TestCase):
     self.assertEquals(test_random_seed, test_input.random_seed)
 
   def testCheckInputs(self):
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn))
     # Lambdas so we have to different objects to compare
     right_features = lambda: np.ones(shape=[7, 8], dtype=np.float32)
-    right_targets = lambda: np.ones(shape=[7, 10], dtype=np.int32)
-    est.fit(right_features(), right_targets(), steps=1)
+    right_labels = lambda: np.ones(shape=[7, 10], dtype=np.int32)
+    est.fit(right_features(), right_labels(), steps=1)
     # TODO(wicke): This does not fail for np.int32 because of data_feeder magic.
     wrong_type_features = np.ones(shape=[7., 8.], dtype=np.int64)
     wrong_size_features = np.ones(shape=[7, 10])
-    wrong_type_targets = np.ones(shape=[7., 10.], dtype=np.float32)
-    wrong_size_targets = np.ones(shape=[7, 11])
-    est.fit(x=right_features(), y=right_targets(), steps=1)
+    wrong_type_labels = np.ones(shape=[7., 10.], dtype=np.float32)
+    wrong_size_labels = np.ones(shape=[7, 11])
+    est.fit(x=right_features(), y=right_labels(), steps=1)
     with self.assertRaises(ValueError):
-      est.fit(x=wrong_type_features, y=right_targets(), steps=1)
+      est.fit(x=wrong_type_features, y=right_labels(), steps=1)
     with self.assertRaises(ValueError):
-      est.fit(x=wrong_size_features, y=right_targets(), steps=1)
+      est.fit(x=wrong_size_features, y=right_labels(), steps=1)
     with self.assertRaises(ValueError):
-      est.fit(x=right_features(), y=wrong_type_targets, steps=1)
+      est.fit(x=right_features(), y=wrong_type_labels, steps=1)
     with self.assertRaises(ValueError):
-      est.fit(x=right_features(), y=wrong_size_targets, steps=1)
+      est.fit(x=right_features(), y=wrong_size_labels, steps=1)
 
   def testBadInput(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
@@ -226,9 +263,10 @@ class EstimatorTest(tf.test.TestCase):
 
   def testUntrained(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn))
     with self.assertRaises(tf.contrib.learn.NotFittedError):
-      _ = est.evaluate(
+      _ = est.score(
           x=boston.data,
           y=boston.target.astype(np.float64))
     with self.assertRaises(tf.contrib.learn.NotFittedError):
@@ -237,87 +275,107 @@ class EstimatorTest(tf.test.TestCase):
   def testContinueTraining(self):
     boston = tf.contrib.learn.datasets.load_boston()
     output_dir = tempfile.mkdtemp()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     model_dir=output_dir)
-    float64_target = boston.target.astype(np.float64)
-    est.fit(x=boston.data, y=float64_target, steps=50)
-    scores = est.evaluate(
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                   model_dir=output_dir))
+    float64_labels = boston.target.astype(np.float64)
+    est.fit(x=boston.data, y=float64_labels, steps=50)
+    scores = est.score(
         x=boston.data,
-        y=float64_target,
+        y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
     del est
     # Create another estimator object with the same output dir.
-    est2 = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                      model_dir=output_dir)
+    est2 = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                   model_dir=output_dir))
 
     # Check we can evaluate and predict.
-    scores2 = est2.evaluate(
+    scores2 = est2.score(
         x=boston.data,
-        y=float64_target,
+        y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
-    self.assertAllClose(scores2['MSE'],
-                        scores['MSE'])
+    self.assertAllClose(scores['MSE'], scores2['MSE'])
     predictions = np.array(list(est2.predict(x=boston.data)))
-    other_score = _sklearn.mean_squared_error(predictions, float64_target)
-    self.assertAllClose(other_score, scores['MSE'])
+    other_score = _sklearn.mean_squared_error(predictions, float64_labels)
+    self.assertAllClose(scores['MSE'], other_score)
 
     # Check we can keep training.
-    est2.fit(x=boston.data, y=float64_target, steps=100)
-    scores3 = est2.evaluate(
+    est2.fit(x=boston.data, y=float64_labels, steps=100)
+    scores3 = est2.score(
         x=boston.data,
-        y=float64_target,
+        y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
     self.assertLess(scores3['MSE'], scores['MSE'])
 
   def testEstimatorParams(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_params_fn,
-                                     params={'learning_rate': 0.01})
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_params_fn,
+                                   params={'learning_rate': 0.01}))
     est.fit(x=boston.data, y=boston.target, steps=100)
 
   def testBostonAll(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
-    float64_target = boston.target.astype(np.float64)
-    est.fit(x=boston.data, y=float64_target, steps=100)
-    scores = est.evaluate(
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=linear_model_fn))
+    float64_labels = boston.target.astype(np.float64)
+    est.fit(x=boston.data, y=float64_labels, steps=100)
+    scores = est.score(
         x=boston.data,
-        y=float64_target,
+        y=float64_labels,
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
     predictions = np.array(list(est.predict(x=boston.data)))
     other_score = _sklearn.mean_squared_error(predictions, boston.target)
-    self.assertAllClose(other_score, scores['MSE'])
+    self.assertAllClose(scores['MSE'], other_score)
     self.assertTrue('global_step' in scores)
-    self.assertEqual(scores['global_step'], 100)
+    self.assertEqual(100, scores['global_step'])
 
   def testIrisAll(self):
     iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    est = tf.contrib.learn.SKCompat(
+        tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn))
     est.fit(iris.data, iris.target, steps=100)
-    scores = est.evaluate(
+    scores = est.score(
         x=iris.data,
         y=iris.target,
         metrics={('accuracy', 'class'): tf.contrib.metrics.streaming_accuracy})
-    predictions = list(est.predict(x=iris.data))
-    predictions_class = list(est.predict(x=iris.data, outputs=['class']))
-    self.assertEqual(len(predictions), iris.target.shape[0])
-    classes_batch = np.array([p['class'] for p in predictions])
+    predictions = est.predict(x=iris.data)
+    predictions_class = est.predict(x=iris.data, outputs=['class'])['class']
+    self.assertEqual(predictions['prob'].shape[0], iris.target.shape[0])
     self.assertAllClose(
-        classes_batch,
-        np.array([p['class'] for p in predictions_class]))
+        predictions['class'],
+        predictions_class)
     self.assertAllClose(
-        classes_batch,
-        np.argmax(np.array([p['prob'] for p in predictions]), axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, classes_batch)
-    self.assertAllClose(other_score, scores['accuracy'])
+        predictions['class'],
+        np.argmax(predictions['prob'], axis=1))
+    other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
+    self.assertAllClose(scores['accuracy'], other_score)
     self.assertTrue('global_step' in scores)
-    self.assertEqual(scores['global_step'], 100)
+    self.assertEqual(100, scores['global_step'])
 
   def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
     est.fit(input_fn=iris_input_fn, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    predictions = list(est.predict(x=iris.data))
+    self.assertEqual(len(predictions), iris.target.shape[0])
+
+  def testIrisInputFnLabelsDict(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    est.fit(input_fn=iris_input_fn_labels_dict, steps=100)
+    _ = est.evaluate(
+        input_fn=iris_input_fn_labels_dict,
+        steps=1,
+        metrics={
+            'accuracy':
+                metric_spec.MetricSpec(
+                    metric_fn=tf.contrib.metrics.streaming_accuracy,
+                    prediction_key='class',
+                    label_key='labels')
+        })
     predictions = list(est.predict(x=iris.data))
     self.assertEqual(len(predictions), iris.target.shape[0])
 
@@ -330,6 +388,31 @@ class EstimatorTest(tf.test.TestCase):
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
     predictions = list(est.predict(x=iris.data))
     self.assertEqual(len(predictions), iris.target.shape[0])
+
+  def testIrisIteratorArray(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 100)
+    y_iter = (np.array(x) for x in iris.target)
+    est.fit(x_iter, y_iter, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    _ = six.next(est.predict(x=iris.data))['class']
+
+  def testIrisIteratorPlainInt(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 100)
+    y_iter = (v for v in iris.target)
+    est.fit(x_iter, y_iter, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    _ = six.next(est.predict(x=iris.data))['class']
+
+  def testIrisTruncatedIterator(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 50)
+    y_iter = ([np.int32(v)] for v in iris.target)
+    est.fit(x_iter, y_iter, steps=100)
 
   def testTrainInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
@@ -365,6 +448,17 @@ class EstimatorTest(tf.test.TestCase):
     output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 
+  def testWithModelFnOps(self):
+    """Test for model_fn that returns `ModelFnOps`."""
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn_with_model_fn_ops)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn, num_epochs=1)
+    scores = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertIn('loss', scores.keys())
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0])
+
   def testWrongInput(self):
     def other_input_fn():
       return {'other': tf.constant([0, 0, 0])}, tf.constant([0, 0, 0])
@@ -384,8 +478,8 @@ class EstimatorTest(tf.test.TestCase):
     est.fit(input_fn=boston_input_fn, steps=200)
     est.evaluate(input_fn=boston_input_fn, steps=200)
     loss_summary = tf.contrib.testing.simple_values_from_events(
-        tf.contrib.testing.latest_events(est.model_dir), ['loss'])
-    self.assertEqual(len(loss_summary), 1)
+        tf.contrib.testing.latest_events(est.model_dir), ['OptimizeLoss/loss'])
+    self.assertEqual(1, len(loss_summary))
 
   def testLossInGraphCollection(self):
 
@@ -407,7 +501,7 @@ class EstimatorTest(tf.test.TestCase):
       est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
       actual = est.export('/path/to')
 
-    self.assertEquals(actual, expected)
+    self.assertEquals(expected, actual)
 
 
 class InferRealValuedColumnsTest(tf.test.TestCase):
@@ -513,8 +607,12 @@ class InferRealValuedColumnsTest(tf.test.TestCase):
 class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testVariablesAreOnPs(self):
-    with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=1))):
+    tf_config = {'cluster': {tf.contrib.learn.TaskType.PS: ['fake_ps_0']}}
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+
+    with tf.device(estimator._get_replica_device_setter(config)):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w
@@ -526,7 +624,7 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testVariablesAreLocal(self):
     with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=0))):
+        tf.contrib.learn.RunConfig())):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w
@@ -537,8 +635,12 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('', a.device)
 
   def testMutableHashTableIsOnPs(self):
-    with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=1))):
+    tf_config = {'cluster': {tf.contrib.learn.TaskType.PS: ['fake_ps_0']}}
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+
+    with tf.device(estimator._get_replica_device_setter(config)):
       default_val = tf.constant([-1, -1], tf.int64)
       table = tf.contrib.lookup.MutableHashTable(tf.string,
                                                  tf.int64,
@@ -550,7 +652,7 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testMutableHashTableIsLocal(self):
     with tf.device(estimator._get_replica_device_setter(
-        tf.contrib.learn.RunConfig(num_ps_replicas=0))):
+        tf.contrib.learn.RunConfig())):
       default_val = tf.constant([-1, -1], tf.int64)
       table = tf.contrib.lookup.MutableHashTable(tf.string,
                                                  tf.int64,
@@ -561,10 +663,20 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('', output.device)
 
   def testTaskIsSetOnWorkerWhenJobNameIsSet(self):
-    with tf.device(
-        estimator._get_replica_device_setter(
-            tf.contrib.learn.RunConfig(
-                num_ps_replicas=1, job_name='worker', task=3))):
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0']
+        },
+        'task': {
+            'type': tf.contrib.learn.TaskType.WORKER,
+            'index': 3
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+
+    with tf.device(estimator._get_replica_device_setter(config)):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w

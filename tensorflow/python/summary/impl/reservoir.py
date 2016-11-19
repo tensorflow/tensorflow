@@ -55,7 +55,7 @@ class Reservoir(object):
 
   """
 
-  def __init__(self, size, seed=0):
+  def __init__(self, size, seed=0, always_keep_last=True):
     """Creates a new reservoir.
 
     Args:
@@ -64,6 +64,8 @@ class Reservoir(object):
       seed: The seed of the random number generator to use when sampling.
         Different values for |seed| will produce different samples from the same
         input items.
+      always_keep_last: Whether to always keep the latest seen item in the
+        end of the reservoir. Defaults to True.
 
     Raises:
       ValueError: If size is negative or not an integer.
@@ -71,7 +73,7 @@ class Reservoir(object):
     if size < 0 or size != round(size):
       raise ValueError('size must be nonegative integer, was %s' % size)
     self._buckets = collections.defaultdict(
-        lambda: _ReservoirBucket(size, random.Random(seed)))
+        lambda: _ReservoirBucket(size, random.Random(seed), always_keep_last))
     # _mutex guards the keys - creating new keys, retrieving by key, etc
     # the internal items are guarded by the ReservoirBuckets' internal mutexes
     self._mutex = threading.Lock()
@@ -103,19 +105,31 @@ class Reservoir(object):
       bucket = self._buckets[key]
     return bucket.Items()
 
-  def AddItem(self, key, item):
+  def AddItem(self, key, item, f=lambda x: x):
     """Add a new item to the Reservoir with the given tag.
 
-    The new item is guaranteed to be kept in the Reservoir. One other item might
-    be replaced.
+    If the reservoir has not yet reached full size, the new item is guaranteed
+    to be added. If the reservoir is full, then behavior depends on the
+    always_keep_last boolean.
+
+    If always_keep_last was set to true, the new item is guaranteed to be added
+    to the reservoir, and either the previous last item will be replaced, or
+    (with low probability) an older item will be replaced.
+
+    If always_keep_last was set to false, then the new item will replace an
+    old item with low probability.
+
+    If f is provided, it will be applied to transform item (lazily, iff item is
+      going to be included in the reservoir).
 
     Args:
       key: The key to store the item under.
       item: The item to add to the reservoir.
+      f: An optional function to transform the item prior to addition.
     """
     with self._mutex:
       bucket = self._buckets[key]
-    bucket.AddItem(item)
+    bucket.AddItem(item, f)
 
   def FilterItems(self, filterFn, key=None):
     """Filter items within a Reservoir, using a filtering function.
@@ -145,7 +159,7 @@ class _ReservoirBucket(object):
   It always stores the most recent item as its final item.
   """
 
-  def __init__(self, _max_size, _random=None):
+  def __init__(self, _max_size, _random=None, always_keep_last=True):
     """Create the _ReservoirBucket.
 
     Args:
@@ -153,6 +167,8 @@ class _ReservoirBucket(object):
         zero, the bucket has unbounded size.
       _random: The random number generator to use. If not specified, defaults to
         random.Random(0).
+      always_keep_last: Whether the latest seen item should always be included
+        in the end of the bucket.
 
     Raises:
       ValueError: if the size is not a nonnegative integer.
@@ -169,8 +185,9 @@ class _ReservoirBucket(object):
       self._random = _random
     else:
       self._random = random.Random(0)
+    self.always_keep_last = always_keep_last
 
-  def AddItem(self, item):
+  def AddItem(self, item, f=lambda x: x):
     """Add an item to the ReservoirBucket, replacing an old item if necessary.
 
     The new item is guaranteed to be added to the bucket, and to be the last
@@ -185,17 +202,19 @@ class _ReservoirBucket(object):
 
     Args:
       item: The item to add to the bucket.
+      f: A function to transform item before addition, if it will be kept in
+        the reservoir.
     """
     with self._mutex:
       if len(self.items) < self._max_size or self._max_size == 0:
-        self.items.append(item)
+        self.items.append(f(item))
       else:
         r = self._random.randint(0, self._num_items_seen)
         if r < self._max_size:
           self.items.pop(r)
-          self.items.append(item)
-        else:
-          self.items[-1] = item
+          self.items.append(f(item))
+        elif self.always_keep_last:
+          self.items[-1] = f(item)
       self._num_items_seen += 1
 
   def FilterItems(self, filterFn):

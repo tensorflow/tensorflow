@@ -84,9 +84,14 @@ inline static SessionVariables* GetSessionVars(JNIEnv* env, jobject thiz) {
     vars->id = id;
     sessions[id] = vars;
   } else {
-    VLOG(0) << "Found session variables for " << std::hex << id;
+    VLOG(1) << "Found session variables for " << std::hex << id;
   }
   return sessions[id];
+}
+
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(testLoaded)(JNIEnv* env,
+                                                     jobject thiz) {
+  LOG(INFO) << "Native TF methods loaded.";
 }
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
@@ -221,26 +226,32 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
 }
 
 // TODO(andrewharp): Use memcpy to fill/read nodes.
-#define FILL_NODE_METHOD(DTYPE, JAVA_DTYPE, TENSOR_DTYPE)                   \
-  FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                  \
-    SessionVariables* vars = GetSessionVars(env, thiz);                     \
-    tensorflow::Tensor input_tensor(TENSOR_DTYPE,                           \
-                                    tensorflow::TensorShape({x, y, z, d})); \
-    auto tensor_mapped = input_tensor.flat<JAVA_DTYPE>();                   \
-    jboolean iCopied = JNI_FALSE;                                           \
-    j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied);  \
-    j##JAVA_DTYPE* value_ptr = values;                                      \
-    const int array_size = env->GetArrayLength(arr);                        \
-    for (int i = 0;                                                         \
-         i < std::min(static_cast<int>(tensor_mapped.size()), array_size);  \
-         ++i) {                                                             \
-      tensor_mapped(i) = *value_ptr++;                                      \
-    }                                                                       \
-    env->Release##DTYPE##ArrayElements(arr, values, JNI_ABORT);             \
-    std::string input_name = GetString(env, node_name);                     \
-    std::pair<std::string, tensorflow::Tensor> input_pair(input_name,       \
-                                                          input_tensor);    \
-    vars->input_tensors[input_name] = input_pair;                           \
+#define FILL_NODE_METHOD(DTYPE, JAVA_DTYPE, TENSOR_DTYPE)                  \
+  FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                 \
+    SessionVariables* vars = GetSessionVars(env, thiz);                    \
+    jboolean iCopied = JNI_FALSE;                                          \
+    tensorflow::TensorShape shape;                                         \
+    jint* dim_vals = env->GetIntArrayElements(dims, &iCopied);             \
+    const int num_dims = env->GetArrayLength(dims);                        \
+    for (int i = 0; i < num_dims; ++i) {                                   \
+      shape.AddDim(dim_vals[i]);                                           \
+    }                                                                      \
+    env->ReleaseIntArrayElements(dims, dim_vals, JNI_ABORT);               \
+    tensorflow::Tensor input_tensor(TENSOR_DTYPE, shape);                  \
+    auto tensor_mapped = input_tensor.flat<JAVA_DTYPE>();                  \
+    j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied); \
+    j##JAVA_DTYPE* value_ptr = values;                                     \
+    const int array_size = env->GetArrayLength(arr);                       \
+    for (int i = 0;                                                        \
+         i < std::min(static_cast<int>(tensor_mapped.size()), array_size); \
+         ++i) {                                                            \
+      tensor_mapped(i) = *value_ptr++;                                     \
+    }                                                                      \
+    env->Release##DTYPE##ArrayElements(arr, values, JNI_ABORT);            \
+    std::string input_name = GetString(env, node_name);                    \
+    std::pair<std::string, tensorflow::Tensor> input_pair(input_name,      \
+                                                          input_tensor);   \
+    vars->input_tensors[input_name] = input_pair;                          \
   }
 
 #define READ_NODE_METHOD(DTYPE, JAVA_DTYPE)                                \

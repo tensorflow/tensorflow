@@ -386,7 +386,7 @@ A `Graph` instance supports an arbitrary number of "collections"
 that are identified by name. For convenience when building a large
 graph, collections can store groups of related objects: for
 example, the `tf.Variable` uses a collection (named
-[`tf.GraphKeys.VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+[`tf.GraphKeys.GLOBAL_VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
 all variables that are created during the construction of a graph. The caller
 may define additional collections by specifying a new name.
 
@@ -645,8 +645,8 @@ Note that this is unrelated to the
 
 The GraphDef version information of this graph.
 
-For details on the meaning of each version, see [`GraphDef`]
-(https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+For details on the meaning of each version, see
+[`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
 ##### Returns:
 
@@ -750,6 +750,19 @@ with tf.Graph().as_default() as g:
 #### `tf.Graph.building_function` {#Graph.building_function}
 
 Returns True iff this graph represents a function.
+
+
+- - -
+
+#### `tf.Graph.clear_collection(name)` {#Graph.clear_collection}
+
+Clears all values in a collection.
+
+##### Args:
+
+
+*  <b>`name`</b>: The key for the collection. The `GraphKeys` class contains many
+    standard names for collections.
 
 
 - - -
@@ -1030,7 +1043,7 @@ NOTE: This constructor validates the name of the `Operation` (passed
 as `node_def.name`). Valid `Operation` names match the following
 regular expression:
 
-    [A-Za-z0-9.][A-Za-z0-9_.\-/]*
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
 ##### Args:
 
@@ -1120,9 +1133,6 @@ DEPRECATED: Use outputs.
 ### `class tf.Tensor` {#Tensor}
 
 Represents one of the outputs of an `Operation`.
-
-*Note:* the `Tensor` class will be replaced by `Output` in the future.
-Currently these two are aliases for each other.
 
 A `Tensor` is a symbolic handle to one of the outputs of an
 `Operation`. It does not hold the values of that operation's output,
@@ -1242,9 +1252,9 @@ available, or `session` must be specified explicitly.
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
-registered for each `Operation` type using `tf.RegisterShape`.
-See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-details of what a shape represents.
+registered in the Op for each `Operation`.  See
+[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+for more details of what a shape represents.
 
 The inferred shape of a tensor is used to provide shape
 information without having to launch the graph in a session. This
@@ -1334,7 +1344,8 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
@@ -1450,7 +1461,7 @@ Returns x / y element-wise.
 
 #### `tf.Tensor.__floordiv__(x, y)` {#Tensor.__floordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -1870,7 +1881,7 @@ Returns x / y element-wise.
 
 #### `tf.Tensor.__rfloordiv__(y, x)` {#Tensor.__rfloordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -2148,6 +2159,7 @@ The following `DType` objects are defined:
 * `tf.qint16`: Quantized 16-bit signed integer.
 * `tf.quint16`: Quantized 16-bit unsigned integer.
 * `tf.qint32`: Quantized 32-bit signed integer.
+* `tf.resource`: Handle to a mutable resource.
 
 In addition, variants of these types with the `_ref` suffix are
 defined for reference-typed tensors.
@@ -2204,23 +2216,9 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
-#### `tf.DType.is_ref_dtype` {#DType.is_ref_dtype}
-
-Returns `True` if this `DType` represents a reference type.
-
-
-- - -
-
-#### `tf.DType.as_ref` {#DType.as_ref}
-
-Returns a reference `DType` based on this `DType`.
-
-
-- - -
-
 #### `tf.DType.is_floating` {#DType.is_floating}
 
-Returns whether this is a (real) floating point type.
+Returns whether this is a (non-quantized, real) floating point type.
 
 
 - - -
@@ -2271,6 +2269,23 @@ Returns a `numpy.dtype` based on this `DType`.
 #### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
 
 Returns a `types_pb2.DataType` enum value based on this `DType`.
+
+
+
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
 
 
 
@@ -2327,6 +2342,13 @@ Returns True iff self != other.
 - - -
 
 #### `tf.DType.__str__()` {#DType.__str__}
+
+
+
+
+- - -
+
+#### `tf.DType.is_numpy_compatible` {#DType.is_numpy_compatible}
 
 
 
@@ -2807,10 +2829,18 @@ variables.
 
 The following standard keys are defined:
 
-* `VARIABLES`: the `Variable` objects that comprise a model, and
-  must be saved and restored together. See
-  [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+* `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+  across distributed environment (model variables are subset of these). See
+  [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
   for more details.
+  Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+  and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+* `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+  machine. Usually used for temporarily variables, like counters.
+  Note: use `tf.contrib.framework.local_variable` to add to this collection.
+* `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+  model for inference (feed forward). Note: use
+  `tf.contrib.framework.model_variable` to add to this collection.
 * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
@@ -2962,24 +2992,8 @@ an attempt to request its gradient is made.
 
 A decorator for registering the shape function for an op type.
 
-This decorator is only used when defining a new op type. A shape
-function is a function from an `Operation` object to a list of
-`TensorShape` objects, with one `TensorShape` for each output of the
-operation.
-
-For example, assuming that operations of type `"Sub"` take two
-inputs `x` and `y`, and return a single output `x - y`, all with the
-same shape, the following shape function would be registered:
-
-```python
-@tf.RegisterShape("Sub")
-def _sub_shape(op):
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-```
-
-The decorator argument `op_type` is the string type of an
-operation. This corresponds to the `OpDef.name` field for the proto
-that defines the operation.
+Soon to be removed.  Shape functions should be registered via
+the SetShapeFn on the original Op specification in C++.
 - - -
 
 #### `tf.RegisterShape.__call__(f)` {#RegisterShape.__call__}
@@ -3013,10 +3027,11 @@ A `TensorShape` represents a possibly-partial shape specification for a
 
 If a tensor is produced by an operation of type `"Foo"`, its shape
 may be inferred if there is a registered shape function for
-`"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
-for details of shape
-functions and how to register them. Alternatively, the shape may be set
-explicitly using [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
+`"Foo"`. See [`Shape functions in
+C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
+details of shape functions and how to register them. Alternatively,
+the shape may be set explicitly using
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
 - - -
 

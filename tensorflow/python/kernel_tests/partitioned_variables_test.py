@@ -249,7 +249,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       rnd_par = tf.constant([1, 2, 3, 4])
       vs = tf.create_partitioned_variables([4], [4], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(0, vs).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
@@ -260,7 +260,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       rnd_par = tf.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
       vs = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(1, vs).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
@@ -273,7 +273,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with tf.variable_scope("hi"):
         vs1 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
         vs2 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       var1_name = vs1[0]._save_slice_info.full_name
       var2_name = vs2[0]._save_slice_info.full_name
       self.assertEqual("hi/PartitionedVariable", var1_name)
@@ -291,7 +291,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with tf.variable_scope(vs, reuse=True):
         vs2 = tf.create_partitioned_variables(
             [2, 4], [1, 2], rnd_par, dtype=tf.int32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       var1_name = vs1[0]._save_slice_info.full_name
       var2_name = vs2[0]._save_slice_info.full_name
       self.assertEqual("hola/PartitionedVariable", var1_name)
@@ -306,7 +306,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with tf.name_scope("ola"):
         vs1 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
         vs2 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       var1_name = vs1[0]._save_slice_info.full_name
       var2_name = vs2[0]._save_slice_info.full_name
       # Currently, the name scope 'ola' has no effect.
@@ -322,7 +322,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd = tf.Variable(tf.random_uniform([200, 40]))
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [1, 10], rnd.initialized_value())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(1, vs).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
@@ -347,7 +347,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
               rnd.get_shape(), [1, i],
               rnd.initialized_value())
           for i in xrange(1, 10)]
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       rnd_val = rnd.eval()
       # Only check the slice save specs for the first 5 tf.
       save_specs = [
@@ -384,7 +384,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd = tf.Variable(tf.random_uniform([10, 43]))
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [1, 1], rnd.initialized_value())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(0, vs).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
@@ -395,7 +395,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd = tf.Variable(tf.random_uniform([10, 43]))
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [10, 1], rnd.initialized_value())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(0, vs).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
@@ -416,7 +416,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
                         _IotaInitializer([4, 2]))
     with self.test_session():
       vs = tf.create_partitioned_variables([13, 5], [3, 1], _IotaInitializer)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       slice0 = _IotaInitializer([5, 5])
       slice1 = _IotaInitializer([4, 5])
       slice2 = _IotaInitializer([4, 5])
@@ -432,7 +432,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       var0, var1 = tf.create_partitioned_variables(
           [20, 12], [1, 2], tf.random_uniform_initializer())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val0, val1 = var0.eval().flatten(), var1.eval().flatten()
       self.assertTrue(np.linalg.norm(val0 - val1) > 1e-6)
     # Negative test that proves that slices have the same values if
@@ -440,7 +440,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       var0, var1 = tf.create_partitioned_variables(
           [20, 12], [1, 2], tf.random_uniform_initializer(seed=201))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val0, val1 = var0.eval().flatten(), var1.eval().flatten()
       self.assertAllClose(val0, val1)
 
@@ -475,7 +475,8 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
         # Partitioned variables do not.
         var_x = tf.get_variable(
             "x",
-            initializer=tf.ones_initializer([2]),
+            shape=[2],
+            initializer=tf.ones_initializer(),
             partitioner=tf.variable_axis_size_partitioner(4))
 
         ops_before_read = session.graph.get_operations()
@@ -508,7 +509,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       self.assertTrue(
           c.op in concat_control_inputs,
           "var_x._concat() should get control dependencies from its scope.")
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllClose(value.eval(), var_x.as_tensor().eval())
 
 

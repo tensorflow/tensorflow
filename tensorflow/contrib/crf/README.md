@@ -51,7 +51,7 @@ with tf.Graph().as_default():
     train_op = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
 
     # Train for a fixed number of iterations.
-    session.run(tf.initialize_all_variables())
+    session.run(tf.global_variables_initializer())
     for i in range(1000):
       tf_unary_scores, tf_transition_params, _ = session.run(
           [unary_scores, transition_params, train_op])

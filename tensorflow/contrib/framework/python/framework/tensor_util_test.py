@@ -83,11 +83,20 @@ class FloatDTypeTest(tf.test.TestCase):
         ValueError, tf.contrib.framework.assert_same_float_dtype, [const_int])
 
 
-class AssertScalarIntTest(tf.test.TestCase):
+class AssertScalarTest(tf.test.TestCase):
+
+  def test_assert_scalar(self):
+    tf.contrib.framework.assert_scalar(tf.constant(3))
+    tf.contrib.framework.assert_scalar(tf.constant("foo"))
+    tf.contrib.framework.assert_scalar(3)
+    tf.contrib.framework.assert_scalar("foo")
+    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
+      tf.contrib.framework.assert_scalar(tf.constant([3, 4]))
 
   def test_assert_scalar_int(self):
     tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.int32))
     tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.int64))
+    tf.contrib.framework.assert_scalar_int(3)
     with self.assertRaisesRegexp(ValueError, "Unexpected type"):
       tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.float32))
     with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
@@ -392,7 +401,7 @@ class RemoveSqueezableDimensionsTest(tf.test.TestCase):
           tf.contrib.framework.remove_squeezable_dimensions(
               predictions, labels))
       with self.test_session(g):
-        tf.initialize_local_variables().run()
+        tf.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))
         self.assertAllClose(

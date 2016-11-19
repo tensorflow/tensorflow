@@ -21,11 +21,15 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import summary
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
@@ -123,26 +127,38 @@ class Scaffold(object):
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
     if self._init_op is None:
+      def default_init_op():
+        return control_flow_ops.group(
+            variables.global_variables_initializer(),
+            resources.initialize_resources(resources.shared_resources()))
       self._init_op = Scaffold.get_or_default(
-          'init_op', ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
+          'init_op',
+          ops.GraphKeys.INIT_OP,
+          default_init_op)
     if self._ready_op is None:
+      def default_ready_op():
+        return array_ops.concat(
+            0,
+            [variables.report_uninitialized_variables(),
+             resources.report_uninitialized_resources()])
       self._ready_op = Scaffold.get_or_default(
           'ready_op', ops.GraphKeys.READY_OP,
-          variables.report_uninitialized_variables)
+          default_ready_op)
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
           Scaffold._default_local_init_op)
     if self._summary_op is None:
-      self._summary_op = Scaffold.get_or_default(
-          'summary_op', ops.GraphKeys.SUMMARY_OP,
-          logging_ops.merge_all_summaries)
+      self._summary_op = Scaffold.get_or_default('summary_op',
+                                                 ops.GraphKeys.SUMMARY_OP,
+                                                 summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
       self._saver = Scaffold.get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True, allow_empty=True))
+          lambda: training_saver.Saver(sharded=True, allow_empty=True,
+                                       write_version=saver_pb2.SaverDef.V2))
     # pylint: enable=g-long-lambda
     self._saver.build()
 
@@ -196,15 +212,18 @@ class Scaffold(object):
 
   @staticmethod
   def _default_local_init_op():
-    return control_flow_ops.group(variables.initialize_local_variables(),
+    return control_flow_ops.group(variables.local_variables_initializer(),
                                   data_flow_ops.initialize_all_tables())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
-                             hooks=None,
                              scaffold=None,
+                             hooks=None,
+                             chief_only_hooks=None,
+                             save_checkpoint_secs=600,
+                             save_summaries_steps=100,
                              config=None):
   """Creates a `MonitoredSession` for training.
 
@@ -221,10 +240,20 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       initialize or recover the TensorFlow session.
     checkpoint_dir: A string.  Optional path to a directory where to restore
       variables.
-    hooks: Optional list of `SessionRunHook` objects.
     scaffold: A `Scaffold` used for gathering or building supportive ops. If
       not specified, a default one is created. It's used to finalize the graph.
-    config: `ConfigProto` proto used to configure the session.
+    hooks: Optional list of `SessionRunHook` objects.
+    chief_only_hooks: list of `SessionRunHook` objects. Activate these hooks if
+      `is_chief==True`, ignore otherwise.
+    save_checkpoint_secs: The frequency, in seconds, that a checkpoint is saved
+      using a default checkpoint saver. If `save_checkpoint_secs` is set to
+      `None`, then the default checkpoint saver isn't used.
+    save_summaries_steps: The frequency, in number of global steps, that the
+      summaries are written to disk using a default summary saver. If
+      `save_summaries_steps` is set to `None`, then the default summary saver
+      isn't used.
+    config: an instance of `tf.ConfigProto` proto used to configure the session.
+      It's the `config` argument of constructor of `tf.Session`.
 
   Returns:
     A `MonitoredSession` object.
@@ -234,19 +263,28 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold, master=master, config=config)
-  else:
-    session_creator = ChiefSessionCreator(
-        scaffold=scaffold,
-        checkpoint_dir=checkpoint_dir,
-        master=master,
-        config=config)
-    hooks.extend([
-        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir),
-        basic_session_run_hooks.SummarySaverHook(
-            scaffold=scaffold, output_dir=checkpoint_dir),
-        basic_session_run_hooks.CheckpointSaverHook(
-            checkpoint_dir, save_secs=600, scaffold=scaffold),
-    ])
+    return MonitoredSession(session_creator=session_creator, hooks=hooks)
+
+  if chief_only_hooks:
+    hooks.extend(chief_only_hooks)
+  session_creator = ChiefSessionCreator(
+      scaffold=scaffold,
+      checkpoint_dir=checkpoint_dir,
+      master=master,
+      config=config)
+
+  if checkpoint_dir:
+    hooks.append(
+        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
+
+    if save_summaries_steps > 0:
+      hooks.append(basic_session_run_hooks.SummarySaverHook(
+          scaffold=scaffold,
+          save_steps=save_summaries_steps,
+          output_dir=checkpoint_dir))
+    if save_checkpoint_secs > 0:
+      hooks.append(basic_session_run_hooks.CheckpointSaverHook(
+          checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
 
   return MonitoredSession(session_creator=session_creator, hooks=hooks)
 
@@ -370,6 +408,7 @@ class MonitoredSession(object):
 
 
   Exit: At the `close()`, the monitored session does following things in order:
+
   * calls `hook.end()`
   * closes the queue runners and the session
   * surpresses `OutOfRange` error which indicates that all inputs have been
@@ -397,6 +436,7 @@ class MonitoredSession(object):
         `ChiefSessionCreator` which is the default one.
       hooks: An iterable of `SessionRunHook' objects.
     """
+    self._graph_was_finalized = ops.get_default_graph().finalized
     self._hooks = hooks or []
     for h in self._hooks:
       h.begin()
@@ -481,6 +521,8 @@ class MonitoredSession(object):
         self._sess = None
         self._coordinated_creator.tf_sess = None
         self._coordinated_creator.coord = None
+        if not self._graph_was_finalized:
+          ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
     """Return True if the supervised session is closed.  For tests only.
@@ -673,10 +715,13 @@ class _HookedSession(_WrappedSession):
     run_context = session_run_hook.SessionRunContext(
         original_args=session_run_hook.SessionRunArgs(fetches, feed_dict),
         session=self._sess)
-    feed_dict = self._call_hook_before_run(
-        run_context, actual_fetches, feed_dict)
+
+    options = options or config_pb2.RunOptions()
+    feed_dict = self._call_hook_before_run(run_context, actual_fetches,
+                                           feed_dict, options)
 
     # Do session run.
+    run_metadata = run_metadata or config_pb2.RunMetadata()
     outputs = _WrappedSession.run(self,
                                   fetches=actual_fetches,
                                   feed_dict=feed_dict,
@@ -686,13 +731,16 @@ class _HookedSession(_WrappedSession):
     for hook in self._hooks:
       hook.after_run(
           run_context,
-          session_run_hook.SessionRunValues(results=outputs[hook] if
-                                            hook in outputs else None))
+          session_run_hook.SessionRunValues(
+              results=outputs[hook] if hook in outputs else None,
+              options=options,
+              run_metadata=run_metadata))
     self._should_stop = self._should_stop or run_context.stop_requested
 
     return outputs['caller']
 
-  def _call_hook_before_run(self, run_context, fetch_dict, user_feed_dict):
+  def _call_hook_before_run(self, run_context, fetch_dict, user_feed_dict,
+                            options):
     """Calls hooks.before_run and handles requests from hooks."""
     hook_feeds = {}
     for hook in self._hooks:
@@ -705,6 +753,8 @@ class _HookedSession(_WrappedSession):
               hook_feeds, request.feed_dict,
               'Same tensor is fed by two hooks.')
           hook_feeds.update(request.feed_dict)
+        if request.options:
+          self._merge_run_options(options, request.options)
 
     if not hook_feeds:
       return user_feed_dict
@@ -722,3 +772,28 @@ class _HookedSession(_WrappedSession):
     intersection = set(feeds1.keys()) & set(feeds2.keys())
     if intersection:
       raise RuntimeError(message + ' Conflict(s): ' + str(list(intersection)))
+
+  def _merge_run_options(self, options, incoming_options):
+    """Merge two instances of RunOptions into the first one.
+
+    During the merger, the numerical fields including trace_level,
+    timeout_in_ms, inter_op_thread_pool are set to the larger one of the two.
+    The boolean value is set to the logical OR of the two.
+    debug_tensor_watch_opts of the original options is extended with that from
+    the incoming one.
+
+    Args:
+      options: The options to merge into.
+      incoming_options: The options to be merged into the first argument.
+    """
+    options.trace_level = max(options.trace_level, incoming_options.trace_level)
+    options.timeout_in_ms = max(options.timeout_in_ms,
+                                incoming_options.timeout_in_ms)
+    options.inter_op_thread_pool = max(options.inter_op_thread_pool,
+                                       incoming_options.inter_op_thread_pool)
+    options.output_partition_graphs = max(
+        options.output_partition_graphs,
+        incoming_options.output_partition_graphs)
+
+    options.debug_tensor_watch_opts.extend(
+        incoming_options.debug_tensor_watch_opts)

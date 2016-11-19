@@ -206,7 +206,7 @@ def run_training():
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
     # Add the variable initializer Op.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
@@ -327,6 +327,6 @@ if __name__ == '__main__':
       default=True,
       help='Use fake input data.'
   )
-  FLAGS = parser.parse_args()
+  FLAGS, unparsed = parser.parse_known_args()
 
   tf.test.main()

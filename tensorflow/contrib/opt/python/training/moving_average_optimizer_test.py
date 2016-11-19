@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import tempfile
 
 import six
 import tensorflow as tf
@@ -40,12 +41,14 @@ class MovingAverageOptimizerTest(tf.test.TestCase):
               tf.train.GradientDescentOptimizer(learning_rate=2.0),
               average_decay=0.5,
               sequential_update=sequential_update)
-          save_path = os.path.join(self.get_temp_dir(), 'model')
+          save_dir = tempfile.mkdtemp(
+              prefix=os.path.join(self.get_temp_dir(), 'run_1'))
+          save_path = os.path.join(save_dir, 'model')
           update = opt.apply_gradients(
               list(six.moves.zip([grads0, grads1], [var0, var1])))
           train_saver = opt.swapping_saver()
           inference_saver = tf.train.Saver()
-          tf.initialize_all_variables().run()
+          tf.global_variables_initializer().run()
           # Step 1.
           update.run()
           val0 = var0.eval()

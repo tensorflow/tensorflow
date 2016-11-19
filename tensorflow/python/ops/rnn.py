@@ -609,9 +609,6 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
     dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
-    sequence_length: An int32/int64 vector, size `[batch_size]`,
-      containing the actual lengths for each of the sequences.
       either of the initial states are not provided.
     scope: VariableScope for the created subgraph; defaults to "BiRNN"
 
@@ -1060,8 +1057,8 @@ def raw_rnn(cell, loop_fn,
         time=time + 1, cell_output=output, cell_state=cell_state,
         loop_state=loop_state)
     # Emit zeros and copy forward state for minibatch entries that are finished.
-    state = tf.select(finished, state, next_state)
-    emit = tf.select(finished, tf.zeros_like(emit), emit)
+    state = tf.where(finished, state, next_state)
+    emit = tf.where(finished, tf.zeros_like(emit), emit)
     emit_ta = emit_ta.write(time, emit)
     # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)

@@ -50,12 +50,14 @@ class Evaluable(object):
          for fitting the model. Can be iterator that returns arrays of features.
          If set, `input_fn` must be `None`.
       y: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
-         target values (class labels in classification, real numbers in
-         regression). Can be iterator that returns array of targets. If set,
-         `input_fn` must be `None`.
+         label values (class labels in classification, real numbers in
+         regression). Can be iterator that returns array of labels. If set,
+         `input_fn` must be `None`. Note: For classification, label values must
+         be integers representing the class index (i.e. values from 0 to
+         n_classes-1).
       input_fn: Input function returning a tuple of:
           features - Dictionary of string feature name to `Tensor` or `Tensor`.
-          target - `Tensor` or dictionary of `Tensor` with target labels.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
         If input_fn is set, `x`, `y`, and `batch_size` must be `None`. If
         `steps` is not provided, this should raise `OutOfRangeError` or
         `StopIteration` after the desired amount of data (e.g., one epoch) has
@@ -71,7 +73,7 @@ class Evaluable(object):
       metrics: Dict of metrics to run. If None, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
-        model outputs to evaluate against which targets with which metric
+        model outputs to evaluate against which labels with which metric
         function.
 
         Metric ops should support streaming, e.g., returning `update_op` and
