@@ -109,7 +109,7 @@ The output will be
 ##### Args:
 
 
-*  <b>`indices`</b>: An `Output` of indices.
+*  <b>`indices`</b>: A `Tensor` of indices.
 *  <b>`depth`</b>: A scalar defining the depth of the one hot dimension.
 *  <b>`on_value`</b>: A scalar defining the value to fill in output when `indices[j]
     = i`. (default: 1)

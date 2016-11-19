@@ -326,13 +326,13 @@ def gradients(ys,
               aggregation_method=None):
   """Constructs symbolic partial derivatives of sum of `ys` w.r.t. x in `xs`.
 
-  `ys` and `xs` are each an `Output` or a list of tensors.  `grad_ys`
-  is a list of `Output`, holding the gradients received by the
+  `ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
+  is a list of `Tensor`, holding the gradients received by the
   `ys`. The list must be the same length as `ys`.
 
   `gradients()` adds ops to the graph to output the partial
   derivatives of `ys` with respect to `xs`.  It returns a list of
-  `Output` of length `len(xs)` where each tensor is the `sum(dy/dx)`
+  `Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
   for y in `ys`.
 
   `grad_ys` is a list of tensors of the same length as `ys` that holds
@@ -344,9 +344,9 @@ def gradients(ys,
   each y).
 
   Args:
-    ys: An `Output` or list of tensors to be differentiated.
-    xs: An `Output` or list of tensors to be used for differentiation.
-    grad_ys: Optional. An `Output` or list of tensors the same size as
+    ys: A `Tensor` or list of tensors to be differentiated.
+    xs: A `Tensor` or list of tensors to be used for differentiation.
+    grad_ys: Optional. A `Tensor` or list of tensors the same size as
       `ys` and holding the gradients computed for each y in `ys`.
     name: Optional name to use for grouping all the gradient ops together.
       defaults to 'gradients'.
@@ -836,7 +836,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
   """Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
   `hessians()` adds ops to the graph to output the Hessian matrix of `ys`
-  with respect to `xs`.  It returns a list of `Output` of length `len(xs)`
+  with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)`
   where each tensor is the Hessian of `sum(ys)`. This function currently
   only supports evaluating the Hessian with respect to (a list of) one-
   dimensional tensors.
@@ -845,8 +845,8 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
   tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
 
   Args:
-    ys: An `Output` or list of tensors to be differentiated.
-    xs: An `Output` or list of tensors to be used for differentiation.
+    ys: A `Tensor` or list of tensors to be differentiated.
+    xs: A `Tensor` or list of tensors to be used for differentiation.
     name: Optional name to use for grouping all the gradient ops together.
       defaults to 'hessians'.
     colocate_gradients_with_ops: See `gradients()` documentation for details.

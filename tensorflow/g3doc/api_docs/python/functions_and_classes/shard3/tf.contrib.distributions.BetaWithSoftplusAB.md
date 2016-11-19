@@ -52,7 +52,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.batch_shape(name='batch_shape')` {#BetaWithSoftplusAB.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -65,7 +65,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -83,14 +83,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -121,7 +121,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.dtype` {#BetaWithSoftplusAB.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -135,7 +135,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.event_shape(name='event_shape')` {#BetaWithSoftplusAB.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -145,7 +145,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -217,14 +217,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -237,14 +237,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -262,14 +262,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -287,14 +287,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -318,13 +318,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -367,13 +367,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -414,14 +414,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -439,14 +439,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -472,14 +472,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -495,7 +495,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -503,7 +503,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -515,7 +515,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -524,7 +524,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -556,7 +556,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 

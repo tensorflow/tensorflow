@@ -21,10 +21,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary shape.
-*  <b>`labels`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`normalizer`</b>: An `Output` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `predictions`.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
+*  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`normalizer`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_relative_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should

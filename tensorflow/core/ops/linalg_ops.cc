@@ -304,7 +304,7 @@ e, v = self_adjoint_eig(a)
 e = self_adjoint_eig(a, compute_v=False)
 ```
 
-input: `Output` input of shape `[N, N]`.
+input: `Tensor` input of shape `[N, N]`.
 compute_v: If `True` then eigenvectors will be computed and returned in `v`.
   Otherwise, only the eigenvalues will be computed.
 e: Eigenvalues. Shape is `[N]`.

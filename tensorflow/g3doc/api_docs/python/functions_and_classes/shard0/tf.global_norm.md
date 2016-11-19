@@ -13,12 +13,12 @@ Any entries in `t_list` that are of type None are ignored.
 ##### Args:
 
 
-*  <b>`t_list`</b>: A tuple or list of mixed `Output`s, `IndexedSlices`, or None.
+*  <b>`t_list`</b>: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A 0-D (scalar) `Output` of type `float`.
+  A 0-D (scalar) `Tensor` of type `float`.
 
 ##### Raises:
 

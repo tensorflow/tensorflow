@@ -17,8 +17,8 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`values`</b>: An `Output` of arbitrary dimensions.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to `values`.
+*  <b>`values`</b>: A `Tensor` of arbitrary dimensions.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`

@@ -5,12 +5,12 @@ Creates a recurrent neural network specified by RNNCell `cell`.
 This function is functionally identical to the function `rnn` above, but
 performs fully dynamic unrolling of `inputs`.
 
-Unlike `rnn`, the input `inputs` is not a Python list of `Output`s, one for
-each frame.  Instead, `inputs` may be a single `Output` where
+Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`, one for
+each frame.  Instead, `inputs` may be a single `Tensor` where
 the maximum time is either the first or second dimension (see the parameter
 `time_major`).  Alternatively, it may be a (possibly nested) tuple of
 Tensors, each of them having matching batch and time dimensions.
-The corresponding output is either a single `Output` having the same number
+The corresponding output is either a single `Tensor` having the same number
 of time steps and batch size, or a (possibly nested) tuple of such tensors,
 matching the nested structure of `cell.output_size`.
 
@@ -24,11 +24,11 @@ for correctness than performance, unlike in rnn().
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: The RNN inputs.
 
-    If `time_major == False` (default), this must be an `Output` of shape:
+    If `time_major == False` (default), this must be a `Tensor` of shape:
       `[batch_size, max_time, ...]`, or a nested tuple of such
       elements.
 
-    If `time_major == True`, this must be an `Output` of shape:
+    If `time_major == True`, this must be a `Tensor` of shape:
       `[max_time, batch_size, ...]`, or a nested tuple of such
       elements.
 
@@ -39,13 +39,13 @@ for correctness than performance, unlike in rnn().
     structure of these tuples, except for the time dimension (from which the
     time is taken).
 
-    The input to `cell` at each time step will be an `Output` or (possibly
+    The input to `cell` at each time step will be a `Tensor` or (possibly
     nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
 
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    an `Output` of appropriate type and shape `[batch_size, cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
@@ -61,8 +61,8 @@ for correctness than performance, unlike in rnn().
     which would typically not fit on a single GPU, with very minimal (or no)
     performance penalty.
 *  <b>`time_major`</b>: The shape format of the `inputs` and `outputs` Tensors.
-    If true, these `Output`s must be shaped `[max_time, batch_size, depth]`.
-    If false, these `Output`s must be shaped `[batch_size, max_time, depth]`.
+    If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+    If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
     Using `time_major = True` is a bit more efficient because it avoids
     transposes at the beginning and end of the RNN calculation.  However,
     most TensorFlow data is batch-major, so by default this function
@@ -74,12 +74,12 @@ for correctness than performance, unlike in rnn().
   A pair (outputs, state) where:
 
 
-*  <b>`outputs`</b>: The RNN output `Output`.
+*  <b>`outputs`</b>: The RNN output `Tensor`.
 
-      If time_major == False (default), this will be an `Output` shaped:
+      If time_major == False (default), this will be a `Tensor` shaped:
         `[batch_size, max_time, cell.output_size]`.
 
-      If time_major == True, this will be an `Output` shaped:
+      If time_major == True, this will be a `Tensor` shaped:
         `[max_time, batch_size, cell.output_size]`.
 
       Note, if `cell.output_size` is a (possibly nested) tuple of integers

@@ -16,8 +16,8 @@ If two elements are equal, the lower-index element appears first.
 ##### Args:
 
 
-*  <b>`input`</b>: 1-D or higher `Output` with last dimension at least `k`.
-*  <b>`k`</b>: 0-D `int32` `Output`.  Number of top elements to look for along the last
+*  <b>`input`</b>: 1-D or higher `Tensor` with last dimension at least `k`.
+*  <b>`k`</b>: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
     dimension (along each row for matrices).
 *  <b>`sorted`</b>: If true the resulting `k` elements will be sorted by the values in
     descending order.

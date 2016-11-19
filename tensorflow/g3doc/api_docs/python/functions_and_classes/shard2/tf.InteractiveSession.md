@@ -2,7 +2,7 @@ A TensorFlow `Session` for use in interactive contexts, such as a shell.
 
 The only difference with a regular `Session` is that an `InteractiveSession`
 installs itself as the default session on construction.
-The methods [`Output.eval()`](../../api_docs/python/framework.md#Output.eval)
+The methods [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval)
 and [`Operation.run()`](../../api_docs/python/framework.md#Operation.run)
 will use that session to run ops.
 

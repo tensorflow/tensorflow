@@ -11,8 +11,8 @@ This op reports an `InvalidArgument` error if any value is not finite.
 ##### Args:
 
 
-*  <b>`tag`</b>: A `string` `Output`. 0-D.  Tag to use for the summary value.
-*  <b>`values`</b>: A real numeric `Output`. Any shape. Values to use to
+*  <b>`tag`</b>: A `string` `Tensor`. 0-D.  Tag to use for the summary value.
+*  <b>`values`</b>: A real numeric `Tensor`. Any shape. Values to use to
     build the histogram.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
@@ -20,6 +20,6 @@ This op reports an `InvalidArgument` error if any value is not finite.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 

@@ -75,15 +75,6 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
     '  est = Estimator(...) -> est = SKCompat(Estimator(...))')
 
 
-# TODO(roumposg): Migrate external users to tf.learn.contrib.ModeKeys and delete
-# this.
-ModeKeys = model_fn_lib.ModeKeys  # pylint: disable=invalid-name
-
-
-# TODO(roumposg): Migrate external users to model.ModelFnOps and delete this.
-ModelFnOps = model_fn_lib.ModelFnOps  # pylint: disable=invalid-name
-
-
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
   """Make inputs into input and feed functions.
 
@@ -136,8 +127,8 @@ def infer_real_valued_columns_from_input_fn(input_fn):
 
   Args:
     input_fn: Input function returning a tuple of:
-        features - Dictionary of string feature name to `Output` or `Output`.
-        labels - `Output` of label values.
+        features - Dictionary of string feature name to `Tensor` or `Tensor`.
+        labels - `Tensor` of label values.
 
   Returns:
     List of `FeatureColumn` objects.
@@ -463,7 +454,7 @@ class BaseEstimator(
 
     Returns:
       A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns an `Output` for `predictions` or a `dict`
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
       of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
       predictions if as_iterable is True.
 
@@ -524,20 +515,20 @@ class BaseEstimator(
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Output` of `Example` strings, parses it into features that are then
+        `Tensor` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
         returns a tuple of (features, labels), where features is a dict of
-        string key to `Output` and labels is an `Output` that's currently not
+        string key to `Tensor` and labels is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Output` that the exported model will take as
+        the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Output` of `Example` strings, `dict` of `Output`s
-        for features and `Output` or `dict` of `Output`s for predictions.
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
       prediction_key: The key for a tensor in the `predictions` dict (output
         from the `model_fn`) to use as the `predictions` input to the
         `signature_fn`. Optional. If `None`, predictions will pass to
@@ -571,8 +562,8 @@ class BaseEstimator(
     Expected to be overriden by sub-classes that require custom support.
 
     Args:
-      features: `Output` or `dict` of `Output` objects.
-      labels: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
+      labels: `Tensor` or `dict` of `Tensor` objects.
 
     Returns:
       A `ModelFnOps` object.
@@ -584,7 +575,7 @@ class BaseEstimator(
     """Method that builds model graph and returns prediction ops.
 
     Args:
-      features: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
 
     Returns:
       A `ModelFnOps` object.
@@ -597,8 +588,8 @@ class BaseEstimator(
     Expected to be overriden by sub-classes that require custom support.
 
     Args:
-      features: `Output` or `dict` of `Output` objects.
-      labels: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
+      labels: `Tensor` or `dict` of `Tensor` objects.
       metrics: Dict of metrics to run. If None, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
@@ -628,7 +619,7 @@ class BaseEstimator(
       examples_batch: batch of tf.Example
 
     Returns:
-      features: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
 
     Raises:
       ValueError: If `_features_info` attribute is not available (usually
@@ -706,7 +697,7 @@ class BaseEstimator(
       # cases, but will soon be deleted after the subclasses are updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       train_ops = self._get_train_ops(features, labels)
-      if isinstance(train_ops, ModelFnOps):  # Default signature
+      if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
         train_op = train_ops.train_op
         loss_op = train_ops.loss
       else:  # Legacy signature
@@ -800,7 +791,7 @@ class BaseEstimator(
       # updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, ModelFnOps):  # Default signature
+      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
         eval_dict = eval_ops.eval_metric_ops
       else:  # Legacy signature
         eval_dict = eval_ops
@@ -846,7 +837,7 @@ class BaseEstimator(
       # are updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       infer_ops = self._get_predict_ops(features)
-      if isinstance(infer_ops, ModelFnOps):  # Default signature
+      if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
         predictions = infer_ops.predictions
       else:  # Legacy signature
         predictions = infer_ops
@@ -943,9 +934,9 @@ class Estimator(BaseEstimator):
     Args:
       model_fn: Model function. Follows the signature:
         * Args:
-          * `features` are single `Output` or `dict` of `Output`s
+          * `features` are single `Tensor` or `dict` of `Tensor`s
                  (depending on data passed to `fit`),
-          * `labels` are `Output` or `dict` of `Output`s (for multi-head
+          * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
                  models). If mode is `ModeKeys.INFER`, `labels=None` will be
                  passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
@@ -961,11 +952,11 @@ class Estimator(BaseEstimator):
 
         Also supports a legacy signature which returns tuple of:
 
-          * predictions: `Output`, `SparseTensor` or dictionary of same.
-              Can also be any type that is convertible to an `Output` or
+          * predictions: `Tensor`, `SparseTensor` or dictionary of same.
+              Can also be any type that is convertible to a `Tensor` or
               `SparseTensor`, or dictionary of same.
-          * loss: Scalar loss `Output`.
-          * train_op: Training update `Output` or `Operation`.
+          * loss: Scalar loss `Tensor`.
+          * train_op: Training update `Tensor` or `Operation`.
 
         Supports next three signatures for the function:
 
@@ -1031,14 +1022,14 @@ class Estimator(BaseEstimator):
     else:
       model_fn_results = self._model_fn(features, labels)
 
-    if isinstance(model_fn_results, ModelFnOps):
+    if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
     # Here model_fn_ops should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
-    return ModelFnOps(
+    return model_fn_lib.ModelFnOps(
         mode=mode,
         predictions=model_fn_results[0],
         loss=model_fn_results[1],
@@ -1052,13 +1043,13 @@ class Estimator(BaseEstimator):
     build model.
 
     Args:
-      features: `Output` or `dict` of `Output` objects.
-      labels: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
+      labels: `Tensor` or `dict` of `Tensor` objects.
 
     Returns:
       `ModelFnOps` object.
     """
-    return self._call_model_fn(features, labels, ModeKeys.TRAIN)
+    return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
 
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
@@ -1068,8 +1059,8 @@ class Estimator(BaseEstimator):
     build model.
 
     Args:
-      features: `Output` or `dict` of `Output` objects.
-      labels: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
+      labels: `Tensor` or `dict` of `Tensor` objects.
       metrics: Dict of metrics to run. If None, the default metric functions
         are used; if {}, no metrics are used. Otherwise, `metrics` should map
         friendly names for the metric to a `MetricSpec` object defining which
@@ -1085,7 +1076,8 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if `metrics` don't match `labels`.
     """
-    model_fn_ops = self._call_model_fn(features, labels, ModeKeys.EVAL)
+    model_fn_ops = self._call_model_fn(
+        features, labels, model_fn_lib.ModeKeys.EVAL)
 
     # Custom metrics should overwrite defaults.
     if metrics:
@@ -1105,14 +1097,14 @@ class Estimator(BaseEstimator):
     build model.
 
     Args:
-      features: `Output` or `dict` of `Output` objects.
+      features: `Tensor` or `dict` of `Tensor` objects.
 
     Returns:
       `ModelFnOps` object.
     """
     labels = tensor_signature.create_placeholders_from_signatures(
         self._labels_info)
-    return self._call_model_fn(features, labels, ModeKeys.INFER)
+    return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
 
 # For time of deprecation x,y from Estimator allow direct access.

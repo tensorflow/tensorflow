@@ -142,7 +142,7 @@ in the graph.
 
 ##### Returns:
 
-  List of `Output` objects or string tensor names to be run.
+  List of `Tensor` objects or string tensor names to be run.
 
 ##### Raises:
 

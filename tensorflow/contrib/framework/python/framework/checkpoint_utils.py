@@ -71,7 +71,7 @@ def load_variable(checkpoint_dir, name):
     name: Name of the tensor to return.
 
   Returns:
-    `Output` object.
+    `Tensor` object.
   """
   # TODO(b/29227106): Fix this in the right place and remove this.
   if name.endswith(":0"):
@@ -111,7 +111,7 @@ def _set_checkpoint_initializer(variable, file_pattern, tensor_name, slice_spec,
   Args:
     variable: `Variable` object.
     file_pattern: string, where to load checkpoints from.
-    tensor_name: Name of the `Output` to load from checkpoint reader.
+    tensor_name: Name of the `Tensor` to load from checkpoint reader.
     slice_spec: Slice specification for loading partitioned variables.
     name: Name of the operation.
   """

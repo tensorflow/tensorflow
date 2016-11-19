@@ -144,7 +144,7 @@ class TensorFlowDataFrame(df.DataFrame):
     '''
 
     Args:
-      boolean_series: a `Series` that evaluates to a boolean `Output`.
+      boolean_series: a `Series` that evaluates to a boolean `Tensor`.
 
     Returns:
       A new `DataFrame` with the same columns as `self`, but selecting only the

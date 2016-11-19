@@ -1,8 +1,8 @@
 ### `tf.substr(input, pos, len, name=None)` {#substr}
 
-Return substrings from `Output` of strings.
+Return substrings from `Tensor` of strings.
 
-For each string in the input `Output`, creates a substring starting at index
+For each string in the input `Tensor`, creates a substring starting at index
 `pos` with a total length of `len`.
 
 If `len` defines a substring that would extend beyond the length of the input
@@ -79,14 +79,14 @@ output = [b'hir', b'ee', b'n"]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. Tensor of strings
-*  <b>`pos`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor` of type `string`. Tensor of strings
+*  <b>`pos`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     Scalar defining the position of first character in each substring
-*  <b>`len`</b>: A `Output`. Must have the same type as `pos`.
+*  <b>`len`</b>: A `Tensor`. Must have the same type as `pos`.
     Scalar defining the number of characters to include in each substring
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. Tensor of substrings
+  A `Tensor` of type `string`. Tensor of substrings
 

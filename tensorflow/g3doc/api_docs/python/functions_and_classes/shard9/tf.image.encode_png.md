@@ -17,12 +17,12 @@ the smallest output, but is slower.
 ##### Args:
 
 
-*  <b>`image`</b>: A `Output`. Must be one of the following types: `uint8`, `uint16`.
+*  <b>`image`</b>: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
     3-D with shape `[height, width, channels]`.
 *  <b>`compression`</b>: An optional `int`. Defaults to `-1`. Compression level.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. 0-D. PNG-encoded image.
+  A `Tensor` of type `string`. 0-D. PNG-encoded image.
 

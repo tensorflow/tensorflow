@@ -12,12 +12,12 @@ This functionality will be deprecated and it's recommended to use
 ##### Args:
 
 
-*  <b>`string_tensor`</b>: An `Output` of type `string`.
+*  <b>`string_tensor`</b>: A `Tensor` of type `string`.
 *  <b>`num_buckets`</b>: An `int` that is `>= 1`. The number of buckets.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `int64`.
+  A `Tensor` of type `int64`.
   A Tensor of the same shape as the input `string_tensor`.
 

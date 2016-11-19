@@ -67,8 +67,8 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       along dimension 0. Alternatively, a `PartitionedVariable`, created by
       partitioning along dimension 0.  Each element must be appropriately sized
       for the given `partition_strategy`.
-    ids: An `Output` with type `int32` or `int64` containing the ids to be
-      looked up in `params`.
+    ids: A `Tensor` with type `int32` or `int64` containing the ids to be looked
+      up in `params`.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
@@ -78,7 +78,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
      max_norm.
 
   Returns:
-    An `Output` with the same type as the tensors in `params`.
+    A `Tensor` with the same type as the tensors in `params`.
 
   Raises:
     ValueError: If `params` is empty.

@@ -13,13 +13,13 @@ This op reports an `InvalidArgument` error if any value is not finite.
 
 *  <b>`name`</b>: A name for the generated node. Will also serve as a series name in
     TensorBoard.
-*  <b>`values`</b>: A real numeric `Output`. Any shape. Values to use to
+*  <b>`values`</b>: A real numeric `Tensor`. Any shape. Values to use to
     build the histogram.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 

@@ -131,7 +131,7 @@ session is [closed](../../api_docs/python/client.md#Session.close),
 ##### Args:
 
 
-*  <b>`n`</b>: A scalar `Output` containing the number of elements to dequeue.
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -242,7 +242,7 @@ Otherwise the behavior is identical to `dequeue_many`.
 ##### Args:
 
 
-*  <b>`n`</b>: A scalar `Output` containing the number of elements to dequeue.
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

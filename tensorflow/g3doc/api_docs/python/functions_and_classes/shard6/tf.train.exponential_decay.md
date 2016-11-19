@@ -36,13 +36,13 @@ learning_step = (
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The initial learning rate.
-*  <b>`global_step`</b>: A scalar `int32` or `int64` `Output` or a Python number.
+*  <b>`global_step`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
     Global step to use for the decay computation.  Must not be negative.
-*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Output` or a Python number.
+*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
     Must be positive.  See the decay computation above.
-*  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  If `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
@@ -50,7 +50,7 @@ learning_step = (
 
 ##### Returns:
 
-  A scalar `Output` of the same type as `learning_rate`.  The decayed
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
 
 ##### Raises:

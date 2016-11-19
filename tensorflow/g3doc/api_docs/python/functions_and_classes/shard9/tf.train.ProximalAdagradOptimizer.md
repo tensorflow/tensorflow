@@ -11,7 +11,7 @@ Construct a new ProximalAdagrad optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value.  The learning rate.
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value.  The learning rate.
 *  <b>`initial_accumulator_value`</b>: A floating point value.
     Starting value for the accumulators, must be positive.
 *  <b>`l1_regularization_strength`</b>: A float value, must be greater than or

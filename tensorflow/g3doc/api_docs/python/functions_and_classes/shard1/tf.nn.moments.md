@@ -16,10 +16,10 @@ When using these moments for batch normalization (see
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output`.
+*  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints.  Axes along which to compute mean and
     variance.
-*  <b>`shift`</b>: An `Output` containing the value by which to shift the data for
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift
     close to the true mean provides the most numerically stable results.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
@@ -27,5 +27,5 @@ When using these moments for batch normalization (see
 
 ##### Returns:
 
-  Two `Output` objects: `mean` and `variance`.
+  Two `Tensor` objects: `mean` and `variance`.
 

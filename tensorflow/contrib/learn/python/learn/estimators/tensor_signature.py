@@ -31,7 +31,7 @@ from tensorflow.python.ops import parsing_ops
 
 class TensorSignature(collections.namedtuple(
     "TensorSignature", ["dtype", "shape", "is_sparse"])):
-  """Signature of the `Output` object.
+  """Signature of the `Tensor` object.
 
   Useful to check compatibility of tensors.
 
@@ -104,7 +104,7 @@ def tensors_compatible(tensors, signatures):
   """Check that tensors are compatible with signatures.
 
   Args:
-    tensors: Dict of `Output` objects or single `Output` object.
+    tensors: Dict of `Tensor` objects or single `Tensor` object.
     signatures: Dict of `TensorSignature` objects or
                 single `TensorSignature` object.
 
@@ -135,7 +135,7 @@ def create_signatures(tensors):
   """Creates TensorSignature objects for given tensors.
 
   Args:
-    tensors: Dict of `Output` objects or single `Output`.
+    tensors: Dict of `Tensor` objects or single `Tensor`.
 
   Returns:
     Dict of `TensorSignature` objects or single `TensorSignature`.
@@ -173,11 +173,11 @@ def create_example_parser_from_signatures(signatures, examples_batch,
 
   Args:
     signatures: Dict of `TensorSignature` objects or single `TensorSignature`.
-    examples_batch: string `Output` of serialized `Example` proto.
+    examples_batch: string `Tensor` of serialized `Example` proto.
     single_feature_name: string, single feature name.
 
   Returns:
-    features: `Output` or `dict` of `Output` objects.
+    features: `Tensor` or `dict` of `Tensor` objects.
   """
   feature_spec = {}
   if not isinstance(signatures, dict):

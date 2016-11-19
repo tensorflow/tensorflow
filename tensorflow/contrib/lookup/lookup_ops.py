@@ -153,11 +153,11 @@ class InitializableLookupTableBase(LookupInterface):
     The `default_value` is used for keys not present in the table.
 
     Args:
-      keys: Keys to look up. May be either a `SparseTensor` or dense `Output`.
+      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
       name: A name for the operation (optional).
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Output`.
+      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` or `default_value` doesn't match the table data
@@ -391,7 +391,7 @@ class TextFileInitializer(TableInitializerBase):
     Args:
       filename: The filename of the text file to be used for initialization.
         The path must be accessible from wherever the graph is initialized
-        (eg. trainer or eval workers). The filename may be a scalar `Output`.
+        (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_dtype: The `key` data type.
       key_index: the index that represents information of a line to get the
         table 'key' values from.
@@ -503,7 +503,7 @@ class TextFileStringTableInitializer(TextFileInitializer):
     Args:
       filename: The filename of the text file to be used for initialization.
         The path must be accessible from wherever the graph is initialized
-        (eg. trainer or eval workers). The filename may be a scalar `Output`.
+        (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the keys
         from. The default is 0 that represents the whole line content.
       value_column_index: The column index from the text file to get the
@@ -553,7 +553,7 @@ class TextFileIdTableInitializer(TextFileInitializer):
     Args:
       filename: The filename of the text file to be used for initialization.
         The path must be accessible from wherever the graph is initialized
-        (eg. trainer or eval workers). The filename may be a scalar `Output`.
+        (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the `key`
         values from. The default is to use the line number, starting from zero.
       value_column_index: The column index from the text file ro get the `value`
@@ -606,8 +606,8 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   ```
 
   Args:
-    tensor: A 1-D input `Output` with the strings to map to indices.
-    mapping: A 1-D string `Output` that specifies the mapping of strings to
+    tensor: A 1-D input `Tensor` with the strings to map to indices.
+    mapping: A 1-D string `Tensor` that specifies the mapping of strings to
       indices.
     default_value: The `int64` value to use for out-of-vocabulary strings.
       Defaults to -1.
@@ -662,8 +662,8 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   ```
 
   Args:
-    tensor: A `int64` `Output` with the indices to map to strings.
-    mapping: A 1-D string `Output` that specifies the strings to map from
+    tensor: A `int64` `Tensor` with the indices to map to strings.
+    mapping: A 1-D string `Tensor` that specifies the strings to map from
       indices.
     default_value: The string value to use for out-of-vocabulary indices.
     name: A name for this op (optional).

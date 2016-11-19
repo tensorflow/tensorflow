@@ -20,14 +20,14 @@ following signature:
 
 def _initializer(shape, dtype=dtypes.float32, partition_info=None):
   Args:
-    shape: List of `int` representing the shape of the output `Output`. Some
-      initializers may also be able to accept an `Output`.
-    dtype: (Optional) Type of the output `Output`.
+    shape: List of `int` representing the shape of the output `Tensor`. Some
+      initializers may also be able to accept a `Tensor`.
+    dtype: (Optional) Type of the output `Tensor`.
     partition_info: (Optional) variable_scope._PartitionInfo object holding
       additional information about how the variable is partitioned. May be
       `None` if the variable is not partitioned.
   Returns:
-    An `Output` of type `dtype` and `shape`.
+    A `Tensor` of type `dtype` and `shape`.
 """
 from __future__ import absolute_import
 from __future__ import division

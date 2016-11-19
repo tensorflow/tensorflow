@@ -1,6 +1,6 @@
 ### `tf.train.slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#slice_input_producer}
 
-Produces a slice of each `Output` in `tensor_list`.
+Produces a slice of each `Tensor` in `tensor_list`.
 
 Implemented using a Queue -- a `QueueRunner` for the Queue
 is added to the current `Graph`'s `QUEUE_RUNNER` collection.
@@ -8,7 +8,7 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 ##### Args:
 
 
-*  <b>`tensor_list`</b>: A list of `Output` objects. Every `Output` in
+*  <b>`tensor_list`</b>: A list of `Tensor` objects. Every `Tensor` in
     `tensor_list` must have the same size in the first dimension.
 *  <b>`num_epochs`</b>: An integer (optional). If specified, `slice_input_producer`
     produces each slice `num_epochs` times before generating

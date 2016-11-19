@@ -45,7 +45,7 @@ def _assert_float32(tensors):
   """Assert all tensors are float32.
 
   Args:
-    tensors: `Output` or `dict` of `Output` objects.
+    tensors: `Tensor` or `dict` of `Tensor` objects.
 
   Raises:
     TypeError: if any tensor is not float32.

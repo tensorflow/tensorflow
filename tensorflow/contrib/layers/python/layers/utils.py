@@ -40,7 +40,7 @@ NamedOutputs = namedtuple('NamedOutputs', ['name', 'outputs'])
 
 
 def collect_named_outputs(collections, alias, outputs):
-  """Add `Output` outputs tagged with alias to collections.
+  """Add `Tensor` outputs tagged with alias to collections.
 
   It is useful to collect end-points or tags for summaries. Example of usage:
 
@@ -70,7 +70,7 @@ def gather_tensors_alias(tensors):
   If the tensor does not have an alias it would default to its name.
 
   Args:
-    tensors: A list of `Output`s.
+    tensors: A list of `Tensors`.
 
   Returns:
     A list of strings with the alias of each tensor.
@@ -84,7 +84,7 @@ def get_tensor_alias(tensor):
   If the tensor does not have an alias it would default to its name.
 
   Args:
-    tensor: An `Output`.
+    tensor: A `Tensor`.
 
   Returns:
     A string with the alias of the tensor.
@@ -116,7 +116,7 @@ def constant_value(value_or_tensor_or_var, dtype=None):
   """Returns value if value_or_tensor_or_var has a constant value.
 
   Args:
-    value_or_tensor_or_var: A value, an `Output` or a `Variable`.
+    value_or_tensor_or_var: A value, a `Tensor` or a `Variable`.
     dtype: Optional `tf.dtype`, if set it would check it has the right
       dtype.
 

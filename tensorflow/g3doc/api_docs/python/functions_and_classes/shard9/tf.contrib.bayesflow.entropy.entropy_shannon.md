@@ -11,14 +11,14 @@ of the distribution `p`, or the sampled entropy:
     = Entropy[p]
 ```
 
-User supplies either `Output` of samples `z`, or number of samples to draw `n`
+User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
 ##### Args:
 
 
 *  <b>`p`</b>: `tf.contrib.distributions.Distribution`
-*  <b>`z`</b>: `Output` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
-*  <b>`n`</b>: Integer `Output`.  Number of samples to generate if `z` is not provided.
+*  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
+*  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`form`</b>: Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
     or `ELBOForms.sample` (sample estimate of entropy), or `ELBOForms.default`
@@ -28,7 +28,7 @@ User supplies either `Output` of samples `z`, or number of samples to draw `n`
 
 ##### Returns:
 
-  An `Output` with same `dtype` as `p`, and shape equal to `p.batch_shape`.
+  A `Tensor` with same `dtype` as `p`, and shape equal to `p.batch_shape`.
 
 ##### Raises:
 

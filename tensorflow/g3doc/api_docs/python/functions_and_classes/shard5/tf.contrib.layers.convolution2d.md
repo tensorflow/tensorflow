@@ -6,7 +6,7 @@ It is required that 1 <= N <= 3.
 
 `convolution` creates a variable called `weights`, representing the
 convolutional kernel, that is convolved (actually cross-correlated) with the
-`inputs` to produce an `Output` of activations. If a `normalizer_fn` is
+`inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
 provided (such as `batch_norm`), it is then applied. Otherwise, if
 `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
 variable would be created and added the activations. Finally, if

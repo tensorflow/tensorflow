@@ -21,12 +21,12 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
 ##### Args:
 
 
-*  <b>`chol`</b>: An `Output`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
+*  <b>`chol`</b>: A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
     Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
     For that reason, only the lower triangular parts (including the diagonal)
     of the last two dimensions of `chol` are used.  The strictly upper part is
     assumed to be zero and not accessed.
-*  <b>`rhs`</b>: An `Output`, same type as `chol`, shape is `[..., M, K]`.
+*  <b>`rhs`</b>: A `Tensor`, same type as `chol`, shape is `[..., M, K]`.
 *  <b>`name`</b>: A name to give this `Op`.  Defaults to `cholesky_solve`.
 
 ##### Returns:

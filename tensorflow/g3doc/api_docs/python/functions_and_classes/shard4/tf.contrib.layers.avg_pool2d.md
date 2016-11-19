@@ -23,7 +23,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 
 ##### Returns:
 
-  An `Output` representing the results of the pooling operation.
+  A `Tensor` representing the results of the pooling operation.
 
 ##### Raises:
 

@@ -171,7 +171,7 @@ class Transform(object):
 
     Note this output type is used both for `__call__`, in which case the
     values are `TransformedSeries`, and for `apply_transform`, in which case
-    the values are `Output`s.
+    the values are `Tensor`s.
 
     Returns:
       A namedtuple type fixing the order and names of the outputs of this

@@ -31,12 +31,12 @@ def bucketize(input_tensor, boundaries, name=None):
   See bucketize_op.cc for more details.
 
   Args:
-    input_tensor: An `Output` which will be bucketize.
+    input_tensor: A `Tensor` which will be bucketize.
     boundaries: A list of floats gives the boundaries. It has to be sorted.
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    An `Output` with type int32 which indicates the corresponding bucket for
+    A `Tensor` with type int32 which indicates the corresponding bucket for
       each value in `input_tensor`.
 
   Raises:

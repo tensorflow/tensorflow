@@ -89,7 +89,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
 
   Args:
     info: Transform._Info instance.
-    elem: the original element (`tf.Output` or `tf.Operation`)
+    elem: the original element (`tf.Tensor` or `tf.Operation`)
     elem_: the transformed element
   """
   # TODO(fkp): handle known special cases

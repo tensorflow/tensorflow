@@ -5,15 +5,15 @@ Computes the percentage of times that predictions matches labels.
 ##### Args:
 
 
-*  <b>`predictions`</b>: the predicted values, an `Output` whose dtype and shape
+*  <b>`predictions`</b>: the predicted values, a `Tensor` whose dtype and shape
                matches 'labels'.
-*  <b>`labels`</b>: the ground truth values, an `Output` of any shape and
+*  <b>`labels`</b>: the ground truth values, a `Tensor` of any shape and
           bool, integer, or string dtype.
-*  <b>`weights`</b>: None or `Output` of float values to reweight the accuracy.
+*  <b>`weights`</b>: None or `Tensor` of float values to reweight the accuracy.
 
 ##### Returns:
 
-  Accuracy `Output`.
+  Accuracy `Tensor`.
 
 ##### Raises:
 

@@ -20,12 +20,12 @@ tf.matrix_transpose(x) ==> [[1 4]
 ##### Args:
 
 
-*  <b>`a`</b>: An `Output` with `rank >= 2`.
+*  <b>`a`</b>: A `Tensor` with `rank >= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A transposed batch matrix `Output`.
+  A transposed batch matrix `Tensor`.
 
 ##### Raises:
 

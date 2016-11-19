@@ -41,7 +41,7 @@ def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
   """Converts a dense Tensor to a SparseTensor, dropping ignore_value cells.
 
   Args:
-    dense_tensor: An `Output`.
+    dense_tensor: A `Tensor`.
     ignore_value: Entries in `dense_tensor` equal to this value will be
       absent from the return `SparseTensor`. If `None`, default value of
       dense_tensor's dtype will be used (e.g. '' for `str`, 0 for `int`).

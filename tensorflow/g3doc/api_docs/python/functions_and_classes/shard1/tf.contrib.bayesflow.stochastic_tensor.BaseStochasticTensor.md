@@ -35,11 +35,11 @@ constant with respect to the input for purposes of the gradient.
 ##### Args:
 
 
-*  <b>`sample_loss`</b>: `Output`, sample loss downstream of this `StochasticTensor`.
+*  <b>`sample_loss`</b>: `Tensor`, sample loss downstream of this `StochasticTensor`.
 
 ##### Returns:
 
-  Either `None` or an `Output`.
+  Either `None` or a `Tensor`.
 
 
 - - -

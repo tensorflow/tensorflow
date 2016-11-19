@@ -8,7 +8,7 @@ initialize local variables.
 ##### Args:
 
 
-*  <b>`tensor`</b>: Any `Output`.
+*  <b>`tensor`</b>: Any `Tensor`.
 *  <b>`num_epochs`</b>: A positive integer (optional).  If specified, limits the number
     of steps the output tensor may be evaluated.
 *  <b>`name`</b>: A name for the operations (optional).

@@ -46,7 +46,7 @@ def prefetch_queue(tensors,
   loss = Loss(logits, labels)
 
   Args:
-    tensors: A list or dictionary of `Output`s to enqueue in the buffer.
+    tensors: A list or dictionary of `Tensors` to enqueue in the buffer.
     capacity: An integer. The maximum number of elements in the queue.
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.

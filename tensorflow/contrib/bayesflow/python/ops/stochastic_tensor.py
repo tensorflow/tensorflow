@@ -91,10 +91,10 @@ class BaseStochasticTensor(object):
     constant with respect to the input for purposes of the gradient.
 
     Args:
-      sample_loss: `Output`, sample loss downstream of this `StochasticTensor`.
+      sample_loss: `Tensor`, sample loss downstream of this `StochasticTensor`.
 
     Returns:
-      Either `None` or an `Output`.
+      Either `None` or a `Tensor`.
     """
     raise NotImplementedError("surrogate_loss not implemented")
 
@@ -301,7 +301,7 @@ class StochasticTensor(BaseStochasticTensor):
           value type set with the `value_type` context manager will be used.
       loss_fn: callable that takes
           `(st, st.value(), influenced_loss)`, where
-          `st` is this `StochasticTensor`, and returns an `Output` loss. By
+          `st` is this `StochasticTensor`, and returns a `Tensor` loss. By
           default, `loss_fn` is the `score_function`, or more precisely, the
           integral of the score function, such that when the gradient is taken,
           the score function results. See the `stochastic_gradient_estimators`

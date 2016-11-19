@@ -27,7 +27,11 @@ from tensorflow.python.training.server_lib import ClusterSpec
 
 
 class Environment(object):
+  # For running general distributed training.
   CLOUD = 'cloud'
+  # For running Google-internal distributed training.
+  GOOGLE = 'google'
+  # For running on local desktop.
   LOCAL = 'local'
 
 
@@ -111,11 +115,11 @@ class ClusterConfig(object):
     self._num_ps_replicas = _count_ps(self._cluster_spec) or 0
 
     # Set is_chief.
-    environment = config.get('environment', Environment.LOCAL)
+    self._environment = config.get('environment', Environment.LOCAL)
     self._is_chief = None
     if self._task_type is None:
       self._is_chief = (self._task_id == 0)
-    elif environment == Environment.CLOUD:
+    elif self._environment == Environment.CLOUD:
       # When the TF_CONFIG environment variable is set, we can set the
       # default of is_chief to 0 when task_type is "master" and task_id is 0.
       self._is_chief = (self._task_type == TaskType.MASTER and
@@ -130,6 +134,10 @@ class ClusterConfig(object):
   @property
   def cluster_spec(self):
     return self._cluster_spec
+
+  @property
+  def environment(self):
+    return self._environment
 
   @property
   def evaluation_master(self):

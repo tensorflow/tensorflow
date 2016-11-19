@@ -49,13 +49,13 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 ##### Args:
 
 
-*  <b>`tensor`</b>: A `Output`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
     Up to 8-D.
-*  <b>`axis`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D. The indices of the dimensions to reverse.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `tensor`. The same shape as `tensor`.
+  A `Tensor`. Has the same type as `tensor`. The same shape as `tensor`.
 

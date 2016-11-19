@@ -11,7 +11,7 @@ Get all the tensors which are input or output of an op in ops.
 
 ##### Returns:
 
-  A list of `tf.Output`.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 

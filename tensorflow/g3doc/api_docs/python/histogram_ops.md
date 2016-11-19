@@ -18,8 +18,8 @@ equal width and determined by the arguments `value_range` and `nbins`.
 ##### Args:
 
 
-*  <b>`values`</b>: Numeric `Output`.
-*  <b>`value_range`</b>: Shape [2] `Output`.  new_values <= value_range[0] will be
+*  <b>`values`</b>: Numeric `Tensor`.
+*  <b>`value_range`</b>: Shape [2] `Tensor`.  new_values <= value_range[0] will be
     mapped to hist[0], values >= value_range[1] will be mapped to hist[-1].
     Must be same dtype as new_values.
 *  <b>`nbins`</b>: Scalar `int32 Tensor`.  Number of histogram bins.
@@ -28,7 +28,7 @@ equal width and determined by the arguments `value_range` and `nbins`.
 
 ##### Returns:
 
-  A 1-D `Output` holding histogram of values.
+  A 1-D `Tensor` holding histogram of values.
 
 
 *  <b>`Examples`</b>: 

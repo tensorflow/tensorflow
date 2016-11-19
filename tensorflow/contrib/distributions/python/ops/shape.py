@@ -33,12 +33,12 @@ class _DistributionShape(object):
   """Manage and manipulate `Distribution` shape.
 
   Terminology:
-    Recall that an `Output` has:
-      - `shape`: size of `Output` dimensions,
-      - `ndims`: size of `shape`; number of `Output` dimensions,
+    Recall that a `Tensor` has:
+      - `shape`: size of `Tensor` dimensions,
+      - `ndims`: size of `shape`; number of `Tensor` dimensions,
       - `dims`: indexes into `shape`; useful for transpose, reduce.
 
-    `Output`s sampled from a `Distribution` can be partitioned by `sample_dims`,
+    `Tensor`s sampled from a `Distribution` can be partitioned by `sample_dims`,
     `batch_dims`, and `event_dims`.  To understand the semantics of these
     dimensions, consider when two of the three are fixed and the remaining
     is varied:
@@ -49,12 +49,12 @@ class _DistributionShape(object):
       - `event_dims`:  indexes event coordinates from one sample.
 
     The `sample`, `batch`, and `event` dimensions constitute the entirety of a
-    `Distribution` `Output`'s shape.
+    `Distribution` `Tensor`'s shape.
 
     The dimensions are always in `sample`, `batch`, `event` order.
 
   Purpose:
-    This class partitions `Output` notions of `shape`, `ndims`, and `dims` into
+    This class partitions `Tensor` notions of `shape`, `ndims`, and `dims` into
     `Distribution` notions of `sample,` `batch,` and `event` dimensions. That
     is, it computes any of:
 
@@ -64,10 +64,10 @@ class _DistributionShape(object):
     sample_ndims     batch_ndims     event_ndims
     ```
 
-    for a given `Output`, e.g., the result of
+    for a given `Tensor`, e.g., the result of
     `Distribution.sample(sample_shape=...)`.
 
-    For a given `Output`, this class computes the above table using minimal
+    For a given `Tensor`, this class computes the above table using minimal
     information: `batch_ndims` and `event_ndims`.
 
   Examples of `Distribution` `shape` semantics:
@@ -96,7 +96,7 @@ class _DistributionShape(object):
                               reduction_indices=batch_dims)
       ```
 
-      The `Laplace` distribution generates an `Output` of shape `[1000]`. When
+      The `Laplace` distribution generates a `Tensor` of shape `[1000]`. When
       fed to a `Normal`, this is interpreted as 1000 different locations, i.e.,
       1000 non-identical Normals.  Therefore a single call to `pdf(x)` yields
       1000 probabilities, one for every location.  The average over this batch
@@ -153,8 +153,8 @@ class _DistributionShape(object):
     performance degradation because data must be switched from GPU to CPU.
 
     For example, when `validate_args=False` and `event_ndims` is a
-    non-constant `Output`, it is checked to be a non-negative integer at graph
-    execution. (Same for `batch_ndims`).  Constant `Output`s and non-`Output`
+    non-constant `Tensor`, it is checked to be a non-negative integer at graph
+    execution. (Same for `batch_ndims`).  Constant `Tensor`s and non-`Tensor`
     arguments are always checked for correctness since this can be done for
     "free," i.e., during graph construction.
   """
@@ -170,19 +170,19 @@ class _DistributionShape(object):
     `Distribution`.  They may only be known at graph execution.
 
     If both `batch_ndims` and `event_ndims` are python scalars (rather than
-    either being an `Output`), functions in this class automatically perform
+    either being a `Tensor`), functions in this class automatically perform
     sanity checks during graph construction.
 
     Args:
-      batch_ndims: `Output`. Number of `dims` (`rank`) of the batch portion of
-        indexes of an `Output`.  A "batch" is a non-identical distribution, i.e,
+      batch_ndims: `Tensor`. Number of `dims` (`rank`) of the batch portion of
+        indexes of a `Tensor`.  A "batch" is a non-identical distribution, i.e,
         Normal with different parameters.
-      event_ndims: `Output`. Number of `dims` (`rank`) of the event portion of
-        indexes of an `Output`. An "event" is what is sampled from a
+      event_ndims: `Tensor`. Number of `dims` (`rank`) of the event portion of
+        indexes of a `Tensor`. An "event" is what is sampled from a
         distribution, i.e., a trivariate Normal has an event shape of [3] and a
         4 dimensional Wishart has an event shape of [4, 4].
       validate_args: `Boolean`, default `False`. When `True`, non-`tf.constant`
-        `Output` arguments are checked for correctness. (`tf.constant`
+        `Tensor` arguments are checked for correctness. (`tf.constant`
         arguments are always checked.)
       name: `String`. The name prepended to Ops created by this class.
 
@@ -226,18 +226,18 @@ class _DistributionShape(object):
 
   @property
   def validate_args(self):
-    """Returns True if graph-runtime `Output` checks are enabled."""
+    """Returns True if graph-runtime `Tensor` checks are enabled."""
     return self._validate_args
 
   def get_ndims(self, x, name="get_ndims"):
-    """Get `Output` number of dimensions (rank).
+    """Get `Tensor` number of dimensions (rank).
 
     Args:
-      x: `Output`.
+      x: `Tensor`.
       name: `String`. The name to give this op.
 
     Returns:
-      ndims: Scalar number of dimensions associated with an `Output`.
+      ndims: Scalar number of dimensions associated with a `Tensor`.
     """
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
@@ -250,11 +250,11 @@ class _DistributionShape(object):
     """Returns number of dimensions corresponding to iid draws ("sample").
 
     Args:
-      x: `Output`.
+      x: `Tensor`.
       name: `String`. The name to give this op.
 
     Returns:
-      sample_ndims: `Output` (0D, `int32`).
+      sample_ndims: `Tensor` (0D, `int32`).
 
     Raises:
       ValueError: if `sample_ndims` is calculated to be negative.
@@ -295,13 +295,13 @@ class _DistributionShape(object):
     ```
 
     Args:
-      x: `Output`.
+      x: `Tensor`.
       name: `String`. The name to give this op.
 
     Returns:
-      sample_dims: `Output` (1D, `int32`).
-      batch_dims: `Output` (1D, `int32`).
-      event_dims: `Output` (1D, `int32`).
+      sample_dims: `Tensor` (1D, `int32`).
+      batch_dims: `Tensor` (1D, `int32`).
+      event_dims: `Tensor` (1D, `int32`).
     """
     with self._name_scope(name, values=[x]):
       def make_dims(start_sum, size, name):
@@ -323,16 +323,16 @@ class _DistributionShape(object):
                         self.event_ndims, name="event_dims"))
 
   def get_shape(self, x, name="get_shape"):
-    """Returns `Output`'s shape partitioned into `sample`, `batch`, `event`.
+    """Returns `Tensor`'s shape partitioned into `sample`, `batch`, `event`.
 
     Args:
-      x: `Output`.
+      x: `Tensor`.
       name: `String`. The name to give this op.
 
     Returns:
-      sample_shape: `Output` (1D, `int32`).
-      batch_shape: `Output` (1D, `int32`).
-      event_shape: `Output` (1D, `int32`).
+      sample_shape: `Tensor` (1D, `int32`).
+      batch_shape: `Tensor` (1D, `int32`).
+      event_shape: `Tensor` (1D, `int32`).
     """
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
@@ -359,7 +359,7 @@ class _DistributionShape(object):
 
   def make_batch_of_event_sample_matrices(
       self, x, name="make_batch_of_event_sample_matrices"):
-    """Reshapes/transposes `Distribution` `Output` from S+B+E to B_+E_+S_.
+    """Reshapes/transposes `Distribution` `Tensor` from S+B+E to B_+E_+S_.
 
     Where:
       - `B_ = B if B else [1]`,
@@ -367,12 +367,12 @@ class _DistributionShape(object):
       - `S_ = [tf.reduce_prod(S)]`.
 
     Args:
-      x: `Output`.
+      x: `Tensor`.
       name: `String`. The name to give this op.
 
     Returns:
-      x: `Output`. Input transposed/reshaped to `B_+E_+S_`.
-      sample_shape: `Output` (1D, `int32`).
+      x: `Tensor`. Input transposed/reshaped to `B_+E_+S_`.
+      sample_shape: `Tensor` (1D, `int32`).
     """
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
@@ -388,7 +388,7 @@ class _DistributionShape(object):
 
   def undo_make_batch_of_event_sample_matrices(
       self, x, sample_shape, name="undo_make_batch_of_event_sample_matrices"):
-    """Reshapes/transposes `Distribution` `Output` from B_+E_+S_ to S+B+E.
+    """Reshapes/transposes `Distribution` `Tensor` from B_+E_+S_ to S+B+E.
 
     Where:
       - `B_ = B if B else [1]`,
@@ -398,12 +398,12 @@ class _DistributionShape(object):
     This function "reverses" `make_batch_of_event_sample_matrices`.
 
     Args:
-      x: `Output` of shape `B_+E_+S_`.
-      sample_shape: `Output` (1D, `int32`).
+      x: `Tensor` of shape `B_+E_+S_`.
+      sample_shape: `Tensor` (1D, `int32`).
       name: `String`. The name to give this op.
 
     Returns:
-      x: `Output`. Input transposed/reshaped to `S+B+E`.
+      x: `Tensor`. Input transposed/reshaped to `S+B+E`.
     """
     with self._name_scope(name, values=[x, sample_shape]):
       x = ops.convert_to_tensor(x, name="x")

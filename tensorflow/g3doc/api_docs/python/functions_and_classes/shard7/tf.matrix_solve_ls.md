@@ -5,7 +5,7 @@ Solves one or more linear least-squares problems.
 `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
 form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
 inner-most 2 dimensions form `M`-by-`K` matrices.   The computed output is a
-`Output` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
+`Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
 matrices that solve the equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
 sense.
@@ -40,16 +40,16 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
 ##### Args:
 
 
-*  <b>`matrix`</b>: `Output` of shape `[..., M, N]`.
-*  <b>`rhs`</b>: `Output` of shape `[..., M, K]`.
-*  <b>`l2_regularizer`</b>: 0-D `double` `Output`. Ignored if `fast=False`.
+*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`.
+*  <b>`rhs`</b>: `Tensor` of shape `[..., M, K]`.
+*  <b>`l2_regularizer`</b>: 0-D `double` `Tensor`. Ignored if `fast=False`.
 *  <b>`fast`</b>: bool. Defaults to `True`.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
 
-*  <b>`output`</b>: `Output` of shape `[..., N, K]` whose inner-most 2 dimensions form
+*  <b>`output`</b>: `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form
     `M`-by-`K` matrices that solve the equations
     `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
     squares sense.

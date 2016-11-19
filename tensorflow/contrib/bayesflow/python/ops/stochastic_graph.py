@@ -54,7 +54,7 @@ def _stochastic_dependencies_map(fixed_losses, stochastic_tensors=None):
   """Map stochastic tensors to the fixed losses that depend on them.
 
   Args:
-    fixed_losses: a list of `Output`s.
+    fixed_losses: a list of `Tensor`s.
     stochastic_tensors: a list of `StochasticTensor`s to map to fixed losses.
       If `None`, all `StochasticTensor`s in the graph will be used.
 
@@ -109,16 +109,16 @@ def surrogate_loss(sample_losses,
       dimensionality of 1 or greater. All losses should have the same shape.
     stochastic_tensors: a list of `StochasticTensor`s to add loss terms for.
       If None, defaults to all `StochasticTensor`s in the graph upstream of
-      the `Output`s in `sample_losses`.
+      the `Tensor`s in `sample_losses`.
     name: the name with which to prepend created ops.
 
   Returns:
-    `Output` loss, which is the sum of `sample_losses` and the
+    `Tensor` loss, which is the sum of `sample_losses` and the
     `loss_fn`s returned by the `StochasticTensor`s.
 
   Raises:
     TypeError: if `sample_losses` is not a list or tuple, or if its elements
-      are not `Output`s.
+      are not `Tensor`s.
     ValueError: if any loss in `sample_losses` does not have dimensionality 1
       or greater.
   """

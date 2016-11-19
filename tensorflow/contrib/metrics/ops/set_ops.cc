@@ -41,10 +41,10 @@ allowed but ignored.
 If `validate_indices` is `True`, this op validates the order and range of `set`
 indices.
 
-set_indices: 2D `Output`, indices of a `SparseTensor`.
-set_values: 1D `Output`, values of a `SparseTensor`.
-set_shape: 1D `Output`, shape of a `SparseTensor`.
-size: For `set` ranked `n`, this is an `Output` with rank `n-1`, and the same 1st
+set_indices: 2D `Tensor`, indices of a `SparseTensor`.
+set_values: 1D `Tensor`, values of a `SparseTensor`.
+set_shape: 1D `Tensor`, shape of a `SparseTensor`.
+size: For `set` ranked `n`, this is a `Tensor` with rank `n-1`, and the same 1st
     `n-1` dimensions as `set`. Each value is the number of unique elements in
     the corresponding `[0...n-1]` dimension of `set`.
 )doc");
@@ -121,7 +121,7 @@ REGISTER_OP("DenseToDenseSetOperation")
       return Status::OK();
     })
     .Doc(R"doc(
-Applies set operation along last dimension of 2 `Output` inputs.
+Applies set operation along last dimension of 2 `Tensor` inputs.
 
 See SetOperationOp::SetOperationFromContext for values of `set_operation`.
 
@@ -131,13 +131,13 @@ has rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`
 dimension contains the result of `set_operation` applied to the corresponding
 `[0...n-1]` dimension of `set`.
 
-set1: `Output` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.
+set1: `Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.
     Dimension `n` contains values in a set, duplicates are allowed but ignored.
-set2: `Output` with rank `n`. 1st `n-1` dimensions must be the same as `set1`.
+set2: `Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set1`.
     Dimension `n` contains values in a set, duplicates are allowed but ignored.
 result_indices: 2D indices of a `SparseTensor`.
 result_values: 1D values of a `SparseTensor`.
-result_shape: 1D `Output` shape of a `SparseTensor`. `result_shape[0...n-1]` is
+result_shape: 1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is
     the same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`
     is the max result set size across all `0...n-1` dimensions.
 )doc");
@@ -186,7 +186,7 @@ REGISTER_OP("DenseToSparseSetOperation")
       return Status::OK();
     })
     .Doc(R"doc(
-Applies set operation along last dimension of `Output` and `SparseTensor`.
+Applies set operation along last dimension of `Tensor` and `SparseTensor`.
 
 See SetOperationOp::SetOperationFromContext for values of `set_operation`.
 
@@ -204,18 +204,18 @@ has rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`
 dimension contains the result of `set_operation` applied to the corresponding
 `[0...n-1]` dimension of `set`.
 
-set1: `Output` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.
+set1: `Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.
     Dimension `n` contains values in a set, duplicates are allowed but ignored.
-set2_indices: 2D `Output`, indices of a `SparseTensor`. Must be in row-major
+set2_indices: 2D `Tensor`, indices of a `SparseTensor`. Must be in row-major
     order.
-set2_values: 1D `Output`, values of a `SparseTensor`. Must be in row-major
+set2_values: 1D `Tensor`, values of a `SparseTensor`. Must be in row-major
     order.
-set2_shape: 1D `Output`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must
+set2_shape: 1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must
     be the same as the 1st `n-1` dimensions of `set1`, `result_shape[n]` is the
     max set size across `n-1` dimensions.
 result_indices: 2D indices of a `SparseTensor`.
 result_values: 1D values of a `SparseTensor`.
-result_shape: 1D `Output` shape of a `SparseTensor`. `result_shape[0...n-1]` is
+result_shape: 1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is
     the same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`
     is the max result set size across all `0...n-1` dimensions.
 )doc");
@@ -275,23 +275,23 @@ has rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`
 dimension contains the result of `set_operation` applied to the corresponding
 `[0...n-1]` dimension of `set`.
 
-set1_indices: 2D `Output`, indices of a `SparseTensor`. Must be in row-major
+set1_indices: 2D `Tensor`, indices of a `SparseTensor`. Must be in row-major
     order.
-set1_values: 1D `Output`, values of a `SparseTensor`. Must be in row-major
+set1_values: 1D `Tensor`, values of a `SparseTensor`. Must be in row-major
     order.
-set1_shape: 1D `Output`, shape of a `SparseTensor`. `set1_shape[0...n-1]` must
+set1_shape: 1D `Tensor`, shape of a `SparseTensor`. `set1_shape[0...n-1]` must
     be the same as `set2_shape[0...n-1]`, `set1_shape[n]` is the
     max set size across `0...n-1` dimensions.
-set2_indices: 2D `Output`, indices of a `SparseTensor`. Must be in row-major
+set2_indices: 2D `Tensor`, indices of a `SparseTensor`. Must be in row-major
     order.
-set2_values: 1D `Output`, values of a `SparseTensor`. Must be in row-major
+set2_values: 1D `Tensor`, values of a `SparseTensor`. Must be in row-major
     order.
-set2_shape: 1D `Output`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must
+set2_shape: 1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must
     be the same as `set1_shape[0...n-1]`, `set2_shape[n]` is the
     max set size across `0...n-1` dimensions.
 result_indices: 2D indices of a `SparseTensor`.
 result_values: 1D values of a `SparseTensor`.
-result_shape: 1D `Output` shape of a `SparseTensor`. `result_shape[0...n-1]` is
+result_shape: 1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is
     the same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`
     is the max result set size across all `0...n-1` dimensions.
 )doc");
