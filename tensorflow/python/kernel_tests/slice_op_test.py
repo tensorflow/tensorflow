@@ -242,7 +242,7 @@ class SliceTest(tf.test.TestCase):
     c = tf.constant(5.0)
     with self.assertRaisesWithPredicateMatch(
         TypeError,
-        lambda e: "'Output' object is not iterable" in str(e)):
+        lambda e: "'Tensor' object is not iterable" in str(e)):
       for _ in c:
         pass
 
