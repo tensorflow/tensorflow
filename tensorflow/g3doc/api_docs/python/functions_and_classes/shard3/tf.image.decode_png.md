@@ -18,7 +18,7 @@ of color channels.
 ##### Args:
 
 
-*  <b>`contents`</b>: An `Output` of type `string`. 0-D.  The PNG-encoded image.
+*  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The PNG-encoded image.
 *  <b>`channels`</b>: An optional `int`. Defaults to `0`.
     Number of color channels for the decoded image.
 *  <b>`dtype`</b>: An optional `tf.DType` from: `tf.uint8, tf.uint16`. Defaults to `tf.uint8`.
@@ -26,5 +26,5 @@ of color channels.
 
 ##### Returns:
 
-  A `Output` of type `dtype`. 3-D with shape `[height, width, channels]`.
+  A `Tensor` of type `dtype`. 3-D with shape `[height, width, channels]`.
 

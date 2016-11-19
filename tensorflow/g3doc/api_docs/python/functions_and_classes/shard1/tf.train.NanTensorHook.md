@@ -11,7 +11,7 @@ Initializes NanLoss monitor.
 ##### Args:
 
 
-*  <b>`loss_tensor`</b>: `Output`, the loss tensor.
+*  <b>`loss_tensor`</b>: `Tensor`, the loss tensor.
 *  <b>`fail_on_nan_loss`</b>: `bool`, whether to raise exception when loss is NaN.
 
 

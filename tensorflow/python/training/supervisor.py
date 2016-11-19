@@ -238,12 +238,12 @@ class Supervisor(object):
         default `Graph`.  The supervisor may add operations to the graph before
         creating a session, but the graph should not be modified by the caller
         after passing it to the supervisor.
-      ready_op: 1-D string `Output`.  This tensor is evaluated by supervisors in
+      ready_op: 1-D string `Tensor`.  This tensor is evaluated by supervisors in
         `prepare_or_wait_for_session()` to check if the model is ready to use.
         The model is considered ready if it returns an empty array.  Defaults to
         the tensor returned from `tf.report_uninitialized_variables()`  If
         `None`, the model is not checked for readiness.
-      ready_for_local_init_op: 1-D string `Output`.  This tensor is evaluated by
+      ready_for_local_init_op: 1-D string `Tensor`.  This tensor is evaluated by
         supervisors in `prepare_or_wait_for_session()` to check if the model is
         ready to run the local_init_op.
         The model is considered ready if it returns an empty array.  Defaults to
@@ -257,7 +257,7 @@ class Supervisor(object):
         when it can not be recovered.  Defaults to an `Operation` that
         initializes all variables.  If `None`, no initialization is done
         automatically unless you pass a value for `init_fn`, see below.
-      init_feed_dict: A dictionary that maps `Output` objects to feed values.
+      init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
       local_init_op: `Operation`. Used by all supervisors to run initializations
         that should run for every new supervisor instance. By default these
@@ -389,10 +389,10 @@ class Supervisor(object):
     """Initializes ready_op.
 
     Args:
-      ready_op: `Output` to check if the model is initialized.
+      ready_op: `Tensor` to check if the model is initialized.
         If it's set to USE_DEFAULT, creates an op that checks all
         the variables are initialized.
-      ready_for_local_init_op: `Output` to check if the model is ready to run
+      ready_for_local_init_op: `Tensor` to check if the model is ready to run
         local_init_op.
         If it's set to USE_DEFAULT, creates an op that checks all
         the global variables are initialized.
@@ -416,7 +416,7 @@ class Supervisor(object):
     Args:
       init_op: `Operation` to initialize the variables. If set to USE_DEFAULT,
         create an op that initializes all variables and tables.
-      init_feed_dict: A dictionary that maps `Output` objects to feed values.
+      init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
     """
     if init_op is Supervisor.USE_DEFAULT:
@@ -868,7 +868,7 @@ class Supervisor(object):
     """Returns the global_step from the default graph.
 
     Returns:
-      The global step `Output` or `None`.
+      The global step `Tensor` or `None`.
     """
     try:
       gs = ops.get_default_graph().get_tensor_by_name("global_step:0")

@@ -7,7 +7,7 @@ Note that the correct graph scope must be set by the calling function.
 ##### Args:
 
 
-*  <b>`t`</b>: a `tf.Output` whose name will be used to create the placeholder
+*  <b>`t`</b>: a `tf.Tensor` whose name will be used to create the placeholder
     (see function placeholder_name).
 *  <b>`scope`</b>: absolute scope within which to create the placeholder. None
     means that the scope of `t` is preserved. `""` means the root scope.
@@ -19,5 +19,5 @@ Note that the correct graph scope must be set by the calling function.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `t` is not `None` or a `tf.Output`.
+*  <b>`TypeError`</b>: if `t` is not `None` or a `tf.Tensor`.
 

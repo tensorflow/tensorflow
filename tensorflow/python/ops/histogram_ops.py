@@ -41,8 +41,8 @@ def histogram_fixed_width(values,
   equal width and determined by the arguments `value_range` and `nbins`.
 
   Args:
-    values:  Numeric `Output`.
-    value_range:  Shape [2] `Output`.  new_values <= value_range[0] will be
+    values:  Numeric `Tensor`.
+    value_range:  Shape [2] `Tensor`.  new_values <= value_range[0] will be
       mapped to hist[0], values >= value_range[1] will be mapped to hist[-1].
       Must be same dtype as new_values.
     nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
@@ -50,7 +50,7 @@ def histogram_fixed_width(values,
     name:  A name for this operation (defaults to 'histogram_fixed_width').
 
   Returns:
-    A 1-D `Output` holding histogram of values.
+    A 1-D `Tensor` holding histogram of values.
 
   Examples:
 

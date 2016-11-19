@@ -18,11 +18,11 @@ tf.imag(input) ==> [4.75, 5.75]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output`. Must be one of the following types:
-    `complex64`, `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+    `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32` or `float64`.
+  A `Tensor` of type `float32` or `float64`.
 

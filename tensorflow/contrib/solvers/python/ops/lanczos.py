@@ -46,7 +46,7 @@ def lanczos_bidiag(operator,
 
   Args:
     operator: An object representing a linear operator with attributes:
-      - shape: Either a list of integers or a 1-D `Output` of type `int32` of
+      - shape: Either a list of integers or a 1-D `Tensor` of type `int32` of
         length 2. `shape[0]` is the dimension on the domain of the operator,
         `shape[1]` is the dimension of the co-domain of the operator. On other
         words, if operator represents an M x N matrix A, `shape` must contain
@@ -65,20 +65,20 @@ def lanczos_bidiag(operator,
       may terminate before `k` steps have been run.
     orthogonalize: If `True`, perform full orthogonalization. If `False` no
       orthogonalization is performed.
-    starting_vector: If not null, must be an `Output` of shape `[n]`.
+    starting_vector: If not null, must be a `Tensor` of shape `[n]`.
     name: A name scope for the operation.
 
   Returns:
     output: A namedtuple representing a Lanczos bidiagonalization of
       `operator` with attributes:
-      u: A rank-2 `Output` of type `operator.dtype` and shape
+      u: A rank-2 `Tensor` of type `operator.dtype` and shape
         `[operator.shape[0], k_actual+1]`, where `k_actual` is the number of
         steps run.
-      v: A rank-2 `Output` of type `operator.dtype` and shape
+      v: A rank-2 `Tensor` of type `operator.dtype` and shape
         `[operator.shape[1], k_actual]`, where `k_actual` is the number of steps
         run.
-      alpha: A rank-1 `Output` of type `operator.dtype` and shape `[k]`.
-      beta: A rank-1 `Output` of type `operator.dtype` and shape `[k]`.
+      alpha: A rank-1 `Tensor` of type `operator.dtype` and shape `[k]`.
+      beta: A rank-1 `Tensor` of type `operator.dtype` and shape `[k]`.
   """
 
   def tarray(size, dtype, name):
@@ -209,9 +209,9 @@ def bidiag_matmul(matrix, alpha, beta, adjoint_b=False, name="bidiag_matmul"):
       A * diag(alpha) + [zeros(m,1), A[:, :-1] * diag(beta[:-1])]
 
   Args:
-    matrix: A rank-2 `Output` representing matrix A.
-    alpha: A rank-1 `Output` representing the diagonal of B.
-    beta: A rank-1 `Output` representing the lower subdiagonal diagonal of B.
+    matrix: A rank-2 `Tensor` representing matrix A.
+    alpha: A rank-1 `Tensor` representing the diagonal of B.
+    beta: A rank-1 `Tensor` representing the lower subdiagonal diagonal of B.
     adjoint_b: `bool` determining what to compute.
     name: A name scope for the operation.
 

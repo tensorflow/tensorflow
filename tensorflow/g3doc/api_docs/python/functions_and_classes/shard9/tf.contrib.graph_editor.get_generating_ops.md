@@ -5,7 +5,7 @@ Return all the generating ops of the tensors in `ts`.
 ##### Args:
 
 
-*  <b>`ts`</b>: a list of `tf.Output`
+*  <b>`ts`</b>: a list of `tf.Tensor`
 
 ##### Returns:
 
@@ -14,5 +14,5 @@ Return all the generating ops of the tensors in `ts`.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `ts` cannot be converted to a list of `tf.Output`.
+*  <b>`TypeError`</b>: if `ts` cannot be converted to a list of `tf.Tensor`.
 

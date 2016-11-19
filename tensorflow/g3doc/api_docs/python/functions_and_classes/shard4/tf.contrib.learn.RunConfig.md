@@ -50,6 +50,13 @@ environment variable. See `ClusterConfig` for more details.
 
 - - -
 
+#### `tf.contrib.learn.RunConfig.environment` {#RunConfig.environment}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.RunConfig.evaluation_master` {#RunConfig.evaluation_master}
 
 

@@ -85,9 +85,9 @@ inputs are identical.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` of type `float`. It needs to be in the default "NHWC"
+*  <b>`value`</b>: A 4-D `Tensor` of type `float`. It needs to be in the default "NHWC"
     format. Its shape is `[batch, in_height, in_width, in_channels]`.
-*  <b>`filters`</b>: A 4-D `Output` with the same type as `value` and shape
+*  <b>`filters`</b>: A 4-D `Tensor` with the same type as `value` and shape
     `[filter_height, filter_width, in_channels, out_channels]`. `filters`'
     `in_channels` dimension must match that of `value`. Atrous convolution is
     equivalent to standard convolution with upsampled filters with effective
@@ -105,7 +105,7 @@ inputs are identical.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 
 ##### Raises:
 

@@ -5,11 +5,11 @@ Produces the max pool of the input tensor for quantized types.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `qint8`, `quint8`, `qint16`, `quint16`, `qint32`.
     The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
-*  <b>`min_input`</b>: An `Output` of type `float32`.
+*  <b>`min_input`</b>: A `Tensor` of type `float32`.
     The float value that the lowest quantized input value represents.
-*  <b>`max_input`</b>: An `Output` of type `float32`.
+*  <b>`max_input`</b>: A `Tensor` of type `float32`.
     The float value that the highest quantized input value represents.
 *  <b>`ksize`</b>: A list of `ints`.
     The size of the window for each dimension of the input tensor.
@@ -23,9 +23,9 @@ Produces the max pool of the input tensor for quantized types.
 
 ##### Returns:
 
-  A tuple of `Output` objects (output, min_output, max_output).
+  A tuple of `Tensor` objects (output, min_output, max_output).
 
-*  <b>`output`</b>: A `Output`. Has the same type as `input`.
-*  <b>`min_output`</b>: An `Output` of type `float32`. The float value that the lowest quantized output value represents.
-*  <b>`max_output`</b>: An `Output` of type `float32`. The float value that the highest quantized output value represents.
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`.
+*  <b>`min_output`</b>: A `Tensor` of type `float32`. The float value that the lowest quantized output value represents.
+*  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
 

@@ -43,7 +43,7 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 ##### Args:
 
 
-*  <b>`log_likelihood`</b>: `Output` log p(x|Z).
+*  <b>`log_likelihood`</b>: `Tensor` log p(x|Z).
 *  <b>`variational_with_prior`</b>: dict from `StochasticTensor` q(Z) to
     `Distribution` p(Z). If `None`, defaults to all `StochasticTensor`
     objects upstream of `log_likelihood` with priors registered with
@@ -57,7 +57,7 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 ##### Returns:
 
-  `Output` ELBO of the same type and shape as `log_likelihood`.
+  `Tensor` ELBO of the same type and shape as `log_likelihood`.
 
 ##### Raises:
 

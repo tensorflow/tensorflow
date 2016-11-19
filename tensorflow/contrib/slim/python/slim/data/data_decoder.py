@@ -54,8 +54,8 @@ class DataDecoder(object):
       items: A list of strings, each of which indicate a particular data type.
 
     Returns:
-      A list of `Output`s, whose length matches the length of `items`, where
-      each `Output` corresponds to each item.
+      A list of `Tensors`, whose length matches the length of `items`, where
+      each `Tensor` corresponds to each item.
 
     Raises:
       ValueError: If any of the items cannot be satisfied.

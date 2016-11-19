@@ -2,8 +2,8 @@
 
 Static assert that values is a "proper" iterable.
 
-`Ops` that expect iterables of `Output` can call this to validate input.
-Useful since `Output`, `ndarray`, byte/text type are all iterables themselves.
+`Ops` that expect iterables of `Tensor` can call this to validate input.
+Useful since `Tensor`, `ndarray`, byte/text type are all iterables themselves.
 
 ##### Args:
 
@@ -14,5 +14,5 @@ Useful since `Output`, `ndarray`, byte/text type are all iterables themselves.
 
 
 *  <b>`TypeError`</b>: If `values` is not iterable or is one of
-    `Output`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
+    `Tensor`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
 

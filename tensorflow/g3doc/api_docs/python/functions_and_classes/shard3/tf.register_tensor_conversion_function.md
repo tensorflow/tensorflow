@@ -1,6 +1,6 @@
 ### `tf.register_tensor_conversion_function(base_type, conversion_func, priority=100)` {#register_tensor_conversion_function}
 
-Registers a function for converting objects of `base_type` to `Output`.
+Registers a function for converting objects of `base_type` to `Tensor`.
 
 The conversion function must have the following signature:
 
@@ -9,15 +9,15 @@ The conversion function must have the following signature:
       # ...
 ```
 
-It must return an `Output` with the given `dtype` if specified. If the
-conversion function creates a new `Output`, it should use the given
+It must return a `Tensor` with the given `dtype` if specified. If the
+conversion function creates a new `Tensor`, it should use the given
 `name` if specified. All exceptions will be propagated to the caller.
 
 The conversion function may return `NotImplemented` for some
 inputs. In this case, the conversion process will continue to try
 subsequent conversion functions.
 
-If `as_ref` is true, the function must return an `Output` reference,
+If `as_ref` is true, the function must return a `Tensor` reference,
 such as a `Variable`.
 
 NOTE: The conversion functions will execute in order of priority,
@@ -31,7 +31,7 @@ registered with a smaller priority than `G`.
 *  <b>`base_type`</b>: The base type or tuple of base types for all objects that
     `conversion_func` accepts.
 *  <b>`conversion_func`</b>: A function that converts instances of `base_type` to
-    `Output`.
+    `Tensor`.
 *  <b>`priority`</b>: Optional integer that indicates the priority for applying this
     conversion function. Conversion functions with smaller priority values
     run earlier than conversion functions with larger priority values.

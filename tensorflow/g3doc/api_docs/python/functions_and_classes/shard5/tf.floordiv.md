@@ -17,8 +17,8 @@ as well.
 ##### Args:
 
 
-*  <b>`x`</b>: `Output` numerator of real numeric type.
-*  <b>`y`</b>: `Output` denominator of real numeric type.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

@@ -37,9 +37,9 @@ def create_test_input(batch_size, height, width, channels):
     channels: The number of channels per image or `None` if unknown.
 
   Returns:
-    Either a placeholder `Output` of dimension
+    Either a placeholder `Tensor` of dimension
       [batch_size, height, width, channels] if any of the inputs are `None` or a
-    constant `Output` with the mesh grid values along the spatial dimensions.
+    constant `Tensor` with the mesh grid values along the spatial dimensions.
   """
   if None in [batch_size, height, width, channels]:
     return tf.placeholder(tf.float32, (batch_size, height, width, channels))

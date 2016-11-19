@@ -65,11 +65,11 @@ def ndtr(x, name="ndtr"):
   ```
 
   Args:
-    x: `Output` of type `float32`, `float64`.
+    x: `Tensor` of type `float32`, `float64`.
     name: Python string. A name for the operation (default="ndtr").
 
   Returns:
-    ndtr: `Output` with `dtype=x.dtype`.
+    ndtr: `Tensor` with `dtype=x.dtype`.
 
   Raises:
     TypeError: if `x` is not floating-type.
@@ -135,13 +135,13 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
 
 
   Args:
-    x: `Output` of type `float32`, `float64`.
+    x: `Tensor` of type `float32`, `float64`.
     series_order: Positive Python `integer`. Maximum depth to
       evaluate the asymptotic expansion.  This is the `N` above.
     name: Python string. A name for the operation (default="log_ndtr").
 
   Returns:
-    log_ndtr: `Output` with `dtype=x.dtype`.
+    log_ndtr: `Tensor` with `dtype=x.dtype`.
 
   Raises:
     TypeError: if `x.dtype` is not handled.

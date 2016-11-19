@@ -41,7 +41,7 @@ def bow_encoder(ids,
   """Maps a sequence of symbols to a vector per example by averaging embeddings.
 
   Args:
-    ids: `[batch_size, doc_length]` `Output` or `SparseTensor` of type
+    ids: `[batch_size, doc_length]` `Tensor` or `SparseTensor` of type
       `int32` or `int64` with symbol ids.
     vocab_size: Integer number of symbols in vocabulary.
     embed_dim: Integer number of dimensions for embedding matrix.
@@ -59,7 +59,7 @@ def bow_encoder(ids,
     reuse: If `True`, variables inside the op will be reused.
 
   Returns:
-    Encoding `Output` `[batch_size, embed_dim]` produced by
+    Encoding `Tensor` `[batch_size, embed_dim]` produced by
     averaging embeddings.
 
   Raises:
@@ -102,7 +102,7 @@ def embed_sequence(ids,
   Typical use case would be reusing embeddings between an encoder and decoder.
 
   Args:
-    ids: `[batch_size, doc_length]` `Output` of type `int32` or `int64`
+    ids: `[batch_size, doc_length]` `Tensor` of type `int32` or `int64`
       with symbol ids.
     vocab_size: Integer number of symbols in vocabulary.
     embed_dim: Integer number of dimensions for embedding matrix.
@@ -118,7 +118,7 @@ def embed_sequence(ids,
     reuse: If `True`, variables inside the op will be reused.
 
   Returns:
-    `Output` of `[batch_size, doc_length, embed_dim]` with embedded sequences.
+    `Tensor` of `[batch_size, doc_length, embed_dim]` with embedded sequences.
 
   Raises:
     ValueError: if `embed_dim` or `vocab_size` are not specified when not

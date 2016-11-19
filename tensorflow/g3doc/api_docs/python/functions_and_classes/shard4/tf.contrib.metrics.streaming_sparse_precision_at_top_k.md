@@ -28,11 +28,11 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`top_k_predictions`</b>: Integer `Output` with shape [D1, ... DN, k] where
+*  <b>`top_k_predictions`</b>: Integer `Tensor` with shape [D1, ... DN, k] where
     N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
     The final dimension contains the indices of top-k labels. [D1, ... DN]
     must match `labels`.
-*  <b>`labels`</b>: `int64` `Output` or `SparseTensor` with shape
+*  <b>`labels`</b>: `int64` `Tensor` or `SparseTensor` with shape
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
@@ -43,7 +43,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Output` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
@@ -54,7 +54,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`precision`</b>: Scalar `float64` `Output` with the value of `true_positives`
+*  <b>`precision`</b>: Scalar `float64` `Tensor` with the value of `true_positives`
     divided by the sum of `true_positives` and `false_positives`.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_positives` variables appropriately, and whose value matches

@@ -31,20 +31,20 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`start`</b>: A 0-D `Output` (scalar). Acts as first entry in the range if
+*  <b>`start`</b>: A 0-D `Tensor` (scalar). Acts as first entry in the range if
     `limit` is not None; otherwise, acts as range limit and first entry
     defaults to 0.
-*  <b>`limit`</b>: A 0-D `Output` (scalar). Upper limit of sequence,
+*  <b>`limit`</b>: A 0-D `Tensor` (scalar). Upper limit of sequence,
     exclusive. If None, defaults to the value of `start` while the first
     entry of the range defaults to 0.
-*  <b>`delta`</b>: A 0-D `Output` (scalar). Number that increments
+*  <b>`delta`</b>: A 0-D `Tensor` (scalar). Number that increments
     `start`. Defaults to 1.
 *  <b>`dtype`</b>: The type of the elements of the resulting tensor.
 *  <b>`name`</b>: A name for the operation. Defaults to "range".
 
 ##### Returns:
 
-  An 1-D `Output` of type `dtype`.
+  An 1-D `Tensor` of type `dtype`.
 
 @compatibility(numpy)
 Equivalent to np.arange

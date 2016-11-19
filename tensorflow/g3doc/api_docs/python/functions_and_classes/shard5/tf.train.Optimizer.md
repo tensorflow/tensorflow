@@ -86,7 +86,7 @@ of using this function.
 ##### Args:
 
 
-*  <b>`loss`</b>: An `Output` containing the value to minimize.
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
 *  <b>`global_step`</b>: Optional `Variable` to increment by one after the
     variables have been updated.
 *  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
@@ -99,7 +99,7 @@ of using this function.
 *  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
     the corresponding op.
 *  <b>`name`</b>: Optional name for the returned operation.
-*  <b>`grad_loss`</b>: Optional. An `Output` holding the gradient computed for `loss`.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
 
 ##### Returns:
 
@@ -120,7 +120,7 @@ Compute gradients of `loss` for the variables in `var_list`.
 
 This is the first part of `minimize()`.  It returns a list
 of (gradient, variable) pairs where "gradient" is the gradient
-for "variable".  Note that "gradient" can be an `Output`, an
+for "variable".  Note that "gradient" can be a `Tensor`, an
 `IndexedSlices`, or `None` if there is no gradient for the
 given variable.
 
@@ -137,7 +137,7 @@ given variable.
     Valid values are defined in the class `AggregationMethod`.
 *  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
     the corresponding op.
-*  <b>`grad_loss`</b>: Optional. An `Output` holding the gradient computed for `loss`.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
 
 ##### Returns:
 

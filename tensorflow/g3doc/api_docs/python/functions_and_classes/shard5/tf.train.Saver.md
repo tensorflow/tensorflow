@@ -177,7 +177,7 @@ path can be passed directly to a call to `restore()`.
     `sharded`, this is the prefix of the sharded checkpoint filename.
 *  <b>`global_step`</b>: If provided the global step number is appended to
     `save_path` to create the checkpoint filename. The optional argument
-    can be an `Output`, an `Output` name or an integer.
+    can be a `Tensor`, a `Tensor` name or an integer.
 *  <b>`latest_filename`</b>: Optional name for the protocol buffer file that will
     contains the list of most recent checkpoint filenames.  That file,
     kept in the same directory as the checkpoint files, is automatically
@@ -311,7 +311,7 @@ Writes `MetaGraphDef` to save_path/filename.
 *  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
 *  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
 *  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
-    or `Output` during export.
+    or `Tensor` during export.
 
 ##### Returns:
 

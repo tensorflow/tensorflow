@@ -153,7 +153,7 @@ normalization algorithms:
    is at 127.  They are then rescaled so that either the smallest value is 0,
    or the largest one is 255.
 
-The `tag` argument is a scalar `Output` of type `string`.  It is used to
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
 build the `tag` of the summary values:
 
 *  If `max_images` is 1, the summary value tag is '*tag*/image'.
@@ -190,7 +190,7 @@ audio is built from `tensor` which must be 3-D with shape `[batch_size,
 frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
 assumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.
 
-The `tag` argument is a scalar `Output` of type `string`.  It is used to
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
 build the `tag` of the summary values:
 
 *  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
@@ -220,7 +220,7 @@ audio is built from `tensor` which must be 3-D with shape `[batch_size,
 frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
 assumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.
 
-The `tag` argument is a scalar `Output` of type `string`.  It is used to
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
 build the `tag` of the summary values:
 
 *  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.

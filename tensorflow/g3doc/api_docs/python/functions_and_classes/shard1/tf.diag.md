@@ -23,11 +23,11 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is at most 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `diagonal`.
+  A `Tensor`. Has the same type as `diagonal`.
 

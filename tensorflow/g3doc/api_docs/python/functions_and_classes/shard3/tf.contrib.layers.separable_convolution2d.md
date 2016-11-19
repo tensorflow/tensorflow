@@ -45,5 +45,5 @@ to produce the end result.
 
 ##### Returns:
 
-  An `Output` representing the output of the operation.
+  A `Tensor` representing the output of the operation.
 

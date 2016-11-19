@@ -64,7 +64,7 @@ class Batch(AbstractBatchTransform):
 
   Note that dimension 0 is assumed to correspond to "example number" so
   `Batch` does not prepend an additional dimension to incoming `Series`.
-  For example, if an `Output` in `transform_input` has shape [x, y], the
+  For example, if a `Tensor` in `transform_input` has shape [x, y], the
   corresponding output will have shape [batch_size, y].
   """
 
@@ -91,7 +91,7 @@ class ShuffleBatch(AbstractBatchTransform):
 
   Note that dimension 0 is assumed to correspond to "example number" so
   `ShuffleBatch` does not prepend an additional dimension to incoming `Series`.
-  For example, if an `Output` in `transform_input` has shape [x, y], the
+  For example, if a `Tensor` in `transform_input` has shape [x, y], the
   corresponding output will have shape [batch_size, y].
   """
 

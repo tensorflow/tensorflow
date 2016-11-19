@@ -23,7 +23,7 @@ a subgraph.
     for easy import later into new name scopes. If `None`, the whole graph
     is exported. graph_def and export_scope cannot both be specified.
 *  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
-    or `Output` during export.
+    or `Tensor` during export.
 *  <b>`**kwargs`</b>: Optional keyed arguments.
 
 ##### Returns:

@@ -236,7 +236,7 @@ class QueueBase(object):
     return self._names
 
   def _check_enqueue_dtypes(self, vals):
-    """Validate and convert `vals` to a list of `Output`s.
+    """Validate and convert `vals` to a list of `Tensor`s.
 
     The `vals` argument can be a Tensor, a list or tuple of tensors, or a
     dictionary with tensor values.
@@ -250,7 +250,7 @@ class QueueBase(object):
       vals: A tensor, a list or tuple of tensors, or a dictionary..
 
     Returns:
-      A list of `Output` objects.
+      A list of `Tensor` objects.
 
     Raises:
       ValueError: If `vals` is invalid.
@@ -445,7 +445,7 @@ class QueueBase(object):
     `tf.errors.CancelledError` will be raised.
 
     Args:
-      n: A scalar `Output` containing the number of elements to dequeue.
+      n: A scalar `Tensor` containing the number of elements to dequeue.
       name: A name for the operation (optional).
 
     Returns:
@@ -486,7 +486,7 @@ class QueueBase(object):
     Otherwise the behavior is identical to `dequeue_many`.
 
     Args:
-      n: A scalar `Output` containing the number of elements to dequeue.
+      n: A scalar `Tensor` containing the number of elements to dequeue.
       name: A name for the operation (optional).
 
     Returns:

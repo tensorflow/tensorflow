@@ -35,8 +35,8 @@ class MomentumOptimizer(optimizer.Optimizer):
     """Construct a new Momentum optimizer.
 
     Args:
-      learning_rate: An `Output` or a floating point value.  The learning rate.
-      momentum: An `Output` or a floating point value.  The momentum.
+      learning_rate: A `Tensor` or a floating point value.  The learning rate.
+      momentum: A `Tensor` or a floating point value.  The momentum.
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Momentum".

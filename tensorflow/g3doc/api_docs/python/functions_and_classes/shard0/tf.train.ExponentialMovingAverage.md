@@ -110,11 +110,11 @@ move faster.  If passed, the actual decay rate used is:
 
 Maintains moving averages of variables.
 
-`var_list` must be a list of `Variable` or `Output` objects.  This method
+`var_list` must be a list of `Variable` or `Tensor` objects.  This method
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
 They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-For `Output` objects, the shadow variables are initialized to 0 and zero
+For `Tensor` objects, the shadow variables are initialized to 0 and zero
 debiased (see docstring in `assign_moving_average` for more details).
 
 shadow variables are created with `trainable=False` and added to the

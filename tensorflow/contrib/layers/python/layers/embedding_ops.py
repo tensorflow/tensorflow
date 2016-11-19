@@ -202,9 +202,9 @@ def hashed_embedding_lookup(params, values, dimension, name=None,
   partitioned in 4 tensors with length `[3, 3, 2, 2]`.
 
   Args:
-    params: An `Output`, `list` of `Output`s, or `PartitionedVariable`.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
-    values: `Output` of values to be embedded.
+    values: `Tensor` of values to be embedded.
     dimension: Embedding dimension
     name: An optional name for this op.
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
@@ -278,7 +278,7 @@ def hashed_embedding_lookup_sparse(params,
   See `tf.contrib.layers.hashed_embedding_lookup` for embedding with hashing.
 
   Args:
-    params: An `Output`, `list` of `Output`s, or `PartitionedVariable`.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
     sparse_values: A 2-D `SparseTensor` containing the values to be embedded.
       Some rows may be empty.
@@ -358,12 +358,12 @@ def embedding_lookup_unique(params, ids, name=None):
   Args:
     params: A list of tensors with the same shape and type, or a
       `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
-    ids: A one-dimensional `Output` with type `int32` or `int64` containing
+    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
       the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
     name: A name for this operation (optional).
 
   Returns:
-    An `Output` with the same type as the tensors in `params` and dimension of
+    A `Tensor` with the same type as the tensors in `params` and dimension of
     `[ids1, ids2, d1, d2, ...]`.
 
   Raises:

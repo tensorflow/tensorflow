@@ -181,7 +181,7 @@ class MetricSpec(object):
       The result of calling `metric_fn`.
 
     Raises:
-      ValueError: If `predictions` or `labels` is a single `Output` and
+      ValueError: If `predictions` or `labels` is a single `Tensor` and
         `self.prediction_key` or `self.label_key` is not `None`; or if
         `self.label_key` is `None` but `labels` is a dict with more than one
         element, or if `self.prediction_key` is `None but `predictions` is a

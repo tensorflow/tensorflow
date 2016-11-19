@@ -22,7 +22,7 @@ Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
   A tuple consisting of:
 
 *  <b>`context_features`</b>: a dict mapping `FeatureColumns` from
-    `context_feature_columns` to their parsed `Output`s/`SparseTensor`s.
+    `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
 *  <b>`sequence_features`</b>: a dict mapping `FeatureColumns` from
-    `sequence_feature_columns` to their parsed `Output`s/`SparseTensor`s.
+    `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
 

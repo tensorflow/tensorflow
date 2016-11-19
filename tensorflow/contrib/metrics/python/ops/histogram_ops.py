@@ -57,10 +57,10 @@ def auc_using_histogram(boolean_labels,
   numbers of bins and comparing results.
 
   Args:
-    boolean_labels:  1-D boolean `Output`.  Entry is `True` if the corresponding
+    boolean_labels:  1-D boolean `Tensor`.  Entry is `True` if the corresponding
       record is in class.
-    scores:  1-D numeric `Output`, same shape as boolean_labels.
-    score_range:  `Output` of shape `[2]`, same dtype as `scores`.  The min/max
+    scores:  1-D numeric `Tensor`, same shape as boolean_labels.
+    score_range:  `Tensor` of shape `[2]`, same dtype as `scores`.  The min/max
       values of score that we expect.  Scores outside range will be clipped.
     nbins:  Integer number of bins to use.  Accuracy strictly increases as the
       number of bins increases.
@@ -71,7 +71,7 @@ def auc_using_histogram(boolean_labels,
     name:  A name for this Op.  Defaults to "auc_using_histogram".
 
   Returns:
-    auc:  `float32` scalar `Output`.  Fetching this converts internal histograms
+    auc:  `float32` scalar `Tensor`.  Fetching this converts internal histograms
       to auc value.
     update_op:  `Op`, when run, updates internal histograms.
   """
@@ -179,14 +179,14 @@ def _auc_convert_hist_to_auc(hist_true_acc, hist_false_acc, nbins):
   """Convert histograms to auc.
 
   Args:
-    hist_true_acc:  `Output` holding accumulated histogram of scores for records
+    hist_true_acc:  `Tensor` holding accumulated histogram of scores for records
       that were `True`.
-    hist_false_acc:  `Output` holding accumulated histogram of scores for
+    hist_false_acc:  `Tensor` holding accumulated histogram of scores for
       records that were `False`.
     nbins:  Integer number of bins in the histograms.
 
   Returns:
-    Scalar `Output` estimating AUC.
+    Scalar `Tensor` estimating AUC.
   """
   # Note that this follows the "Approximating AUC" section in:
   # Efficient AUC learning curve calculation, R. R. Bouckaert,

@@ -34,11 +34,11 @@ The dynamic calculation performed is, at time `t` for batch row `b`,
 
 
 *  <b>`cell`</b>: An instance of RNNCell.
-*  <b>`inputs`</b>: A length T list of inputs, each an `Output` of shape
+*  <b>`inputs`</b>: A length T list of inputs, each a `Tensor` of shape
     `[batch_size, input_size]`, or a nested tuple of such elements.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    an `Output` of appropriate type and shape `[batch_size, cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.

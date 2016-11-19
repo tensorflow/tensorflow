@@ -17,7 +17,7 @@ global_step: 10
 
 
 *  <b>`sess`</b>: A TensorFlow `Session` object.
-*  <b>`global_step_tensor`</b>: `Output` or the `name` of the operation that contains
+*  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
     the global step.
 
 ##### Returns:

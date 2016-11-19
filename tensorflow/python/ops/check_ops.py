@@ -78,15 +78,15 @@ __all__ = [
 def assert_proper_iterable(values):
   """Static assert that values is a "proper" iterable.
 
-  `Ops` that expect iterables of `Output` can call this to validate input.
-  Useful since `Output`, `ndarray`, byte/text type are all iterables themselves.
+  `Ops` that expect iterables of `Tensor` can call this to validate input.
+  Useful since `Tensor`, `ndarray`, byte/text type are all iterables themselves.
 
   Args:
     values:  Object to be checked.
 
   Raises:
     TypeError:  If `values` is not iterable or is one of
-      `Output`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
+      `Tensor`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
   """
   unintentional_iterables = (
       (ops.Tensor, sparse_tensor.SparseTensor, np.ndarray)
@@ -122,7 +122,7 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
   If `x` is empty this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
+    x:  Numeric `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -162,7 +162,7 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
   If `x` is empty this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
+    x:  Numeric `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -202,7 +202,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
   If `x` is empty this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
+    x:  Numeric `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -244,7 +244,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
   If `x` is empty this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
+    x:  Numeric `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -287,8 +287,8 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
   If both `x` and `y` are empty, this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
-    y:  Numeric `Output`, same dtype as and broadcastable to `x`.
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`, `y`.
     summarize: Print this many entries of each tensor.
@@ -333,8 +333,8 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
   If both `x` and `y` are empty, this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
-    y:  Numeric `Output`, same dtype as and broadcastable to `x`.
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`, `y`.
     summarize: Print this many entries of each tensor.
@@ -379,8 +379,8 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   If both `x` and `y` are empty, this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
-    y:  Numeric `Output`, same dtype as and broadcastable to `x`.
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`, `y`.
     summarize: Print this many entries of each tensor.
@@ -425,8 +425,8 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
   If both `x` and `y` are empty, this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
-    y:  Numeric `Output`, same dtype as and broadcastable to `x`.
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`, `y`.
     summarize: Print this many entries of each tensor.
@@ -472,8 +472,8 @@ def assert_greater_equal(x, y, data=None, summarize=None, message=None,
   If both `x` and `y` are empty, this is trivially satisfied.
 
   Args:
-    x:  Numeric `Output`.
-    y:  Numeric `Output`, same dtype as and broadcastable to `x`.
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`, `y`.
     summarize: Print this many entries of each tensor.
@@ -503,8 +503,8 @@ def _assert_rank_condition(
   """Assert `x` has a rank that satisfies a given condition.
 
   Args:
-    x:  Numeric `Output`.
-    rank:  Scalar `Output`.
+    x:  Numeric `Tensor`.
+    rank:  Scalar `Tensor`.
     static_condition:   A python function that takes `[actual_rank, given_rank]`
       and returns `True` if the condition is satisfied, `False` otherwise.
     dynamic_condition:  An `op` that takes [actual_rank, given_rank]
@@ -564,8 +564,8 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   ```
 
   Args:
-    x:  Numeric `Output`.
-    rank:  Scalar integer `Output`.
+    x:  Numeric `Tensor`.
+    rank:  Scalar integer `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -627,8 +627,8 @@ def assert_rank_at_least(
   ```
 
   Args:
-    x:  Numeric `Output`.
-    rank:  Scalar `Output`.
+    x:  Numeric `Tensor`.
+    rank:  Scalar `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -689,7 +689,7 @@ def assert_integer(x, message=None, name=None):
   ```
 
   Args:
-    x: `Output` whose basetype is integer and is not quantized.
+    x: `Tensor` whose basetype is integer and is not quantized.
     message: A string to prefix to the default message.
     name: A name for this operation (optional).  Defaults to "assert_integer".
 
@@ -712,10 +712,10 @@ def assert_integer(x, message=None, name=None):
 
 
 def assert_type(tensor, tf_type, message=None, name=None):
-  """Statically asserts that the given `Output` is of the specified type.
+  """Statically asserts that the given `Tensor` is of the specified type.
 
   Args:
-    tensor: A tensorflow `Output`.
+    tensor: A tensorflow `Tensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -767,11 +767,11 @@ def is_non_decreasing(x, name=None):
   See also:  `is_strictly_increasing`
 
   Args:
-    x: Numeric `Output`.
+    x: Numeric `Tensor`.
     name: A name for this operation (optional).  Defaults to "is_non_decreasing"
 
   Returns:
-    Boolean `Output`, equal to `True` iff `x` is non-decreasing.
+    Boolean `Tensor`, equal to `True` iff `x` is non-decreasing.
 
   Raises:
     TypeError: if `x` is not a numeric tensor.
@@ -793,12 +793,12 @@ def is_strictly_increasing(x, name=None):
   See also:  `is_non_decreasing`
 
   Args:
-    x: Numeric `Output`.
+    x: Numeric `Tensor`.
     name: A name for this operation (optional).
       Defaults to "is_strictly_increasing"
 
   Returns:
-    Boolean `Output`, equal to `True` iff `x` is strictly increasing.
+    Boolean `Tensor`, equal to `True` iff `x` is strictly increasing.
 
   Raises:
     TypeError: if `x` is not a numeric tensor.

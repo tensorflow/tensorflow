@@ -16,7 +16,7 @@ time than `tf.string_to_hash_bucket_fast`.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. The strings to assign a hash bucket.
+*  <b>`input`</b>: A `Tensor` of type `string`. The strings to assign a hash bucket.
 *  <b>`num_buckets`</b>: An `int` that is `>= 1`. The number of buckets.
 *  <b>`key`</b>: A list of `ints`.
     The key for the keyed hash function passed as a list of two uint64
@@ -25,6 +25,6 @@ time than `tf.string_to_hash_bucket_fast`.
 
 ##### Returns:
 
-  An `Output` of type `int64`.
+  A `Tensor` of type `int64`.
   A Tensor of the same shape as the input `string_tensor`.
 

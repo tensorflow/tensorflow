@@ -92,7 +92,7 @@ REGISTER_OP("BatchMatMul")
     .Doc(R"doc(
 Multiplies slices of two tensors in batches.
 
-Multiplies all slices of `Output` `x` and `y` (each slice can be
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
 viewed as an element of a batch), and arranges the individual results
 in a single output tensor of the same batch size. Each of the
 individual slices can optionally be adjointed (to adjoint a matrix
@@ -1064,11 +1064,11 @@ select(condition, t, e) ==> [[1, 2],
 
 ```
 
-t:= An `Output` which may have the same shape as `condition`.
+t:= A `Tensor` which may have the same shape as `condition`.
     If `condition` is rank 1, `t` may have higher rank,
     but its first dimension must match the size of `condition`.
-e:= An `Output` with the same type and shape as `t`.
-output:= An `Output` with the same type and shape as `t` and `e`.
+e:= A `Tensor` with the same type and shape as `t`.
+output:= A `Tensor` with the same type and shape as `t` and `e`.
 )doc");
 
 // --------------------------------------------------------------------------

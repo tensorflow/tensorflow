@@ -27,7 +27,7 @@ This is the opposite of unpack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`values`</b>: A list of `Output` objects with the same shape and type.
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
 *  <b>`axis`</b>: An `int`. The axis to pack along. Defaults to the first dimension.
     Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
@@ -35,7 +35,7 @@ This is the opposite of unpack.  The numpy equivalent is
 ##### Returns:
 
 
-*  <b>`output`</b>: A packed `Output` with the same type as `values`.
+*  <b>`output`</b>: A packed `Tensor` with the same type as `values`.
 
 ##### Raises:
 

@@ -7,7 +7,7 @@ types and boolean.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `int32`, `int64`, `complex64`, `float32`, `float64`, `bool`, `int8`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `complex64`, `float32`, `float64`, `bool`, `int8`.
 *  <b>`precision`</b>: An optional `int`. Defaults to `-1`.
     The post-decimal precision to use for floating point numbers.
     Only used if precision > -1.
@@ -27,5 +27,5 @@ types and boolean.
 
 ##### Returns:
 
-  An `Output` of type `string`.
+  A `Tensor` of type `string`.
 

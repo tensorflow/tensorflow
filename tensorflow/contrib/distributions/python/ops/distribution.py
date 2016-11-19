@@ -208,7 +208,7 @@ class Distribution(_BaseDistribution):
   `sample_n`.
 
   `sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
-  the shape of the `Output` returned from `sample_n`, `n` is the number of
+  the shape of the `Tensor` returned from `sample_n`, `n` is the number of
   samples, `batch_shape` defines how many independent distributions there are,
   and `event_shape` defines the shape of samples from each of those independent
   distributions. Samples are independent along the `batch_shape` dimensions, but
@@ -229,7 +229,7 @@ class Distribution(_BaseDistribution):
 
   # `event_shape` is `TensorShape([])`.
   event_shape = u.get_event_shape()
-  # `event_shape_t` is an `Output` which will evaluate to [].
+  # `event_shape_t` is a `Tensor` which will evaluate to [].
   event_shape_t = u.event_shape
 
   # Sampling returns a sample per distribution.  `samples` has shape
@@ -321,7 +321,7 @@ class Distribution(_BaseDistribution):
       name: A name for this distribution. Default: subclass name.
 
     Raises:
-      ValueError: if any member of graph_parents is `None` or not an `Output`.
+      ValueError: if any member of graph_parents is `None` or not a `Tensor`.
     """
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
@@ -344,12 +344,12 @@ class Distribution(_BaseDistribution):
     Subclasses should override static method `_param_shapes`.
 
     Args:
-      sample_shape: `Output` or python list/tuple. Desired shape of a call to
+      sample_shape: `Tensor` or python list/tuple. Desired shape of a call to
         `sample()`.
       name: name to prepend ops with.
 
     Returns:
-      `dict` of parameter name to `Output` shapes.
+      `dict` of parameter name to `Tensor` shapes.
     """
     with ops.name_scope(name, values=[sample_shape]):
       return cls._param_shapes(sample_shape)
@@ -396,7 +396,7 @@ class Distribution(_BaseDistribution):
 
   @property
   def dtype(self):
-    """The `DType` of `Output`s handled by this `Distribution`."""
+    """The `DType` of `Tensor`s handled by this `Distribution`."""
     return self._dtype
 
   @property
@@ -460,7 +460,7 @@ class Distribution(_BaseDistribution):
     raise NotImplementedError("batch_shape is not implemented")
 
   def batch_shape(self, name="batch_shape"):
-    """Shape of a single sample from a single event index as a 1-D `Output`.
+    """Shape of a single sample from a single event index as a 1-D `Tensor`.
 
     The product of the dimensions of the `batch_shape` is the number of
     independent distributions of this kind the instance represents.
@@ -469,7 +469,7 @@ class Distribution(_BaseDistribution):
       name: name to give to the op
 
     Returns:
-      batch_shape: `Output`.
+      batch_shape: `Tensor`.
     """
     with self._name_scope(name):
       return self._batch_shape()
@@ -491,13 +491,13 @@ class Distribution(_BaseDistribution):
     raise NotImplementedError("event_shape is not implemented")
 
   def event_shape(self, name="event_shape"):
-    """Shape of a single sample from a single batch as a 1-D int32 `Output`.
+    """Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
     Args:
       name: name to give to the op
 
     Returns:
-      event_shape: `Output`.
+      event_shape: `Tensor`.
     """
     with self._name_scope(name):
       return self._event_shape()
@@ -526,13 +526,13 @@ class Distribution(_BaseDistribution):
     sample.
 
     Args:
-      sample_shape: 0D or 1D `int32` `Output`. Shape of the generated samples.
+      sample_shape: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
       seed: Python integer seed for RNG
       name: name to give to the op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      samples: an `Output` with prepended dimensions `sample_shape`.
+      samples: a `Tensor` with prepended dimensions `sample_shape`.
     """
     with self._name_scope(name, values=[sample_shape]):
       sample_shape = ops.convert_to_tensor(
@@ -552,14 +552,14 @@ class Distribution(_BaseDistribution):
     """Generate `n` samples.
 
     Args:
-      n: `Scalar` `Output` of type `int32` or `int64`, the number of
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
         observations to sample.
       seed: Python integer seed for RNG
       name: name to give to the op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      samples: an `Output` with a prepended dimension (n,).
+      samples: a `Tensor` with a prepended dimension (n,).
 
     Raises:
       TypeError: if `n` is not an integer type.
@@ -599,12 +599,12 @@ class Distribution(_BaseDistribution):
     """Log probability density/mass function (depending on `is_continuous`).
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      log_prob: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      log_prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
     with self._name_scope(name, values=[value]):
@@ -621,12 +621,12 @@ class Distribution(_BaseDistribution):
     """Probability density/mass function (depending on `is_continuous`).
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      prob: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
     with self._name_scope(name, values=[value]):
@@ -656,12 +656,12 @@ class Distribution(_BaseDistribution):
     `x << -1`.
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      logcdf: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      logcdf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
     with self._name_scope(name, values=[value]):
@@ -687,12 +687,12 @@ class Distribution(_BaseDistribution):
     ```
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      cdf: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      cdf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
     with self._name_scope(name, values=[value]):
@@ -724,12 +724,12 @@ class Distribution(_BaseDistribution):
     survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+      `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
         `self.dtype`.
     """
     with self._name_scope(name, values=[value]):
@@ -758,7 +758,7 @@ class Distribution(_BaseDistribution):
     ```
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
@@ -820,12 +820,12 @@ class Distribution(_BaseDistribution):
     """Log probability density function.
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      log_prob: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      log_prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
 
     Raises:
@@ -842,12 +842,12 @@ class Distribution(_BaseDistribution):
     """Probability density function.
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      prob: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
 
     Raises:
@@ -864,12 +864,12 @@ class Distribution(_BaseDistribution):
     """Log probability mass function.
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      log_pmf: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      log_pmf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
 
     Raises:
@@ -886,12 +886,12 @@ class Distribution(_BaseDistribution):
     """Probability mass function.
 
     Args:
-      value: `float` or `double` `Output`.
+      value: `float` or `double` `Tensor`.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      pmf: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+      pmf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
 
     Raises:

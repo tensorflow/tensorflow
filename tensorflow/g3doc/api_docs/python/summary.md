@@ -75,7 +75,7 @@ and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
 [`Session.run()`](client.md#Session.run) or
-[`Output.eval()`](framework.md#Output.eval), to this
+[`Tensor.eval()`](framework.md#Tensor.eval), to this
 function. Alternatively, you can pass a `tf.Summary` protocol
 buffer that you populate with your own data. The latter is
 commonly done to report evaluation results in event files.
@@ -226,7 +226,7 @@ has one summary value containing the input tensor.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -249,7 +249,7 @@ The generated Summary has a Tensor.proto containing the input Tensor.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. Which contains a `Summary` protobuf.
+  A scalar `Tensor` of type `string`. Which contains a `Summary` protobuf.
 
 ##### Raises:
 
@@ -274,14 +274,14 @@ This op reports an `InvalidArgument` error if any value is not finite.
 
 *  <b>`name`</b>: A name for the generated node. Will also serve as a series name in
     TensorBoard.
-*  <b>`values`</b>: A real numeric `Output`. Any shape. Values to use to
+*  <b>`values`</b>: A real numeric `Tensor`. Any shape. Values to use to
     build the histogram.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -309,9 +309,9 @@ name, with a suffix depending on the max_outputs setting:
 
 *  <b>`name`</b>: A name for the generated node. Will also serve as a series name in
     TensorBoard.
-*  <b>`tensor`</b>: A 3-D `float32` `Output` of shape `[batch_size, frames, channels]`
-    or a 2-D `float32` `Output` of shape `[batch_size, frames]`.
-*  <b>`sample_rate`</b>: A Scalar `float32` `Output` indicating the sample rate of the
+*  <b>`tensor`</b>: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
+    or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
+*  <b>`sample_rate`</b>: A Scalar `float32` `Tensor` indicating the sample rate of the
     signal in hertz.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate audio for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -319,7 +319,7 @@ name, with a suffix depending on the max_outputs setting:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -361,7 +361,7 @@ name, with a suffix depending on the max_outputs setting:
 
 *  <b>`name`</b>: A name for the generated node. Will also serve as a series name in
     TensorBoard.
-*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Output` of shape `[batch_size, height,
+*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
     width, channels]` where `channels` is 1, 3, or 4.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate images for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -369,7 +369,7 @@ name, with a suffix depending on the max_outputs setting:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -390,7 +390,7 @@ in the summaries to merge use the same tag.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of `string` `Output` objects containing serialized `Summary`
+*  <b>`inputs`</b>: A list of `string` `Tensor` objects containing serialized `Summary`
     protocol buffers.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
@@ -398,7 +398,7 @@ in the summaries to merge use the same tag.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer resulting from the merging.
 
 
@@ -417,7 +417,7 @@ Merges all summaries collected in the default graph.
 ##### Returns:
 
   If no summaries were collected, returns None.  Otherwise returns a scalar
-  `Output` of type `string` containing the serialized `Summary` protocol
+  `Tensor` of type `string` containing the serialized `Summary` protocol
   buffer resulting from the merging.
 
 

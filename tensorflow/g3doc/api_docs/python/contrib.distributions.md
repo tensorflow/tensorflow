@@ -52,7 +52,7 @@ The shape of arguments to `__init__`, `cdf`, `log_cdf`, `prob`, and
 `sample_n`.
 
 `sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
-the shape of the `Output` returned from `sample_n`, `n` is the number of
+the shape of the `Tensor` returned from `sample_n`, `n` is the number of
 samples, `batch_shape` defines how many independent distributions there are,
 and `event_shape` defines the shape of samples from each of those independent
 distributions. Samples are independent along the `batch_shape` dimensions, but
@@ -73,7 +73,7 @@ u = Uniform(minval, maxval)
 
 # `event_shape` is `TensorShape([])`.
 event_shape = u.get_event_shape()
-# `event_shape_t` is an `Output` which will evaluate to [].
+# `event_shape_t` is a `Tensor` which will evaluate to [].
 event_shape_t = u.event_shape
 
 # Sampling returns a sample per distribution.  `samples` has shape
@@ -161,7 +161,7 @@ Constructs the `Distribution`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if any member of graph_parents is `None` or not an `Output`.
+*  <b>`ValueError`</b>: if any member of graph_parents is `None` or not a `Tensor`.
 
 
 - - -
@@ -189,7 +189,7 @@ undefined.
 
 #### `tf.contrib.distributions.Distribution.batch_shape(name='batch_shape')` {#Distribution.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -202,7 +202,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -220,14 +220,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -258,7 +258,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Distribution.dtype` {#Distribution.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -272,7 +272,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Distribution.event_shape(name='event_shape')` {#Distribution.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -282,7 +282,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -346,14 +346,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -366,14 +366,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -391,14 +391,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -416,14 +416,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -447,13 +447,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -489,13 +489,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -536,14 +536,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -561,14 +561,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -586,14 +586,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -609,7 +609,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -617,7 +617,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -629,7 +629,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -638,7 +638,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -670,7 +670,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -821,7 +821,7 @@ undefined.
 
 #### `tf.contrib.distributions.Binomial.batch_shape(name='batch_shape')` {#Binomial.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -834,7 +834,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -852,14 +852,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -890,7 +890,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Binomial.dtype` {#Binomial.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -904,7 +904,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Binomial.event_shape(name='event_shape')` {#Binomial.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -914,7 +914,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -978,14 +978,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -998,14 +998,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1023,14 +1023,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1061,14 +1061,14 @@ values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -1092,13 +1092,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -1161,13 +1161,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -1208,14 +1208,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1233,14 +1233,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1271,14 +1271,14 @@ values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -1294,7 +1294,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -1302,7 +1302,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -1314,7 +1314,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -1323,7 +1323,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -1355,7 +1355,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -1397,12 +1397,12 @@ Construct Bernoulli distributions.
 ##### Args:
 
 
-*  <b>`logits`</b>: An N-D `Output` representing the log-odds
-    of a positive event. Each entry in the `Output` parametrizes
+*  <b>`logits`</b>: An N-D `Tensor` representing the log-odds
+    of a positive event. Each entry in the `Tensor` parametrizes
     an independent Bernoulli distribution where the probability of an event
     is sigmoid(logits). Only one of `logits` or `p` should be passed in.
-*  <b>`p`</b>: An N-D `Output` representing the probability of a positive
-      event. Each entry in the `Output` parameterizes an independent
+*  <b>`p`</b>: An N-D `Tensor` representing the probability of a positive
+      event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution. Only one of `logits` or `p` should be passed
       in.
 *  <b>`dtype`</b>: dtype for samples.
@@ -1446,7 +1446,7 @@ undefined.
 
 #### `tf.contrib.distributions.Bernoulli.batch_shape(name='batch_shape')` {#Bernoulli.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -1459,7 +1459,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -1477,14 +1477,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -1515,7 +1515,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Bernoulli.dtype` {#Bernoulli.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -1529,7 +1529,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Bernoulli.event_shape(name='event_shape')` {#Bernoulli.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -1539,7 +1539,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -1603,14 +1603,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -1623,14 +1623,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1648,14 +1648,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1673,14 +1673,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -1704,13 +1704,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -1764,13 +1764,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -1811,14 +1811,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1836,14 +1836,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -1861,14 +1861,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -1891,7 +1891,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -1899,7 +1899,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -1911,7 +1911,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -1920,7 +1920,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -1952,7 +1952,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -2014,7 +2014,7 @@ undefined.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.batch_shape(name='batch_shape')` {#BernoulliWithSigmoidP.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -2027,7 +2027,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -2045,14 +2045,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2083,7 +2083,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.dtype` {#BernoulliWithSigmoidP.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -2097,7 +2097,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.event_shape(name='event_shape')` {#BernoulliWithSigmoidP.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -2107,7 +2107,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -2171,14 +2171,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2191,14 +2191,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -2216,14 +2216,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -2241,14 +2241,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2272,13 +2272,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -2332,13 +2332,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -2379,14 +2379,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -2404,14 +2404,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -2429,14 +2429,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2459,7 +2459,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -2467,7 +2467,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -2479,7 +2479,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -2488,7 +2488,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -2520,7 +2520,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -2692,7 +2692,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.Beta.batch_shape(name='batch_shape')` {#Beta.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -2705,7 +2705,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -2723,14 +2723,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2761,7 +2761,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Beta.dtype` {#Beta.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -2775,7 +2775,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Beta.event_shape(name='event_shape')` {#Beta.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -2785,7 +2785,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -2857,14 +2857,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2877,14 +2877,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -2902,14 +2902,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -2927,14 +2927,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -2958,13 +2958,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -3007,13 +3007,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -3054,14 +3054,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -3079,14 +3079,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -3112,14 +3112,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -3135,7 +3135,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -3143,7 +3143,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -3155,7 +3155,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -3164,7 +3164,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -3196,7 +3196,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -3279,7 +3279,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.batch_shape(name='batch_shape')` {#BetaWithSoftplusAB.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -3292,7 +3292,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -3310,14 +3310,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -3348,7 +3348,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.dtype` {#BetaWithSoftplusAB.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -3362,7 +3362,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.event_shape(name='event_shape')` {#BetaWithSoftplusAB.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -3372,7 +3372,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -3444,14 +3444,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -3464,14 +3464,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -3489,14 +3489,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -3514,14 +3514,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -3545,13 +3545,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -3594,13 +3594,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -3641,14 +3641,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -3666,14 +3666,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -3699,14 +3699,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -3722,7 +3722,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -3730,7 +3730,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -3742,7 +3742,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -3751,7 +3751,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -3783,7 +3783,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -3861,12 +3861,12 @@ Initialize Categorical distributions using class log-probabilities.
 ##### Args:
 
 
-*  <b>`logits`</b>: An N-D `Output`, `N >= 1`, representing the log probabilities
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
       of a set of Categorical distributions. The first `N - 1` dimensions
       index into a batch of independent distributions and the last dimension
       represents a vector of logits for each class. Only one of `logits` or
       `p` should be passed in.
-*  <b>`p`</b>: An N-D `Output`, `N >= 1`, representing the probabilities
+*  <b>`p`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
       of a set of Categorical distributions. The first `N - 1` dimensions
       index into a batch of independent distributions and the last dimension
       represents a vector of probabilities for each class. Only one of
@@ -3905,7 +3905,7 @@ undefined.
 
 #### `tf.contrib.distributions.Categorical.batch_shape(name='batch_shape')` {#Categorical.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -3918,7 +3918,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -3936,14 +3936,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -3974,7 +3974,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Categorical.dtype` {#Categorical.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -3988,7 +3988,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Categorical.event_shape(name='event_shape')` {#Categorical.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -3998,7 +3998,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -4062,14 +4062,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4082,14 +4082,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4107,14 +4107,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4132,14 +4132,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4163,13 +4163,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -4228,13 +4228,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -4275,14 +4275,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4300,14 +4300,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4325,14 +4325,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4348,7 +4348,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -4356,7 +4356,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -4368,7 +4368,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -4377,7 +4377,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -4409,7 +4409,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -4500,7 +4500,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.Chi2.batch_shape(name='batch_shape')` {#Chi2.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -4513,7 +4513,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -4538,14 +4538,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4583,7 +4583,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Chi2.dtype` {#Chi2.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -4608,7 +4608,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Chi2.event_shape(name='event_shape')` {#Chi2.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -4618,7 +4618,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -4682,14 +4682,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4702,14 +4702,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4727,14 +4727,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4752,14 +4752,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4783,13 +4783,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -4831,13 +4831,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -4878,14 +4878,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4903,14 +4903,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -4928,14 +4928,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -4951,7 +4951,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -4959,7 +4959,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -4976,7 +4976,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -4985,7 +4985,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -5017,7 +5017,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -5086,7 +5086,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.Chi2WithAbsDf.batch_shape(name='batch_shape')` {#Chi2WithAbsDf.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -5099,7 +5099,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -5124,14 +5124,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5169,7 +5169,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Chi2WithAbsDf.dtype` {#Chi2WithAbsDf.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -5194,7 +5194,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Chi2WithAbsDf.event_shape(name='event_shape')` {#Chi2WithAbsDf.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -5204,7 +5204,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -5268,14 +5268,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5288,14 +5288,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -5313,14 +5313,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -5338,14 +5338,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5369,13 +5369,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -5417,13 +5417,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -5464,14 +5464,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -5489,14 +5489,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -5514,14 +5514,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5537,7 +5537,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -5545,7 +5545,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -5562,7 +5562,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -5571,7 +5571,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -5603,7 +5603,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -5694,7 +5694,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.Exponential.batch_shape(name='batch_shape')` {#Exponential.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -5707,7 +5707,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -5732,14 +5732,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5770,7 +5770,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Exponential.dtype` {#Exponential.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -5795,7 +5795,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Exponential.event_shape(name='event_shape')` {#Exponential.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -5805,7 +5805,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -5876,14 +5876,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5896,14 +5896,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -5921,14 +5921,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -5946,14 +5946,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -5977,13 +5977,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -6025,13 +6025,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -6072,14 +6072,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -6097,14 +6097,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -6122,14 +6122,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -6145,7 +6145,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -6153,7 +6153,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -6170,7 +6170,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -6179,7 +6179,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -6211,7 +6211,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -6280,7 +6280,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.batch_shape(name='batch_shape')` {#ExponentialWithSoftplusLam.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -6293,7 +6293,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -6318,14 +6318,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -6356,7 +6356,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.dtype` {#ExponentialWithSoftplusLam.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -6381,7 +6381,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.event_shape(name='event_shape')` {#ExponentialWithSoftplusLam.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -6391,7 +6391,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -6462,14 +6462,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -6482,14 +6482,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -6507,14 +6507,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -6532,14 +6532,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -6563,13 +6563,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -6611,13 +6611,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -6658,14 +6658,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -6683,14 +6683,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -6708,14 +6708,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -6731,7 +6731,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -6739,7 +6739,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -6756,7 +6756,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -6765,7 +6765,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -6797,7 +6797,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -6915,7 +6915,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.Gamma.batch_shape(name='batch_shape')` {#Gamma.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -6928,7 +6928,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -6953,14 +6953,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -6991,7 +6991,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Gamma.dtype` {#Gamma.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -7016,7 +7016,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Gamma.event_shape(name='event_shape')` {#Gamma.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -7026,7 +7026,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -7090,14 +7090,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7110,14 +7110,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7135,14 +7135,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7160,14 +7160,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7191,13 +7191,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -7239,13 +7239,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -7286,14 +7286,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7311,14 +7311,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7336,14 +7336,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7359,7 +7359,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -7367,7 +7367,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -7384,7 +7384,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -7393,7 +7393,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -7425,7 +7425,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -7494,7 +7494,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.batch_shape(name='batch_shape')` {#GammaWithSoftplusAlphaBeta.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -7507,7 +7507,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -7532,14 +7532,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7570,7 +7570,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.dtype` {#GammaWithSoftplusAlphaBeta.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -7595,7 +7595,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.event_shape(name='event_shape')` {#GammaWithSoftplusAlphaBeta.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -7605,7 +7605,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -7669,14 +7669,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7689,14 +7689,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7714,14 +7714,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7739,14 +7739,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7770,13 +7770,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -7818,13 +7818,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -7865,14 +7865,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7890,14 +7890,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -7915,14 +7915,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -7938,7 +7938,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -7946,7 +7946,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -7963,7 +7963,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -7972,7 +7972,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -8004,7 +8004,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -8118,7 +8118,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.InverseGamma.batch_shape(name='batch_shape')` {#InverseGamma.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -8131,7 +8131,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -8156,14 +8156,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8194,7 +8194,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.InverseGamma.dtype` {#InverseGamma.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -8219,7 +8219,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.InverseGamma.event_shape(name='event_shape')` {#InverseGamma.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -8229,7 +8229,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -8293,14 +8293,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8313,14 +8313,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -8338,14 +8338,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -8363,14 +8363,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8394,13 +8394,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -8446,13 +8446,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -8493,14 +8493,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -8518,14 +8518,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -8543,14 +8543,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8566,7 +8566,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -8574,7 +8574,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -8591,7 +8591,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -8600,7 +8600,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -8632,7 +8632,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -8707,7 +8707,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.batch_shape(name='batch_shape')` {#InverseGammaWithSoftplusAlphaBeta.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -8720,7 +8720,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -8745,14 +8745,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8783,7 +8783,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.dtype` {#InverseGammaWithSoftplusAlphaBeta.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -8808,7 +8808,7 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.event_shape(name='event_shape')` {#InverseGammaWithSoftplusAlphaBeta.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -8818,7 +8818,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -8882,14 +8882,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8902,14 +8902,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -8927,14 +8927,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -8952,14 +8952,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -8983,13 +8983,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -9035,13 +9035,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -9082,14 +9082,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -9107,14 +9107,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -9132,14 +9132,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -9155,7 +9155,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -9163,7 +9163,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -9180,7 +9180,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -9189,7 +9189,7 @@ See the documentation for tf.random_gamma for more details.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -9221,7 +9221,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -9322,7 +9322,7 @@ undefined.
 
 #### `tf.contrib.distributions.Laplace.batch_shape(name='batch_shape')` {#Laplace.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -9335,7 +9335,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -9353,14 +9353,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -9391,7 +9391,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Laplace.dtype` {#Laplace.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -9405,7 +9405,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Laplace.event_shape(name='event_shape')` {#Laplace.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -9415,7 +9415,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -9486,14 +9486,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -9506,14 +9506,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -9531,14 +9531,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -9556,14 +9556,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -9587,13 +9587,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -9629,13 +9629,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -9676,14 +9676,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -9701,14 +9701,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -9726,14 +9726,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -9749,7 +9749,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -9757,7 +9757,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -9769,7 +9769,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -9778,7 +9778,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -9817,7 +9817,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -9879,7 +9879,7 @@ undefined.
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.batch_shape(name='batch_shape')` {#LaplaceWithSoftplusScale.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -9892,7 +9892,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -9910,14 +9910,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -9948,7 +9948,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.dtype` {#LaplaceWithSoftplusScale.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -9962,7 +9962,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.event_shape(name='event_shape')` {#LaplaceWithSoftplusScale.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -9972,7 +9972,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -10043,14 +10043,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10063,14 +10063,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10088,14 +10088,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10113,14 +10113,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10144,13 +10144,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -10186,13 +10186,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -10233,14 +10233,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10258,14 +10258,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10283,14 +10283,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10306,7 +10306,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -10314,7 +10314,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -10326,7 +10326,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -10335,7 +10335,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -10374,7 +10374,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -10500,7 +10500,7 @@ undefined.
 
 #### `tf.contrib.distributions.Normal.batch_shape(name='batch_shape')` {#Normal.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -10513,7 +10513,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -10531,14 +10531,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10569,7 +10569,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Normal.dtype` {#Normal.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -10583,7 +10583,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Normal.event_shape(name='event_shape')` {#Normal.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -10593,7 +10593,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -10657,14 +10657,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10677,14 +10677,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10702,14 +10702,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10727,14 +10727,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10758,13 +10758,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -10807,13 +10807,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -10854,14 +10854,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10879,14 +10879,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -10904,14 +10904,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -10927,7 +10927,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -10935,7 +10935,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -10947,7 +10947,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -10956,7 +10956,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -10995,7 +10995,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -11057,7 +11057,7 @@ undefined.
 
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.batch_shape(name='batch_shape')` {#NormalWithSoftplusSigma.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -11070,7 +11070,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -11088,14 +11088,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11126,7 +11126,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.dtype` {#NormalWithSoftplusSigma.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -11140,7 +11140,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.event_shape(name='event_shape')` {#NormalWithSoftplusSigma.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -11150,7 +11150,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -11214,14 +11214,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11234,14 +11234,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -11259,14 +11259,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -11284,14 +11284,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11315,13 +11315,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -11364,13 +11364,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -11411,14 +11411,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -11436,14 +11436,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -11461,14 +11461,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11484,7 +11484,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -11492,7 +11492,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -11504,7 +11504,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -11513,7 +11513,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -11552,7 +11552,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -11638,7 +11638,7 @@ undefined.
 
 #### `tf.contrib.distributions.Poisson.batch_shape(name='batch_shape')` {#Poisson.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -11651,7 +11651,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -11669,14 +11669,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11707,7 +11707,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Poisson.dtype` {#Poisson.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -11721,7 +11721,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Poisson.event_shape(name='event_shape')` {#Poisson.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -11731,7 +11731,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -11802,14 +11802,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11822,14 +11822,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -11847,14 +11847,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -11879,14 +11879,14 @@ legal if it is non-negative and its components are equal to integer values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -11910,13 +11910,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -11958,13 +11958,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -12005,14 +12005,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -12030,14 +12030,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -12062,14 +12062,14 @@ legal if it is non-negative and its components are equal to integer values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -12085,7 +12085,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -12093,7 +12093,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -12105,7 +12105,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -12114,7 +12114,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -12146,7 +12146,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -12280,7 +12280,7 @@ undefined.
 
 #### `tf.contrib.distributions.StudentT.batch_shape(name='batch_shape')` {#StudentT.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -12293,7 +12293,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -12311,14 +12311,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -12356,7 +12356,7 @@ Degrees of freedom in these Student's t distribution(s).
 
 #### `tf.contrib.distributions.StudentT.dtype` {#StudentT.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -12370,7 +12370,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.StudentT.event_shape(name='event_shape')` {#StudentT.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -12380,7 +12380,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -12444,14 +12444,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -12464,14 +12464,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -12489,14 +12489,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -12514,14 +12514,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -12545,13 +12545,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -12600,13 +12600,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -12647,14 +12647,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -12672,14 +12672,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -12697,14 +12697,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -12720,7 +12720,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -12728,7 +12728,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -12740,7 +12740,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -12749,7 +12749,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -12788,7 +12788,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -12860,7 +12860,7 @@ undefined.
 
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.batch_shape(name='batch_shape')` {#StudentTWithAbsDfSoftplusSigma.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -12873,7 +12873,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -12891,14 +12891,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -12936,7 +12936,7 @@ Degrees of freedom in these Student's t distribution(s).
 
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.dtype` {#StudentTWithAbsDfSoftplusSigma.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -12950,7 +12950,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.event_shape(name='event_shape')` {#StudentTWithAbsDfSoftplusSigma.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -12960,7 +12960,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -13024,14 +13024,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13044,14 +13044,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13069,14 +13069,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13094,14 +13094,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13125,13 +13125,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -13180,13 +13180,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -13227,14 +13227,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13252,14 +13252,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13277,14 +13277,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13300,7 +13300,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -13308,7 +13308,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -13320,7 +13320,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -13329,7 +13329,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -13368,7 +13368,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -13496,7 +13496,7 @@ undefined.
 
 #### `tf.contrib.distributions.Uniform.batch_shape(name='batch_shape')` {#Uniform.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -13509,7 +13509,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -13527,14 +13527,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13565,7 +13565,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Uniform.dtype` {#Uniform.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -13579,7 +13579,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Uniform.event_shape(name='event_shape')` {#Uniform.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -13589,7 +13589,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -13653,14 +13653,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13673,14 +13673,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13698,14 +13698,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13723,14 +13723,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13754,13 +13754,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -13796,13 +13796,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -13843,14 +13843,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13868,14 +13868,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -13893,14 +13893,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -13923,7 +13923,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -13931,7 +13931,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -13943,7 +13943,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -13952,7 +13952,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -13984,7 +13984,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -14078,7 +14078,7 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 
 *  <b>`mu`</b>: Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
-*  <b>`diag_stdev`</b>: Rank `N + 1` `Output` with same `dtype` and shape as `mu`,
+*  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
     representing the standard deviations.  Must be positive.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate
     input with asserts.  If `validate_args` is `False`,
@@ -14120,7 +14120,7 @@ undefined.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.batch_shape(name='batch_shape')` {#MultivariateNormalDiag.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -14133,7 +14133,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -14151,14 +14151,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -14189,7 +14189,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.dtype` {#MultivariateNormalDiag.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -14203,7 +14203,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.event_shape(name='event_shape')` {#MultivariateNormalDiag.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -14213,7 +14213,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -14277,14 +14277,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -14297,14 +14297,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -14322,14 +14322,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -14347,7 +14347,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -14363,14 +14363,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -14401,13 +14401,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -14450,13 +14450,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -14497,14 +14497,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -14522,14 +14522,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -14547,7 +14547,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -14563,14 +14563,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -14586,7 +14586,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -14594,7 +14594,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -14606,7 +14606,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -14615,7 +14615,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -14661,7 +14661,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -14742,7 +14742,7 @@ User must provide means `mu` and `sigma`, the mean and covariance.
 
 *  <b>`mu`</b>: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
-*  <b>`sigma`</b>: `(N+2)-D` `Output` with same `dtype` as `mu` and shape
+*  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  Each batch member must be positive definite.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
     with asserts.  If `validate_args` is `False`, and the inputs are
@@ -14784,7 +14784,7 @@ undefined.
 
 #### `tf.contrib.distributions.MultivariateNormalFull.batch_shape(name='batch_shape')` {#MultivariateNormalFull.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -14797,7 +14797,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -14815,14 +14815,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -14853,7 +14853,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.MultivariateNormalFull.dtype` {#MultivariateNormalFull.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -14867,7 +14867,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.MultivariateNormalFull.event_shape(name='event_shape')` {#MultivariateNormalFull.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -14877,7 +14877,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -14941,14 +14941,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -14961,14 +14961,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -14986,14 +14986,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15011,7 +15011,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -15027,14 +15027,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -15065,13 +15065,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -15114,13 +15114,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -15161,14 +15161,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15186,14 +15186,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15211,7 +15211,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -15227,14 +15227,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -15250,7 +15250,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -15258,7 +15258,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -15270,7 +15270,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -15279,7 +15279,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -15325,7 +15325,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -15414,7 +15414,7 @@ factors, such that the covariance of each batch member is `chol chol^T`.
 
 *  <b>`mu`</b>: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
-*  <b>`chol`</b>: `(N+2)-D` `Output` with same `dtype` as `mu` and shape
+*  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
     though it is zero), and the diagonal must be positive.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
@@ -15457,7 +15457,7 @@ undefined.
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.batch_shape(name='batch_shape')` {#MultivariateNormalCholesky.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -15470,7 +15470,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -15488,14 +15488,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -15526,7 +15526,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.dtype` {#MultivariateNormalCholesky.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -15540,7 +15540,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.event_shape(name='event_shape')` {#MultivariateNormalCholesky.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -15550,7 +15550,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -15614,14 +15614,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -15634,14 +15634,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15659,14 +15659,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15684,7 +15684,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -15700,14 +15700,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -15738,13 +15738,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -15787,13 +15787,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -15834,14 +15834,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15859,14 +15859,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -15884,7 +15884,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -15900,14 +15900,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -15923,7 +15923,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -15931,7 +15931,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -15943,7 +15943,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -15952,7 +15952,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -15998,7 +15998,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -16156,7 +16156,7 @@ undefined.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.batch_shape(name='batch_shape')` {#MultivariateNormalDiagPlusVDVT.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -16169,7 +16169,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -16187,14 +16187,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -16225,7 +16225,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.dtype` {#MultivariateNormalDiagPlusVDVT.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -16239,7 +16239,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.event_shape(name='event_shape')` {#MultivariateNormalDiagPlusVDVT.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -16249,7 +16249,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -16313,14 +16313,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -16333,14 +16333,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -16358,14 +16358,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -16383,7 +16383,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -16399,14 +16399,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -16437,13 +16437,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -16486,13 +16486,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -16533,14 +16533,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -16558,14 +16558,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -16583,7 +16583,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -16599,14 +16599,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -16622,7 +16622,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -16630,7 +16630,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -16642,7 +16642,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -16651,7 +16651,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -16697,7 +16697,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -16759,7 +16759,7 @@ undefined.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.batch_shape(name='batch_shape')` {#MultivariateNormalDiagWithSoftplusStDev.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -16772,7 +16772,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -16790,14 +16790,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -16828,7 +16828,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.dtype` {#MultivariateNormalDiagWithSoftplusStDev.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -16842,7 +16842,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.event_shape(name='event_shape')` {#MultivariateNormalDiagWithSoftplusStDev.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -16852,7 +16852,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -16916,14 +16916,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -16936,14 +16936,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -16961,14 +16961,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -16986,7 +16986,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -17002,14 +17002,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -17040,13 +17040,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -17089,13 +17089,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -17136,14 +17136,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -17161,14 +17161,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -17186,7 +17186,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `_MultivariateNormalOperatorPD`:
 
-`x` is a batch vector with compatible shape if `x` is an `Output` whose
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
 shape can be broadcast up to either:
 
 ```
@@ -17202,14 +17202,14 @@ or
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -17225,7 +17225,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -17233,7 +17233,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -17245,7 +17245,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -17254,7 +17254,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -17300,7 +17300,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -17466,7 +17466,7 @@ Sum of shape parameter.
 
 #### `tf.contrib.distributions.Dirichlet.batch_shape(name='batch_shape')` {#Dirichlet.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -17479,7 +17479,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -17497,14 +17497,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -17535,7 +17535,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Dirichlet.dtype` {#Dirichlet.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -17549,7 +17549,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Dirichlet.event_shape(name='event_shape')` {#Dirichlet.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -17559,7 +17559,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -17623,14 +17623,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -17643,14 +17643,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -17668,14 +17668,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -17701,14 +17701,14 @@ in `self.alpha`. `x` is only legal if it sums up to one.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -17732,13 +17732,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -17781,13 +17781,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -17828,14 +17828,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -17853,14 +17853,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -17886,14 +17886,14 @@ in `self.alpha`. `x` is only legal if it sums up to one.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -17909,7 +17909,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -17917,7 +17917,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -17929,7 +17929,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -17938,7 +17938,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -17970,7 +17970,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -18145,7 +18145,7 @@ Summation of alpha parameter.
 
 #### `tf.contrib.distributions.DirichletMultinomial.batch_shape(name='batch_shape')` {#DirichletMultinomial.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -18158,7 +18158,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -18176,14 +18176,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -18214,7 +18214,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.DirichletMultinomial.dtype` {#DirichletMultinomial.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -18228,7 +18228,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.DirichletMultinomial.event_shape(name='event_shape')` {#DirichletMultinomial.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -18238,7 +18238,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -18302,14 +18302,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -18322,14 +18322,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -18347,14 +18347,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -18387,14 +18387,14 @@ it sums up to `n` and its components are equal to integer values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -18418,13 +18418,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -18467,13 +18467,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -18514,14 +18514,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -18539,14 +18539,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -18579,14 +18579,14 @@ it sums up to `n` and its components are equal to integer values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -18602,7 +18602,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -18610,7 +18610,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -18622,7 +18622,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -18631,7 +18631,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -18663,7 +18663,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -18839,7 +18839,7 @@ undefined.
 
 #### `tf.contrib.distributions.Multinomial.batch_shape(name='batch_shape')` {#Multinomial.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -18852,7 +18852,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -18870,14 +18870,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -18908,7 +18908,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Multinomial.dtype` {#Multinomial.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -18922,7 +18922,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.Multinomial.event_shape(name='event_shape')` {#Multinomial.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -18932,7 +18932,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -18996,14 +18996,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19016,14 +19016,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19041,14 +19041,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19081,14 +19081,14 @@ if it sums up to `n` and its components are equal to integer values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19112,13 +19112,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -19177,13 +19177,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -19224,14 +19224,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19249,14 +19249,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19289,14 +19289,14 @@ if it sums up to `n` and its components are equal to integer values.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19312,7 +19312,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -19320,7 +19320,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -19332,7 +19332,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -19341,7 +19341,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -19373,7 +19373,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -19470,9 +19470,9 @@ Construct Wishart distributions.
 ##### Args:
 
 
-*  <b>`df`</b>: `float` or `double` `Output`. Degrees of freedom, must be greater than
+*  <b>`df`</b>: `float` or `double` `Tensor`. Degrees of freedom, must be greater than
     or equal to dimension of the scale matrix.
-*  <b>`scale`</b>: `float` or `double` `Output`. The Cholesky factorization of
+*  <b>`scale`</b>: `float` or `double` `Tensor`. The Cholesky factorization of
     the symmetric positive definite scale matrix of the distribution.
 *  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
     or output is a matrix assumes the input is Cholesky and returns a
@@ -19514,7 +19514,7 @@ undefined.
 
 #### `tf.contrib.distributions.WishartCholesky.batch_shape(name='batch_shape')` {#WishartCholesky.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -19527,7 +19527,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -19545,14 +19545,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19560,7 +19560,7 @@ cdf(x) := P[X <= x]
 
 #### `tf.contrib.distributions.WishartCholesky.cholesky_input_output_matrices` {#WishartCholesky.cholesky_input_output_matrices}
 
-Boolean indicating if `Output` input/outputs are Cholesky factorized.
+Boolean indicating if `Tensor` input/outputs are Cholesky factorized.
 
 
 - - -
@@ -19604,7 +19604,7 @@ Dimension of underlying vector space. The `p` in `R^(p*p)`.
 
 #### `tf.contrib.distributions.WishartCholesky.dtype` {#WishartCholesky.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -19618,7 +19618,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.WishartCholesky.event_shape(name='event_shape')` {#WishartCholesky.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -19628,7 +19628,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -19692,14 +19692,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19719,14 +19719,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19744,14 +19744,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19769,14 +19769,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19800,13 +19800,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -19849,13 +19849,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -19896,14 +19896,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19921,14 +19921,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -19946,14 +19946,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -19969,7 +19969,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -19977,7 +19977,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -19989,7 +19989,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -19998,7 +19998,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -20044,7 +20044,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -20137,9 +20137,9 @@ Construct Wishart distributions.
 ##### Args:
 
 
-*  <b>`df`</b>: `float` or `double` `Output`. Degrees of freedom, must be greater than
+*  <b>`df`</b>: `float` or `double` `Tensor`. Degrees of freedom, must be greater than
     or equal to dimension of the scale matrix.
-*  <b>`scale`</b>: `float` or `double` `Output`. The symmetric positive definite
+*  <b>`scale`</b>: `float` or `double` `Tensor`. The symmetric positive definite
     scale matrix of the distribution.
 *  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
     or output is a matrix assumes the input is Cholesky and returns a
@@ -20181,7 +20181,7 @@ undefined.
 
 #### `tf.contrib.distributions.WishartFull.batch_shape(name='batch_shape')` {#WishartFull.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -20194,7 +20194,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -20212,14 +20212,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -20227,7 +20227,7 @@ cdf(x) := P[X <= x]
 
 #### `tf.contrib.distributions.WishartFull.cholesky_input_output_matrices` {#WishartFull.cholesky_input_output_matrices}
 
-Boolean indicating if `Output` input/outputs are Cholesky factorized.
+Boolean indicating if `Tensor` input/outputs are Cholesky factorized.
 
 
 - - -
@@ -20271,7 +20271,7 @@ Dimension of underlying vector space. The `p` in `R^(p*p)`.
 
 #### `tf.contrib.distributions.WishartFull.dtype` {#WishartFull.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -20285,7 +20285,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.WishartFull.event_shape(name='event_shape')` {#WishartFull.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -20295,7 +20295,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -20359,14 +20359,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -20386,14 +20386,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -20411,14 +20411,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -20436,14 +20436,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -20467,13 +20467,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -20516,13 +20516,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -20563,14 +20563,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -20588,14 +20588,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -20613,14 +20613,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -20636,7 +20636,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -20644,7 +20644,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -20656,7 +20656,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -20665,7 +20665,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -20711,7 +20711,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -20782,9 +20782,9 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 ##### Args:
 
 
-*  <b>`matrix`</b>: Rank `R` `Output`, `R >= 2`, where the last two dimensions are
+*  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
     equal.
-*  <b>`transform`</b>: Element-wise function mapping `Output`s to `Output`s.  To
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
     be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
     unchanged.  Defaults to `None`.
 *  <b>`name`</b>: A name to give created ops.
@@ -20792,7 +20792,7 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 
 ##### Returns:
 
-  An `Output` with same shape and `dtype` as `matrix`.
+  A `Tensor` with same shape and `dtype` as `matrix`.
 
 
 
@@ -20949,7 +20949,7 @@ undefined.
 
 #### `tf.contrib.distributions.TransformedDistribution.batch_shape(name='batch_shape')` {#TransformedDistribution.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -20962,7 +20962,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -20995,14 +20995,14 @@ Additional documentation from `TransformedDistribution`:
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21040,7 +21040,7 @@ Base distribution, p(x).
 
 #### `tf.contrib.distributions.TransformedDistribution.dtype` {#TransformedDistribution.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -21054,7 +21054,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.TransformedDistribution.event_shape(name='event_shape')` {#TransformedDistribution.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -21064,7 +21064,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -21136,14 +21136,14 @@ Additional documentation from `TransformedDistribution`:
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21156,14 +21156,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -21181,14 +21181,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -21220,14 +21220,14 @@ Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21259,13 +21259,13 @@ Additional documentation from `TransformedDistribution`:
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -21301,13 +21301,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -21348,14 +21348,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -21373,14 +21373,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -21412,14 +21412,14 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21435,7 +21435,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -21443,7 +21443,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -21466,7 +21466,7 @@ Samples from the base distribution and then passes through
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -21475,7 +21475,7 @@ Samples from the base distribution and then passes through
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -21515,7 +21515,7 @@ Additional documentation from `TransformedDistribution`:
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -21609,11 +21609,11 @@ the `distribution`.
 
 *  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
-*  <b>`lower_cutoff`</b>: `Output` with same `dtype` as this distribution and shape
+*  <b>`lower_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's pdf/pmf should be defined at
     `lower_cutoff`.
-*  <b>`upper_cutoff`</b>: `Output` with same `dtype` as this distribution and shape
+*  <b>`upper_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's pdf/pmf should be defined at
     `upper_cutoff - 1`.
@@ -21656,7 +21656,7 @@ undefined.
 
 #### `tf.contrib.distributions.QuantizedDistribution.batch_shape(name='batch_shape')` {#QuantizedDistribution.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -21669,7 +21669,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -21705,14 +21705,14 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21750,7 +21750,7 @@ Base distribution, p(x).
 
 #### `tf.contrib.distributions.QuantizedDistribution.dtype` {#QuantizedDistribution.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -21764,7 +21764,7 @@ Shannon entropy in nats.
 
 #### `tf.contrib.distributions.QuantizedDistribution.event_shape(name='event_shape')` {#QuantizedDistribution.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -21774,7 +21774,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -21856,14 +21856,14 @@ The base distribution's `log_cdf` method must be defined on `y - 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21876,14 +21876,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -21901,14 +21901,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -21944,14 +21944,14 @@ must also be defined on `y - 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -21993,13 +21993,13 @@ The base distribution's `log_cdf` method must be defined on `y - 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -22035,13 +22035,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -22082,14 +22082,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -22107,14 +22107,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -22150,14 +22150,14 @@ also be defined on `y - 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -22173,7 +22173,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -22181,7 +22181,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -22193,7 +22193,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -22202,7 +22202,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -22252,7 +22252,7 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
@@ -22364,7 +22364,7 @@ undefined.
 
 #### `tf.contrib.distributions.Mixture.batch_shape(name='batch_shape')` {#Mixture.batch_shape}
 
-Shape of a single sample from a single event index as a 1-D `Output`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -22377,7 +22377,7 @@ independent distributions of this kind the instance represents.
 ##### Returns:
 
 
-*  <b>`batch_shape`</b>: `Output`.
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -22402,14 +22402,14 @@ cdf(x) := P[X <= x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -22447,7 +22447,7 @@ intialization arguments.
 
 #### `tf.contrib.distributions.Mixture.dtype` {#Mixture.dtype}
 
-The `DType` of `Output`s handled by this `Distribution`.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
@@ -22507,7 +22507,7 @@ This is the term we calculate below for \\( G[q] \\).
 
 #### `tf.contrib.distributions.Mixture.event_shape(name='event_shape')` {#Mixture.event_shape}
 
-Shape of a single sample from a single batch as a 1-D int32 `Output`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -22517,7 +22517,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Output`.
 ##### Returns:
 
 
-*  <b>`event_shape`</b>: `Output`.
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -22581,14 +22581,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`logcdf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -22601,14 +22601,14 @@ Log probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -22626,14 +22626,14 @@ Log probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -22651,14 +22651,14 @@ Log probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -22682,13 +22682,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  `Output` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -22731,13 +22731,13 @@ Subclasses should override static method `_param_shapes`.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `Output` or python list/tuple. Desired shape of a call to
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
     `sample()`.
 *  <b>`name`</b>: name to prepend ops with.
 
 ##### Returns:
 
-  `dict` of parameter name to `Output` shapes.
+  `dict` of parameter name to `Tensor` shapes.
 
 
 - - -
@@ -22778,14 +22778,14 @@ Probability density function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -22803,14 +22803,14 @@ Probability mass function.
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`pmf`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 ##### Raises:
@@ -22828,14 +22828,14 @@ Probability density/mass function (depending on `is_continuous`).
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: an `Output` of shape `sample_shape(x) + self.batch_shape` with
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
 
 
@@ -22851,7 +22851,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Output`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
@@ -22859,7 +22859,7 @@ sample.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with prepended dimensions `sample_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
@@ -22871,7 +22871,7 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Output` of type `int32` or `int64`, the number of
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
@@ -22880,7 +22880,7 @@ Generate `n` samples.
 ##### Returns:
 
 
-*  <b>`samples`</b>: an `Output` with a prepended dimension (n,).
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 ##### Raises:
 
@@ -22912,7 +22912,7 @@ survival_function(x) = P[X > x]
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Output`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 *  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 

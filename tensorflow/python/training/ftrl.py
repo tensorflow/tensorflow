@@ -43,7 +43,7 @@ class FtrlOptimizer(optimizer.Optimizer):
     """Construct a new FTRL optimizer.
 
     Args:
-      learning_rate: A float value or a constant float `Output`.
+      learning_rate: A float value or a constant float `Tensor`.
       learning_rate_power: A float value, must be less or equal to zero.
       initial_accumulator_value: The starting value for accumulators.
         Only positive values are allowed.

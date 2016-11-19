@@ -85,8 +85,8 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   st.values = ['hello', 'world', 'a', 'b', 'c']
 
   Args:
-    source: `1-D` string `Output`, the strings to split.
-    delimiter: `0-D` string `Output`, the delimiter character, the string should
+    source: `1-D` string `Tensor`, the strings to split.
+    delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
 
   Returns:

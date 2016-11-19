@@ -24,7 +24,7 @@ from tensorflow.core.framework import types_pb2
 
 
 class DType(object):
-  """Represents the type of the elements in an `Output`.
+  """Represents the type of the elements in a `Tensor`.
 
   The following `DType` objects are defined:
 

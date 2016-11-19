@@ -273,7 +273,7 @@ def bucket_by_sequence_length(input_length,
   `which_bucket` for details of the other arguments.
 
   Args:
-    input_length: `int32` scalar `Output`, the sequence length of tensors.
+    input_length: `int32` scalar `Tensor`, the sequence length of tensors.
     tensors: The list or dictionary of tensors, representing a single element,
       to bucket.  Nested lists are not supported.
     batch_size: The new batch size pulled from the queue
@@ -303,7 +303,7 @@ def bucket_by_sequence_length(input_length,
 
   Returns:
     A tuple `(sequence_length, outputs)` where `sequence_length` is
-    a 1-D `Output` of size `batch_size` and `outputs` is a list or dictionary
+    a 1-D `Tensor` of size `batch_size` and `outputs` is a list or dictionary
     of batched, bucketed, outputs corresponding to elements of `tensors`.
 
   Raises:

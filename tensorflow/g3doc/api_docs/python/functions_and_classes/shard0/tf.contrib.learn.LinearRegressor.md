@@ -28,7 +28,7 @@ Input of `fit` and `evaluate` should have following features,
   otherwise there will be a KeyError:
 
 * if `weight_column_name` is not `None`:
-  key=weight_column_name, value=an `Output`
+  key=weight_column_name, value=a `Tensor`
 * for column in `feature_columns`:
   - if isinstance(column, `SparseColumn`):
       key=column.name, value=a `SparseTensor`
@@ -36,7 +36,7 @@ Input of `fit` and `evaluate` should have following features,
       {key=id column name, value=a `SparseTensor`,
        key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
-      key=column.name, value=an `Output`
+      key=column.name, value=a `Tensor`
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=False, label_dimension=1, _joint_weights=False, config=None, feature_engineering_fn=None)` {#LinearRegressor.__init__}

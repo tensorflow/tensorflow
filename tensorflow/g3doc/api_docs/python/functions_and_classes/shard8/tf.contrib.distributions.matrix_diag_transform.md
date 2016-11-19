@@ -39,9 +39,9 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 ##### Args:
 
 
-*  <b>`matrix`</b>: Rank `R` `Output`, `R >= 2`, where the last two dimensions are
+*  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
     equal.
-*  <b>`transform`</b>: Element-wise function mapping `Output`s to `Output`s.  To
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
     be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
     unchanged.  Defaults to `None`.
 *  <b>`name`</b>: A name to give created ops.
@@ -49,5 +49,5 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 
 ##### Returns:
 
-  An `Output` with same shape and `dtype` as `matrix`.
+  A `Tensor` with same shape and `dtype` as `matrix`.
 

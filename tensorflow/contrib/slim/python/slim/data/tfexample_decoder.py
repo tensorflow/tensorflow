@@ -149,11 +149,11 @@ class Tensor(ItemHandler):
 
     Tensors are, by default, returned without any reshaping. However, there are
     two mechanisms which allow reshaping to occur at load time. If `shape_keys`
-    is provided, both the `Output` corresponding to `tensor_key` and
-    `shape_keys` is loaded and the former `Output` is reshaped with the values
-    of the latter. Alternatively, if a fixed `shape` is provided, the `Output`
+    is provided, both the `Tensor` corresponding to `tensor_key` and
+    `shape_keys` is loaded and the former `Tensor` is reshaped with the values
+    of the latter. Alternatively, if a fixed `shape` is provided, the `Tensor`
     corresponding to `tensor_key` is loaded and reshape appropriately.
-    If neither `shape_keys` nor `shape` are provided, the `Output` will be
+    If neither `shape_keys` nor `shape` are provided, the `Tensor` will be
     returned without any reshaping.
 
     Args:
@@ -161,7 +161,7 @@ class Tensor(ItemHandler):
       shape_keys: Optional name or list of names of the TF-Example feature in
         which the tensor shape is stored. If a list, then each corresponds to
         one dimension of the shape.
-      shape: Optional output shape of the `Output`. If provided, the `Output` is
+      shape: Optional output shape of the `Tensor`. If provided, the `Tensor` is
         reshaped accordingly.
       default_value: The value used when the `tensor_key` is not found in a
         particular `TFExample`.
