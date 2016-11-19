@@ -110,6 +110,13 @@ class GrpcSession : public Session {
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);
 
+  Status RunHelper(const RunOptions& run_options,
+                   const std::vector<std::pair<string, Tensor> >& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                   const string& prun_handle);
+
   Status RunProto(CallOptions* call_options, RunStepRequest* req,
                   RunStepResponse* resp);
 
