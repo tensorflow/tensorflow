@@ -1,24 +1,24 @@
 Represents one of the outputs of an `Operation`.
 
-An `Output` is a symbolic handle to one of the outputs of an
+A `Tensor` is a symbolic handle to one of the outputs of an
 `Operation`. It does not hold the values of that operation's output,
 but instead provides a means of computing those values in a
 TensorFlow [`Session`](../../api_docs/python/client.md#Session).
 
 This class has two primary purposes:
 
-1. An `Output` can be passed as an input to another `Operation`.
+1. A `Tensor` can be passed as an input to another `Operation`.
    This builds a dataflow connection between operations, which
    enables TensorFlow to execute an entire `Graph` that represents a
    large, multi-step computation.
 
 2. After the graph has been launched in a session, the value of the
-   `Output` can be computed by passing it to
+   `Tensor` can be computed by passing it to
    [`Session.run()`](../../api_docs/python/client.md#Session.run).
    `t.eval()` is a shortcut for calling
    `tf.get_default_session().run(t)`.
 
-In the following example, `c`, `d`, and `e` are symbolic `Output`
+In the following example, `c`, `d`, and `e` are symbolic `Tensor`
 objects, whereas `result` is a numpy array that stores a concrete
 value:
 
@@ -92,14 +92,14 @@ Calling this method will execute all preceding operations that
 produce the inputs needed for the operation that produces this
 tensor.
 
-*N.B.* Before invoking `Output.eval()`, its graph must have been
+*N.B.* Before invoking `Tensor.eval()`, its graph must have been
 launched in a session, and either a default session must be
 available, or `session` must be specified explicitly.
 
 ##### Args:
 
 
-*  <b>`feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
     description of the valid feed values.
 *  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this tensor. If
@@ -150,7 +150,7 @@ print(f.get_shape())
 
 In some cases, the inferred shape may have unknown dimensions. If
 the caller has additional information about the values of these
-dimensions, `Output.set_shape()` can be used to augment the
+dimensions, `Tensor.set_shape()` can be used to augment the
 inferred shape.
 
 ##### Returns:
@@ -276,7 +276,7 @@ Returns the truth value of x AND y element-wise.
 Dummy method to prevent a tensor from being used as a Python `bool`.
 
 This overload raises a `TypeError` when the user inadvertently
-treats an `Output` as a boolean (e.g. in an `if` statement). For
+treats a `Tensor` as a boolean (e.g. in an `if` statement). For
 example:
 
 ```python
@@ -288,7 +288,7 @@ if tf.constant(5) < tf.constant(7):  # Will raise.
 ```
 
 This disallows ambiguities between testing the Python value vs testing the
-dynamic condition of the `Output`.
+dynamic condition of the `Tensor`.
 
 ##### Raises:
 
@@ -471,7 +471,7 @@ Returns the truth value of (x > y) element-wise.
 
 #### `tf.Tensor.__init__(op, value_index, dtype)` {#Tensor.__init__}
 
-Creates a new `Output`.
+Creates a new `Tensor`.
 
 ##### Args:
 
@@ -511,7 +511,7 @@ Returns the truth value of NOT x element-wise.
 Dummy method to prevent iteration. Do not call.
 
 NOTE(mrry): If we register __getitem__ as an overloaded operator,
-Python will valiantly attempt to iterate over the Output from 0 to
+Python will valiantly attempt to iterate over the Tensor from 0 to
 infinity.  Declaring this method prevents this unintended
 behavior.
 
