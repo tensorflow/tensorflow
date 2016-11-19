@@ -40,13 +40,13 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   greater than `clip_value_max` are set to `clip_value_max`.
 
   Args:
-    t: An `Output`.
-    clip_value_min: A 0-D (scalar) `Output`. The minimum value to clip by.
-    clip_value_max: A 0-D (scalar) `Output`. The maximum value to clip by.
+    t: A `Tensor`.
+    clip_value_min: A 0-D (scalar) `Tensor`. The minimum value to clip by.
+    clip_value_max: A 0-D (scalar) `Tensor`. The maximum value to clip by.
     name: A name for the operation (optional).
 
   Returns:
-    A clipped `Output`.
+    A clipped `Tensor`.
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -82,15 +82,15 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   an optimizer.
 
   Args:
-    t: An `Output`.
-    clip_norm: A 0-D (scalar) `Output` > 0. A maximum clipping value.
-    axes: A 1-D (vector) `Output` of type int32 containing the dimensions
+    t: A `Tensor`.
+    clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
+    axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
       to use for computing the L2-norm. If `None` (the default), uses all
       dimensions.
     name: A name for the operation (optional).
 
   Returns:
-    A clipped `Output`.
+    A clipped `Tensor`.
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     t = ops.convert_to_tensor(t, name="t")
@@ -116,11 +116,11 @@ def global_norm(t_list, name=None):
   Any entries in `t_list` that are of type None are ignored.
 
   Args:
-    t_list: A tuple or list of mixed `Output`s, `IndexedSlices`, or None.
+    t_list: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
     name: A name for the operation (optional).
 
   Returns:
-    A 0-D (scalar) `Output` of type `float`.
+    A 0-D (scalar) `Tensor` of type `float`.
 
   Raises:
     TypeError: If `t_list` is not a sequence.
@@ -181,15 +181,15 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   ready before the clipping operation can be performed.
 
   Args:
-    t_list: A tuple or list of mixed `Output`s, `IndexedSlices`, or None.
-    clip_norm: A 0-D (scalar) `Output` > 0. The clipping ratio.
-    use_norm: A 0-D (scalar) `Output` of type `float` (optional). The global
+    t_list: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
+    clip_norm: A 0-D (scalar) `Tensor` > 0. The clipping ratio.
+    use_norm: A 0-D (scalar) `Tensor` of type `float` (optional). The global
       norm to use. If not provided, `global_norm()` is used to compute the norm.
     name: A name for the operation (optional).
 
   Returns:
-    list_clipped: A list of `Output`s of the same type as `list_t`.
-    global_norm: A 0-D (scalar) `Output` representing the global norm.
+    list_clipped: A list of `Tensors` of the same type as `list_t`.
+    global_norm: A 0-D (scalar) `Tensor` representing the global norm.
 
   Raises:
     TypeError: If `t_list` is not a sequence.
@@ -251,12 +251,12 @@ def clip_by_average_norm(t, clip_norm, name=None):
   an optimizer.
 
   Args:
-    t: An `Output`.
-    clip_norm: A 0-D (scalar) `Output` > 0. A maximum clipping value.
+    t: A `Tensor`.
+    clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
     name: A name for the operation (optional).
 
   Returns:
-    A clipped `Output`.
+    A clipped `Tensor`.
   """
   with ops.name_scope(name, "clip_by_average_norm", [t, clip_norm]) as name:
     t = ops.convert_to_tensor(t, name="t")

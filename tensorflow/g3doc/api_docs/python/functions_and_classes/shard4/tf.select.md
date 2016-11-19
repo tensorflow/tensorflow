@@ -45,14 +45,14 @@ select(condition, t, e) ==> [[1, 2],
 ##### Args:
 
 
-*  <b>`condition`</b>: An `Output` of type `bool`.
-*  <b>`t`</b>: An `Output` which may have the same shape as `condition`.
+*  <b>`condition`</b>: A `Tensor` of type `bool`.
+*  <b>`t`</b>: A `Tensor` which may have the same shape as `condition`.
     If `condition` is rank 1, `t` may have higher rank,
     but its first dimension must match the size of `condition`.
-*  <b>`e`</b>: An `Output` with the same type and shape as `t`.
+*  <b>`e`</b>: A `Tensor` with the same type and shape as `t`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with the same type and shape as `t` and `e`.
+  A `Tensor` with the same type and shape as `t` and `e`.
 

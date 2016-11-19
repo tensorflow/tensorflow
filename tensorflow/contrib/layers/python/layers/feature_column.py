@@ -786,7 +786,7 @@ class _OneHotColumn(_FeatureColumn,
       in `insert_transformed_feature`. Rank should be >= `output_rank`.
       unused_weight_collections: Unused. One hot encodings are not variable.
       unused_trainable: Unused. One hot encodings are not trainable.
-      output_rank: the desired rank of the output `Output`.
+      output_rank: the desired rank of the output `Tensor`.
 
     Returns:
       A multihot Tensor to be fed into the first layer of neural network.
@@ -844,7 +844,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     ckpt_to_load_from: (Optional). String representing checkpoint name/pattern
       to restore the column weights. Required if `tensor_name_in_ckpt` is not
       None.
-    tensor_name_in_ckpt: (Optional). Name of the `Output` in the provided
+    tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
     shared_embedding_name: (Optional). The common name for shared embedding.
@@ -981,7 +981,7 @@ def embedding_column(sparse_id_column,
     ckpt_to_load_from: (Optional). String representing checkpoint name/pattern
       to restore the column weights. Required if `tensor_name_in_ckpt` is not
       None.
-    tensor_name_in_ckpt: (Optional). Name of the `Output` in the provided
+    tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
 
@@ -1027,7 +1027,7 @@ def shared_embedding_columns(sparse_id_columns,
     ckpt_to_load_from: (Optional). String representing checkpoint name/pattern
       to restore the column weights. Required if `tensor_name_in_ckpt` is not
       None.
-    tensor_name_in_ckpt: (Optional). Name of the `Output` in the provided
+    tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
 
@@ -1193,7 +1193,7 @@ def hashed_embedding_column(column_name,
 
 
 def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
-  """Reshaping logic for dense, numeric `Output`s.
+  """Reshaping logic for dense, numeric `Tensors`.
 
   Follows the following rules:
     1. If `output_rank > input_rank + 1` raise a `ValueError`.
@@ -1201,15 +1201,15 @@ def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
        dimension and return
     3. If `output_rank == input_rank`, return `input_tensor`.
     4. If `output_rank < input_rank`, flatten the inner dimensions of
-       `input_tensor` and return an `Output` with `output_rank`
+       `input_tensor` and return a `Tensor` with `output_rank`
 
   Args:
-    input_tensor: a dense `Output` to be reshaped.
-    output_rank: the desired rank of the reshaped `Output`.
+    input_tensor: a dense `Tensor` to be reshaped.
+    output_rank: the desired rank of the reshaped `Tensor`.
     column_name: (optional) the name of the associated column. Used for error
       messages.
   Returns:
-    An `Output` with the same entries as `input_tensor` and rank `output_rank`.
+    A `Tensor` with the same entries as `input_tensor` and rank `output_rank`.
   Raises:
     ValueError: if `output_rank > input_rank + 1`.
   """
@@ -1607,7 +1607,7 @@ class _CrossedColumn(_FeatureColumn,
     ckpt_to_load_from: (Optional). String representing checkpoint name/pattern
       to restore the column weights. Required if `tensor_name_in_ckpt` is not
       None.
-    tensor_name_in_ckpt: (Optional). Name of the `Output` in the provided
+    tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
 
@@ -1756,7 +1756,7 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
     ckpt_to_load_from: (Optional). String representing checkpoint name/pattern
       to restore the column weights. Required if `tensor_name_in_ckpt` is not
       None.
-    tensor_name_in_ckpt: (Optional). Name of the `Output` in the provided
+    tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`

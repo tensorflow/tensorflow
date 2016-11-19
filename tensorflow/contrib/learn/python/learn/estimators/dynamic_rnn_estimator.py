@@ -26,6 +26,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -63,12 +64,12 @@ def padding_mask(sequence_lengths, padded_length):
   """Creates a mask used for calculating losses with padded input.
 
   Args:
-    sequence_lengths: An `Output` of shape `[batch_size]` containing the
-      unpadded length of  each sequence.
-    padded_length: A scalar `Output` indicating the length of the sequences
+    sequence_lengths: A `Tensor` of shape `[batch_size]` containing the unpadded
+      length of  each sequence.
+    padded_length: A scalar `Tensor` indicating the length of the sequences
       after padding
   Returns:
-    A boolean `Output` M of shape `[batch_size, padded_length]` where
+    A boolean `Tensor` M of shape `[batch_size, padded_length]` where
     `M[i, j] == True` when `lengths[i] > j`.
 
   """
@@ -83,7 +84,7 @@ def mask_activations_and_labels(activations, labels, sequence_lengths):
   Args:
     activations: Output of the RNN, shape `[batch_size, padded_length, k]`.
     labels: Label values, shape `[batch_size, padded_length]`.
-    sequence_lengths: An `Output` of shape `[batch_size]` with the unpadded
+    sequence_lengths: A `Tensor` of shape `[batch_size]` with the unpadded
       length of each sequence. If `None`, then each sequence is unpadded.
 
   Returns:
@@ -115,15 +116,15 @@ def mask_activations_and_labels(activations, labels, sequence_lengths):
 def select_last_activations(activations, sequence_lengths):
   """Selects the nth set of activations for each n in `sequence_length`.
 
-  Reuturns an `Output` of shape `[batch_size, k]`. If `sequence_length` is not
+  Reuturns a `Tensor` of shape `[batch_size, k]`. If `sequence_length` is not
   `None`, then `output[i, :] = activations[i, sequence_length[i], :]`. If
   `sequence_length` is `None`, then `output[i, :] = activations[i, -1, :]`.
 
   Args:
-    activations: An `Output` with shape `[batch_size, padded_length, k]`.
-    sequence_lengths: An `Output` with shape `[batch_size]` or `None`.
+    activations: A `Tensor` with shape `[batch_size, padded_length, k]`.
+    sequence_lengths: A `Tensor` with shape `[batch_size]` or `None`.
   Returns:
-    An `Output` of shape `[batch_size, k]`.
+    A `Tensor` of shape `[batch_size, k]`.
   """
   with ops.name_scope('select_last_activations',
                       values=[activations, sequence_lengths]):
@@ -150,12 +151,12 @@ def _concatenate_context_input(sequence_input, context_input):
   returned.
 
   Args:
-    sequence_input: An `Output` of dtype `float32` and shape `[batch_size,
+    sequence_input: A `Tensor` of dtype `float32` and shape `[batch_size,
       padded_length, d0]`.
-    context_input: An `Output` of dtype `float32` and shape `[batch_size, d1]`.
+    context_input: A `Tensor` of dtype `float32` and shape `[batch_size, d1]`.
 
   Returns:
-    An `Output` of dtype `float32` and shape `[batch_size, padded_length,
+    A `Tensor` of dtype `float32` and shape `[batch_size, padded_length,
     d0 + d1]`.
 
   Raises:
@@ -211,7 +212,7 @@ def build_sequence_input(features,
     weight_collections: List of graph collections to which weights are added.
     scope: Optional scope, passed through to parsing ops.
   Returns:
-    An `Output` of dtype `float32` and shape `[batch_size, padded_length, ?]`.
+    A `Tensor` of dtype `float32` and shape `[batch_size, padded_length, ?]`.
     This will be used as input to an RNN.
   """
   sequence_input = layers.sequence_input_from_feature_columns(
@@ -241,7 +242,7 @@ def construct_rnn(initial_state,
   Args:
     initial_state: The initial state to pass the the RNN. If `None`, the
       default starting state for `self._cell` is used.
-    sequence_input: An `Output` with shape `[batch_size, padded_length, d]`
+    sequence_input: A `Tensor` with shape `[batch_size, padded_length, d]`
       that will be passed as input to the RNN.
     cell: An initialized `RNNCell`.
     num_label_columns: The desired output dimension.
@@ -279,7 +280,7 @@ def _mask_multivalue(sequence_length, metric):
   """Wrapper function that masks values by `sequence_length`.
 
   Args:
-    sequence_length: An `Output` with shape `[batch_size]` and dtype `int32`
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
       containing the length of each sequence in the batch. If `None`, sequences
       are assumed to be unpadded.
     metric: A metric function. Its signature must contain `predictions` and
@@ -304,7 +305,7 @@ def _get_default_metrics(problem_type, prediction_type, sequence_length):
     problem_type: `ProblemType.CLASSIFICATION` or`ProblemType.REGRESSION`.
     prediction_type: `PredictionType.SINGLE_VALUE` or
       `PredictionType.MULTIPLE_VALUE`.
-    sequence_length: An `Output` with shape `[batch_size]` and dtype `int32`
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
       containing the length of each sequence in the batch. If `None`, sequences
       are assumed to be unpadded.
   Returns:
@@ -340,7 +341,7 @@ def _multi_value_predictions(
   If `predict_probabilities` is `False`, this function returns a `dict`
   containing single entry with key `PREDICTIONS_KEY`. If `predict_probabilities`
   is `True`, it will contain a second entry with key `PROBABILITIES_KEY`. The
-  value of this entry is an `Output` of probabilities with shape
+  value of this entry is a `Tensor` of probabilities with shape
   `[batch_size, padded_length, num_classes]`.
 
   Note that variable length inputs will yield some predictions that don't have
@@ -355,7 +356,7 @@ def _multi_value_predictions(
       should be returned. Should only be set to `True` for
       classification/logistic regression problems.
   Returns:
-    A `dict` mapping strings to `Output`s.
+    A `dict` mapping strings to `Tensors`.
   """
   with ops.name_scope('MultiValuePrediction'):
     activations_shape = array_ops.shape(activations)
@@ -388,13 +389,13 @@ def _single_value_predictions(
   If `predict_probabilities` is `False`, this function returns a `dict`
   containing single entry with key `PREDICTIONS_KEY`. If `predict_probabilities`
   is `True`, it will contain a second entry with key `PROBABILITIES_KEY`. The
-  value of this entry is an `Output` of probabilities with shape
+  value of this entry is a `Tensor` of probabilities with shape
   `[batch_size, num_classes]`.
 
   Args:
     activations: Output from an RNN. Should have dtype `float32` and shape
       `[batch_size, padded_length, ?]`.
-    sequence_length: An `Output` with shape `[batch_size]` and dtype `int32`
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
       containing the length of each sequence in the batch. If `None`, sequences
       are assumed to be unpadded.
     target_column: An initialized `TargetColumn`, calculate predictions.
@@ -402,7 +403,7 @@ def _single_value_predictions(
       should be returned. Should only be set to `True` for
       classification/logistic regression problems.
   Returns:
-    A `dict` mapping strings to `Output`s.
+    A `dict` mapping strings to `Tensors`.
   """
   with ops.name_scope('SingleValuePrediction'):
     last_activations = select_last_activations(activations, sequence_length)
@@ -426,15 +427,15 @@ def _multi_value_loss(
   Args:
     activations: Output from an RNN. Should have dtype `float32` and shape
       `[batch_size, padded_length, ?]`.
-    labels: An `Output` with length `[batch_size, padded_length]`.
-    sequence_length: An `Output` with shape `[batch_size]` and dtype `int32`
+    labels: A `Tensor` with length `[batch_size, padded_length]`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
       containing the length of each sequence in the batch. If `None`, sequences
       are assumed to be unpadded.
     target_column: An initialized `TargetColumn`, calculate predictions.
     features: A `dict` containing the input and (optionally) sequence length
       information and initial state.
   Returns:
-    A scalar `Output` containing the loss.
+    A scalar `Tensor` containing the loss.
   """
   with ops.name_scope('MultiValueLoss'):
     activations_masked, labels_masked = mask_activations_and_labels(
@@ -449,15 +450,15 @@ def _single_value_loss(
   Args:
     activations: Output from an RNN. Should have dtype `float32` and shape
       `[batch_size, padded_length, ?]`.
-    labels: An `Output` with length `[batch_size]`.
-    sequence_length: An `Output` with shape `[batch_size]` and dtype `int32`
+    labels: A `Tensor` with length `[batch_size]`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
       containing the length of each sequence in the batch. If `None`, sequences
       are assumed to be unpadded.
     target_column: An initialized `TargetColumn`, calculate predictions.
     features: A `dict` containing the input and (optionally) sequence length
       information and initial state.
   Returns:
-    A scalar `Output` containing the loss.
+    A scalar `Tensor` containing the loss.
   """
 
   with ops.name_scope('SingleValueLoss'):
@@ -587,7 +588,7 @@ def _get_dynamic_rnn_model_fn(cell,
       sequence_input = build_sequence_input(features,
                                             sequence_feature_columns,
                                             context_feature_columns)
-      if mode == estimator.ModeKeys.TRAIN:
+      if mode == model_fn.ModeKeys.TRAIN:
         cell_for_mode = apply_dropout(
             cell, input_keep_probability, output_keep_probability)
       else:
@@ -624,11 +625,11 @@ def _get_dynamic_rnn_model_fn(cell,
           optimizer=optimizer,
           clip_gradients=gradient_clipping_norm,
           summaries=optimizers.OPTIMIZER_SUMMARIES)
-    return estimator.ModelFnOps(mode=mode,
-                                predictions=prediction_dict,
-                                loss=loss,
-                                train_op=train_op,
-                                eval_metric_ops=eval_metric_ops)
+    return model_fn.ModelFnOps(mode=mode,
+                               predictions=prediction_dict,
+                               loss=loss,
+                               train_op=train_op,
+                               eval_metric_ops=eval_metric_ops)
   return _dynamic_rnn_model_fn
 
 

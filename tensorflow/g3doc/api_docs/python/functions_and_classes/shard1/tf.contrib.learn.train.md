@@ -27,7 +27,7 @@ program is terminated with exit code 1.
     one is extracted from the graph using the same logic as in `Supervisor`.
 *  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
     default.
-*  <b>`init_feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`init_feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     This feed dictionary will be used when `init_op` is evaluated.
 *  <b>`init_fn`</b>: Optional callable passed to Supervisor to initialize the model.
 *  <b>`log_every_steps`</b>: Output logs regularly. The logs contain timing data and the

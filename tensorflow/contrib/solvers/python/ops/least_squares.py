@@ -40,7 +40,7 @@ def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
 
   Args:
     operator: An object representing a linear operator with attributes:
-      - shape: Either a list of integers or a 1-D `Output` of type `int32` of
+      - shape: Either a list of integers or a 1-D `Tensor` of type `int32` of
         length 2. `shape[0]` is the dimension on the domain of the operator,
         `shape[1]` is the dimension of the co-domain of the operator. On other
         words, if operator represents an M x N matrix A, `shape` must contain
@@ -55,7 +55,7 @@ def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
         to `x`, i.e. if `operator` represents matrix `A`, `apply_adjoint` should
         return `conj(transpose(A)) * x`.
 
-    rhs: A rank-1 `Output` of shape `[M]` containing the right-hand size vector.
+    rhs: A rank-1 `Tensor` of shape `[M]` containing the right-hand size vector.
     tol: A float scalar convergence tolerance.
     max_iter: An integer giving the maximum number of iterations.
     name: A name scope for the operation.
@@ -63,10 +63,10 @@ def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
 
   Returns:
     output: A namedtuple representing the final state with fields:
-      - i: A scalar `int32` `Output`. Number of iterations executed.
-      - x: A rank-1 `Output` of shape `[N]` containing the computed solution.
-      - r: A rank-1 `Output` of shape `[M]` containing the residual vector.
-      - p: A rank-1 `Output` of shape `[N]`. The next descent direction.
+      - i: A scalar `int32` `Tensor`. Number of iterations executed.
+      - x: A rank-1 `Tensor` of shape `[N]` containing the computed solution.
+      - r: A rank-1 `Tensor` of shape `[M]` containing the residual vector.
+      - p: A rank-1 `Tensor` of shape `[N]`. The next descent direction.
       - gamma: \\(||A^* r||_2^2\\)
   """
   # ephemeral class holding CGLS state.

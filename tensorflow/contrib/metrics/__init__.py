@@ -17,14 +17,14 @@
 ### API
 
 This module provides functions for computing streaming metrics: metrics computed
-on dynamically valued `Output`s. Each metric declaration returns a
+on dynamically valued `Tensors`. Each metric declaration returns a
 "value_tensor", an idempotent operation that returns the current value of the
 metric, and an "update_op", an operation that accumulates the information
-from the current value of the `Output`s being measured as well as returns the
+from the current value of the `Tensors` being measured as well as returns the
 value of the "value_tensor".
 
 To use any of these metrics, one need only declare the metric, call `update_op`
-repeatedly to accumulate data over the desired number of `Output` values (often
+repeatedly to accumulate data over the desired number of `Tensor` values (often
 each one is a single batch) and finally evaluate the value_tensor. For example,
 to use the `streaming_mean`:
 

@@ -4,7 +4,7 @@ Parses a single `Example` proto.
 
 Similar to `parse_example`, except:
 
-For dense tensors, the returned `Output` is identical to the output of
+For dense tensors, the returned `Tensor` is identical to the output of
 `parse_example`, except there is no batch dimension, the output shape is the
 same as the shape given in `dense_shape`.
 
@@ -26,7 +26,7 @@ single element vector).
 
 ##### Returns:
 
-  A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+  A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
 ##### Raises:
 

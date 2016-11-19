@@ -22,7 +22,7 @@ normalization algorithms:
    is at 127.  They are then rescaled so that either the smallest value is 0,
    or the largest one is 255.
 
-The `tag` argument is a scalar `Output` of type `string`.  It is used to
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
 build the `tag` of the summary values:
 
 *  If `max_images` is 1, the summary value tag is '*tag*/image'.
@@ -32,9 +32,9 @@ build the `tag` of the summary values:
 ##### Args:
 
 
-*  <b>`tag`</b>: A scalar `Output` of type `string`. Used to build the `tag`
+*  <b>`tag`</b>: A scalar `Tensor` of type `string`. Used to build the `tag`
     of the summary values.
-*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Output` of shape `[batch_size, height,
+*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
     width, channels]` where `channels` is 1, 3, or 4.
 *  <b>`max_images`</b>: Max number of batch elements to generate images for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -43,6 +43,6 @@ build the `tag` of the summary values:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 

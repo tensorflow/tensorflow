@@ -73,20 +73,20 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
       input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Output` of `Example` strings, parses it into features that are then
+        `Tensor` of `Example` strings, parses it into features that are then
         passed to the model. Otherwise, a function that takes no argument and
         returns a tuple of (features, labels), where features is a dict of
-        string key to `Output` and labels is an `Output` that's currently not
+        string key to `Tensor` and labels is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Output` that the exported model will take as
+        the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
-        signature map, given `Output` of `Example` strings, `dict` of `Output`s
-        for features and `Output` or `dict` of `Output`s for predictions.
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
       prediction_key: The key for a tensor in the `predictions` dict (output
         from the `model_fn`) to use as the `predictions` input to the
         `signature_fn`. Optional. If `None`, predictions will pass to
@@ -262,7 +262,7 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 *  <b>`Returns`</b>: 
       A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns an `Output` for `predictions` or a `dict`
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
       of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
       predictions if as_iterable is True.
 

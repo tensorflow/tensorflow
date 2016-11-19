@@ -9,17 +9,17 @@ protos given in `serialized`.
 protos. These may be useful for debugging purposes, but they have no effect on
 the output. If not `None`, `example_names` must be the same length as `serialized`.
 
-This op parses serialized examples into a dictionary mapping keys to `Output`
+This op parses serialized examples into a dictionary mapping keys to `Tensor`
 and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
 and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
-`SparseTensor`, and each `FixedLenFeature` is mapped to an `Output`.
+`SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
 
 Each `VarLenFeature` maps to a `SparseTensor` of the specified type
 representing a ragged matrix. Its indices are `[batch, index]` where `batch`
 is the batch entry the value is from in `serialized`, and `index` is the
 value's index in the list of values associated with that feature and example.
 
-Each `FixedLenFeature` `df` maps to an `Output` of the specified type (or
+Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
 `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
 
 `FixedLenFeature` entries with a `default_value` are optional. With no default
@@ -143,7 +143,7 @@ And the expected output is:
 
 ##### Returns:
 
-  A `dict` mapping feature keys to `Output` and `SparseTensor` values.
+  A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
 ##### Raises:
 

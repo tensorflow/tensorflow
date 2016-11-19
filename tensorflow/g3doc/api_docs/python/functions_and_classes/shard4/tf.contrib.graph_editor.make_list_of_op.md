@@ -9,7 +9,7 @@ Convert ops to a list of `tf.Operation`.
     operation.
 *  <b>`check_graph`</b>: if `True` check if all the operations belong to the same graph.
 *  <b>`allow_graph`</b>: if `False` a `tf.Graph` cannot be converted.
-*  <b>`ignore_ts`</b>: if True, silently ignore `tf.Output`.
+*  <b>`ignore_ts`</b>: if True, silently ignore `tf.Tensor`.
 
 ##### Returns:
 

@@ -9,7 +9,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A non-empty `Output`. Must be one of the following types: `half`,
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
     `float32`, `float64`.
 *  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
     indicates the last dimension.
@@ -17,7 +17,7 @@ For each batch `i` and class `j` we have
 
 ##### Returns:
 
-  An `Output`. Has the same type as `logits`. Same shape as `logits`.
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
 
 ##### Raises:
 

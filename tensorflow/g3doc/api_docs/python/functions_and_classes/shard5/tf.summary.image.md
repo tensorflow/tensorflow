@@ -34,7 +34,7 @@ name, with a suffix depending on the max_outputs setting:
 
 *  <b>`name`</b>: A name for the generated node. Will also serve as a series name in
     TensorBoard.
-*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Output` of shape `[batch_size, height,
+*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
     width, channels]` where `channels` is 1, 3, or 4.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate images for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -42,6 +42,6 @@ name, with a suffix depending on the max_outputs setting:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 

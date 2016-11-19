@@ -297,7 +297,7 @@ def switch(data, pred, dtype=None, name=None):
   If `pred` is true, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
-  This op handles `Output`s and `IndexedSlices`.
+  This op handles `Tensor`s and `IndexedSlices`.
 
   Args:
     data: The tensor to be forwarded to the appropriate output.
@@ -345,7 +345,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   If `pred` is true, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
-  This op handles `Output`s and `IndexedSlices`.
+  This op handles `Tensor`s and `IndexedSlices`.
 
   Args:
     data: The tensor to be forwarded to the appropriate output.
@@ -393,8 +393,8 @@ def merge(inputs, name=None):
   It is an error if more than one tensor in `inputs` is available. If no tensor
   in `inputs` is available, the returned tensor and index are not set.
 
-  This op handles both `Output`s and `IndexedSlices`. If inputs has a mix of
-  `Output`s and `IndexedSlices`, all inputs are converted to IndexedSlices
+  This op handles both `Tensor`s and `IndexedSlices`. If inputs has a mix of
+  `Tensor`s and `IndexedSlices`, all inputs are converted to IndexedSlices
   before merging.
 
   Args:
@@ -2534,7 +2534,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  [`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape)
+  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
@@ -2568,7 +2568,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     cond: A callable that represents the termination condition of the loop.
     body: A callable that represents the loop body.
     loop_vars: A (possibly nested) tuple, namedtuple or list of numpy array,
-      `Output`, and `TensorArray` objects.
+      `Tensor`, and `TensorArray` objects.
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel.
       It must be a positive integer.
@@ -2690,14 +2690,14 @@ def with_dependencies(dependencies, output_tensor, name=None):
 
   Args:
     dependencies: A list of operations to run before this op finishes.
-    output_tensor: An `Output` or `IndexedSlices` that will be returned.
+    output_tensor: A `Tensor` or `IndexedSlices` that will be returned.
     name: (Optional) A name for this operation.
 
   Returns:
     Same as `output_tensor`.
 
   Raises:
-    TypeError: if `output_tensor` is not an `Output` or `IndexedSlices`.
+    TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
   with ops.name_scope(name, "control_dependency",
                       dependencies + [output_tensor]) as name:
@@ -2794,7 +2794,7 @@ def tuple(tensors, name=None, control_inputs=None):
   See also `group` and `with_dependencies`.
 
   Args:
-    tensors: A list of `Output`s or `IndexedSlices`, some entries can be `None`.
+    tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
     name: (optional) A name to use as a `name_scope` for the operation.
     control_inputs: List of additional ops to finish before returning.
 
@@ -2802,8 +2802,8 @@ def tuple(tensors, name=None, control_inputs=None):
     Same as `tensors`.
 
   Raises:
-    ValueError: If `tensors` does not contain any `Output` or `IndexedSlices`.
-    TypeError: If `control_inputs` is not a list of `Operation` or `Output`
+    ValueError: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
+    TypeError: If `control_inputs` is not a list of `Operation` or `Tensor`
       objects.
 
   """

@@ -6,7 +6,7 @@ Helper to select tensors.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    `tf.Output`. `tf.Operation` instances are silently ignored.
+    `tf.Tensor`. `tf.Operation` instances are silently ignored.
 *  <b>`**kwargs`</b>: 'graph': `tf.Graph` in which to perform the regex query.This is
     required when using regex.
     'positive_filter': an elem if selected only if `positive_filter(elem)` is
@@ -16,13 +16,13 @@ Helper to select tensors.
 
 ##### Returns:
 
-  A list of `tf.Output`.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
-    or if an argument in args is not an (array of) `tf.Output`
+    or if an argument in args is not an (array of) `tf.Tensor`
     or an (array of) `tf.Operation` (silently ignored) or a string
     or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular

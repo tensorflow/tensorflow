@@ -44,7 +44,7 @@ resulting in a 5x5 confusion matrix.
                using both predictions and labels array.
 *  <b>`dtype`</b>: Data type of the confusion matrix.
 *  <b>`name`</b>: Scope name.
-*  <b>`weights`</b>: An optional `Output` whose shape matches `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape matches `predictions`.
 
 ##### Returns:
 

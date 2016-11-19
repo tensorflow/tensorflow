@@ -7,14 +7,14 @@ Note that the rank of `input` must be known.
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of arbitrary size.
+*  <b>`inputs`</b>: A `Tensor` of arbitrary size.
 *  <b>`dim`</b>: The dimension along which the input is normalized.
 *  <b>`epsilon`</b>: A small value to add to the inputs to avoid dividing by zero.
 *  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
-  The normalized `Output`.
+  The normalized `Tensor`.
 
 ##### Raises:
 

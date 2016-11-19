@@ -10,12 +10,12 @@ greater than `clip_value_max` are set to `clip_value_max`.
 ##### Args:
 
 
-*  <b>`t`</b>: An `Output`.
-*  <b>`clip_value_min`</b>: A 0-D (scalar) `Output`. The minimum value to clip by.
-*  <b>`clip_value_max`</b>: A 0-D (scalar) `Output`. The maximum value to clip by.
+*  <b>`t`</b>: A `Tensor`.
+*  <b>`clip_value_min`</b>: A 0-D (scalar) `Tensor`. The minimum value to clip by.
+*  <b>`clip_value_max`</b>: A 0-D (scalar) `Tensor`. The maximum value to clip by.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A clipped `Output`.
+  A clipped `Tensor`.
 

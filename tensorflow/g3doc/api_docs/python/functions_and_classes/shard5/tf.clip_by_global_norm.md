@@ -31,17 +31,17 @@ ready before the clipping operation can be performed.
 ##### Args:
 
 
-*  <b>`t_list`</b>: A tuple or list of mixed `Output`s, `IndexedSlices`, or None.
-*  <b>`clip_norm`</b>: A 0-D (scalar) `Output` > 0. The clipping ratio.
-*  <b>`use_norm`</b>: A 0-D (scalar) `Output` of type `float` (optional). The global
+*  <b>`t_list`</b>: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
+*  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. The clipping ratio.
+*  <b>`use_norm`</b>: A 0-D (scalar) `Tensor` of type `float` (optional). The global
     norm to use. If not provided, `global_norm()` is used to compute the norm.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
 
-*  <b>`list_clipped`</b>: A list of `Output`s of the same type as `list_t`.
-*  <b>`global_norm`</b>: A 0-D (scalar) `Output` representing the global norm.
+*  <b>`list_clipped`</b>: A list of `Tensors` of the same type as `list_t`.
+*  <b>`global_norm`</b>: A 0-D (scalar) `Tensor` representing the global norm.
 
 ##### Raises:
 

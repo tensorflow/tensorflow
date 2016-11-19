@@ -59,11 +59,11 @@ class ModelFnOps(collections.namedtuple(
     Args:
       mode: One of `ModeKeys`. Specifies if this training, evaluation or
         prediction.
-      predictions: Predictions `Output` or dict of `Output`.
-      loss: Training loss `Output`.
+      predictions: Predictions `Tensor` or dict of `Tensor`.
+      loss: Training loss `Tensor`.
       train_op: Op for the training step.
       eval_metric_ops: Dict of metric results keyed by name. The values of the
-        dict are the results of calling a metric function, such as `Output`.
+        dict are the results of calling a metric function, such as `Tensor`.
       signature_fn: The signature_fn used for exporting.
 
     Returns:

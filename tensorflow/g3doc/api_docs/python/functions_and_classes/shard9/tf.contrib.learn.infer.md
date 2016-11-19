@@ -10,14 +10,14 @@ init all variables.
 
 *  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
     restore.
-*  <b>`output_dict`</b>: A `dict` mapping string names to `Output` objects to run.
+*  <b>`output_dict`</b>: A `dict` mapping string names to `Tensor` objects to run.
     Tensors must all be from the same graph.
-*  <b>`feed_dict`</b>: `dict` object mapping `Output` objects to input values to feed.
+*  <b>`feed_dict`</b>: `dict` object mapping `Tensor` objects to input values to feed.
 
 ##### Returns:
 
   Dict of values read from `output_dict` tensors. Keys are the same as
-  `output_dict`, values are the results read from the corresponding `Output`
+  `output_dict`, values are the results read from the corresponding `Tensor`
   in `output_dict`.
 
 ##### Raises:

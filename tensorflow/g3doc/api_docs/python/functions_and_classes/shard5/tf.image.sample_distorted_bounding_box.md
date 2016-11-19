@@ -44,9 +44,9 @@ false and no bounding boxes are supplied, an error is raised.
 ##### Args:
 
 
-*  <b>`image_size`</b>: A `Output`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`.
+*  <b>`image_size`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`.
     1-D, containing `[height, width, channels]`.
-*  <b>`bounding_boxes`</b>: An `Output` of type `float32`.
+*  <b>`bounding_boxes`</b>: A `Tensor` of type `float32`.
     3-D with shape `[batch, N, 4]` describing the N bounding boxes
     associated with the image.
 *  <b>`seed`</b>: An optional `int`. Defaults to `0`.
@@ -76,12 +76,12 @@ false and no bounding boxes are supplied, an error is raised.
 
 ##### Returns:
 
-  A tuple of `Output` objects (begin, size, bboxes).
+  A tuple of `Tensor` objects (begin, size, bboxes).
 
-*  <b>`begin`</b>: A `Output`. Has the same type as `image_size`. 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+*  <b>`begin`</b>: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
     `tf.slice`.
-*  <b>`size`</b>: A `Output`. Has the same type as `image_size`. 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+*  <b>`size`</b>: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[target_height, target_width, -1]`. Provide as input to
     `tf.slice`.
-*  <b>`bboxes`</b>: An `Output` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+*  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
 

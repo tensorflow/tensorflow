@@ -27,8 +27,8 @@ returned to the caller.
 ##### Args:
 
 
-*  <b>`value`</b>: A 3D `Output`.  Must be of type `float32` or `float64`.
-*  <b>`filters`</b>: A 3D `Output`.  Must have the same type as `input`.
+*  <b>`value`</b>: A 3D `Tensor`.  Must be of type `float32` or `float64`.
+*  <b>`filters`</b>: A 3D `Tensor`.  Must have the same type as `input`.
 *  <b>`stride`</b>: An `integer`.  The number of entries by which
     the filter is moved right at each step.
 *  <b>`padding`</b>: 'SAME' or 'VALID'
@@ -41,7 +41,7 @@ returned to the caller.
 
 ##### Returns:
 
-  An `Output`.  Has the same type as input.
+  A `Tensor`.  Has the same type as input.
 
 ##### Raises:
 

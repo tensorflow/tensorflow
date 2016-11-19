@@ -2,10 +2,10 @@
 
 Adds two tensors, at least one of each is a `SparseTensor`.
 
-If one `SparseTensor` and one `Output` are passed in, returns an `Output`.  If
+If one `SparseTensor` and one `Tensor` are passed in, returns a `Tensor`.  If
 both arguments are `SparseTensor`s, this returns a `SparseTensor`.  The order
 of arguments does not matter.  Use vanilla `tf.add()` for adding two dense
-`Output`s.
+`Tensor`s.
 
 The indices of any input `SparseTensor` are assumed ordered in standard
 lexicographic order.  If this is not the case, before this step run
@@ -36,20 +36,20 @@ Then,
 ##### Args:
 
 
-*  <b>`a`</b>: The first operand; `SparseTensor` or `Output`.
-*  <b>`b`</b>: The second operand; `SparseTensor` or `Output`.  At least one operand
+*  <b>`a`</b>: The first operand; `SparseTensor` or `Tensor`.
+*  <b>`b`</b>: The second operand; `SparseTensor` or `Tensor`.  At least one operand
     must be sparse.
-*  <b>`thresh`</b>: A 0-D `Output`.  The magnitude threshold that determines if an
+*  <b>`thresh`</b>: A 0-D `Tensor`.  The magnitude threshold that determines if an
   output value/index pair takes space.  Its dtype should match that of the
   values if they are real; if the latter are complex64/complex128, then the
   dtype should be float32/float64, correspondingly.
 
 ##### Returns:
 
-  A `SparseTensor` or an `Output`, representing the sum.
+  A `SparseTensor` or a `Tensor`, representing the sum.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If both `a` and `b` are `Output`s.  Use `tf.add()` instead.
+*  <b>`TypeError`</b>: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
 

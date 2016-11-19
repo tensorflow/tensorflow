@@ -34,6 +34,6 @@ same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
 ##### Returns:
 
-  A 4-D `Output` of shape
+  A 4-D `Tensor` of shape
   `[batch, out_height, out_width, in_channels * channel_multiplier].`
 

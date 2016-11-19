@@ -41,7 +41,7 @@ REGISTER_OP("SparseFeatureCross")
     .Doc(R"doc(
 Generates sparse cross form a list of sparse tensors.
 
-The op takes two lists, one of 2D `SparseTensor` and one of 2D `Output`, each
+The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
 representing features of one feature column. It outputs a 2D `SparseTensor` with
 the batchwise crosses of these features.
 
@@ -81,7 +81,7 @@ if hashed_output=true then the output will be
 indices: 2-D.  Indices of each input `SparseTensor`.
 values: 1-D.   values of each `SparseTensor`.
 shapes: 1-D.   Shapes of each `SparseTensor`.
-dense: 2-D.    Columns represented by dense `Output`.
+dense: 2-D.    Columns represented by dense `Tensor`.
 output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
 output_values: 1-D.  Non-empty values of the concatenated or hashed
   `SparseTensor`.
@@ -113,7 +113,7 @@ REGISTER_OP("SparseFeatureCrossV2")
     .Doc(R"doc(
 Generates sparse cross form a list of sparse tensors.
 
-The op takes two lists, one of 2D `SparseTensor` and one of 2D `Output`, each
+The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
 representing features of one feature column. It outputs a 2D `SparseTensor` with
 the batchwise crosses of these features.
 
@@ -153,7 +153,7 @@ if hashed_output=true then the output will be
 indices: 2-D.  Indices of each input `SparseTensor`.
 values: 1-D.   values of each `SparseTensor`.
 shapes: 1-D.   Shapes of each `SparseTensor`.
-dense: 2-D.    Columns represented by dense `Output`.
+dense: 2-D.    Columns represented by dense `Tensor`.
 output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
 output_values: 1-D.  Non-empty values of the concatenated or hashed
   `SparseTensor`.

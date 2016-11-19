@@ -79,8 +79,8 @@ def _scale_losses(losses, weights):
   """Computes the scaled loss.
 
   Args:
-    losses: An `Output` of size [batch_size, d1, ... dN].
-    weights: An `Output` of size [1], [batch_size] or [batch_size, d1, ... dN].
+    losses: A `Tensor` of size [batch_size, d1, ... dN].
+    weights: A `Tensor` of size [1], [batch_size] or [batch_size, d1, ... dN].
       The `losses` are reduced (tf.reduce_sum) until its dimension matches
       that of `weights` at which point the reduced `losses` are element-wise
       multiplied by `weights` and a final reduce_sum is computed on the result.
@@ -89,7 +89,7 @@ def _scale_losses(losses, weights):
       multiplication, and summing the result.
 
   Returns:
-    A scalar tf.float32 `Output` whose value represents the sum of the scaled
+    A scalar tf.float32 `Tensor` whose value represents the sum of the scaled
       `losses`.
   """
   # First, compute the sum of the losses over all elements:
@@ -109,9 +109,9 @@ def _safe_div(numerator, denominator, name="value"):
   creep into the gradient computation.
 
   Args:
-    numerator: An arbitrary `Output`.
-    denominator: An `Output` whose shape matches `numerator` and whose values
-      are assumed to be non-negative.
+    numerator: An arbitrary `Tensor`.
+    denominator: A `Tensor` whose shape matches `numerator` and whose values are
+      assumed to be non-negative.
     name: An optional name for the returned op.
 
   Returns:
@@ -153,7 +153,7 @@ def compute_weighted_loss(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` that returns the weighted loss.
+    A scalar `Tensor` that returns the weighted loss.
 
   Raises:
     ValueError: If `weights` is `None` or the shape is not compatible with
@@ -238,7 +238,7 @@ def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
   """Adds a externally defined loss to the collection of losses.
 
   Args:
-    loss: A loss `Output`.
+    loss: A loss `Tensor`.
     loss_collection: Optional collection to add the loss to.
   """
   if loss_collection:
@@ -281,7 +281,7 @@ def get_total_loss(add_regularization_losses=True, name="total_loss"):
     name: The name of the returned tensor.
 
   Returns:
-    An `Output` whose value represents the total loss.
+    A `Tensor` whose value represents the total loss.
 
   Raises:
     ValueError: if `losses` is not iterable.
@@ -320,7 +320,7 @@ def absolute_difference(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -364,7 +364,7 @@ def sigmoid_cross_entropy(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of
@@ -413,7 +413,7 @@ def softmax_cross_entropy(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
@@ -460,7 +460,7 @@ def sparse_softmax_cross_entropy(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shapes of logits, labels, and weight are incompatible, or
@@ -506,7 +506,7 @@ def log_loss(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -539,7 +539,7 @@ def hinge_loss(logits, labels=None, scope=None, target=None):
     target: Deprecated alias for `labels`.
 
   Returns:
-    An `Output` of same shape as logits and target representing the loss values
+    A `Tensor` of same shape as logits and target representing the loss values
       across the batch.
 
   Raises:
@@ -583,7 +583,7 @@ def mean_squared_error(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -642,7 +642,7 @@ def mean_pairwise_squared_error(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -704,7 +704,7 @@ def cosine_distance(
 
   Args:
     predictions: An arbitrary matrix.
-    labels: An `Output` whose shape matches 'predictions'
+    labels: A `Tensor` whose shape matches 'predictions'
     dim: The dimension along which the cosine distance is computed.
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
@@ -713,7 +713,7 @@ def cosine_distance(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Output` representing the loss value.
+    A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or

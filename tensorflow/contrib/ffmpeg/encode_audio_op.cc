@@ -90,8 +90,8 @@ REGISTER_OP("EncodeAudio")
     .Attr("bits_per_second: int = 192000")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Processes an `Output` containing sampled audio with the number of channels
-and length of the audio specified by the dimensions of the `Output`. The
+Processes a `Tensor` containing sampled audio with the number of channels
+and length of the audio specified by the dimensions of the `Tensor`. The
 audio is converted into a string that, when saved to disk, will be equivalent
 to the audio in the specified audio format.
 

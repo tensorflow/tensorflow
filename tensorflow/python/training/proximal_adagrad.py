@@ -39,7 +39,7 @@ class ProximalAdagradOptimizer(optimizer.Optimizer):
     """Construct a new ProximalAdagrad optimizer.
 
     Args:
-      learning_rate: An `Output` or a floating point value.  The learning rate.
+      learning_rate: A `Tensor` or a floating point value.  The learning rate.
       initial_accumulator_value: A floating point value.
         Starting value for the accumulators, must be positive.
       l1_regularization_strength: A float value, must be greater than or

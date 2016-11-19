@@ -105,26 +105,26 @@ def expectation_importance_sampler(f,
   If `f >= 0`, it is up to 2x more efficient to exponentiate the result of
   `expectation_importance_sampler_logspace` applied to `Log[f]`.
 
-  User supplies either `Output` of samples `z`, or number of samples to draw `n`
+  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    f: Callable mapping samples from `sampling_dist_q` to `Output`s with shape
+    f: Callable mapping samples from `sampling_dist_q` to `Tensors` with shape
       broadcastable to `q.batch_shape`.
       For example, `f` works "just like" `q.log_prob`.
-    log_p:  Callable mapping samples from `sampling_dist_q` to `Output`s with
+    log_p:  Callable mapping samples from `sampling_dist_q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `sampling_dist_q.log_prob`.
     sampling_dist_q:  The sampling distribution.
       `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
-    z:  `Output` of samples from `q`, produced by `q.sample_n`.
-    n:  Integer `Output`.  Number of samples to generate if `z` is not provided.
+    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
 
   Returns:
-    The importance sampling estimate.  `Output` with `shape` equal
+    The importance sampling estimate.  `Tensor` with `shape` equal
       to batch shape of `q`, and `dtype` = `q.dtype`.
   """
   q = sampling_dist_q
@@ -182,26 +182,26 @@ def expectation_importance_sampler_logspace(
   log-space.
 
 
-  User supplies either `Output` of samples `z`, or number of samples to draw `n`
+  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    log_f: Callable mapping samples from `sampling_dist_q` to `Output`s with
+    log_f: Callable mapping samples from `sampling_dist_q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_f` works "just like" `sampling_dist_q.log_prob`.
-    log_p:  Callable mapping samples from `sampling_dist_q` to `Output`s with
+    log_p:  Callable mapping samples from `sampling_dist_q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     sampling_dist_q:  The sampling distribution.
       `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
-    z:  `Output` of samples from `q`, produced by `q.sample_n`.
-    n:  Integer `Output`.  Number of samples to generate if `z` is not provided.
+    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
 
   Returns:
-    Logarithm of the importance sampling estimate.  `Output` with `shape` equal
+    Logarithm of the importance sampling estimate.  `Tensor` with `shape` equal
       to batch shape of `q`, and `dtype` = `q.dtype`.
   """
   q = sampling_dist_q
@@ -215,10 +215,10 @@ def _logspace_mean(log_values):
   """Evaluate `Log[E[values]]` in a stable manner.
 
   Args:
-    log_values:  `Output` holding `Log[values]`.
+    log_values:  `Tensor` holding `Log[values]`.
 
   Returns:
-    `Output` of same `dtype` as `log_values`, reduced across dim 0.
+    `Tensor` of same `dtype` as `log_values`, reduced across dim 0.
       `Log[Mean[values]]`.
   """
   # center = Max[Log[values]],  with stop-gradient
@@ -249,18 +249,18 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
   \approx E_p[f(Z)]
   ```
 
-  User supplies either `Output` of samples `z`, or number of samples to draw `n`
+  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    f: Callable mapping samples from `p` to `Output`s.
+    f: Callable mapping samples from `p` to `Tensors`.
     p:  `tf.contrib.distributions.Distribution`.
-    z:  `Output` of samples from `p`, produced by `p.sample_n`.
-    n:  Integer `Output`.  Number of samples to generate if `z` is not provided.
+    z:  `Tensor` of samples from `p`, produced by `p.sample_n`.
+    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
 
   Returns:
-    An `Output` with the same `dtype` as `p`.
+    A `Tensor` with the same `dtype` as `p`.
 
   Example:
 

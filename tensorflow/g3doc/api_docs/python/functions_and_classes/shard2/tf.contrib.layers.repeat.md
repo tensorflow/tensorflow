@@ -19,7 +19,7 @@ layers are called with `scope='stack'`.
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` suitable for layer.
+*  <b>`inputs`</b>: A `Tensor` suitable for layer.
 *  <b>`repetitions`</b>: Int, number of repetitions.
 *  <b>`layer`</b>: A layer with arguments `(inputs, *args, **kwargs)`
 *  <b>`*args`</b>: Extra args for the layer.

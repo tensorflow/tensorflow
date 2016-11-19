@@ -10,11 +10,11 @@ Source: https://arxiv.org/abs/1603.05201
 ##### Args:
 
 
-*  <b>`features`</b>: An `Output` with type `float`, `double`, `int32`, `int64`,
-    `uint8`, `int16`, or `int8`.
+*  <b>`features`</b>: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+    `int16`, or `int8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` with the same type as `features`.
+  A `Tensor` with the same type as `features`.
 

@@ -23,14 +23,14 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of `Output` objects, each with same shape and type.
+*  <b>`inputs`</b>: A list of `Tensor` objects, each with same shape and type.
 *  <b>`shape`</b>: Shape of elements of `inputs`.
 *  <b>`tensor_dtype`</b>: The type of `inputs`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of same shape and type as the elements of `inputs`.
+  A `Tensor` of same shape and type as the elements of `inputs`.
 
 ##### Raises:
 

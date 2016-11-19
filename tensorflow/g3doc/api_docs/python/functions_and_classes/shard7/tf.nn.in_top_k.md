@@ -20,14 +20,14 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of type `float32`.
+*  <b>`predictions`</b>: A `Tensor` of type `float32`.
     A `batch_size` x `classes` tensor.
-*  <b>`targets`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`targets`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A `batch_size` vector of class ids.
 *  <b>`k`</b>: An `int`. Number of top elements to look at for computing precision.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
+  A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
 

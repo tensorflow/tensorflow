@@ -17,7 +17,7 @@ is `A B B B B`, the return value is:
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Output`, size
+*  <b>`inputs`</b>: 3-D `float` `Tensor`, size
     `[max_time x batch_size x num_classes]`.  The logits.
 *  <b>`sequence_length`</b>: 1-D `int32` vector containing sequence lengths,
     having size `[batch_size]`.

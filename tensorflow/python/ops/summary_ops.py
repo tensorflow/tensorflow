@@ -56,7 +56,7 @@ def tensor_summary(  # pylint: disable=invalid-name
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
 
   Returns:
-    A scalar `Output` of type `string`. The serialized `Summary` protocol
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
   # pylint: enable=line-too-long

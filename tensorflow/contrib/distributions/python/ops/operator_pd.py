@@ -122,11 +122,11 @@ class OperatorPDBase(object):
     """Add matrix represented by this operator to `mat`.  Equiv to `A + mat`.
 
     Args:
-      mat:  `Output` with same `dtype` and shape broadcastable to `self`.
+      mat:  `Tensor` with same `dtype` and shape broadcastable to `self`.
       name:  A name to give this `Op`.
 
     Returns:
-      An `Output` with broadcast shape and same `dtype` as `self`.
+      A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs + [mat]):
@@ -165,11 +165,11 @@ class OperatorPDBase(object):
     ```
 
     Args:
-      x: `Output` with compatible batch vector shape and same `dtype` as self.
+      x: `Tensor` with compatible batch vector shape and same `dtype` as self.
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `Output` with shape `[M1,...,Mm] + [N1,...,Nn]` and same `dtype`
+      `Tensor` with shape `[M1,...,Mm] + [N1,...,Nn]` and same `dtype`
         as `self`.
     """
     with ops.name_scope(self.name):
@@ -340,7 +340,7 @@ class OperatorPDBase(object):
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `int32` `Output`
+      `int32` `Tensor`
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs):
@@ -361,7 +361,7 @@ class OperatorPDBase(object):
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `int32` `Output`
+      `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
@@ -378,7 +378,7 @@ class OperatorPDBase(object):
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `int32` `Output`
+      `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
@@ -395,7 +395,7 @@ class OperatorPDBase(object):
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `int32` `Output`
+      `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
@@ -413,7 +413,7 @@ class OperatorPDBase(object):
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `int32` `Output`
+      `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
@@ -431,7 +431,7 @@ class OperatorPDBase(object):
     ```
 
     Args:
-      x: `Output` with shape `self.batch_shape + [k, r]` and same `dtype` as
+      x: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
         this `Operator`.
       transpose_x: If `True`, `x` is transposed before multiplication.
       name:  A name to give this `Op`.
@@ -465,7 +465,7 @@ class OperatorPDBase(object):
     ```
 
     Args:
-      x: `Output` with shape `self.batch_shape + [k, r]` and same `dtype` as
+      x: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
         this `Operator`.
       transpose_x: If `True`, `x` is transposed before multiplication.
       name:  A name scope to use for ops added by this method.
@@ -519,12 +519,12 @@ class OperatorPDBase(object):
     ```
 
     Args:
-      rhs: `Output` with same `dtype` as this operator and compatible shape,
+      rhs: `Tensor` with same `dtype` as this operator and compatible shape,
         `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `Output` with same `dtype` and shape as `x`.
+      `Tensor` with same `dtype` and shape as `x`.
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[rhs] + self.inputs):
@@ -571,12 +571,12 @@ class OperatorPDBase(object):
     ```
 
     Args:
-      rhs: `Output` with same `dtype` as this operator and compatible shape,
+      rhs: `Tensor` with same `dtype` as this operator and compatible shape,
         `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      `Output` with same `dtype` and shape as `x`.
+      `Tensor` with same `dtype` and shape as `x`.
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[rhs] + self.inputs):
@@ -642,12 +642,12 @@ def flip_matrix_to_vector(mat, batch_shape, static_batch_shape):
   See also:  flip_vector_to_matrix.
 
   Args:
-    mat:  `Output` with rank `>= 2`.
-    batch_shape:  `int32` `Output` giving leading "batch" shape of result.
+    mat:  `Tensor` with rank `>= 2`.
+    batch_shape:  `int32` `Tensor` giving leading "batch" shape of result.
     static_batch_shape:  `TensorShape` object giving batch shape of result.
 
   Returns:
-    `Output` with same elements as `mat` but with shape `batch_shape + [k]`.
+    `Tensor` with same elements as `mat` but with shape `batch_shape + [k]`.
   """
   mat = ops.convert_to_tensor(mat, name="mat")
   if (static_batch_shape.is_fully_defined()
@@ -717,12 +717,12 @@ def flip_vector_to_matrix(vec, batch_shape, static_batch_shape):
   See also: flip_matrix_to_vector.
 
   Args:
-    vec:  `Output` with shape `[M1,...,Mm] + [N1,...,Nn] + [k]`
-    batch_shape:  `int32` `Output`.
+    vec:  `Tensor` with shape `[M1,...,Mm] + [N1,...,Nn] + [k]`
+    batch_shape:  `int32` `Tensor`.
     static_batch_shape:  `TensorShape` with statically determined batch shape.
 
   Returns:
-    `Output` with same `dtype` as `vec` and new shape.
+    `Tensor` with same `dtype` as `vec` and new shape.
   """
   vec = ops.convert_to_tensor(vec, name="vec")
   if (
@@ -805,17 +805,17 @@ def extract_batch_shape(x, num_event_dims, name="extract_batch_shape"):
   """Extract the batch shape from `x`.
 
   Assuming `x.shape = batch_shape + event_shape`, when `event_shape` has
-  `num_event_dims` dimensions.  This `Op` returns the batch shape `Output`.
+  `num_event_dims` dimensions.  This `Op` returns the batch shape `Tensor`.
 
   Args:
-    x: `Output` with rank at least `num_event_dims`.  If rank is not high enough
+    x: `Tensor` with rank at least `num_event_dims`.  If rank is not high enough
       this `Op` will fail.
-    num_event_dims:  `int32` scalar `Output`.  The number of trailing dimensions
+    num_event_dims:  `int32` scalar `Tensor`.  The number of trailing dimensions
       in `x` to be considered as part of `event_shape`.
     name:  A name to prepend to created `Ops`.
 
   Returns:
-    batch_shape:  `1-D` `int32` `Output`
+    batch_shape:  `1-D` `int32` `Tensor`
   """
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")

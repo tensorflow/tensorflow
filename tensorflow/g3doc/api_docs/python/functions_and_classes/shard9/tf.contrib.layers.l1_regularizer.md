@@ -7,7 +7,7 @@ L1 regularization encourages sparsity.
 ##### Args:
 
 
-*  <b>`scale`</b>: A scalar multiplier `Output`. 0.0 disables the regularizer.
+*  <b>`scale`</b>: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
 *  <b>`scope`</b>: An optional scope name.
 
 ##### Returns:

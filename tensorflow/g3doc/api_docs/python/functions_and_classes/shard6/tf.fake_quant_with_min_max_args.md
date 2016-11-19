@@ -11,12 +11,12 @@ Quantization is called fake since the output is still in floating point.
 ##### Args:
 
 
-*  <b>`inputs`</b>: An `Output` of type `float32`.
+*  <b>`inputs`</b>: A `Tensor` of type `float32`.
 *  <b>`min`</b>: An optional `float`. Defaults to `-6`.
 *  <b>`max`</b>: An optional `float`. Defaults to `6`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `float32`.
+  A `Tensor` of type `float32`.
 

@@ -89,9 +89,9 @@ def weighted_moving_average(value,
   and `weight`.
 
   Args:
-    value: A numeric `Output`.
-    decay: A float `Output` or float value.  The moving average decay.
-    weight:  `Output` that keeps the current value of a weight.
+    value: A numeric `Tensor`.
+    decay: A float `Tensor` or float value.  The moving average decay.
+    weight:  `Tensor` that keeps the current value of a weight.
       Shape should be able to multiply `value`.
     truediv:  Boolean, if `True`, dividing by `moving_average(weight)` is
       floating point division.  If `False`, use division implied by dtypes.
@@ -316,11 +316,11 @@ class ExponentialMovingAverage(object):
   def apply(self, var_list=None):
     """Maintains moving averages of variables.
 
-    `var_list` must be a list of `Variable` or `Output` objects.  This method
+    `var_list` must be a list of `Variable` or `Tensor` objects.  This method
     creates shadow variables for all elements of `var_list`.  Shadow variables
     for `Variable` objects are initialized to the variable's initial value.
     They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-    For `Output` objects, the shadow variables are initialized to 0 and zero
+    For `Tensor` objects, the shadow variables are initialized to 0 and zero
     debiased (see docstring in `assign_moving_average` for more details).
 
     shadow variables are created with `trainable=False` and added to the

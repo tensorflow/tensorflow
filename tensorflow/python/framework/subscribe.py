@@ -27,13 +27,13 @@ def _recursive_apply(tensors, apply_fn):
   """Helper method to recursively apply a function to structure of tensors.
 
   The structure of the tensors should take the form similar to fetches in
-  `tf.Session` and includes single `Output`, `list`, nested `list`, `tuple`,
+  `tf.Session` and includes single `Tensor`, `list`, nested `list`, `tuple`,
   `namedtuple`, or `dict`.
 
   Args:
-    tensors: Single `Output`, `list`, nested `list, `tuple`,
+    tensors: Single `Tensor`, `list`, nested `list, `tuple`,
       `namedtuple`, or `dict`.
-    apply_fn: Function to apply to each `Output` and should return an `Output`.
+    apply_fn: Function to apply to each `Tensor` and should return a `Tensor`.
   Returns:
     Returns the modified tensors with the same structure.
   Raises:
@@ -99,7 +99,7 @@ def _subscribe(tensor, side_effects, control_cache):
   """Helper method that subscribes a single tensor to a list of side_effects.
 
   Args:
-    tensor: `tf.Output`
+    tensor: `tf.Tensor`
     side_effects: List of side_effect functions see subscribe for details.
     control_cache: `_ControlOutputCache` helper to get control_outputs faster.
   Returns:
@@ -138,7 +138,7 @@ def subscribe(tensors, side_effects):
 
   This method will attach side effect graphs to a given set
   of tensors. Set of tensors follows from session.run and supports
-  single `Output`, `list`, nested `list`, `tuple`, `namedtuple`, or `dict`. It
+  single `Tensor`, `list`, nested `list`, `tuple`, `namedtuple`, or `dict`. It
   returns the tensors in the same passed in structure, but as clones with
   side effects applied. The supplied side effect graphs are specified
   as a constructor function which takes the target tensor and
@@ -152,10 +152,10 @@ def subscribe(tensors, side_effects):
   your tensorflow code.
 
   Args:
-    tensors: `Output` or set of tensors to subscribe to. Set of tensors format
-      follows from `Session.run` and supports single `Output`, `list`, nested
+    tensors: `Tensor` or set of tensors to subscribe to. Set of tensors format
+      follows from `Session.run` and supports single `Tensor`, `list`, nested
       `list`, `tuple`, `namedtuple`, or `dict`.
-    side_effects: Function(s) that takes an `Output`, construct a subgraph, and
+    side_effects: Function(s) that takes a `Tensor`, construct a subgraph, and
       return a nonempty list of control dependencies. This can be a single
       function or list of functions.
   Returns:

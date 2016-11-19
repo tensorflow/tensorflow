@@ -119,7 +119,7 @@ def filter_ts(ops, positive_filter):
     positive_filter: a function deciding whether to keep a tensor or not.
       If `True`, all the tensors are returned.
   Returns:
-    A list of `tf.Output`.
+    A list of `tf.Tensor`.
   Raises:
     TypeError: if ops cannot be converted to a list of `tf.Operation`.
   """
@@ -616,7 +616,7 @@ def select_ops(*args, **kwargs):
 
   Args:
     *args: list of 1) regular expressions (compiled or not) or  2) (array of)
-      `tf.Operation`. `tf.Output` instances are silently ignored.
+      `tf.Operation`. `tf.Tensor` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
       'positive_filter': an elem if selected only if `positive_filter(elem)` is
@@ -628,7 +628,7 @@ def select_ops(*args, **kwargs):
   Raises:
     TypeError: if the optional keyword argument graph is not a `tf.Graph`
       or if an argument in args is not an (array of) `tf.Operation`
-      or an (array of) `tf.Output` (silently ignored) or a string
+      or an (array of) `tf.Tensor` (silently ignored) or a string
       or a regular expression.
     ValueError: if one of the keyword arguments is unexpected or if a regular
       expression is used without passing a graph as a keyword argument.
@@ -682,7 +682,7 @@ def select_ts(*args, **kwargs):
 
   Args:
     *args: list of 1) regular expressions (compiled or not) or  2) (array of)
-      `tf.Output`. `tf.Operation` instances are silently ignored.
+      `tf.Tensor`. `tf.Operation` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
       'positive_filter': an elem if selected only if `positive_filter(elem)` is
@@ -690,10 +690,10 @@ def select_ts(*args, **kwargs):
       'restrict_ts_regex': a regular expression is ignored if it doesn't start
         with the substring "(?#ts)".
   Returns:
-    A list of `tf.Output`.
+    A list of `tf.Tensor`.
   Raises:
     TypeError: if the optional keyword argument graph is not a `tf.Graph`
-      or if an argument in args is not an (array of) `tf.Output`
+      or if an argument in args is not an (array of) `tf.Tensor`
       or an (array of) `tf.Operation` (silently ignored) or a string
       or a regular expression.
     ValueError: if one of the keyword arguments is unexpected or if a regular
@@ -758,10 +758,10 @@ def select_ops_and_ts(*args, **kwargs):
   Returns:
     A tuple `(ops, ts)` where:
       `ops` is a list of `tf.Operation`, and
-      `ts` is a list of `tf.Output`
+      `ts` is a list of `tf.Tensor`
   Raises:
     TypeError: if the optional keyword argument graph is not a `tf.Graph`
-      or if an argument in args is not an (array of) `tf.Output`
+      or if an argument in args is not an (array of) `tf.Tensor`
       or an (array of) `tf.Operation` or a string or a regular expression.
     ValueError: if one of the keyword arguments is unexpected or if a regular
       expression is used without passing a graph as a keyword argument.

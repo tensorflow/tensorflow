@@ -23,8 +23,8 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Args:
 
 
-*  <b>`predictions`</b>: An `Output` of arbitrary size.
-*  <b>`labels`</b>: An `Output` of the same size as predictions.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary size.
+*  <b>`labels`</b>: A `Tensor` of the same size as predictions.
 *  <b>`weights`</b>: An optional set of weights which indicates the frequency with which
     an example is sampled. Must be broadcastable with `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
