@@ -2055,7 +2055,6 @@ py_test(
         ":math_ops",
         ":session",
         ":state_ops",
-        ":training",
         ":variables",
     ],
 )

@@ -31,7 +31,6 @@ namespace grpc {
 static const char* grpcMasterService_method_names[] = {
     "/tensorflow.MasterService/CreateSession",
     "/tensorflow.MasterService/ExtendSession",
-    "/tensorflow.MasterService/PartialRunSetup",
     "/tensorflow.MasterService/RunStep",
     "/tensorflow.MasterService/CloseSession",
     "/tensorflow.MasterService/ListDevices",
@@ -52,15 +51,13 @@ MasterService::Stub::Stub(
                                ::grpc::RpcMethod::NORMAL_RPC, channel),
       rpcmethod_ExtendSession_(grpcMasterService_method_names[1],
                                ::grpc::RpcMethod::NORMAL_RPC, channel),
-      rpcmethod_PartialRunSetup_(grpcMasterService_method_names[2],
-                                 ::grpc::RpcMethod::NORMAL_RPC, channel),
-      rpcmethod_RunStep_(grpcMasterService_method_names[3],
+      rpcmethod_RunStep_(grpcMasterService_method_names[2],
                          ::grpc::RpcMethod::NORMAL_RPC, channel),
-      rpcmethod_CloseSession_(grpcMasterService_method_names[4],
+      rpcmethod_CloseSession_(grpcMasterService_method_names[3],
                               ::grpc::RpcMethod::NORMAL_RPC, channel),
-      rpcmethod_ListDevices_(grpcMasterService_method_names[5],
+      rpcmethod_ListDevices_(grpcMasterService_method_names[4],
                              ::grpc::RpcMethod::NORMAL_RPC, channel),
-      rpcmethod_Reset_(grpcMasterService_method_names[6],
+      rpcmethod_Reset_(grpcMasterService_method_names[5],
                        ::grpc::RpcMethod::NORMAL_RPC, channel) {}
 
 ::grpc::Status MasterService::Stub::CreateSession(
@@ -74,13 +71,6 @@ MasterService::Stub::Stub(
     ::grpc::ClientContext* context, const ExtendSessionRequest& request,
     ExtendSessionResponse* response) {
   return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_ExtendSession_,
-                                   context, request, response);
-}
-
-::grpc::Status MasterService::Stub::PartialRunSetup(
-    ::grpc::ClientContext* context, const PartialRunSetupRequest& request,
-    PartialRunSetupResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_PartialRunSetup_,
                                    context, request, response);
 }
 
@@ -113,7 +103,7 @@ MasterService::Stub::Stub(
 }
 
 MasterService::AsyncService::AsyncService() {
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 6; ++i) {
     AddMethod(new ::grpc::RpcServiceMethod(grpcMasterService_method_names[i],
                                            ::grpc::RpcMethod::NORMAL_RPC,
                                            nullptr));
