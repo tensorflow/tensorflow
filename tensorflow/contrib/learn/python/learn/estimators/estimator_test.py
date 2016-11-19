@@ -83,7 +83,7 @@ def extract(data, key):
 
 def linear_model_params_fn(features, labels, mode, params):
   features = extract(features, 'input')
-  labels = extract(labels, 'output')
+  labels = extract(labels, 'labels')
 
   assert mode in (
       tf.contrib.learn.ModeKeys.TRAIN,
@@ -100,7 +100,7 @@ def linear_model_params_fn(features, labels, mode, params):
 
 def linear_model_fn(features, labels, mode):
   features = extract(features, 'input')
-  labels = extract(labels, 'output')
+  labels = extract(labels, 'labels')
   assert mode in (
       tf.contrib.learn.ModeKeys.TRAIN,
       tf.contrib.learn.ModeKeys.EVAL,
@@ -134,7 +134,7 @@ def linear_model_fn_with_model_fn_ops(features, labels, mode):
 
 def logistic_model_no_mode_fn(features, labels):
   features = extract(features, 'input')
-  labels = extract(labels, 'output')
+  labels = extract(labels, 'labels')
   labels = tf.one_hot(labels, 3, 1, 0)
   prediction, loss = (
       tf.contrib.learn.models.logistic_regression_zero_init(features, labels)
@@ -291,7 +291,7 @@ class EstimatorTest(tf.test.TestCase):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
                                      model_dir=output_dir)
     boston_input = {'input': boston.data}
-    float64_target = {'output': boston.target.astype(np.float64)}
+    float64_target = {'labels': boston.target.astype(np.float64)}
     est.fit(x=boston_input, y=float64_target, steps=50)
     scores = est.evaluate(
       x=boston_input,
@@ -310,7 +310,7 @@ class EstimatorTest(tf.test.TestCase):
     self.assertAllClose(scores2['MSE'],
                         scores['MSE'])
     predictions = np.array(list(est2.predict(x=boston_input)))
-    other_score = _sklearn.mean_squared_error(predictions, float64_target['output'])
+    other_score = _sklearn.mean_squared_error(predictions, float64_target['labels'])
     self.assertAllClose(other_score, scores['MSE'])
 
   def testContinueTraining(self):
@@ -376,7 +376,7 @@ class EstimatorTest(tf.test.TestCase):
     boston = tf.contrib.learn.datasets.load_boston()
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston_input = {'input': boston.data}
-    float64_target = {'output': boston.target.astype(np.float64)}
+    float64_target = {'labels': boston.target.astype(np.float64)}
     est.fit(x=boston_input, y=float64_target, steps=100)
     scores = est.evaluate(
       x=boston_input,
@@ -415,7 +415,7 @@ class EstimatorTest(tf.test.TestCase):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
     iris_data = {'input': iris.data}
-    iris_target = {'output': iris.target}
+    iris_target = {'labels': iris.target}
     est.fit(iris_data, iris_target, steps=100)
     scores = est.evaluate(
       x=iris_data,
