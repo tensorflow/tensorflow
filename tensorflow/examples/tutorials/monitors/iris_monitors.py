@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
