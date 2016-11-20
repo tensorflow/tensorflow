@@ -1747,7 +1747,7 @@ def cond(pred, fn1, fn2, name=None):
     y = tf.constant(5)
     def f1(): return tf.mul(x, 17)
     def f2(): return tf.add(y, 23)
-    r = cond(tf.less(x, y), f1, f2)
+    r = tf.cond(tf.less(x, y), f1, f2)
     # r is set to f1().
     # Operations in f2 (e.g., tf.add) are not executed.
   ```
