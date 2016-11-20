@@ -155,20 +155,22 @@ class VocabularyProcessor(object):
     self.vocabulary_.freeze()
     return self
 
-  def fit_transform(self, raw_documents, unused_y=None):
+  def fit_transform(self, raw_documents, return_docs_len=False, unused_y=None):
     """Learn the vocabulary dictionary and return indexies of words.
 
     Args:
       raw_documents: An iterable which yield either str or unicode.
+      return_docs_len: Boolean if True yields number of tokens also.
       unused_y: to match fit_transform signature of estimators.
 
     Returns:
       x: iterable, [n_samples, max_document_length]. Word-id matrix.
+        Additional token count also returned is `return_docs_len= True`.
     """
     self.fit(raw_documents)
-    return self.transform(raw_documents)
+    return self.transform(raw_documents, return_docs_len)
 
-  def transform(self, raw_documents):
+  def transform(self, raw_documents, return_docs_len=False):
     """Transform documents to word-id matrix.
 
     Convert words to ids with vocabulary fitted with fit or the one
@@ -176,9 +178,11 @@ class VocabularyProcessor(object):
 
     Args:
       raw_documents: An iterable which yield either str or unicode.
+      return_docs_len: Boolean if True yields number of tokens also.
 
     Yields:
       x: iterable, [n_samples, max_document_length]. Word-id matrix.
+        Additional token count also returned is `return_docs_len= True`.
     """
     for tokens in self._tokenizer(raw_documents):
       word_ids = np.zeros(self.max_document_length, np.int64)
@@ -186,7 +190,10 @@ class VocabularyProcessor(object):
         if idx >= self.max_document_length:
           break
         word_ids[idx] = self.vocabulary_.get(token)
-      yield word_ids
+      if return_docs_len:
+        yield word_ids, idx+1
+      else:
+        yield word_ids
 
   def reverse(self, documents):
     """Reverses output of vocabulary mapping to words.
