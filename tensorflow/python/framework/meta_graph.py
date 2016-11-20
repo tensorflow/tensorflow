@@ -313,6 +313,7 @@ def add_collection_def(meta_graph_def, key, graph=None,
 def create_meta_graph_def(meta_info_def=None,
                           graph_def=None,
                           saver_def=None,
+                          add_collections=True,
                           collection_list=None,
                           graph=None,
                           export_scope=None):
@@ -373,14 +374,15 @@ def create_meta_graph_def(meta_info_def=None,
     meta_graph_def.saver_def.MergeFrom(saver_def)
 
   # Adds collection_list.
-  if collection_list:
-    clist = collection_list
-  else:
-    clist = graph.get_all_collection_keys()
-  for ctype in clist:
-    add_collection_def(meta_graph_def, ctype,
-                       graph=graph,
-                       export_scope=export_scope)
+  if add_collections:
+    if collection_list:
+      clist = collection_list
+    else:
+      clist = graph.get_all_collection_keys()
+    for ctype in clist:
+      add_collection_def(meta_graph_def, ctype,
+                         graph=graph,
+                         export_scope=export_scope)
   return meta_graph_def
 
 
@@ -684,9 +686,15 @@ def copy_scoped_meta_graph(from_scope, to_scope,
   return var_list
 
 
+def _unbound_name(name):
+  return re.sub(r"([\^]|loc:@|^)(.*?)", r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
+                compat.as_str(name))
+
+
 def _node_def_unbound(from_node_def, export_scope, unbound_inputs,
                       as_unbound_inputs, clear_devices=False):
-  """Create a `NodeDef` proto with export_scope stripped given `op_list`.
+  """Create a `NodeDef` proto with export_scope stripped given input names
+  that are treated as unbound.
 
   Args:
     from_node_def: A `node_def_pb2.NodeDef` protocol buffer.
@@ -706,9 +714,7 @@ def _node_def_unbound(from_node_def, export_scope, unbound_inputs,
     if node_def.input[i] in as_unbound_inputs:
       # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
       # identifiable.
-      node_def.input[i] = re.sub(r"([\^]|^)(.*)",
-                                 r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
-                                 compat.as_str(v))
+      node_def.input[i] = _unbound_name(v)
       unbound_inputs.append(node_def.input[i])
     else:
       node_def.input[i] = ops.strip_name_scope(v, export_scope)
@@ -716,9 +722,12 @@ def _node_def_unbound(from_node_def, export_scope, unbound_inputs,
       ops.strip_name_scope(from_node_def.name, export_scope))
   for k, v in six.iteritems(from_node_def.attr):
     if k == "_class":
-      new_s = [compat.as_bytes(
-          ops.strip_name_scope(s, export_scope)) for s in v.list.s
-               if compat.as_str(s).split("@")[1] in output_names]
+      new_s = []
+      for s in v.list.s:
+        if compat.as_str(s) in as_unbound_inputs:
+          new_s.append(compat.as_bytes(_unbound_name(s)))
+        else:
+          new_s.append(compat.as_bytes(ops.strip_name_scope(s, export_scope)))
       node_def.attr[k].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=new_s)))
     else:
@@ -801,34 +810,23 @@ def export_ops_meta_graph(op_list,
     for k in unbound_inputs:
       graph.add_to_collection(unbound_inputs_col_name, k)
 
-  var_list = {}
-  variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
-                                   scope=export_scope)
-  for v in variables:
-    if v.op in op_list:
-      var_list[ops.strip_name_scope(v.name, export_scope)] = v
-
   scoped_meta_graph_def = create_meta_graph_def(
     graph_def=graph_def,
     graph=graph,
-    export_scope=export_scope,
+    add_collections=False,
     **kwargs)
 
-  return scoped_meta_graph_def, var_list
+  return scoped_meta_graph_def
 
 
-def copy_ops_meta_graph(op_list, from_scope, to_scope,
-                        from_graph=None, to_graph=None, replace=None):
-  """Copies a list of `Operation`s from one scope to another.
+def copy_ops_meta_graph(op_list, from_scope, to_scope, replace=None):
+  """Copies a list of `Operation`s from one scope to another, with variables
+  shared between them.
 
   Args:
     op_list: A list of `Operation` objects to be copied.
     from_scope: `String` name scope containing the ops to be copied.
     to_scope: `String` name scope under which the copied ops will reside.
-    from_graph: Optional `Graph` from which to copy the ops. If `None`, the
-      default graph is use.
-    to_graph: Optional `Graph` to which to copy the ops. If `None`, the
-      default graph is used.
     replace: A dictionary containing the mapping from input Tensors of these
       ops to their replacements.
 
@@ -837,16 +835,13 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
     a dictionary of `Variables` that have been copied into `to_scope`.
 
   Raises:
-    ValueError: If `from_scope` and `to_scope` are the same while
-      `from_graph` and `to_graph` are also the same.
+    ValueError: If `from_scope` and `to_scope` are the same.
   """
-  from_graph = from_graph or ops.get_default_graph()
-  to_graph = to_graph or ops.get_default_graph()
-
-  if from_graph == to_graph and from_scope == to_scope:
+  if from_scope == to_scope:
     raise ValueError("'from_scope' and 'to_scope' need to be different "
                      "when performing copy in the same graph.")
   op_list = set(op_list)
+  op_names = set(op.name for op in op_list)
   op_outputs = set()
   for op in op_list:
     if not op.name.startswith(from_scope):
@@ -854,12 +849,12 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
                        "'from_scope'." % op.name)
     op_outputs.update(set(op.outputs))
 
-  def _unbound_name(name):
-    return re.sub(r"([\^]|^)(.*?)", r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
-                  compat.as_str(name))
   input_map = {}
   as_unbound_inputs = []
   for op in op_list:
+    from tensorflow.python.ops import control_flow_ops
+    if control_flow_ops.IsSwitch(op):
+      print(op._get_control_flow_context().to_proto())
     for tensor in op.inputs:
       if not (tensor in op_outputs) or (tensor in replace):
         name = tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
@@ -873,22 +868,28 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope,
         name = "^" + dep.name
         as_unbound_inputs.append(name)
         input_map[_unbound_name(name)] = dep
+    for name in op.colocation_groups():
+      if name[5:] not in op_names:
+        as_unbound_inputs.append(name)
+        input_map[_unbound_name(name)] = ops.get_default_graph(). \
+          as_graph_element(name[5:])
   print('input_map:', input_map)
 
-  orig_meta_graph, var_list = export_ops_meta_graph(
-    op_list, export_scope=from_scope, graph=from_graph,
-    as_unbound_inputs=as_unbound_inputs)
-  var_list = import_scoped_meta_graph(orig_meta_graph,
-                                      graph=to_graph,
-                                      import_scope=to_scope,
-                                      input_map=input_map)
+  orig_meta_graph = export_ops_meta_graph(
+    op_list, export_scope=from_scope, as_unbound_inputs=as_unbound_inputs)
+  # print(orig_meta_graph.graph_def)
+  # print(orig_meta_graph.collection_def)
+  _ = import_scoped_meta_graph(orig_meta_graph,
+                               import_scope=to_scope,
+                               input_map=input_map)
   copied_ops = {}
   for op in op_list:
     new_op_name = ops.prepend_name_scope(
       ops.strip_name_scope(op.name, from_scope), to_scope)
-    new_op = to_graph.as_graph_element(new_op_name, allow_tensor=False)
+    new_op = ops.get_default_graph().as_graph_element(new_op_name,
+                                                      allow_tensor=False)
     copied_ops[op] = new_op
-  return copied_ops, var_list
+  return copied_ops
 
 
 def _get_backward_ops(seed_tensors, as_inputs=None):
@@ -928,7 +929,8 @@ def _get_backward_ops(seed_tensors, as_inputs=None):
 
 def clone(outputs, to_scope, from_scope="", replace=None):
   """Copy the subgraph that generates `outputs` from one scope to another,
-  with Tensors in `replace` being replaced by their corresponding values.
+  with Tensors in `replace` being replaced by their corresponding values. with
+  variables shared between them.
 
   Args:
     outputs: A `Tensor` or a list of `Tensor`s.
@@ -952,18 +954,20 @@ def clone(outputs, to_scope, from_scope="", replace=None):
 
   replace = replace or {}
   for k, v in six.iteritems(replace):
-    if not isinstance(k, ops.Tensor) or not isinstance(v, ops.Tensor):
+    try:
+      assert isinstance(k, ops.Tensor)
+      v = ops.convert_to_tensor(v)
+    except Exception:
       raise TypeError(
         "The 'replace' argument should consist of Tensor pairs. "
         "Error type: (%s, %s)" % (type(k), type(v)))
-    else:
-      try:
-        k.get_shape().merge_with(v.get_shape())
-      except ValueError:
-        raise ValueError(
-          "Key-value pairs in 'replace' should have the same "
-          "shape (%s vs %s). Error pair: (%s, %s)" % (
-            k.get_shape(), v.get_shape(), k, v))
+    try:
+      k.get_shape().merge_with(v.get_shape())
+    except ValueError:
+      raise ValueError(
+        "Key-value pairs in 'replace' should have the same "
+        "shape (%s vs %s). Error pair: (%s, %s)" % (
+          k.get_shape(), v.get_shape(), k, v))
 
   as_inputs = list(replace.keys())
   backward_ops = _get_backward_ops(seed_tensors, as_inputs)
@@ -977,8 +981,8 @@ def clone(outputs, to_scope, from_scope="", replace=None):
       copied_ops.add(op)
       copied_tensors.update(set(op.outputs))
 
-  new_ops, var_list = copy_ops_meta_graph(list(copied_ops), from_scope,
-                                          to_scope, replace=replace)
+  new_ops = copy_ops_meta_graph(list(copied_ops), from_scope,
+                                to_scope, replace=replace)
   new_tensors = []
   for tensor in seed_tensors:
     if tensor in replace:
@@ -990,4 +994,4 @@ def clone(outputs, to_scope, from_scope="", replace=None):
 
   if len(new_tensors) == 1:
     new_tensors = new_tensors[0]
-  return new_tensors, var_list
+  return new_tensors
