@@ -108,7 +108,7 @@ def do_eval(sess,
                                images_placeholder,
                                labels_placeholder)
     true_count += sess.run(eval_correct, feed_dict=feed_dict)
-  precision = true_count / num_examples
+  precision = float(true_count) / num_examples
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
         (num_examples, true_count, precision))
 
