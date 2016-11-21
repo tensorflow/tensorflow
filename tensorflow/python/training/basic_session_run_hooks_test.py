@@ -27,6 +27,7 @@ import time
 import tensorflow as tf
 
 from tensorflow.contrib import testing
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 
@@ -330,6 +331,29 @@ class CheckpointSaverHookTest(tf.test.TestCase):
         hook.end(sess)
         self.assertEqual(2, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
+
+  def test_summary_writer_defs(self):
+    testing.FakeSummaryWriter.install()
+    tf.train.SummaryWriterCache.clear()
+    summary_writer = tf.train.SummaryWriterCache.get(self.model_dir)
+
+    with self.graph.as_default():
+      hook = tf.train.CheckpointSaverHook(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      hook.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.model_dir,
+          expected_added_meta_graphs=[meta_graph.create_meta_graph_def(
+              graph_def=self.graph.as_graph_def(add_shapes=True),
+              saver_def=self.scaffold.saver.saver_def)])
+
+    testing.FakeSummaryWriter.uninstall()
 
 
 class StepCounterHookTest(tf.test.TestCase):

@@ -261,12 +261,14 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     if self._timer.last_triggered_step() is None:
-      # Write graph in the first call.
+      # We do write graph and saver_def at the first call of before_run.
+      # We cannot do this in begin, since we let other hooks to change graph and
+      # add variables in begin. Graph is finalized after all begin calls.
       training_util.write_graph(
           ops.get_default_graph().as_graph_def(add_shapes=True),
           self._checkpoint_dir,
           "graph.pbtxt")
-      saver_def = self._saver.saver_def if self._saver else None
+      saver_def = self._get_saver().saver_def if self._get_saver() else None
       graph = ops.get_default_graph()
       meta_graph_def = meta_graph.create_meta_graph_def(
           graph_def=graph.as_graph_def(add_shapes=True),
@@ -290,14 +292,18 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
   def _save(self, step, session):
     """Saves the latest checkpoint."""
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
-    if self._saver is not None:
-      self._saver.save(session, self._save_path, global_step=step)
-    elif self._scaffold is not None:
-      self._scaffold.saver.save(session, self._save_path, global_step=step)
+    self._get_saver().save(session, self._save_path, global_step=step)
     self._summary_writer.add_session_log(
         SessionLog(
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
         step)
+
+  def _get_saver(self):
+    if self._saver is not None:
+      return self._saver
+    elif self._scaffold is not None:
+      return self._scaffold.saver
+    return None
 
 
 class StepCounterHook(session_run_hook.SessionRunHook):
