@@ -42,7 +42,7 @@ class GreedyLoadBalancingStrategy(object):
   off CPU-intensive ops with RAM-intensive ops with network bandwidth.
 
   This class is intended to be used as a `ps_strategy` in
-  `tf.replica_device_setter`.
+  `tf.train.replica_device_setter`.
   """
 
   def __init__(self, num_tasks, load_fn):
