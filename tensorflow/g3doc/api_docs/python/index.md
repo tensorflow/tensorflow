@@ -29,7 +29,6 @@
   * [`Operation`](../../api_docs/python/framework.md#Operation)
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
-  * [`RegisterShape`](../../api_docs/python/framework.md#RegisterShape)
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
