@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import shutil
 import tempfile
+import threading
 import time
 
 import tensorflow as tf
@@ -505,6 +506,42 @@ class SummarySaverHookTest(tf.test.TestCase):
             4: {'my_summary': 2.0},
             7: {'my_summary': 3.0},
         })
+
+
+class GlobalStepWaiterHookTest(tf.test.TestCase):
+
+  def test_not_wait_for_step_zero(self):
+    with tf.Graph().as_default():
+      tf.contrib.framework.get_or_create_global_step()
+      hook = tf.train.GlobalStepWaiterHook(wait_until_step=0)
+      hook.begin()
+      with tf.Session() as sess:
+        # Before run should return without waiting gstep increment.
+        hook.before_run(
+            tf.train.SessionRunContext(
+                original_args=None, session=sess))
+
+  def test_wait_for_step(self):
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      hook = tf.train.GlobalStepWaiterHook(wait_until_step=1000)
+      hook.begin()
+      with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
+        waiter = threading.Thread(
+            target=hook.before_run,
+            args=(tf.train.SessionRunContext(
+                original_args=None, session=sess),))
+        waiter.daemon = True
+        waiter.start()
+        time.sleep(1.0)
+        self.assertTrue(waiter.is_alive())
+        sess.run(tf.assign(gstep, 500))
+        time.sleep(1.0)
+        self.assertTrue(waiter.is_alive())
+        sess.run(tf.assign(gstep, 1100))
+        time.sleep(1.2)
+        self.assertFalse(waiter.is_alive())
 
 
 if __name__ == '__main__':

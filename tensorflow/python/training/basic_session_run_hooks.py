@@ -21,6 +21,7 @@
 @@NanLossDuringTrainingError
 @@NanTensorHook
 @@SummarySaverHook
+@@GlobalStepWaiterHook
 
 """
 
@@ -465,6 +466,53 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
   def end(self, session=None):
     if self._summary_writer:
       self._summary_writer.flush()
+
+
+class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
+  """Delay execution until global step reaches to wait_until_step.
+
+  This hook delays execution until global step reaches to `wait_until_step`. It
+  is used to gradually start workers in distributed settings. One example usage
+  would be setting `wait_until_step=int(K*log(task_id+1))` assuming that
+  task_id=0 is the chief.
+  """
+
+  def __init__(self, wait_until_step):
+    """Create a _GlobalStepWaiterHook.
+
+    Args:
+      wait_until_step: an `int` shows until which global step should we wait.
+    """
+    self._wait_until_step = wait_until_step
+
+  def begin(self):
+    self._worker_is_started = False
+    self._global_step_tensor = training_util.get_global_step()
+    if self._global_step_tensor is None:
+      raise RuntimeError(
+          "Global step should be created to use _GlobalStepWaiterHook.")
+
+  def before_run(self, run_context):
+    if self._worker_is_started:
+      return None
+
+    if self._wait_until_step <= 0:
+      self._worker_is_started = True
+      return None
+
+    logging.info("Waiting for global step %d before starting training.",
+                 self._wait_until_step)
+    last_logged_step = 0
+    while True:
+      current_step = run_context.session.run(self._global_step_tensor)
+      if current_step >= self._wait_until_step:
+        self._worker_is_started = True
+        return None
+      if current_step - last_logged_step > 1000:
+        logging.info("Waiting for global step %d before starting training. "
+                     "Current step is %d.", self._wait_until_step, current_step)
+        last_logged_step = current_step
+      time.sleep(0.5)
 
 
 def _as_graph_element(obj):
