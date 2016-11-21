@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
 namespace tensorflow {
@@ -42,9 +44,17 @@ const string PADDING_SAME_STR = "SAME";
 const string PADDING_NA = "NA";
 const string NULL_OUTPUT_NAME = "NULL";
 
+/**
+ * graph loading functions
+ * - LoadGraphFromProto
+ * - LoadGraphFromProtoFile
+ * These functions read a graph definition and store parameters
+ * of node to transfer the graph to SOC.
+ */
 Status GraphTransferer::LoadGraphFromProto(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const GraphDef& graph_def, const std::vector<string>& input_node_names,
+    const GraphDef& graph_def,
+    const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names) {
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
@@ -73,7 +83,7 @@ Status GraphTransferer::LoadGraphFromProto(
 
   for (const Node* const node : graph.nodes()) {
     RegisterNodeIfAllInputsAreCached(ops_definitions, shape_refiner, *node,
-                                     false, input_node_names,
+                                     false, input_node_info_list,
                                      output_node_names);
   }
   if (DBG_DUMP_PARAMS) {
@@ -87,7 +97,8 @@ Status GraphTransferer::LoadGraphFromProto(
 
 Status GraphTransferer::LoadGraphFromProtoFile(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const string& graph_def_path, const std::vector<string>& input_node_names,
+    const string& graph_def_path,
+    const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names, const bool is_text_proto) {
   GraphDef graph_def;
   string output;
@@ -103,13 +114,14 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   if (!status.ok()) {
     return status;
   }
-  return LoadGraphFromProto(ops_definitions, graph_def, input_node_names,
+  return LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
                             output_node_names);
 }
 
 Status GraphTransferer::LoadGraphFromProtoFile(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const string& graph_def_path, const std::vector<string>& input_node_names,
+    const string& graph_def_path,
+    const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names) {
   GraphDef graph_def;
   string output;
@@ -120,8 +132,84 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
     return errors::InvalidArgument("Cannot parse proto string.");
   }
-  LoadGraphFromProto(ops_definitions, graph_def, input_node_names,
+  LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
                      output_node_names);
+  return Status();
+}
+
+/**
+ * Dryrun functions
+ * - DryRunInferenceAndCacheResult
+ * To determine shapes of output tensors of all nodes, dryrun the graph.
+ * This function supplies memory allocation information when loading
+ * the graph.
+ * TODO(satok): Delete this function when all shapes of ops are implemented.
+ * This fuction doesn't work if some ops changes it's shape even if input shape
+ * is fixed.
+ */
+Status GraphTransferer::DryRunInferenceAndCacheResult(
+    const GraphDef& graph_def,
+    const std::vector<InputNodeInfo>& input_node_info_list,
+    const std::vector<string>& output_node_names, const bool initialize_by_zero,
+    std::vector<tensorflow::Tensor>* output_tensors) {
+  // Create input tensor vector.  If "initialize_by_zero" is true,
+  // input tensor fields are initialized by 0.
+  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+  for (const InputNodeInfo& input : input_node_info_list) {
+    CHECK(input.tensor.IsInitialized());
+    if (!initialize_by_zero) {
+      input_tensors.push_back({input.name, input.tensor});
+      continue;
+    }
+    // If input tensor is not initialized, initialize by 0-filling
+    const DataType data_type = input.tensor.dtype();
+    const TensorShape& shape = input.tensor.shape();
+    Tensor input_tensor(data_type, shape);
+    switch (data_type) {
+      case DT_INT32: {
+        auto int_tensor = input_tensor.flat<int32>();
+        int_tensor = int_tensor.constant(0.0);
+        break;
+      }
+      case DT_FLOAT: {
+        auto float_tensor = input_tensor.flat<float>();
+        float_tensor = float_tensor.constant(0.0);
+        break;
+      }
+      case DT_QUINT8: {
+        auto int_tensor = input_tensor.flat<quint8>();
+        int_tensor = int_tensor.constant(0.0);
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unsupported input type: " << data_type;
+    }
+    input_tensors.push_back({input.name, input_tensor});
+  }
+
+  // Setup session
+  CHECK(output_tensors != nullptr);
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  std::unique_ptr<Session> session =
+      std::unique_ptr<Session>(NewSession(session_options));
+  Status status = session->Create(graph_def);
+  if (!status.ok()) {
+    return status;
+  }
+
+  // Setup session arguments
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  RunMetadata run_metadata;
+
+  // Run inference with all node as output
+  status = session->Run(run_options, input_tensors, output_node_names, {},
+                        output_tensors, &run_metadata);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error during inference: " << status;
+    return status;
+  }
   return Status();
 }
 
@@ -160,6 +248,17 @@ int GraphTransferer::CacheNode(const Node& node) {
   return node_name_cache_list_.size() - 1;
 }
 
+bool GraphTransferer::IsInputNode(
+    const std::vector<InputNodeInfo>& input_node_info_list,
+    const Node& node) const {
+  for (const InputNodeInfo& input_node_info : input_node_info_list) {
+    if (node.name() == input_node_info.name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool GraphTransferer::AreAllInputsCached(const Node& node) const {
   for (const Node* const input_node : node.in_nodes()) {
     if (node_name_to_id_cache_map_.count(input_node->name()) <= 0) {
@@ -174,11 +273,10 @@ bool GraphTransferer::AreAllInputsCached(const Node& node) const {
 void GraphTransferer::RegisterNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
-    const std::vector<string>& input_node_names,
+    const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names) {
   VLOG(1) << "Register node: " << node.name();
-  if (std::find(input_node_names.begin(), input_node_names.end(),
-                node.name()) != input_node_names.end()) {
+  if (IsInputNode(input_node_info_list, node)) {
     RegisterInputNode(ops_definitions, shape_refiner, node);
   } else if (std::find(output_node_names.begin(), output_node_names.end(),
                        node.name()) != output_node_names.end()) {
@@ -316,13 +414,13 @@ bool GraphTransferer::RegisterNodeIfAllInputsAreCached(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
     const bool only_register_const_node,
-    const std::vector<string>& input_node_names,
+    const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names) {
   if (only_register_const_node && !node.IsConstant()) {
     return false;
   }
   CHECK(AreAllInputsCached(node));
-  RegisterNode(ops_definitions, shape_refiner, node, input_node_names,
+  RegisterNode(ops_definitions, shape_refiner, node, input_node_info_list,
                output_node_names);
   return true;
 }

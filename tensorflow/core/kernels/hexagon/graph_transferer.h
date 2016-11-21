@@ -40,6 +40,11 @@ class GraphTransferer {
   static constexpr int MAX_SUPPORTED_RANK = 5;
   static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK - 1;
 
+  struct InputNodeInfo {
+    string name;
+    Tensor tensor;
+  };
+
   // Node parameters for transfer
   struct NodeTransferParams {
     string name;
@@ -77,22 +82,33 @@ class GraphTransferer {
   GraphTransferer() = default;
 
   // Load graph structure into GraphTransferer
-  Status LoadGraphFromProto(const IGraphTransferOpsDefinitions& ops_definitions,
-                            const GraphDef& graph_def,
-                            const std::vector<string>& input_node_names,
-                            const std::vector<string>& output_node_names);
+  Status LoadGraphFromProto(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const GraphDef& graph_def,
+      const std::vector<InputNodeInfo>& input_node_info_list,
+      const std::vector<string>& output_node_names);
 
   // Load graph structure into GraphTransferer from protobuf file
   Status LoadGraphFromProtoFile(
       const IGraphTransferOpsDefinitions& ops_definitions,
-      const string& graph_def_path, const std::vector<string>& input_node_names,
+      const string& graph_def_path,
+      const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto);
 
   // Load graph structure into GraphTransferer from protobuf file
   Status LoadGraphFromProtoFile(
       const IGraphTransferOpsDefinitions& ops_definitions,
-      const string& graph_def_path, const std::vector<string>& input_node_names,
+      const string& graph_def_path,
+      const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names);
+
+  // Dry run inference and cache the result to get memory mapping
+  Status DryRunInferenceAndCacheResult(
+      const GraphDef& graph_def,
+      const std::vector<InputNodeInfo>& input_node_info_list,
+      const std::vector<string>& output_node_names,
+      const bool initialize_by_zero,
+      std::vector<tensorflow::Tensor>* output_tensors);
 
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
@@ -108,10 +124,12 @@ class GraphTransferer {
 
  private:
   int CacheNode(const Node& node);
+  bool IsInputNode(const std::vector<InputNodeInfo>& input_node_info_list,
+                   const Node& node) const;
   bool AreAllInputsCached(const Node& node) const;
   void RegisterNode(const IGraphTransferOpsDefinitions& ops_definitions,
                     const ShapeRefiner& shape_refiner, const Node& node,
-                    const std::vector<string>& input_node_names,
+                    const std::vector<InputNodeInfo>& input_node_info_list,
                     const std::vector<string>& output_node_names);
   void RegisterConstantNode(const ShapeRefiner& shape_refiner,
                             const Node& node);
@@ -128,7 +146,7 @@ class GraphTransferer {
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const bool only_register_const_node,
-      const std::vector<string>& input_node_names,
+      const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names);
   void AppendNodeParams(const string& name, const int id, const string& type,
                         const int type_id, const string& padding_str,
