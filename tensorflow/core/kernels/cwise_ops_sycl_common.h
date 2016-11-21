@@ -21,12 +21,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_SYCL_COMMON_H_
 
 #define EIGEN_USE_SYCL
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/framework/register_types.h"
-
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -69,7 +67,7 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
             typename Functor::tscalar_type scalar,
             typename Functor::tin_type in, bool* error) {
     typedef typename Functor::func Binary;
-    constexpr int NumDims = Functor::tin_type::NumDimensions; 
+    constexpr int NumDims = Functor::tin_type::NumDimensions;
     typedef typename Functor::tin_type::Scalar T;
     typedef typename Functor::tin_type::Index Index;
     Eigen::array<Index, NumDims> scalar_dim = GenerateArrayOfOnes<Index, NumDims>();

@@ -792,7 +792,7 @@ class BinaryOpTest(tf.test.TestCase):
         else:
           self._compareGradientX(x, y, np_func, tf_func)
           self._compareGradientY(x, y, np_func, tf_func)
-      self._compareGpu(x, y, np_func, tf_func)
+      self._compareGpu(x, y+ 0.1, np_func, tf_func)
 
   # TODO(josh11b,vrv): Refactor this to use parameterized tests.
   def _testBCastByFunc(self, funcs, xs, ys):

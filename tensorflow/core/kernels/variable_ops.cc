@@ -32,13 +32,27 @@ REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
                         IsVariableInitializedOp);
 
 #if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Variable")                            \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("dtype"),             \
-                          VariableOp);
-TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#define REGISTER_SYCL_KERNEL(TYPE)                                      \
+  REGISTER_KERNEL_BUILDER(                                              \
+                          Name("Variable")                              \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype"),               \
+                          VariableOp);                                  \
+  REGISTER_KERNEL_BUILDER(Name("TemporaryVariable")                     \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype"),               \
+                          TemporaryVariableOp);                         \
+  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")              \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("T"),                   \
+                          DestroyTemporaryVariableOp);                  \
+  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                 \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype")                \
+                          .HostMemory("is_initialized"),                \
+                          IsVariableInitializedOp);
+
+REGISTER_SYCL_KERNEL(float);
 #undef REGISTER_SYCL_KERNEL
 #endif
 
