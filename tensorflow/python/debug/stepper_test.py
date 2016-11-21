@@ -604,6 +604,28 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     #     = 3.6 - 0.01 * 1.0 * 2.0 * 2.0 = 3.56.
     self.assertAllClose(3.56, self.sess.run(self.c))
 
+  def testContToNodeWithOutputTensors(self):
+    """cont() to an op should cache its output tensors if appropriate."""
+
+    stepper = NodeStepper(self.sess, "optim")
+
+    # The op "gradients/e_grad/Reshape_1" is in the transitive closure of the
+    # stepper, because it is the control input to another o. However, its
+    # output tensor "gradients/e_grad/Reshape_1:0" is also in the transitive
+    # closure, because it is the (non-control) input of certain ops. Calling
+    # cont() on the op should lead to the caching of the tensor handle for
+    # the output tensor.
+    stepper.cont("gradients/e_grad/Reshape_1")
+
+    self.assertEqual(["gradients/e_grad/Reshape_1:0"], stepper.handle_names())
+
+    # "gradients/e_grad/tuple/control_dependency_1:0" uses input from
+    # "gradients/e_grad/Reshape_1:0".
+    stepper.cont("gradients/e_grad/tuple/control_dependency_1:0")
+    self.assertEqual({
+        "gradients/e_grad/Reshape_1:0": NodeStepper.FEED_TYPE_HANDLE
+    }, stepper.last_feed_types())
+
 
 if __name__ == "__main__":
   googletest.main()
