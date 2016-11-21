@@ -30,14 +30,14 @@ def accuracy(predictions, labels, weights=None):
   """Computes the percentage of times that predictions matches labels.
 
   Args:
-    predictions: the predicted values, an `Output` whose dtype and shape
+    predictions: the predicted values, a `Tensor` whose dtype and shape
                  matches 'labels'.
-    labels: the ground truth values, an `Output` of any shape and
+    labels: the ground truth values, a `Tensor` of any shape and
             bool, integer, or string dtype.
-    weights: None or `Output` of float values to reweight the accuracy.
+    weights: None or `Tensor` of float values to reweight the accuracy.
 
   Returns:
-    Accuracy `Output`.
+    Accuracy `Tensor`.
 
   Raises:
     ValueError: if dtypes don't match or

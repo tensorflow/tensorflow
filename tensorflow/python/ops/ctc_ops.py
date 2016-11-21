@@ -97,10 +97,10 @@ def ctc_loss(inputs, labels, sequence_length,
     Untested.  Very likely will not learn to output repeated classes.
 
   Args:
-    inputs: 3-D `float` `Output`.
-      If time_major == False, this will be an `Output` shaped:
+    inputs: 3-D `float` `Tensor`.
+      If time_major == False, this will be a `Tensor` shaped:
         `[batch_size x max_time x num_classes]`.
-      If time_major == True (default), this will be an `Output` shaped:
+      If time_major == True (default), this will be a `Tensor` shaped:
         `[max_time x batch_size x num_classes]`.
       The logits.
     labels: An `int32` `SparseTensor`.
@@ -114,18 +114,15 @@ def ctc_loss(inputs, labels, sequence_length,
       If True, repeated labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
     time_major: The shape format of the `inputs` Tensors.
-      If True, these `Output`s must be shaped
-      `[max_time, batch_size, num_classes]`.
-      If False, these `Output`s must be shaped
-      `[batch_size, max_time, num_classes]`.
-      Using `time_major = True` (default) is a bit more efficient because it
-      avoids transposes at the beginning of the ctc_loss calculation. However,
-      most TensorFlow data is batch-major, so by this function also accepts
-      inputs in batch-major form.
+      If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+      If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+      Using `time_major = True` (default) is a bit more efficient because it avoids
+      transposes at the beginning of the ctc_loss calculation.  However, most
+      TensorFlow data is batch-major, so by this function also accepts inputs
+      in batch-major form.
 
   Returns:
-    A 1-D `float` `Output`, size `[batch]`, containing the negative log
-    probabilities.
+    A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
 
   Raises:
     TypeError: if labels is not a `SparseTensor`.
@@ -185,7 +182,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     * `A B B B B B` if `merge_repeated=False`.
 
   Args:
-    inputs: 3-D `float` `Output` sized
+    inputs: 3-D `float` `Tensor` sized
       `[max_time x batch_size x num_classes]`.  The logits.
     sequence_length: 1-D `int32` vector containing sequence lengths,
       having size `[batch_size]`.
@@ -228,7 +225,7 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
     * `A B B B B` if `merge_repeated = False`.
 
   Args:
-    inputs: 3-D `float` `Output`, size
+    inputs: 3-D `float` `Tensor`, size
       `[max_time x batch_size x num_classes]`.  The logits.
     sequence_length: 1-D `int32` vector containing sequence lengths,
       having size `[batch_size]`.

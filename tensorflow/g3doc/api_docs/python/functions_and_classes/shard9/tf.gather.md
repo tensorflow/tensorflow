@@ -26,12 +26,12 @@ this operation will permute `params` accordingly.
 ##### Args:
 
 
-*  <b>`params`</b>: A `Output`.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`params`</b>: A `Tensor`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
 *  <b>`validate_indices`</b>: An optional `bool`. Defaults to `True`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `params`.
+  A `Tensor`. Has the same type as `params`.
 

@@ -1197,22 +1197,6 @@ compact in representing input and output shape specifications in tests.  For
 now, see the surrounding comments in those tests to get a sense of the shape
 string specification).
 
-### Shape functions in Python
-To register a shape function in Python, apply the
-[`tf.RegisterShape` decorator](../../api_docs/python/framework.md#RegisterShape)
-to a shape function. For example, the
-[`ZeroOut` op defined above](#define-the-ops-interface) would have a shape function like
-the following:
-
-```python
-@tf.RegisterShape("ZeroOut")(common_shapes.call_cpp_shape_fn)
-```
-
-This specifies that the shape function should use the C++-implemented
-shape specification defined in your `REGISTER_OP` declaration above.  Note
-that TensorFlow will soon make this the default, so you only need
-to define the shape function once in C++ to get shape inference for
-free in Python.
 
 [core-array_ops]:https://www.tensorflow.org/code/tensorflow/core/ops/array_ops.cc
 [python-user_ops]:https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py

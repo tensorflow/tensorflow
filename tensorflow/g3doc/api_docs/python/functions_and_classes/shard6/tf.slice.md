@@ -36,12 +36,12 @@ tf.slice(input, [1, 0, 0], [2, 1, 3]) ==> [[[3, 3, 3]],
 ##### Args:
 
 
-*  <b>`input_`</b>: An `Output`.
-*  <b>`begin`</b>: An `int32` or `int64` `Output`.
-*  <b>`size`</b>: An `int32` or `int64` `Output`.
+*  <b>`input_`</b>: A `Tensor`.
+*  <b>`begin`</b>: An `int32` or `int64` `Tensor`.
+*  <b>`size`</b>: An `int32` or `int64` `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` the same type as `input`.
+  A `Tensor` the same type as `input`.
 

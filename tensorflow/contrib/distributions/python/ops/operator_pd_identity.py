@@ -48,7 +48,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
     """Initialize an `OperatorPDIdentity`.
 
     Args:
-      shape:  `int32` rank 1 `Output` of length at least 2, and with the last
+      shape:  `int32` rank 1 `Tensor` of length at least 2, and with the last
         two entries equal (since this is a square matrix).
       dtype:  Data type of the matrix that this operator represents.
       verify_pd:  `Boolean`, if `True`, asserts are added to the initialization

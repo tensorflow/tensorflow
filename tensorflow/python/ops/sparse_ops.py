@@ -238,10 +238,10 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
 def sparse_add(a, b, thresh=0):
   """Adds two tensors, at least one of each is a `SparseTensor`.
 
-  If one `SparseTensor` and one `Output` are passed in, returns an `Output`.  If
+  If one `SparseTensor` and one `Tensor` are passed in, returns a `Tensor`.  If
   both arguments are `SparseTensor`s, this returns a `SparseTensor`.  The order
   of arguments does not matter.  Use vanilla `tf.add()` for adding two dense
-  `Output`s.
+  `Tensor`s.
 
   The indices of any input `SparseTensor` are assumed ordered in standard
   lexicographic order.  If this is not the case, before this step run
@@ -270,19 +270,19 @@ def sparse_add(a, b, thresh=0):
       * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
-    a: The first operand; `SparseTensor` or `Output`.
-    b: The second operand; `SparseTensor` or `Output`.  At least one operand
+    a: The first operand; `SparseTensor` or `Tensor`.
+    b: The second operand; `SparseTensor` or `Tensor`.  At least one operand
       must be sparse.
-    thresh: A 0-D `Output`.  The magnitude threshold that determines if an
+    thresh: A 0-D `Tensor`.  The magnitude threshold that determines if an
     output value/index pair takes space.  Its dtype should match that of the
     values if they are real; if the latter are complex64/complex128, then the
     dtype should be float32/float64, correspondingly.
 
   Returns:
-    A `SparseTensor` or an `Output`, representing the sum.
+    A `SparseTensor` or a `Tensor`, representing the sum.
 
   Raises:
-    TypeError: If both `a` and `b` are `Output`s.  Use `tf.add()` instead.
+    TypeError: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
   """
   sparse_classes = (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)
   if not any(isinstance(inp, sparse_classes) for inp in [a, b]):
@@ -407,7 +407,7 @@ def sparse_reshape(sp_input, shape, name=None):
 
   Args:
     sp_input: The input `SparseTensor`.
-    shape: A 1-D (vector) int64 `Output` specifying the new dense shape of the
+    shape: A 1-D (vector) int64 `Tensor` specifying the new dense shape of the
       represented `SparseTensor`.
     name: A name prefix for the returned tensors (optional)
 
@@ -452,7 +452,7 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
       [      ]
 
   Args:
-    split_dim: A 0-D `int32` `Output`. The dimension along which to split.
+    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
     num_split: A Python integer. The number of ways to split.
     sp_input: The `SparseTensor` to split.
     name: A name for the operation (optional).
@@ -509,21 +509,21 @@ def sparse_to_dense(sparse_indices,
   are checked during execution.
 
   Args:
-    sparse_indices: A 0-D, 1-D, or 2-D `Output` of type `int32` or `int64`.
+    sparse_indices: A 0-D, 1-D, or 2-D `Tensor` of type `int32` or `int64`.
       `sparse_indices[i]` contains the complete index where `sparse_values[i]`
       will be placed.
-    output_shape: A 1-D `Output` of the same type as `sparse_indices`.  Shape
+    output_shape: A 1-D `Tensor` of the same type as `sparse_indices`.  Shape
       of the dense output tensor.
-    sparse_values: A 0-D or 1-D `Output`.  Values corresponding to each row of
+    sparse_values: A 0-D or 1-D `Tensor`.  Values corresponding to each row of
       `sparse_indices`, or a scalar value to be used for all sparse indices.
-    default_value: A 0-D `Output` of the same type as `sparse_values`.  Value
+    default_value: A 0-D `Tensor` of the same type as `sparse_values`.  Value
       to set for indices not specified in `sparse_indices`.  Defaults to zero.
     validate_indices: A boolean value.  If True, indices are checked to make
       sure they are sorted in lexicographic order and that there are no repeats.
     name: A name for the operation (optional).
 
   Returns:
-    Dense `Output` of shape `output_shape`.  Has the same type as
+    Dense `Tensor` of shape `output_shape`.  Has the same type as
     `sparse_values`.
   """
   return gen_sparse_ops._sparse_to_dense(
@@ -540,7 +540,7 @@ def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
-  `tf.reduce_sum()`.  In particular, this Op also returns a dense `Output`
+  `tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
   instead of a sparse one.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
@@ -1043,14 +1043,14 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
 
 
 def serialize_sparse(sp_input, name=None):
-  """Serialize a `SparseTensor` into a string 3-vector (1-D `Output`) object.
+  """Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object.
 
   Args:
     sp_input: The input `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A string 3-vector (1D `Output`), with each column representing the
+    A string 3-vector (1D `Tensor`), with each column representing the
     serialized `SparseTensor`'s indices, values, and shape (respectively).
 
   Raises:
@@ -1063,12 +1063,12 @@ def serialize_sparse(sp_input, name=None):
 
 
 def serialize_many_sparse(sp_input, name=None):
-  """Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Output`.
+  """Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`.
 
   The `SparseTensor` must have rank `R` greater than 1, and the first dimension
   is treated as the minibatch dimension.  Elements of the `SparseTensor`
   must be sorted in increasing order of this first dimension.  The serialized
-  `SparseTensor` objects going into each row of the output `Output` will have
+  `SparseTensor` objects going into each row of the output `Tensor` will have
   rank `R-1`.
 
   The minibatch size `N` is extracted from `sparse_shape[0]`.
@@ -1078,7 +1078,7 @@ def serialize_many_sparse(sp_input, name=None):
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A string matrix (2-D `Output`) with `N` rows and `3` columns.
+    A string matrix (2-D `Tensor`) with `N` rows and `3` columns.
     Each column represents serialized `SparseTensor`'s indices, values, and
     shape (respectively).
 
@@ -1137,7 +1137,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
       shape = [2 50]
 
   Args:
-    serialized_sparse: 2-D `Output` of type `string` of shape `[N, 3]`.
+    serialized_sparse: 2-D `Tensor` of type `string` of shape `[N, 3]`.
       The serialized and packed `SparseTensor` objects.
     dtype: The `dtype` of the serialized `SparseTensor` objects.
     rank: (optional) Python int, the rank of the `SparseTensor` objects.
@@ -1526,7 +1526,7 @@ def _add_sparse_to_tensors_map(sp_input, container=None,
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A string 1-vector (1D `Output`), with the single element representing the
+    A string 1-vector (1D `Tensor`), with the single element representing the
     a unique handle to a `SparseTensor` stored by the `SparseTensorMap`
     underlying this op.
 
@@ -1547,7 +1547,7 @@ def _add_many_sparse_to_tensors_map(sp_input, container=None,
   The `SparseTensor` must have rank `R` greater than 1, and the first dimension
   is treated as the minibatch dimension.  Elements of the `SparseTensor`
   must be sorted in increasing order of this first dimension.  The serialized
-  `SparseTensor` objects going into each row of the output `Output` will have
+  `SparseTensor` objects going into each row of the output `Tensor` will have
   rank `R-1`.
 
   The minibatch size `N` is extracted from `sparse_shape[0]`.
@@ -1560,7 +1560,7 @@ def _add_many_sparse_to_tensors_map(sp_input, container=None,
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A string matrix (2-D `Output`) with `N` rows and `1` column.
+    A string matrix (2-D `Tensor`) with `N` rows and `1` column.
     Each row represents a unique handle to a `SparseTensor` stored by
     the `SparseTensorMap` underlying this op.
 
@@ -1623,7 +1623,7 @@ def _take_many_sparse_from_tensors_map(
   Args:
     sparse_map_op: The `Operation` that created the original handles.
       Usually this is, e.g., `add_sparse_to_tensors_map(...).op`.
-    sparse_handles: 2-D `Output` of type `string` of shape `[N, 1]`.
+    sparse_handles: 2-D `Tensor` of type `string` of shape `[N, 1]`.
       The serialized and packed `SparseTensor` objects.
     rank: (optional) Python int, the rank of the `SparseTensor` objects.
     name: A name prefix for the returned tensors (optional)

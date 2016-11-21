@@ -19,11 +19,11 @@ an optimizer.
 ##### Args:
 
 
-*  <b>`t`</b>: An `Output`.
-*  <b>`clip_norm`</b>: A 0-D (scalar) `Output` > 0. A maximum clipping value.
+*  <b>`t`</b>: A `Tensor`.
+*  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A clipped `Output`.
+  A clipped `Tensor`.
 

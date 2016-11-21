@@ -26,7 +26,7 @@ not specified), it is assumed that the initial shape of each tensor in
 `loop_vars` is the same in every iteration. The `shape_invariants` argument
 allows the caller to specify a less specific shape invariant for each loop
 variable, which is needed if the shape varies between iterations. The
-[`Output.set_shape()`](../../api_docs/python/framework.md#Output.set_shape)
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
 function may also be used in the `body` function to indicate that
 the output loop variable has a particular shape. The shape invariant for
 SparseTensor and IndexedSlices are treated specially as follows:
@@ -62,7 +62,7 @@ sequences and large batches.
 *  <b>`cond`</b>: A callable that represents the termination condition of the loop.
 *  <b>`body`</b>: A callable that represents the loop body.
 *  <b>`loop_vars`</b>: A (possibly nested) tuple, namedtuple or list of numpy array,
-    `Output`, and `TensorArray` objects.
+    `Tensor`, and `TensorArray` objects.
 *  <b>`shape_invariants`</b>: The shape invariants for the loop variables.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
     It must be a positive integer.

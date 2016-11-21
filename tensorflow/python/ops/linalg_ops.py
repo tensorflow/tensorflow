@@ -52,12 +52,12 @@ def cholesky_solve(chol, rhs, name=None):
   ```
 
   Args:
-    chol:  An `Output`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
+    chol:  A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
       Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
       For that reason, only the lower triangular parts (including the diagonal)
       of the last two dimensions of `chol` are used.  The strictly upper part is
       assumed to be zero and not accessed.
-    rhs:  An `Output`, same type as `chol`, shape is `[..., M, K]`.
+    rhs:  A `Tensor`, same type as `chol`, shape is `[..., M, K]`.
     name:  A name to give this `Op`.  Defaults to `cholesky_solve`.
 
   Returns:
@@ -99,17 +99,17 @@ def eye(
   ```
 
   Args:
-    num_rows: Non-negative `int32` scalar `Output` giving the number of rows
+    num_rows: Non-negative `int32` scalar `Tensor` giving the number of rows
       in each batch matrix.
-    num_columns: Optional non-negative `int32` scalar `Output` giving the number
+    num_columns: Optional non-negative `int32` scalar `Tensor` giving the number
       of columns in each batch matrix.  Defaults to `num_rows`.
-    batch_shape:  `int32` `Output`.  If provided, returned `Output` will have
+    batch_shape:  `int32` `Tensor`.  If provided, returned `Tensor` will have
       leading batch dimensions of this shape.
-    dtype:  The type of an element in the resulting `Output`
+    dtype:  The type of an element in the resulting `Tensor`
     name:  A name for this `Op`.  Defaults to "eye".
 
   Returns:
-    An `Output` of shape `batch_shape + [num_rows, num_columns]`
+    A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
   """
   with ops.name_scope(
       name, default_name="eye", values=[num_rows, num_columns, batch_shape]):
@@ -139,7 +139,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
   form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
   inner-most 2 dimensions form `M`-by-`K` matrices.   The computed output is a
-  `Output` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
+  `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
   matrices that solve the equations
   `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
   sense.
@@ -172,14 +172,14 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   `l2_regularizer` is ignored.
 
   Args:
-    matrix: `Output` of shape `[..., M, N]`.
-    rhs: `Output` of shape `[..., M, K]`.
-    l2_regularizer: 0-D `double` `Output`. Ignored if `fast=False`.
+    matrix: `Tensor` of shape `[..., M, N]`.
+    rhs: `Tensor` of shape `[..., M, K]`.
+    l2_regularizer: 0-D `double` `Tensor`. Ignored if `fast=False`.
     fast: bool. Defaults to `True`.
     name: string, optional name of the operation.
 
   Returns:
-    output: `Output` of shape `[..., N, K]` whose inner-most 2 dimensions form
+    output: `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form
       `M`-by-`K` matrices that solve the equations
       `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
       squares sense.
@@ -197,7 +197,7 @@ def self_adjoint_eig(tensor, name=None):
   `tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
 
   Args:
-    tensor: `Output` of shape `[..., N, N]`. Only the lower triangular part of
+    tensor: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
       each inner inner matrix is referenced.
     name: string, optional name of the operation.
 
@@ -215,7 +215,7 @@ def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
   Args:
-    tensor: `Output` of shape `[..., N, N]`.
+    tensor: `Tensor` of shape `[..., N, N]`.
     name: string, optional name of the operation.
 
   Returns:
@@ -244,7 +244,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   ```
 
   Args:
-    matrix: `Output` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+    matrix: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
       `N`.
     full_matrices: If true, compute full-sized `u` and `v`. If false
       (the default), compute only the leading `P` singular vectors.

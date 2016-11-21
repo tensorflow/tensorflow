@@ -39,7 +39,7 @@ FLAGS = tf.flags.FLAGS
 
 
 PREFIX_TEXT = """
-Note: Functions taking `Output` arguments can also take anything accepted by
+Note: Functions taking `Tensor` arguments can also take anything accepted by
 [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 """
 

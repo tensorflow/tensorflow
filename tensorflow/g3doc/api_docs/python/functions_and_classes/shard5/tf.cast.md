@@ -2,7 +2,7 @@
 
 Casts a tensor to a new type.
 
-The operation casts `x` (in case of `Output`) or `x.values`
+The operation casts `x` (in case of `Tensor`) or `x.values`
 (in case of `SparseTensor`) to `dtype`.
 
 For example:
@@ -15,13 +15,13 @@ tf.cast(a, tf.int32) ==> [1, 2]  # dtype=tf.int32
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`dtype`</b>: The destination type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x`.
+  A `Tensor` or `SparseTensor` with same shape as `x`.
 
 ##### Raises:
 

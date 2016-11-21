@@ -20,9 +20,9 @@ name, with a suffix depending on the max_outputs setting:
 
 *  <b>`name`</b>: A name for the generated node. Will also serve as a series name in
     TensorBoard.
-*  <b>`tensor`</b>: A 3-D `float32` `Output` of shape `[batch_size, frames, channels]`
-    or a 2-D `float32` `Output` of shape `[batch_size, frames]`.
-*  <b>`sample_rate`</b>: A Scalar `float32` `Output` indicating the sample rate of the
+*  <b>`tensor`</b>: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
+    or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
+*  <b>`sample_rate`</b>: A Scalar `float32` `Tensor` indicating the sample rate of the
     signal in hertz.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate audio for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -30,6 +30,6 @@ name, with a suffix depending on the max_outputs setting:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 

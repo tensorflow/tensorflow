@@ -90,9 +90,9 @@ class _Mapping(collections.namedtuple("_Mapping",
     """Custom __new__ so namedtuple items have defaults.
 
     Args:
-      x: `Output`. Forward.
-      y: `Output`. Inverse.
-      ildj: `Output`. Inverse log det Jacobian.
+      x: `Tensor`. Forward.
+      y: `Tensor`. Inverse.
+      ildj: `Tensor`. Inverse log det Jacobian.
       condition_kwargs: Python dictionary. Extra args supplied to
         forward/inverse/etc functions.
 
@@ -118,9 +118,9 @@ class _Mapping(collections.namedtuple("_Mapping",
     """Returns new _Mapping with args merged with self.
 
     Args:
-      x: `Output`. Forward.
-      y: `Output`. Inverse.
-      ildj: `Output`. Inverse log det Jacobian.
+      x: `Tensor`. Forward.
+      y: `Tensor`. Inverse.
+      ildj: `Tensor`. Inverse log det Jacobian.
       condition_kwargs: Python dictionary. Extra args supplied to
         forward/inverse/etc functions.
       mapping: Instance of _Mapping to merge. Can only be specified if no other
@@ -166,7 +166,7 @@ class Bijector(object):
   [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
   bijective, differentiable function. A `Bijector` is used by
   `TransformedDistribution` but can be generally used for transforming a
-  `Distribution` generated `Output`.  A `Bijector` is characterized by three
+  `Distribution` generated `Tensor`.  A `Bijector` is characterized by three
   operations:
 
   1. Forward Evaluation
@@ -258,11 +258,11 @@ class Bijector(object):
   Example of why a `Bijector` needs to understand sample, batch, event
   partitioning:
 
-  - Consider the `Exp` `Bijector` applied to an `Output` which has sample,
-    batch, and event (S, B, E) shape semantics.  Suppose
-    the `Output`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
+  - Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
+    and event (S, B, E) shape semantics.  Suppose
+    the `Tensor`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
 
-    For `Exp`, the shape of the `Output` returned by `forward` and `inverse` is
+    For `Exp`, the shape of the `Tensor` returned by `forward` and `inverse` is
     unchanged, i.e., `[4, 2, 3, 3]`. However the shape returned by
     `inverse_log_det_jacobian` is `[4, 2]` because the Jacobian is a reduction
     over the event dimensions.
@@ -445,7 +445,7 @@ class Bijector(object):
 
   @property
   def dtype(self):
-    """dtype of `Output`s transformable by this distribution."""
+    """dtype of `Tensor`s transformable by this distribution."""
     return self._dtype
 
   @property
@@ -458,15 +458,15 @@ class Bijector(object):
     return input_shape
 
   def forward_event_shape(self, input_shape, name="forward_event_shape"):
-    """Shape of a single sample from a single batch as an `int32` 1D `Output`.
+    """Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
     Args:
-      input_shape: `Output`, `int32` vector indicating event-portion shape
+      input_shape: `Tensor`, `int32` vector indicating event-portion shape
         passed into `forward` function.
       name: name to give to the op
 
     Returns:
-      forward_event_shape: `Output`, `int32` vector indicating event-portion
+      forward_event_shape: `Tensor`, `int32` vector indicating event-portion
         shape after applying `forward`.
     """
     with self._name_scope(name, [input_shape]):
@@ -498,15 +498,15 @@ class Bijector(object):
     return output_shape
 
   def inverse_event_shape(self, output_shape, name="inverse_event_shape"):
-    """Shape of a single sample from a single batch as an `int32` 1D `Output`.
+    """Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
     Args:
-      output_shape: `Output`, `int32` vector indicating event-portion shape
+      output_shape: `Tensor`, `int32` vector indicating event-portion shape
         passed into `inverse` function.
       name: name to give to the op
 
     Returns:
-      inverse_event_shape: `Output`, `int32` vector indicating event-portion
+      inverse_event_shape: `Tensor`, `int32` vector indicating event-portion
         shape after applying `inverse`.
     """
     with self._name_scope(name, [output_shape]):
@@ -541,12 +541,12 @@ class Bijector(object):
     """Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
     Args:
-      x: `Output`. The input to the "forward" evaluation.
+      x: `Tensor`. The input to the "forward" evaluation.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      `Output`.
+      `Tensor`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `x.dtype` is not
@@ -571,12 +571,12 @@ class Bijector(object):
     """Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
     Args:
-      y: `Output`. The input to the "inverse" evaluation.
+      y: `Tensor`. The input to the "inverse" evaluation.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      `Output`.
+      `Tensor`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
@@ -623,12 +623,12 @@ class Bijector(object):
     Note that `forward_log_det_jacobian` is the negative of this function.
 
     Args:
-      y: `Output`. The input to the "inverse" Jacobian evaluation.
+      y: `Tensor`. The input to the "inverse" Jacobian evaluation.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      `Output`.
+      `Tensor`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
@@ -679,12 +679,12 @@ class Bijector(object):
     See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
     Args:
-      y: `Output`. The input to the "inverse" Jacobian evaluation.
+      y: `Tensor`. The input to the "inverse" Jacobian evaluation.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      `Output`.
+      `Tensor`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
@@ -715,6 +715,9 @@ class Bijector(object):
         ildj = self._constant_ildj  # Ignore any ildj we may/not have.
       elif self.is_constant_jacobian:
         self._constant_ildj = ildj
+      # We use the mapped version of x, even if we re-computed x above with a
+      # call to self._inverse_and_inverse_log_det_jacobian.  This prevents
+      # re-evaluation of the inverse in a common case.
       x = x if mapping.x is None else mapping.x
       mapping = mapping.merge(x=x, ildj=ildj)
       self._cache(mapping)
@@ -730,12 +733,12 @@ class Bijector(object):
     """Returns both the forward_log_det_jacobian.
 
     Args:
-      x: `Output`. The input to the "forward" Jacobian evaluation.
+      x: `Tensor`. The input to the "forward" Jacobian evaluation.
       name: The name to give this op.
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      `Output`.
+      `Tensor`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
@@ -1186,7 +1189,7 @@ class Exp(Bijector):
     """Instantiates the `Exp` bijector.
 
     Args:
-      event_ndims: Scalar `int32` `Output` indicating the number of dimensions
+      event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
         associated with a particular draw from the distribution.
       validate_args: `Boolean` indicating whether arguments should be checked
         for correctness.
@@ -1276,19 +1279,19 @@ class ScaleAndShift(Bijector):
                name="scale_and_shift"):
     """Instantiates the `ScaleAndShift` bijector.
 
-    This `Bijector` is initialized with `scale` and `shift` `Output`s, giving
+    This `Bijector` is initialized with `scale` and `shift` `Tensors`, giving
     the forward operation:
 
     ```Y = g(X) = matmul(scale, X) + shift```
 
     Args:
-      shift: Numeric `Output`.
-      scale: Numeric `Output` of same `dtype` as `shift`.  If `event_ndims = 0`,
+      shift: Numeric `Tensor`.
+      scale: Numeric `Tensor` of same `dtype` as `shift`.  If `event_ndims = 0`,
         `scale` is treated like a `1x1` matrix or a batch thereof.
         Otherwise, the last two dimensions of `scale` define a matrix.
         `scale` must have non-negative diagonal entries.  The upper triangular
         part of `scale` is ignored, effectively making it lower triangular.
-      event_ndims: Scalar `int32` `Output` indicating the number of dimensions
+      event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
         associated with a particular draw from the distribution.  Must be 0 or 1
       validate_args: `Boolean` indicating whether arguments should be checked
         for correctness.
@@ -1340,12 +1343,12 @@ class ScaleAndShift(Bijector):
     work for, say, the left-hand argument of `batch_matmul`.
 
     Args:
-      scale: `Output`.
-      event_ndims: `Output` (0D, `int32`).
+      scale: `Tensor`.
+      event_ndims: `Tensor` (0D, `int32`).
 
     Returns:
-      scale: `Output` with dims expanded according to [above] table.
-      batch_ndims: `Output` (0D, `int32`).  The ndims of the `batch` portion.
+      scale: `Tensor` with dims expanded according to [above] table.
+      batch_ndims: `Tensor` (0D, `int32`).  The ndims of the `batch` portion.
     """
     ndims = array_ops.rank(scale)
     left = math_ops.select(
@@ -1394,7 +1397,7 @@ class ScaleAndShift(Bijector):
 
   def _forward(self, x):
     x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
-    x = math_ops.batch_matmul(self.scale, x)
+    x = math_ops.matmul(self.scale, x)
     x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
     x += self.shift
     return x
@@ -1471,7 +1474,7 @@ class Softplus(Bijector):
     # ==> dX/dY = exp{Y} / (exp{Y} - 1)
     #           = 1 / (1 - exp{-Y}),
     # which is the most stable for large Y > 0.  For small Y, we use
-    # 1 - exp{-Y] approx Y.
+    # 1 - exp{-Y} approx Y.
     if self.shaper is None:
       raise ValueError("Jacobian cannot be computed with unknown event_ndims")
     _, _, event_dims = self.shaper.get_dims(y)
@@ -1744,7 +1747,7 @@ class CholeskyOuterProduct(Bijector):
     """Instantiates the `CholeskyOuterProduct` bijector.
 
     Args:
-      event_ndims: `constant` `int32` scalar `Output` indicating the number of
+      event_ndims: `constant` `int32` scalar `Tensor` indicating the number of
         dimensions associated with a particular draw from the distribution. Must
         be 0 or 2.
       validate_args: `Boolean` indicating whether arguments should be checked
@@ -1776,7 +1779,7 @@ class CholeskyOuterProduct(Bijector):
       x = control_flow_ops.with_dependencies([is_matrix, is_square], x)
     # For safety, explicitly zero-out the upper triangular part.
     x = array_ops.matrix_band_part(x, -1, 0)
-    return math_ops.batch_matmul(x, x, adj_y=True)
+    return math_ops.matmul(x, x, adjoint_b=True)
 
   def _inverse_and_inverse_log_det_jacobian(self, y):
     x = (math_ops.sqrt(y) if self._static_event_ndims == 0
@@ -1855,8 +1858,7 @@ class CholeskyOuterProduct(Bijector):
         dim=1)
 
     sum_weighted_log_diag = array_ops.squeeze(
-        math_ops.batch_matmul(math_ops.log(diag), exponents),
-        squeeze_dims=-1)
+        math_ops.matmul(math_ops.log(diag), exponents), squeeze_dims=-1)
     fldj = p * math.log(2.) + sum_weighted_log_diag
 
     if x.get_shape().ndims is not None:

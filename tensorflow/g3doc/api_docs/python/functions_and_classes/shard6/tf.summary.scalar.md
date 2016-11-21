@@ -15,7 +15,7 @@ The generated Summary has a Tensor.proto containing the input Tensor.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. Which contains a `Summary` protobuf.
+  A scalar `Tensor` of type `string`. Which contains a `Summary` protobuf.
 
 ##### Raises:
 

@@ -387,5 +387,4 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   }
 
   onResize(newWidth: number, newHeight: number) {}
-  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

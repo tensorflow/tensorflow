@@ -8,9 +8,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Output`.
+*  <b>`ref`</b>: A mutable `Tensor`.
     Should be from a `Variable` node. May be uninitialized.
-*  <b>`value`</b>: A `Output`. Must have the same type as `ref`.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be assigned to the variable.
 *  <b>`validate_shape`</b>: An optional `bool`. Defaults to `True`.
     If true, the operation will validate that the shape

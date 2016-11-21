@@ -161,7 +161,7 @@ def _monitored_train(graph,
       one is extracted from the graph using the same logic as in `Supervisor`.
     init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
       default.
-    init_feed_dict: A dictionary that maps `Output` objects to feed values.
+    init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
       This feed dictionary will be used when `init_op` is evaluated.
     init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
@@ -348,7 +348,7 @@ def train(graph,
       one is extracted from the graph using the same logic as in `Supervisor`.
     init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
       default.
-    init_feed_dict: A dictionary that maps `Output` objects to feed values.
+    init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
       This feed dictionary will be used when `init_op` is evaluated.
     init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
@@ -662,7 +662,7 @@ def evaluate(graph,
   """Evaluate a model loaded from a checkpoint.
 
   Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
-  to restore variables from, and a `dict` of `Output`s to evaluate, run an eval
+  to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
   loop for `max_steps` steps, or until an exception (generally, an
   end-of-input signal from a reader operation) is raised from running
   `eval_dict`.
@@ -683,7 +683,7 @@ def evaluate(graph,
       returned. If `update_op` is None, then it's evaluated in every step. If
       `max_steps` is `None`, this should depend on a reader that will raise an
       end-of-input exception when the inputs are exhausted.
-    update_op: An `Output` which is run in every step.
+    update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
       Used to place eval summaries on training curves.
@@ -828,7 +828,7 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
   init all variables.
 
   Args:
-    output_dict: A `dict` mapping string names to `Output` objects to run.
+    output_dict: A `dict` mapping string names to `Tensor` objects to run.
       Tensors must all be from the same graph.
     feed_dicts: Iterable of `dict` objects of input values to feed.
     restore_checkpoint_path: A string containing the path to a checkpoint to
@@ -837,7 +837,7 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
   Yields:
     A sequence of dicts of values read from `output_dict` tensors, one item
     yielded for each item in `feed_dicts`. Keys are the same as `output_dict`,
-    values are the results read from the corresponding `Output` in
+    values are the results read from the corresponding `Tensor` in
     `output_dict`.
 
   Raises:
@@ -886,13 +886,13 @@ def infer(restore_checkpoint_path, output_dict, feed_dict=None):
   Args:
     restore_checkpoint_path: A string containing the path to a checkpoint to
       restore.
-    output_dict: A `dict` mapping string names to `Output` objects to run.
+    output_dict: A `dict` mapping string names to `Tensor` objects to run.
       Tensors must all be from the same graph.
-    feed_dict: `dict` object mapping `Output` objects to input values to feed.
+    feed_dict: `dict` object mapping `Tensor` objects to input values to feed.
 
   Returns:
     Dict of values read from `output_dict` tensors. Keys are the same as
-    `output_dict`, values are the results read from the corresponding `Output`
+    `output_dict`, values are the results read from the corresponding `Tensor`
     in `output_dict`.
 
   Raises:

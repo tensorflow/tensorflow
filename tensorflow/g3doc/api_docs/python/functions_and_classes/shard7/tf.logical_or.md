@@ -8,11 +8,11 @@ Returns the truth value of x OR y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` of type `bool`.
-*  <b>`y`</b>: An `Output` of type `bool`.
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `bool`.
+  A `Tensor` of type `bool`.
 

@@ -32,7 +32,7 @@ There are a few pre-defined monitors:
  - StopAtStepHook: Request stop based on global_step
  - CheckpointSaverHook: saves checkpoint
  - LoggingTensorHook: outputs one or more tensor values to log
- - NanTensorHook: Request stop if given `Output` contains Nans.
+ - NanTensorHook: Request stop if given `Tensor` contains Nans.
  - SummarySaverHook: saves summaries to a summary writer
 
 For more specific needs, you can create custom hooks:

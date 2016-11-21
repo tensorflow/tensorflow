@@ -17,7 +17,7 @@ bivariate beta function.
 ##### Args:
 
 
-*  <b>`x`</b>: A rank `n + 1` `Output` with type `float`, or `double`.
+*  <b>`x`</b>: A rank `n + 1` `Tensor` with type `float`, or `double`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

@@ -28,7 +28,7 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 ##### Args:
 
 
-*  <b>`condition`</b>: An `Output` of type `bool`
+*  <b>`condition`</b>: A `Tensor` of type `bool`
 *  <b>`x`</b>: A Tensor which may have the same shape as `condition`. If `condition` is
     rank 1, `x` may have higher rank, but its first dimension must match the
     size of `condition`.
@@ -37,8 +37,8 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 
 ##### Returns:
 
-  An `Output` with the same type and shape as `x`, `y` if they are non-None.
-  An `Output` with shape `(num_true, dim_size(condition))`.
+  A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
+  A `Tensor` with shape `(num_true, dim_size(condition))`.
 
 ##### Raises:
 

@@ -8,7 +8,7 @@ window in `value`.
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Output` of shape `[batch, height, width, channels]` and type
+*  <b>`value`</b>: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
     `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
 *  <b>`ksize`</b>: A list of ints that has length >= 4.
     The size of the window for each dimension of the input tensor.
@@ -22,6 +22,5 @@ window in `value`.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.  The average pooled output
-  tensor.
+  A `Tensor` with the same type as `value`.  The average pooled output tensor.
 

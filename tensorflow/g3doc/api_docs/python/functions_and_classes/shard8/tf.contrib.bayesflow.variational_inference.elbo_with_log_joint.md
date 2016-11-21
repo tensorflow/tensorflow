@@ -10,7 +10,7 @@ Because only the joint is specified, analytic KL is not available.
 ##### Args:
 
 
-*  <b>`log_joint`</b>: `Output` log p(x, Z).
+*  <b>`log_joint`</b>: `Tensor` log p(x, Z).
 *  <b>`variational`</b>: list of `StochasticTensor` q(Z). If `None`, defaults to all
     `StochasticTensor` objects upstream of `log_joint`.
 *  <b>`keep_batch_dim`</b>: bool. Whether to keep the batch dimension when summing
@@ -22,7 +22,7 @@ Because only the joint is specified, analytic KL is not available.
 
 ##### Returns:
 
-  `Output` ELBO of the same type and shape as `log_joint`.
+  `Tensor` ELBO of the same type and shape as `log_joint`.
 
 ##### Raises:
 

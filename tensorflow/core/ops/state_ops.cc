@@ -516,7 +516,7 @@ REGISTER_OP("ScatterNdUpdate")
 Applies sparse `updates` to individual values or slices within a given
 variable according to `indices`.
 
-`ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -525,7 +525,7 @@ The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `ref`.
 
-`updates` is `Output` of rank `Q-1+P-K` with shape:
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 ```
 [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -573,7 +573,7 @@ REGISTER_OP("ScatterNdAdd")
 Applies sparse addition between `updates` and individual values or slices
 within a given variable according to `indices`.
 
-`ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -582,7 +582,7 @@ The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `ref`.
 
-`updates` is `Output` of rank `Q-1+P-K` with shape:
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 ```
 [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -630,7 +630,7 @@ REGISTER_OP("ScatterNdSub")
 Applies sparse subtraction between `updates` and individual values or slices
 within a given variable according to `indices`.
 
-`ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `ref`.
 It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -639,7 +639,7 @@ The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `ref`.
 
-`updates` is `Output` of rank `Q-1+P-K` with shape:
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 ```
 [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -690,7 +690,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 //         R"doc(Applies sparse subtraction between `updates` and individual
 //         values or slices within a given variable according to `indices`.
 
-// `ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 // `indices` must be integer tensor, containing indices into `ref`.
 // It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -699,7 +699,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 // indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 // dimension of `ref`.
 
-// `updates` is `Output` of rank `Q-1+P-K` with shape:
+// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 // ```
 // [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
@@ -746,7 +746,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 //         R"doc(Applies sparse subtraction between `updates` and individual
 //         values or slices within a given variable according to `indices`.
 
-// `ref` is an `Output` with rank `P` and `indices` is an `Output` of rank `Q`.
+// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 // `indices` must be integer tensor, containing indices into `ref`.
 // It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
@@ -755,7 +755,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 // indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 // dimension of `ref`.
 
-// `updates` is `Output` of rank `Q-1+P-K` with shape:
+// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
 // ```
 // [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].

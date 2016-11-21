@@ -36,15 +36,15 @@ size 1.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
-*  <b>`axis`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     0-D (scalar). Specifies the axisension index at which to
     expand the shape of `input`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   Contains the same data as `input`, but its shape has an additional
   axisension of size 1 added.
 

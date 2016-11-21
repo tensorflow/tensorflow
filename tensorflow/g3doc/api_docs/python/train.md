@@ -106,7 +106,7 @@ of using this function.
 ##### Args:
 
 
-*  <b>`loss`</b>: An `Output` containing the value to minimize.
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
 *  <b>`global_step`</b>: Optional `Variable` to increment by one after the
     variables have been updated.
 *  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
@@ -119,7 +119,7 @@ of using this function.
 *  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
     the corresponding op.
 *  <b>`name`</b>: Optional name for the returned operation.
-*  <b>`grad_loss`</b>: Optional. An `Output` holding the gradient computed for `loss`.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
 
 ##### Returns:
 
@@ -140,7 +140,7 @@ Compute gradients of `loss` for the variables in `var_list`.
 
 This is the first part of `minimize()`.  It returns a list
 of (gradient, variable) pairs where "gradient" is the gradient
-for "variable".  Note that "gradient" can be an `Output`, an
+for "variable".  Note that "gradient" can be a `Tensor`, an
 `IndexedSlices`, or `None` if there is no gradient for the
 given variable.
 
@@ -157,7 +157,7 @@ given variable.
     Valid values are defined in the class `AggregationMethod`.
 *  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
     the corresponding op.
-*  <b>`grad_loss`</b>: Optional. An `Output` holding the gradient computed for `loss`.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
 
 ##### Returns:
 
@@ -326,9 +326,9 @@ Construct a new Adadelta optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value. The learning rate.
-*  <b>`rho`</b>: An `Output` or a floating point value. The decay rate.
-*  <b>`epsilon`</b>: An `Output` or a floating point value.  A constant epsilon used
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value. The learning rate.
+*  <b>`rho`</b>: A `Tensor` or a floating point value. The decay rate.
+*  <b>`epsilon`</b>: A `Tensor` or a floating point value.  A constant epsilon used
            to better conditioning the grad update.
 *  <b>`use_locking`</b>: If `True` use locks for update operations.
 *  <b>`name`</b>: Optional name prefix for the operations created when applying
@@ -353,7 +353,7 @@ Construct a new Adagrad optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value.  The learning rate.
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value.  The learning rate.
 *  <b>`initial_accumulator_value`</b>: A floating point value.
     Starting value for the accumulators, must be positive.
 *  <b>`use_locking`</b>: If `True` use locks for update operations.
@@ -393,8 +393,8 @@ Construct a new AdagradDA optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value.  The learning rate.
-*  <b>`global_step`</b>: An `Output` containing the current training step number.
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value.  The learning rate.
+*  <b>`global_step`</b>: A `Tensor` containing the current training step number.
 *  <b>`initial_gradient_squared_accumulator_value`</b>: A floating point value.
     Starting value for the accumulators, must be positive.
 *  <b>`l1_regularization_strength`</b>: A float value, must be greater than or
@@ -428,8 +428,8 @@ Construct a new Momentum optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value.  The learning rate.
-*  <b>`momentum`</b>: An `Output` or a floating point value.  The momentum.
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value.  The learning rate.
+*  <b>`momentum`</b>: A `Tensor` or a floating point value.  The momentum.
 *  <b>`use_locking`</b>: If `True` use locks for update operations.
 *  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients.  Defaults to "Momentum".
@@ -512,7 +512,7 @@ Construct a new FTRL optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A float value or a constant float `Output`.
+*  <b>`learning_rate`</b>: A float value or a constant float `Tensor`.
 *  <b>`learning_rate_power`</b>: A float value, must be less or equal to zero.
 *  <b>`initial_accumulator_value`</b>: The starting value for accumulators.
     Only positive values are allowed.
@@ -577,7 +577,7 @@ Construct a new ProximalAdagrad optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value.  The learning rate.
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value.  The learning rate.
 *  <b>`initial_accumulator_value`</b>: A floating point value.
     Starting value for the accumulators, must be positive.
 *  <b>`l1_regularization_strength`</b>: A float value, must be greater than or
@@ -645,13 +645,13 @@ functions below.
 
 Constructs symbolic partial derivatives of sum of `ys` w.r.t. x in `xs`.
 
-`ys` and `xs` are each an `Output` or a list of tensors.  `grad_ys`
-is a list of `Output`, holding the gradients received by the
+`ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
+is a list of `Tensor`, holding the gradients received by the
 `ys`. The list must be the same length as `ys`.
 
 `gradients()` adds ops to the graph to output the partial
 derivatives of `ys` with respect to `xs`.  It returns a list of
-`Output` of length `len(xs)` where each tensor is the `sum(dy/dx)`
+`Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
 for y in `ys`.
 
 `grad_ys` is a list of tensors of the same length as `ys` that holds
@@ -665,9 +665,9 @@ each y).
 ##### Args:
 
 
-*  <b>`ys`</b>: An `Output` or list of tensors to be differentiated.
-*  <b>`xs`</b>: An `Output` or list of tensors to be used for differentiation.
-*  <b>`grad_ys`</b>: Optional. An `Output` or list of tensors the same size as
+*  <b>`ys`</b>: A `Tensor` or list of tensors to be differentiated.
+*  <b>`xs`</b>: A `Tensor` or list of tensors to be used for differentiation.
+*  <b>`grad_ys`</b>: Optional. A `Tensor` or list of tensors the same size as
     `ys` and holding the gradients computed for each y in `ys`.
 *  <b>`name`</b>: Optional name to use for grouping all the gradient ops together.
     defaults to 'gradients'.
@@ -735,12 +735,12 @@ to pretend that the value was a constant. Some examples include:
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`.
+*  <b>`input`</b>: A `Tensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 
 
 
@@ -751,7 +751,7 @@ to pretend that the value was a constant. Some examples include:
 Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
 `hessians()` adds ops to the graph to output the Hessian matrix of `ys`
-with respect to `xs`.  It returns a list of `Output` of length `len(xs)`
+with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)`
 where each tensor is the Hessian of `sum(ys)`. This function currently
 only supports evaluating the Hessian with respect to (a list of) one-
 dimensional tensors.
@@ -762,8 +762,8 @@ tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
 ##### Args:
 
 
-*  <b>`ys`</b>: An `Output` or list of tensors to be differentiated.
-*  <b>`xs`</b>: An `Output` or list of tensors to be used for differentiation.
+*  <b>`ys`</b>: A `Tensor` or list of tensors to be differentiated.
+*  <b>`xs`</b>: A `Tensor` or list of tensors to be used for differentiation.
 *  <b>`name`</b>: Optional name to use for grouping all the gradient ops together.
     defaults to 'hessians'.
 *  <b>`colocate_gradients_with_ops`</b>: See `gradients()` documentation for details.
@@ -806,14 +806,14 @@ greater than `clip_value_max` are set to `clip_value_max`.
 ##### Args:
 
 
-*  <b>`t`</b>: An `Output`.
-*  <b>`clip_value_min`</b>: A 0-D (scalar) `Output`. The minimum value to clip by.
-*  <b>`clip_value_max`</b>: A 0-D (scalar) `Output`. The maximum value to clip by.
+*  <b>`t`</b>: A `Tensor`.
+*  <b>`clip_value_min`</b>: A 0-D (scalar) `Tensor`. The minimum value to clip by.
+*  <b>`clip_value_max`</b>: A 0-D (scalar) `Tensor`. The maximum value to clip by.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A clipped `Output`.
+  A clipped `Tensor`.
 
 
 - - -
@@ -844,16 +844,16 @@ an optimizer.
 ##### Args:
 
 
-*  <b>`t`</b>: An `Output`.
-*  <b>`clip_norm`</b>: A 0-D (scalar) `Output` > 0. A maximum clipping value.
-*  <b>`axes`</b>: A 1-D (vector) `Output` of type int32 containing the dimensions
+*  <b>`t`</b>: A `Tensor`.
+*  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
+*  <b>`axes`</b>: A 1-D (vector) `Tensor` of type int32 containing the dimensions
     to use for computing the L2-norm. If `None` (the default), uses all
     dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A clipped `Output`.
+  A clipped `Tensor`.
 
 
 - - -
@@ -879,13 +879,13 @@ an optimizer.
 ##### Args:
 
 
-*  <b>`t`</b>: An `Output`.
-*  <b>`clip_norm`</b>: A 0-D (scalar) `Output` > 0. A maximum clipping value.
+*  <b>`t`</b>: A `Tensor`.
+*  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A clipped `Output`.
+  A clipped `Tensor`.
 
 
 - - -
@@ -923,17 +923,17 @@ ready before the clipping operation can be performed.
 ##### Args:
 
 
-*  <b>`t_list`</b>: A tuple or list of mixed `Output`s, `IndexedSlices`, or None.
-*  <b>`clip_norm`</b>: A 0-D (scalar) `Output` > 0. The clipping ratio.
-*  <b>`use_norm`</b>: A 0-D (scalar) `Output` of type `float` (optional). The global
+*  <b>`t_list`</b>: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
+*  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. The clipping ratio.
+*  <b>`use_norm`</b>: A 0-D (scalar) `Tensor` of type `float` (optional). The global
     norm to use. If not provided, `global_norm()` is used to compute the norm.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
 
-*  <b>`list_clipped`</b>: A list of `Output`s of the same type as `list_t`.
-*  <b>`global_norm`</b>: A 0-D (scalar) `Output` representing the global norm.
+*  <b>`list_clipped`</b>: A list of `Tensors` of the same type as `list_t`.
+*  <b>`global_norm`</b>: A 0-D (scalar) `Tensor` representing the global norm.
 
 ##### Raises:
 
@@ -958,12 +958,12 @@ Any entries in `t_list` that are of type None are ignored.
 ##### Args:
 
 
-*  <b>`t_list`</b>: A tuple or list of mixed `Output`s, `IndexedSlices`, or None.
+*  <b>`t_list`</b>: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A 0-D (scalar) `Output` of type `float`.
+  A 0-D (scalar) `Tensor` of type `float`.
 
 ##### Raises:
 
@@ -1013,13 +1013,13 @@ learning_step = (
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The initial learning rate.
-*  <b>`global_step`</b>: A scalar `int32` or `int64` `Output` or a Python number.
+*  <b>`global_step`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
     Global step to use for the decay computation.  Must not be negative.
-*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Output` or a Python number.
+*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
     Must be positive.  See the decay computation above.
-*  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  If `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
@@ -1027,7 +1027,7 @@ learning_step = (
 
 ##### Returns:
 
-  A scalar `Output` of the same type as `learning_rate`.  The decayed
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
 
 ##### Raises:
@@ -1073,7 +1073,7 @@ learning_step = (
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The initial learning rate.
 *  <b>`global_step`</b>: A Python number.
     Global step to use for the decay computation.  Must not be negative.
@@ -1086,7 +1086,7 @@ learning_step = (
 
 ##### Returns:
 
-  A scalar `Output` of the same type as `learning_rate`.  The decayed
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
 
 ##### Raises:
@@ -1132,7 +1132,7 @@ learning_step = (
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The initial learning rate.
 *  <b>`global_step`</b>: A Python number.
     Global step to use for the decay computation.  Must not be negative.
@@ -1145,7 +1145,7 @@ learning_step = (
 
 ##### Returns:
 
-  A scalar `Output` of the same type as `learning_rate`.  The decayed
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
 
 ##### Raises:
@@ -1175,11 +1175,11 @@ learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
 ##### Args:
 
 
-*  <b>`x`</b>: A 0-D scalar `Output`. Must be one of the following types: `float32`,
+*  <b>`x`</b>: A 0-D scalar `Tensor`. Must be one of the following types: `float32`,
     `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
-*  <b>`boundaries`</b>: A list of `Output`s or `int`s or `float`s with strictly
+*  <b>`boundaries`</b>: A list of `Tensor`s or `int`s or `float`s with strictly
     increasing entries, and with all elements having the same type as `x`.
-*  <b>`values`</b>: A list of `Output`s or float`s or `int`s that specifies the values
+*  <b>`values`</b>: A list of `Tensor`s or float`s or `int`s that specifies the values
     for the intervals defined by `boundaries`. It should have one more element
     than `boundaries`, and all elements should have the same type.
 *  <b>`name`</b>: A string. Optional name of the operation. Defaults to
@@ -1254,15 +1254,15 @@ learning_step = (
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The initial learning rate.
-*  <b>`global_step`</b>: A scalar `int32` or `int64` `Output` or a Python number.
+*  <b>`global_step`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
     Global step to use for the decay computation.  Must not be negative.
-*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Output` or a Python number.
+*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
     Must be positive.  See the decay computation above.
-*  <b>`end_learning_rate`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`end_learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The minimal end learning rate.
-*  <b>`power`</b>: A scalar `float32` or `float64` `Output` or a
+*  <b>`power`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The power of the polynomial. Defaults to sqrt, i.e. 0.5.
 *  <b>`cycle`</b>: A boolean, whether or not it should cycle beyond decay_steps.
 *  <b>`name`</b>: String.  Optional name of the operation. Defaults to
@@ -1270,7 +1270,7 @@ learning_step = (
 
 ##### Returns:
 
-  A scalar `Output` of the same type as `learning_rate`.  The decayed
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
 
 ##### Raises:
@@ -1402,11 +1402,11 @@ move faster.  If passed, the actual decay rate used is:
 
 Maintains moving averages of variables.
 
-`var_list` must be a list of `Variable` or `Output` objects.  This method
+`var_list` must be a list of `Variable` or `Tensor` objects.  This method
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
 They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-For `Output` objects, the shadow variables are initialized to 0 and zero
+For `Tensor` objects, the shadow variables are initialized to 0 and zero
 debiased (see docstring in `assign_moving_average` for more details).
 
 shadow variables are created with `trainable=False` and added to the
@@ -2335,12 +2335,12 @@ Create a `Supervisor`.
     default `Graph`.  The supervisor may add operations to the graph before
     creating a session, but the graph should not be modified by the caller
     after passing it to the supervisor.
-*  <b>`ready_op`</b>: 1-D string `Output`.  This tensor is evaluated by supervisors in
+*  <b>`ready_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by supervisors in
     `prepare_or_wait_for_session()` to check if the model is ready to use.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from `tf.report_uninitialized_variables()`  If
     `None`, the model is not checked for readiness.
-*  <b>`ready_for_local_init_op`</b>: 1-D string `Output`.  This tensor is evaluated by
+*  <b>`ready_for_local_init_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by
     supervisors in `prepare_or_wait_for_session()` to check if the model is
     ready to run the local_init_op.
     The model is considered ready if it returns an empty array.  Defaults to
@@ -2354,7 +2354,7 @@ Create a `Supervisor`.
     when it can not be recovered.  Defaults to an `Operation` that
     initializes all variables.  If `None`, no initialization is done
     automatically unless you pass a value for `init_fn`, see below.
-*  <b>`init_feed_dict`</b>: A dictionary that maps `Output` objects to feed values.
+*  <b>`init_feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     This feed dictionary will be used when `init_op` is evaluated.
 *  <b>`local_init_op`</b>: `Operation`. Used by all supervisors to run initializations
     that should run for every new supervisor instance. By default these
@@ -3149,7 +3149,7 @@ or `init_fn` or `local_init_op` are passed.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
-*  <b>`init_feed_dict`</b>: Optional dictionary that maps `Output` objects to feed
+*  <b>`init_feed_dict`</b>: Optional dictionary that maps `Tensor` objects to feed
     values.  This feed dictionary is passed to the session `run()` call when
     running the init op.
 *  <b>`init_fn`</b>: Optional callable used to initialize the model. Called after the
@@ -3906,7 +3906,7 @@ summary has a summary value for each tag-value pair in `tags` and `values`.
 ##### Args:
 
 
-*  <b>`tags`</b>: A `string` `Output`.  Tags for the summaries.
+*  <b>`tags`</b>: A `string` `Tensor`.  Tags for the summaries.
 *  <b>`values`</b>: A real numeric Tensor.  Values for the summaries.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
@@ -3914,7 +3914,7 @@ summary has a summary value for each tag-value pair in `tags` and `values`.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -3944,7 +3944,7 @@ normalization algorithms:
    is at 127.  They are then rescaled so that either the smallest value is 0,
    or the largest one is 255.
 
-The `tag` argument is a scalar `Output` of type `string`.  It is used to
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
 build the `tag` of the summary values:
 
 *  If `max_images` is 1, the summary value tag is '*tag*/image'.
@@ -3954,9 +3954,9 @@ build the `tag` of the summary values:
 ##### Args:
 
 
-*  <b>`tag`</b>: A scalar `Output` of type `string`. Used to build the `tag`
+*  <b>`tag`</b>: A scalar `Tensor` of type `string`. Used to build the `tag`
     of the summary values.
-*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Output` of shape `[batch_size, height,
+*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
     width, channels]` where `channels` is 1, 3, or 4.
 *  <b>`max_images`</b>: Max number of batch elements to generate images for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -3965,7 +3965,7 @@ build the `tag` of the summary values:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -3981,7 +3981,7 @@ frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
 assumed to be in the range of `[-1.0, 1.0]` with a sample rate of
 `sample_rate`.
 
-The `tag` argument is a scalar `Output` of type `string`.  It is used to
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
 build the `tag` of the summary values:
 
 *  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
@@ -3991,11 +3991,11 @@ build the `tag` of the summary values:
 ##### Args:
 
 
-*  <b>`tag`</b>: A scalar `Output` of type `string`. Used to build the `tag`
+*  <b>`tag`</b>: A scalar `Tensor` of type `string`. Used to build the `tag`
     of the summary values.
-*  <b>`tensor`</b>: A 3-D `float32` `Output` of shape `[batch_size, frames, channels]`
-    or a 2-D `float32` `Output` of shape `[batch_size, frames]`.
-*  <b>`sample_rate`</b>: A Scalar `float32` `Output` indicating the sample rate of the
+*  <b>`tensor`</b>: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
+    or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
+*  <b>`sample_rate`</b>: A Scalar `float32` `Tensor` indicating the sample rate of the
     signal in hertz.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate audio for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
@@ -4004,7 +4004,7 @@ build the `tag` of the summary values:
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -4023,8 +4023,8 @@ This op reports an `InvalidArgument` error if any value is not finite.
 ##### Args:
 
 
-*  <b>`tag`</b>: A `string` `Output`. 0-D.  Tag to use for the summary value.
-*  <b>`values`</b>: A real numeric `Output`. Any shape. Values to use to
+*  <b>`tag`</b>: A `string` `Tensor`. 0-D.  Tag to use for the summary value.
+*  <b>`values`</b>: A real numeric `Tensor`. Any shape. Values to use to
     build the histogram.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
@@ -4032,7 +4032,7 @@ This op reports an `InvalidArgument` error if any value is not finite.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer.
 
 
@@ -4080,7 +4080,7 @@ in the summaries to merge use the same tag.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of `string` `Output` objects containing serialized `Summary`
+*  <b>`inputs`</b>: A list of `string` `Tensor` objects containing serialized `Summary`
     protocol buffers.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
@@ -4088,7 +4088,7 @@ in the summaries to merge use the same tag.
 
 ##### Returns:
 
-  A scalar `Output` of type `string`. The serialized `Summary` protocol
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
   buffer resulting from the merging.
 
 
@@ -4107,7 +4107,7 @@ Merges all summaries collected in the default graph.
 ##### Returns:
 
   If no summaries were collected, returns None.  Otherwise returns a scalar
-  `Output` of type `string` containing the serialized `Summary` protocol
+  `Tensor` of type `string` containing the serialized `Summary` protocol
   buffer resulting from the merging.
 
 
@@ -4187,7 +4187,7 @@ and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
 [`Session.run()`](client.md#Session.run) or
-[`Output.eval()`](framework.md#Output.eval), to this
+[`Tensor.eval()`](framework.md#Tensor.eval), to this
 function. Alternatively, you can pass a `tf.Summary` protocol
 buffer that you populate with your own data. The latter is
 commonly done to report evaluation results in event files.
@@ -4414,7 +4414,7 @@ global_step: 10
 
 
 *  <b>`sess`</b>: A TensorFlow `Session` object.
-*  <b>`global_step_tensor`</b>: `Output` or the `name` of the operation that contains
+*  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
     the global step.
 
 ##### Returns:
@@ -4478,12 +4478,12 @@ in the collection `GLOBAL_STEP`, or by name `global_step:0`.
 
 ### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
-Asserts `global_step_tensor` is a scalar int `Variable` or `Output`.
+Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
 ##### Args:
 
 
-*  <b>`global_step_tensor`</b>: `Output` to test.
+*  <b>`global_step_tensor`</b>: `Tensor` to test.
 
 
 - - -
@@ -4878,7 +4878,7 @@ Initializes NanLoss monitor.
 ##### Args:
 
 
-*  <b>`loss_tensor`</b>: `Output`, the loss tensor.
+*  <b>`loss_tensor`</b>: `Tensor`, the loss tensor.
 *  <b>`fail_on_nan_loss`</b>: `bool`, whether to raise exception when loss is NaN.
 
 
@@ -4947,7 +4947,7 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_writer`</b>: `SummaryWriter`. If `None` and an `output_dir` was passed,
       one will be created accordingly.
 *  <b>`scaffold`</b>: `Scaffold` to get summary_op if it's not provided.
-*  <b>`summary_op`</b>: `Output` of type `string`. A serialized `Summary` protocol
+*  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
       buffer, as output by TF summary methods like `tf.summary.scalar` or
       `tf.summary.merge_all`.
 

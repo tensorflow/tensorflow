@@ -114,7 +114,7 @@ or `init_fn` or `local_init_op` are passed.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
-*  <b>`init_feed_dict`</b>: Optional dictionary that maps `Output` objects to feed
+*  <b>`init_feed_dict`</b>: Optional dictionary that maps `Tensor` objects to feed
     values.  This feed dictionary is passed to the session `run()` call when
     running the init op.
 *  <b>`init_fn`</b>: Optional callable used to initialize the model. Called after the

@@ -16,10 +16,10 @@ numbers of bins and comparing results.
 ##### Args:
 
 
-*  <b>`boolean_labels`</b>: 1-D boolean `Output`.  Entry is `True` if the corresponding
+*  <b>`boolean_labels`</b>: 1-D boolean `Tensor`.  Entry is `True` if the corresponding
     record is in class.
-*  <b>`scores`</b>: 1-D numeric `Output`, same shape as boolean_labels.
-*  <b>`score_range`</b>: `Output` of shape `[2]`, same dtype as `scores`.  The min/max
+*  <b>`scores`</b>: 1-D numeric `Tensor`, same shape as boolean_labels.
+*  <b>`score_range`</b>: `Tensor` of shape `[2]`, same dtype as `scores`.  The min/max
     values of score that we expect.  Scores outside range will be clipped.
 *  <b>`nbins`</b>: Integer number of bins to use.  Accuracy strictly increases as the
     number of bins increases.
@@ -32,7 +32,7 @@ numbers of bins and comparing results.
 ##### Returns:
 
 
-*  <b>`auc`</b>: `float32` scalar `Output`.  Fetching this converts internal histograms
+*  <b>`auc`</b>: `float32` scalar `Tensor`.  Fetching this converts internal histograms
     to auc value.
 *  <b>`update_op`</b>: `Op`, when run, updates internal histograms.
 

@@ -11,9 +11,9 @@ Our Conv3D implements a form of cross-correlation.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-*  <b>`filter`</b>: A `Output`. Must have the same type as `input`.
+*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
     Shape `[filter_depth, filter_height, filter_width, in_channels,
     out_channels]`. `in_channels` must match between `input` and `filter`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
@@ -25,5 +25,5 @@ Our Conv3D implements a form of cross-correlation.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 

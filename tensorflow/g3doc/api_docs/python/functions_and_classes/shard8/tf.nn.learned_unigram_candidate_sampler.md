@@ -29,7 +29,7 @@ compute them approximately.
 ##### Args:
 
 
-*  <b>`true_classes`</b>: An `Output` of type `int64` and shape `[batch_size,
+*  <b>`true_classes`</b>: A `Tensor` of type `int64` and shape `[batch_size,
     num_true]`. The target classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.

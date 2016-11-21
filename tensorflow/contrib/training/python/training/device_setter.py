@@ -77,7 +77,7 @@ def byte_size_load_fn(op):
   """Load function that computes the byte size of a single-output `Operation`.
 
   This is intended to be used with `"Variable"` ops, which have a single
-  `Output` output with the contents of the variable.  However, it can also be
+  `Tensor` output with the contents of the variable.  However, it can also be
   used for calculating the size of any op that has a single output.
 
   Intended to be used with `GreedyLoadBalancingStrategy`.
@@ -86,7 +86,7 @@ def byte_size_load_fn(op):
     op: An `Operation` with a single output, typically a "Variable" op.
 
   Returns:
-    The number of bytes in the output `Output`.
+    The number of bytes in the output `Tensor`.
 
   Raises:
     ValueError: if `op` does not have a single output, or if the shape of the

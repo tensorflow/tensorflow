@@ -5,7 +5,7 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Output`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 *  <b>`ksizes`</b>: A list of `ints` that has length `>= 4`.
     The size of the sliding window for each dimension of `images`.
@@ -33,7 +33,7 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 
 ##### Returns:
 
-  A `Output`. Has the same type as `images`.
+  A `Tensor`. Has the same type as `images`.
   4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
   ksize_cols * depth]` containing image patches with size
   `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension.

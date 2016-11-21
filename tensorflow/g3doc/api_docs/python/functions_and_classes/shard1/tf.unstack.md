@@ -23,7 +23,7 @@ This is the opposite of pack.  The numpy equivalent is
 ##### Args:
 
 
-*  <b>`value`</b>: A rank `R > 0` `Output` to be unstacked.
+*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unstacked.
 *  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
     if `None` (the default).
 *  <b>`axis`</b>: An `int`. The axis to unstack along. Defaults to the first
@@ -32,7 +32,7 @@ This is the opposite of pack.  The numpy equivalent is
 
 ##### Returns:
 
-  The list of `Output` objects unstacked from `value`.
+  The list of `Tensor` objects unstacked from `value`.
 
 ##### Raises:
 

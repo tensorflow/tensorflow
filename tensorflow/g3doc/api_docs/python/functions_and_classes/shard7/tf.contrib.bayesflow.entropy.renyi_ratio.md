@@ -77,20 +77,20 @@ of the estimator increases.
 
 #### Call signature
 
-User supplies either `Output` of samples `z`, or number of samples to draw `n`
+User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
 ##### Args:
 
 
-*  <b>`log_p`</b>: Callable mapping samples from `q` to `Output`s with
+*  <b>`log_p`</b>: Callable mapping samples from `q` to `Tensors` with
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
 *  <b>`q`</b>: `tf.contrib.distributions.Distribution`.
      `float64` `dtype` recommended.
      `log_p` and `q` should be supported on the same set.
-*  <b>`alpha`</b>: `Output` with shape `q.batch_shape` and values not equal to 1.
-*  <b>`z`</b>: `Output` of samples from `q`, produced by `q.sample_n`.
-*  <b>`n`</b>: Integer `Output`.  The number of samples to use if `z` is not provided.
+*  <b>`alpha`</b>: `Tensor` with shape `q.batch_shape` and values not equal to 1.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`n`</b>: Integer `Tensor`.  The number of samples to use if `z` is not provided.
     Note that this can be highly biased for small `n`, see docstring.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`name`</b>: A name to give this `Op`.
@@ -98,6 +98,6 @@ User supplies either `Output` of samples `z`, or number of samples to draw `n`
 ##### Returns:
 
 
-*  <b>`renyi_result`</b>: The scaled log of sample mean.  `Output` with `shape` equal
+*  <b>`renyi_result`</b>: The scaled log of sample mean.  `Tensor` with `shape` equal
     to batch shape of `q`, and `dtype` = `q.dtype`.
 

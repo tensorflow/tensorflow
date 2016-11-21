@@ -27,15 +27,15 @@ idx ==> [1, 3, 5]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. 1-D. Values to keep.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
 *  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A tuple of `Output` objects (out, idx).
+  A tuple of `Tensor` objects (out, idx).
 
-*  <b>`out`</b>: A `Output`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Output` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 

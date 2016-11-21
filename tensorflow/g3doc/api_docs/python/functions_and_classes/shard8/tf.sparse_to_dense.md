@@ -25,14 +25,14 @@ are checked during execution.
 ##### Args:
 
 
-*  <b>`sparse_indices`</b>: A 0-D, 1-D, or 2-D `Output` of type `int32` or `int64`.
+*  <b>`sparse_indices`</b>: A 0-D, 1-D, or 2-D `Tensor` of type `int32` or `int64`.
     `sparse_indices[i]` contains the complete index where `sparse_values[i]`
     will be placed.
-*  <b>`output_shape`</b>: A 1-D `Output` of the same type as `sparse_indices`.  Shape
+*  <b>`output_shape`</b>: A 1-D `Tensor` of the same type as `sparse_indices`.  Shape
     of the dense output tensor.
-*  <b>`sparse_values`</b>: A 0-D or 1-D `Output`.  Values corresponding to each row of
+*  <b>`sparse_values`</b>: A 0-D or 1-D `Tensor`.  Values corresponding to each row of
     `sparse_indices`, or a scalar value to be used for all sparse indices.
-*  <b>`default_value`</b>: A 0-D `Output` of the same type as `sparse_values`.  Value
+*  <b>`default_value`</b>: A 0-D `Tensor` of the same type as `sparse_values`.  Value
     to set for indices not specified in `sparse_indices`.  Defaults to zero.
 *  <b>`validate_indices`</b>: A boolean value.  If True, indices are checked to make
     sure they are sorted in lexicographic order and that there are no repeats.
@@ -40,6 +40,6 @@ are checked during execution.
 
 ##### Returns:
 
-  Dense `Output` of shape `output_shape`.  Has the same type as
+  Dense `Tensor` of shape `output_shape`.  Has the same type as
   `sparse_values`.
 

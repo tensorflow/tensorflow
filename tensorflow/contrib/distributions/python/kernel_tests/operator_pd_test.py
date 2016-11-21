@@ -75,7 +75,7 @@ class OperatorSolve(OperatorShape):
   """Operator implements .solve."""
 
   def __init__(self, chol):
-    self._pos_def_matrix = tf.batch_matmul(chol, chol, adj_y=True)
+    self._pos_def_matrix = tf.matmul(chol, chol, adjoint_b=True)
     super(OperatorSolve, self).__init__(chol.shape)
 
   def _solve(self, rhs):

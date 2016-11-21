@@ -9,7 +9,7 @@ The indices in `argmax` are flattened, so that a maximum value at position
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. Must be one of the following types: `float32`, `half`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
     4-D with shape `[batch, height, width, channels]`.  Input to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 4`.
     The size of the window for each dimension of the input tensor.
@@ -23,8 +23,8 @@ The indices in `argmax` are flattened, so that a maximum value at position
 
 ##### Returns:
 
-  A tuple of `Output` objects (output, argmax).
+  A tuple of `Tensor` objects (output, argmax).
 
-*  <b>`output`</b>: A `Output`. Has the same type as `input`. The max pooled output tensor.
-*  <b>`argmax`</b>: A `Output` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`. The max pooled output tensor.
+*  <b>`argmax`</b>: A `Tensor` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
 

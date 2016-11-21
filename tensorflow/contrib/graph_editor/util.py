@@ -210,7 +210,7 @@ def make_list_of_op(ops, check_graph=True, allow_graph=True, ignore_ts=False):
       operation.
     check_graph: if `True` check if all the operations belong to the same graph.
     allow_graph: if `False` a `tf.Graph` cannot be converted.
-    ignore_ts: if True, silently ignore `tf.Output`.
+    ignore_ts: if True, silently ignore `tf.Tensor`.
   Returns:
     A newly created list of `tf.Operation`.
   Raises:
@@ -241,7 +241,7 @@ def get_tensors(graph):
   Args:
     graph: a `tf.Graph`.
   Returns:
-    A list of `tf.Output`.
+    A list of `tf.Tensor`.
   Raises:
     TypeError: if graph is not a `tf.Graph`.
   """
@@ -254,17 +254,17 @@ def get_tensors(graph):
 
 
 def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
-  """Convert ts to a list of `tf.Output`.
+  """Convert ts to a list of `tf.Tensor`.
 
   Args:
-    ts: can be an iterable of `tf.Output`, a `tf.Graph` or a single tensor.
+    ts: can be an iterable of `tf.Tensor`, a `tf.Graph` or a single tensor.
     check_graph: if `True` check if all the tensors belong to the same graph.
     allow_graph: if `False` a `tf.Graph` cannot be converted.
     ignore_ops: if `True`, silently ignore `tf.Operation`.
   Returns:
-    A newly created list of `tf.Output`.
+    A newly created list of `tf.Tensor`.
   Raises:
-    TypeError: if `ts` cannot be converted to a list of `tf.Output` or,
+    TypeError: if `ts` cannot be converted to a list of `tf.Tensor` or,
      if `check_graph` is `True`, if all the ops do not belong to the same graph.
   """
   if isinstance(ts, tf_ops.Graph):
@@ -287,11 +287,11 @@ def get_generating_ops(ts):
   """Return all the generating ops of the tensors in `ts`.
 
   Args:
-    ts: a list of `tf.Output`
+    ts: a list of `tf.Tensor`
   Returns:
     A list of all the generating `tf.Operation` of the tensors in `ts`.
   Raises:
-    TypeError: if `ts` cannot be converted to a list of `tf.Output`.
+    TypeError: if `ts` cannot be converted to a list of `tf.Tensor`.
   """
   ts = make_list_of_t(ts, allow_graph=False)
   return [t.op for t in ts]
@@ -301,11 +301,11 @@ def get_consuming_ops(ts):
   """Return all the consuming ops of the tensors in ts.
 
   Args:
-    ts: a list of `tf.Output`
+    ts: a list of `tf.Tensor`
   Returns:
     A list of all the consuming `tf.Operation` of the tensors in `ts`.
   Raises:
-    TypeError: if ts cannot be converted to a list of `tf.Output`.
+    TypeError: if ts cannot be converted to a list of `tf.Tensor`.
   """
   ts = make_list_of_t(ts, allow_graph=False)
   ops = []
@@ -434,14 +434,14 @@ def make_placeholder_from_tensor(t, scope=None):
   Note that the correct graph scope must be set by the calling function.
 
   Args:
-    t: a `tf.Output` whose name will be used to create the placeholder
+    t: a `tf.Tensor` whose name will be used to create the placeholder
       (see function placeholder_name).
     scope: absolute scope within which to create the placeholder. None
       means that the scope of `t` is preserved. `""` means the root scope.
   Returns:
     A newly created `tf.placeholder`.
   Raises:
-    TypeError: if `t` is not `None` or a `tf.Output`.
+    TypeError: if `t` is not `None` or a `tf.Tensor`.
   """
   return tf_array_ops.placeholder(
       dtype=t.dtype, shape=t.get_shape(), name=placeholder_name(

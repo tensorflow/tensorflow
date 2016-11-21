@@ -12,9 +12,9 @@ Construct a new Adadelta optimizer.
 ##### Args:
 
 
-*  <b>`learning_rate`</b>: An `Output` or a floating point value. The learning rate.
-*  <b>`rho`</b>: An `Output` or a floating point value. The decay rate.
-*  <b>`epsilon`</b>: An `Output` or a floating point value.  A constant epsilon used
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value. The learning rate.
+*  <b>`rho`</b>: A `Tensor` or a floating point value. The decay rate.
+*  <b>`epsilon`</b>: A `Tensor` or a floating point value.  A constant epsilon used
            to better conditioning the grad update.
 *  <b>`use_locking`</b>: If `True` use locks for update operations.
 *  <b>`name`</b>: Optional name prefix for the operations created when applying

@@ -8,10 +8,10 @@ Web-safe means that input must use - and _ instead of + and /.
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output` of type `string`. Base64 strings to decode.
+*  <b>`input`</b>: A `Tensor` of type `string`. Base64 strings to decode.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` of type `string`. Decoded strings.
+  A `Tensor` of type `string`. Decoded strings.
 

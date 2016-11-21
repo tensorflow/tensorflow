@@ -2,9 +2,9 @@ A decorator for registering the gradient function for an op type.
 
 This decorator is only used when defining a new op type. For an op
 with `m` inputs and `n` outputs, the gradient function is a function
-that takes the original `Operation` and `n` `Output` objects
+that takes the original `Operation` and `n` `Tensor` objects
 (representing the gradients with respect to each output of the op),
-and returns `m` `Output` objects (representing the partial gradients
+and returns `m` `Tensor` objects (representing the partial gradients
 with respect to each input of the op).
 
 For example, assuming that operations of type `"Sub"` take two

@@ -5,12 +5,12 @@ Casts a tensor to type `float32`.
 ##### Args:
 
 
-*  <b>`x`</b>: An `Output` or `SparseTensor`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  An `Output` or `SparseTensor` with same shape as `x` with type `float32`.
+  A `Tensor` or `SparseTensor` with same shape as `x` with type `float32`.
 
 ##### Raises:
 

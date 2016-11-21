@@ -5,6 +5,7 @@
 
 Functions for copying elements from one graph to another.
 
+## Other Functions and Classes
 - - -
 
 ### `tf.contrib.copy_graph.copy_op_to_graph(org_instance, to_graph, variables, scope='')` {#copy_op_to_graph}
@@ -34,7 +35,7 @@ scope: A scope for the new `Variable` (default `""`).
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `org_instance` is not an `Operation` or `Output`.
+*  <b>`TypeError`</b>: If `org_instance` is not an `Operation` or `Tensor`.
 
 
 - - -

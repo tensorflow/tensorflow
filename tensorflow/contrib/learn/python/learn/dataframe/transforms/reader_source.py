@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""`ReaderSource` produces `Output`s of keys and values using a `tf.Reader`."""
+"""`ReaderSource` produces `Tensor`s of keys and values using a `tf.Reader`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +24,7 @@ from tensorflow.python.training import input as input_ops
 
 
 class ReaderSource(transform.TensorFlowTransform):
-  """Produces `Output`s of keys and values using a `tf.Reader`."""
+  """Produces `Tensor`s of keys and values using a `tf.Reader`."""
 
   def __init__(self,
                reader_cls,

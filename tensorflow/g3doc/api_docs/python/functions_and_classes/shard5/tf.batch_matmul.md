@@ -2,7 +2,7 @@
 
 Multiplies slices of two tensors in batches.
 
-Multiplies all slices of `Output` `x` and `y` (each slice can be
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
 viewed as an element of a batch), and arranges the individual results
 in a single output tensor of the same batch size. Each of the
 individual slices can optionally be adjointed (to adjoint a matrix
@@ -24,9 +24,9 @@ It is computed as:
 ##### Args:
 
 
-*  <b>`x`</b>: A `Output`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
     3-D or higher with shape `[..., r_x, c_x]`.
-*  <b>`y`</b>: A `Output`. Must have the same type as `x`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
     3-D or higher with shape `[..., r_y, c_y]`.
 *  <b>`adj_x`</b>: An optional `bool`. Defaults to `False`.
     If `True`, adjoint the slices of `x`. Defaults to `False`.
@@ -36,6 +36,6 @@ It is computed as:
 
 ##### Returns:
 
-  A `Output`. Has the same type as `x`.
+  A `Tensor`. Has the same type as `x`.
   3-D or higher with shape `[..., r_o, c_o]`
 

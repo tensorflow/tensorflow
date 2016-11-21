@@ -24,7 +24,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 ##### Args:
 
 
-*  <b>`input`</b>: An `Output`. The `input` to squeeze.
+*  <b>`input`</b>: A `Tensor`. The `input` to squeeze.
 *  <b>`axis`</b>: An optional list of `ints`. Defaults to `[]`.
     If specified, only squeezes the dimensions listed. The dimension
     index starts at 0. It is an error to squeeze a dimension that is not 1.
@@ -33,7 +33,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
 ##### Returns:
 
-  An `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
   Contains the same data as `input`, but has one or more dimensions of
   size 1 removed.
 

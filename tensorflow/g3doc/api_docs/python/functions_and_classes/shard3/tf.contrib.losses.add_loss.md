@@ -5,6 +5,6 @@ Adds a externally defined loss to the collection of losses.
 ##### Args:
 
 
-*  <b>`loss`</b>: A loss `Output`.
+*  <b>`loss`</b>: A loss `Tensor`.
 *  <b>`loss_collection`</b>: Optional collection to add the loss to.
 

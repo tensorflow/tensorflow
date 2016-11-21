@@ -10,9 +10,9 @@ case where both types are quantized.
 ##### Args:
 
 
-*  <b>`value`</b>: An `Output` with type `float`, `double`, `int64`, `int32`, `uint8`,
+*  <b>`value`</b>: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
     `int16`, `int8`, `complex64`, or `complex128`.
-*  <b>`bias`</b>: A 1-D `Output` with size matching the last dimension of `value`.
+*  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
 *  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
@@ -20,5 +20,5 @@ case where both types are quantized.
 
 ##### Returns:
 
-  An `Output` with the same type as `value`.
+  A `Tensor` with the same type as `value`.
 

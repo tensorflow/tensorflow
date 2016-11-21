@@ -112,7 +112,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
       };
 
       if (grid.insert(textBoundingBox, true)) {
-        const text = rc.labelAccessor(index);
+        const text = lrc.labelAccessor(index);
         const fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
         this.gc.font = fontSize + 'px roboto';
 
@@ -176,5 +176,4 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
   setScene(scene: THREE.Scene) {}
   onPickingRender(renderContext: RenderContext) {}
-  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

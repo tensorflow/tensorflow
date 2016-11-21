@@ -85,8 +85,8 @@ def _linear_model_fn(features, labels, mode, params):
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
-    features: `Output` or dict of `Output` (depends on data passed to `fit`).
-    labels: `Output` of shape [batch_size, 1] or [batch_size] labels of
+    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -161,8 +161,8 @@ def sdca_model_fn(features, labels, mode, params):
   """A model_fn for linear models that use the SDCA optimizer.
 
   Args:
-    features: A dict of `Output` keyed by column name.
-    labels: `Output` of shape [batch_size, 1] or [batch_size] labels of
+    features: A dict of `Tensor` keyed by column name.
+    labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -309,7 +309,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     otherwise there will be a `KeyError`:
 
   * if `weight_column_name` is not `None`, a feature with
-    `key=weight_column_name` whose value is an `Output`.
+    `key=weight_column_name` whose value is a `Tensor`.
   * for each `column` in `feature_columns`:
     - if `column` is a `SparseColumn`, a feature with `key=column.name`
       whose `value` is a `SparseTensor`.
@@ -317,7 +317,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       `key` the id column name, the second with `key` the weight column name.
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
-      whose `value` is an `Output`.
+      whose `value` is a `Tensor`.
   """
 
   def __init__(self,  # _joint_weight pylint: disable=invalid-name
@@ -581,7 +581,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     otherwise there will be a KeyError:
 
   * if `weight_column_name` is not `None`:
-    key=weight_column_name, value=an `Output`
+    key=weight_column_name, value=a `Tensor`
   * for column in `feature_columns`:
     - if isinstance(column, `SparseColumn`):
         key=column.name, value=a `SparseTensor`
@@ -589,7 +589,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         {key=id column name, value=a `SparseTensor`,
          key=weight column name, value=a `SparseTensor`}
     - if isinstance(column, `RealValuedColumn`):
-        key=column.name, value=an `Output`
+        key=column.name, value=a `Tensor`
   """
 
   def __init__(self,  # _joint_weights: pylint: disable=invalid-name

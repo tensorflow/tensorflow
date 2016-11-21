@@ -11,12 +11,12 @@ dimension. For example, tiling `[a b c d]` by `[2]` produces
 ##### Args:
 
 
-*  <b>`input`</b>: A `Output`. 1-D or higher.
-*  <b>`multiples`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`input`</b>: A `Tensor`. 1-D or higher.
+*  <b>`multiples`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D. Length must be the same as the number of dimensions in `input`
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `input`.
 

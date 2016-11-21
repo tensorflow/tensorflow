@@ -134,15 +134,15 @@ def _check_rank(value, expected_rank):
 
   Args:
     value: A Tensor, possibly with shape associated shape information.
-    expected_rank: int32 scalar (optionally an `Output`).
+    expected_rank: int32 scalar (optionally a `Tensor`).
 
   Returns:
     new_value: A Tensor matching `value`.  Accessing this tensor tests
-      assertions on its rank.  If expected_rank is not an `Output`, then
+      assertions on its rank.  If expected_rank is not a `Tensor`, then
       new_value's shape's rank has been set.
 
   Raises:
-    ValueError: if `expected_rank` is not an `Output` and the rank of `value`
+    ValueError: if `expected_rank` is not a `Tensor` and the rank of `value`
       is known and is not equal to `expected_rank`.
   """
   assert isinstance(value, ops.Tensor)
@@ -173,15 +173,15 @@ def _check_shape(value, expected_shape):
 
   Args:
     value: A Tensor, possibly with shape associated shape information.
-    expected_shape: a `TensorShape`, list of `int32`, or a vector `Output`.
+    expected_shape: a `TensorShape`, list of `int32`, or a vector `Tensor`.
 
   Returns:
     new_value: A Tensor matching `value`.  Accessing this tensor tests
-      assertions on its shape.  If expected_shape is not an `Output`, then
+      assertions on its shape.  If expected_shape is not a `Tensor`, then
       new_value's shape has been set.
 
   Raises:
-    ValueError: if `expected_shape` is not an `Output` and the shape of `value`
+    ValueError: if `expected_shape` is not a `Tensor` and the shape of `value`
       is known and is not equal to `expected_shape`.
   """
   assert isinstance(value, ops.Tensor)
@@ -221,27 +221,27 @@ def _check_dimensions(value, dimensions, expected_sizes, debug_prefix):
     value: A Tensor, with optional / partial shape associated shape information.
     dimensions: An int list, the dimensions to check.
     expected_sizes: list of mixed ints and int32 scalar tensors.
-      Optionally also a vector `Output`.
+      Optionally also a vector `Tensor`.
     debug_prefix: A string, used for naming ops and printing debugging messages.
 
   Returns:
     new_value: A Tensor matching `value`.  Accessing this tensor tests
-      assertions on its shape.  If expected_sizes is not an `Output`, then
+      assertions on its shape.  If expected_sizes is not a `Tensor`, then
       new_value's shape has been set for all `dimensions[i]` where
-      `expected_sizes[i]` is not an `Output`.
+      `expected_sizes[i]` is not a `Tensor`.
 
   Raises:
     TypeError: if any of the input contains invalid types:
-      if `value` is not an `Output`.
+      if `value` is not a `Tensor`.
       if `dimensions` is not a `list` or `tuple`.
     ValueError: if input has incorrect sizes or inferred shapes do not match:
       if `dimensions` contains repeated dimensions.
-      if `expected_sizes` is not an `Output` and its length does not match that
+      if `expected_sizes` is not a `Tensor` and its length does not match that
         `dimensions`.
       if `value`'s shape has a well-defined rank, and one of the values in
         `dimensions` is equal to or above this rank.
       if `value`'s shape is well defined for some `dimensions[i]`, and
-        `expected_sizes[i]` is not an `Output`, and these two values do
+        `expected_sizes[i]` is not a `Tensor`, and these two values do
         not match.
   """
 
@@ -301,7 +301,7 @@ def _prepare_sequence_inputs(inputs, states):
   Raises:
     ValueError: if the shapes of inputs.context.values(), states.values(),
       or inputs.sequences.values() are not fully defined (with the exception
-      of the dimension of any `Output` in inputs.sequences.values()).
+      of the dimension of any `Tensor` in inputs.sequences.values()).
     TypeError: if the dtype of length is not int32.
   """
   # Convert state initial values to tensors
@@ -461,7 +461,7 @@ class NextQueuedSequenceBatch(object):
     are assigned to each split.
 
     Returns:
-      An int32 vector `Output`.
+      An int32 vector `Tensor`.
     """
     return self._state_saver._received_sequence
 
@@ -473,7 +473,7 @@ class NextQueuedSequenceBatch(object):
     `padded_length / num_unroll`.  This is the sequence_count.
 
     Returns:
-      An int32 vector `Output`.
+      An int32 vector `Tensor`.
     """
     return self._state_saver._received_sequence_count
 
@@ -526,7 +526,7 @@ class NextQueuedSequenceBatch(object):
       state_name: string, matches a key provided in `initial_states`.
 
     Returns:
-      An `Output`: a batched set of states, either initial states (if this is
+      A `Tensor`: a batched set of states, either initial states (if this is
       the first run of the given example), or a value as stored during
       a previous iteration via `save_state` control flow.
       Its type is the same as `initial_states["state_name"].dtype`.
@@ -553,7 +553,7 @@ class NextQueuedSequenceBatch(object):
 
     Args:
       state_name: string, matches a key provided in `initial_states`.
-      value: An `Output`.
+      value: A `Tensor`.
         Its type must match that of `initial_states[state_name].dtype`.
         If we had at input:
 
@@ -728,24 +728,24 @@ class SequenceQueueingStateSaver(object):
     """Creates the SequenceQueueingStateSaver.
 
     Args:
-      batch_size: int or int32 scalar `Output`, how large minibatches should
+      batch_size: int or int32 scalar `Tensor`, how large minibatches should
         be when accessing the `state()` method and `context`, `sequences`, etc,
         properties.
       num_unroll: Python integer, how many time steps to unroll at a time.
         The input sequences of length `k` are then split into `k / num_unroll`
         many segments.
-      input_length: An int32 scalar `Output`, the length of the sequence prior
+      input_length: An int32 scalar `Tensor`, the length of the sequence prior
         to padding.  This value may be at most `padded_length` for any given
         input (see below for the definition of `padded_length`).
         Batched and total lengths of the current iteration are made accessible
         via the `length` and `total_length` properties.  The shape of
         input_length (scalar) must be fully specified.
-      input_key: A string scalar `Output`, the **unique** key for the given
+      input_key: A string scalar `Tensor`, the **unique** key for the given
         input.  This is used to keep track of the split minibatch elements
         of this input.  Batched keys of the current iteration are made
         accessible via the `key` property.  The shape of `input_key` (scalar)
         must be fully specified.
-      input_sequences: A dict mapping string names to `Output` values.  The
+      input_sequences: A dict mapping string names to `Tensor` values.  The
         values must all have matching first dimension, called `padded_length`.
         The `SequenceQueueingStateSaver` will split these tensors along
         this first dimension into minibatch elements of dimension
@@ -755,7 +755,7 @@ class SequenceQueueingStateSaver(object):
         **Note**: `padded_length` may be dynamic, and may vary from input
         to input, but must always be a multiple of `num_unroll`.  The remainder
         of the shape (other than the first dimension) must be fully specified.
-      input_context: A dict mapping string names to `Output` values.  The values
+      input_context: A dict mapping string names to `Tensor` values.  The values
         are treated as "global" across all time splits of the given input,
         and will be copied across for all minibatch elements accordingly.
         Batched and copied context of the current iteration are made
@@ -963,9 +963,9 @@ class SequenceQueueingStateSaver(object):
     These dictionaries are used to keep track of indices into the barrier.
 
     Args:
-      sequences: `OrderedDict` of string, `Output` pairs.
-      context: `OrderedDict` of string, `Output` pairs.
-      states: `OrderedDict` of string, `Output` pairs.
+      sequences: `OrderedDict` of string, `Tensor` pairs.
+      context: `OrderedDict` of string, `Tensor` pairs.
+      states: `OrderedDict` of string, `Tensor` pairs.
     """
     assert isinstance(sequences, dict)
     assert isinstance(context, dict)
@@ -1305,12 +1305,12 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   ```
 
   Args:
-    input_key: A string scalar `Output`, the **unique** key for the given
+    input_key: A string scalar `Tensor`, the **unique** key for the given
       input example.  This is used to keep track of the split minibatch elements
       of this input.  Batched keys of the current iteration are made
       accessible via the `key` property.  The shape of `input_key` (scalar) must
       be fully specified.
-    input_sequences: A dict mapping string names to `Output` values.  The values
+    input_sequences: A dict mapping string names to `Tensor` values.  The values
       must all have matching first dimension, called `value_length`. They may
       vary from input to input. The remainder of the shape (other than the first
       dimension) must be fully specified.
@@ -1321,14 +1321,14 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
 
       **Note**: if `pad=False`, then `value_length` must always be a multiple
         of `num_unroll`.
-    input_context: A dict mapping string names to `Output` values.  The values
+    input_context: A dict mapping string names to `Tensor` values.  The values
       are treated as "global" across all time splits of the given input example,
       and will be copied across for all minibatch elements accordingly.
       Batched and copied context of the current iteration are made
       accessible via the `context` property.
 
       **Note**: All input_context values must have fully defined shapes.
-    input_length: None or an int32 scalar `Output`, the length of the sequence
+    input_length: None or an int32 scalar `Tensor`, the length of the sequence
       prior to padding. If `input_length=None` and `pad=True` then the length
       will be inferred and will be equal to `value_length`. If `pad=False` then
       `input_length` cannot be `None`: `input_length` must be specified. Its
@@ -1345,7 +1345,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
     num_unroll: Python integer, how many time steps to unroll at a time.
       The input sequences of length k are then split into k / num_unroll many
       segments.
-    batch_size: int or int32 scalar `Output`, how large minibatches should
+    batch_size: int or int32 scalar `Tensor`, how large minibatches should
       be when accessing the `state()` method and `context`, `sequences`, etc,
       properties.
     num_threads: The int number of threads enqueuing input examples into a
@@ -1426,15 +1426,15 @@ def _padding(sequences, num_unroll):
   """For a dictionary of sequences, pads tensors to a multiple of `num_unroll`.
 
   Args:
-    sequences: dictionary with `Output` values.
+    sequences: dictionary with `Tensor` values.
     num_unroll: int specifying to what multiple to pad sequences to.
   Returns:
-    length: Scalar `Output` of dimension 0 of all the values in sequences.
+    length: Scalar `Tensor` of dimension 0 of all the values in sequences.
     padded_sequence: Dictionary of sequences that are padded to a multiple of
       `num_unroll`.
   Raises:
     ValueError: If `num_unroll` not an int or sequences not a dictionary from
-                string to `Output`.
+                string to `Tensor`.
   """
   if not isinstance(num_unroll, numbers.Integral):
     raise ValueError("Unsupported num_unroll expected int, got: %s" %

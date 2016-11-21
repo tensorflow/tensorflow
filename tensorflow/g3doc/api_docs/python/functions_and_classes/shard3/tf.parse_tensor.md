@@ -5,7 +5,7 @@ Transforms a serialized tensorflow.TensorProto proto into a Tensor.
 ##### Args:
 
 
-*  <b>`serialized`</b>: An `Output` of type `string`.
+*  <b>`serialized`</b>: A `Tensor` of type `string`.
     A scalar string containing a serialized TensorProto proto.
 *  <b>`out_type`</b>: A `tf.DType`.
     The type of the serialized tensor.  The provided type must match the
@@ -14,5 +14,5 @@ Transforms a serialized tensorflow.TensorProto proto into a Tensor.
 
 ##### Returns:
 
-  A `Output` of type `out_type`. A Tensor of type `out_type`.
+  A `Tensor` of type `out_type`. A Tensor of type `out_type`.
 

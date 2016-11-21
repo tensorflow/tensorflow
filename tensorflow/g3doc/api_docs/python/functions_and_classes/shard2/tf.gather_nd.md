@@ -97,14 +97,14 @@ Batched indexing into a 3-tensor:
 ##### Args:
 
 
-*  <b>`params`</b>: A `Output`. `P-D`.  The tensor from which to gather values.
-*  <b>`indices`</b>: A `Output`. Must be one of the following types: `int32`, `int64`.
+*  <b>`params`</b>: A `Tensor`. `P-D`.  The tensor from which to gather values.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Output`. Has the same type as `params`.
+  A `Tensor`. Has the same type as `params`.
   `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
   `indices`.
 

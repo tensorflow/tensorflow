@@ -8,7 +8,7 @@ for more details.
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Output` objects which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
     defined in the context.  Can also be `None` to clear the control
     dependencies.

@@ -216,9 +216,11 @@ class Dirichlet(distribution.Distribution):
   def _variance(self):
     scale = self.alpha_sum * math_ops.sqrt(1. + self.alpha_sum)
     alpha = self.alpha / scale
-    outer_prod = -math_ops.batch_matmul(
-        array_ops.expand_dims(alpha, dim=-1),  # column
-        array_ops.expand_dims(alpha, dim=-2))  # row
+    outer_prod = -math_ops.matmul(
+        array_ops.expand_dims(
+            alpha, dim=-1),  # column
+        array_ops.expand_dims(
+            alpha, dim=-2))  # row
     return array_ops.matrix_set_diag(outer_prod,
                                      alpha * (self.alpha_sum / scale - alpha))
 

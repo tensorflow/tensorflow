@@ -38,9 +38,9 @@ class AdadeltaOptimizer(optimizer.Optimizer):
     """Construct a new Adadelta optimizer.
 
     Args:
-      learning_rate: An `Output` or a floating point value. The learning rate.
-      rho: An `Output` or a floating point value. The decay rate.
-      epsilon: An `Output` or a floating point value.  A constant epsilon used
+      learning_rate: A `Tensor` or a floating point value. The learning rate.
+      rho: A `Tensor` or a floating point value. The decay rate.
+      epsilon: A `Tensor` or a floating point value.  A constant epsilon used
                to better conditioning the grad update.
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying

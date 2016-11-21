@@ -50,7 +50,7 @@ def _embeddings_from_arguments(column,
    args: the _DeepEmbeddingLookupArguments for this column.
    weight_collections: collections to store weights in.
    trainable: whether these embeddings should be trainable.
-   output_rank: the desired rank of the returned `Output`. Inner dimensions will
+   output_rank: the desired rank of the returned `Tensor`. Inner dimensions will
      be combined to produce the desired rank.
 
   Returns:
@@ -616,7 +616,7 @@ def parse_feature_columns_from_examples(serialized,
       the serialized protos in the batch.
 
   Returns:
-    A `dict` mapping FeatureColumn to `Output` and `SparseTensor` values.
+    A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
   check_feature_columns(feature_columns)
   columns_to_tensors = parsing_ops.parse_example(
@@ -672,7 +672,7 @@ def transform_features(features, feature_columns):
       should be instances of classes derived from _FeatureColumn.
 
   Returns:
-    A `dict` mapping FeatureColumn to `Output` and `SparseTensor` values.
+    A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
   check_feature_columns(feature_columns)
   columns_to_tensor = features.copy()
@@ -710,9 +710,9 @@ def parse_feature_columns_from_sequence_examples(
   Returns:
     A tuple consisting of:
     context_features: a dict mapping `FeatureColumns` from
-      `context_feature_columns` to their parsed `Output`s/`SparseTensor`s.
+      `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
     sequence_features: a dict mapping `FeatureColumns` from
-      `sequence_feature_columns` to their parsed `Output`s/`SparseTensor`s.
+      `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
   """
   # Sequence example parsing requires a single (scalar) example.
   try:

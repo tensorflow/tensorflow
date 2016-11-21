@@ -1270,8 +1270,8 @@ class LogicalOpTest(tf.test.TestCase):
         f(x, y)
 
   def testUsingAsPythonValueFails(self):
-    # Ensure that we raise an error when the user attempts to treat an
-    # `Output` as a Python `bool`.
+    # Ensure that we raise an error when the user attempts to treat a
+    # `Tensor` as a Python `bool`.
     b = tf.constant(False)
     with self.assertRaises(TypeError):
       if b:

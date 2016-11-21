@@ -34,12 +34,12 @@ results in
 ##### Args:
 
 
-*  <b>`*args`</b>: `Output`s with rank 1
+*  <b>`*args`</b>: `Tensor`s with rank 1
 *  <b>`indexing`</b>: Either 'xy' or 'ij' (optional, default: 'xy')
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
 
-*  <b>`outputs`</b>: A list of N `Output`s with rank N
+*  <b>`outputs`</b>: A list of N `Tensor`s with rank N
 

@@ -47,12 +47,12 @@ class Bernoulli(distribution.Distribution):
     """Construct Bernoulli distributions.
 
     Args:
-      logits: An N-D `Output` representing the log-odds
-        of a positive event. Each entry in the `Output` parametrizes
+      logits: An N-D `Tensor` representing the log-odds
+        of a positive event. Each entry in the `Tensor` parametrizes
         an independent Bernoulli distribution where the probability of an event
         is sigmoid(logits). Only one of `logits` or `p` should be passed in.
-      p: An N-D `Output` representing the probability of a positive
-          event. Each entry in the `Output` parameterizes an independent
+      p: An N-D `Tensor` representing the probability of a positive
+          event. Each entry in the `Tensor` parameterizes an independent
           Bernoulli distribution. Only one of `logits` or `p` should be passed
           in.
       dtype: dtype for samples.

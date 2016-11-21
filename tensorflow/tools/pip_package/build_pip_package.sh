@@ -44,6 +44,18 @@ function main() {
   DEST=$1
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
+  GPU_FLAG=""
+  while true; do
+    if [[ "$1" == "--gpu" ]]; then
+      GPU_FLAG="--project_name tensorflow_gpu"
+    fi
+    shift
+
+    if [[ -z "$1" ]]; then
+      break
+    fi
+  done
+
   echo $(date) : "=== Using tmpdir: ${TMPDIR}"
 
   if [ ! -d bazel-bin/tensorflow ]; then
@@ -124,7 +136,7 @@ function main() {
   pushd ${TMPDIR}
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${GPU_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd

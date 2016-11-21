@@ -85,15 +85,15 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
 
   Input of `fit` and `evaluate` should have following features, otherwise there
   will be a `KeyError`:
-    a feature with `key=example_id_column` whose value is an `Output` of dtype
+    a feature with `key=example_id_column` whose value is a `Tensor` of dtype
     string.
     if `weight_column_name` is not `None`, a feature with
-    `key=weight_column_name` whose value is an `Output`.
+    `key=weight_column_name` whose value is a `Tensor`.
     for each `column` in `feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is an `Output`.
+        whose `value` is a `Tensor`.
   """
 
   def __init__(self,

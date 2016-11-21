@@ -39,11 +39,11 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 ##### Args:
 
 
-*  <b>`a`</b>: An `Output`.
+*  <b>`a`</b>: A `Tensor`.
 *  <b>`perm`</b>: A permutation of the dimensions of `a`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A transposed `Output`.
+  A transposed `Tensor`.
 

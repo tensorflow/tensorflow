@@ -386,9 +386,9 @@ def create_train_op(
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
-    total_loss: An `Output` representing the total loss.
+    total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
-    global_step: An `Output` representing the global step variable. If left as
+    global_step: A `Tensor` representing the global step variable. If left as
       `None`, then slim.variables.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
@@ -409,8 +409,8 @@ def create_train_op(
       names to the coefficient by which the associated gradient should be
       scaled.
   Returns:
-    An `Output` that when evaluated, computes the gradients and returns the
-      total loss value.
+    A `Tensor` that when evaluated, computes the gradients and returns the total
+      loss value.
   """
   if global_step is None:
     global_step = variables.get_or_create_global_step()
@@ -503,7 +503,7 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
     sess: The current session.
     train_op: An `Operation` that evaluates the gradients and returns the
       total loss.
-    global_step: An `Output` representing the global training step.
+    global_step: A `Tensor` representing the global training step.
     train_step_kwargs: A dictionary of keyword arguments.
 
   Returns:
@@ -600,13 +600,13 @@ def train(train_op,
   synchronously. Otherwise, gradient updates are applied asynchronous.
 
   Args:
-    train_op: An `Output` that, when executed, will apply the gradients and
+    train_op: A `Tensor` that, when executed, will apply the gradients and
       return the loss value.
     logdir: The directory where training logs are written to. If None, model
       checkpoints and summaries will not be written.
     train_step_fn: The function to call in order to execute a single gradient
       step. The function must have take exactly four arguments: the current
-      session, the `train_op` `Output`, a global step `Output` and a dictionary.
+      session, the `train_op` `Tensor`, a global step `Tensor` and a dictionary.
     train_step_kwargs: A dictionary which is passed to the `train_step_fn`. By
       default, two `Boolean`, scalar ops called "should_stop" and "should_log"
       are provided.
@@ -617,7 +617,7 @@ def train(train_op,
     master: The address of the tensorflow master.
     is_chief: Specifies whether or not the training is being run by the primary
       replica during replica training.
-    global_step: The `Output` representing the global step. If left as `None`,
+    global_step: The `Tensor` representing the global step. If left as `None`,
       then slim.variables.get_or_create_global_step() is used.
     number_of_steps: The max number of gradient steps to take during training.
       If the value is left as None, training proceeds indefinitely.
