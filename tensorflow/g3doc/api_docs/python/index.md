@@ -620,6 +620,7 @@
   * [`get_global_step`](../../api_docs/python/train.md#get_global_step)
   * [`global_norm`](../../api_docs/python/train.md#global_norm)
   * [`global_step`](../../api_docs/python/train.md#global_step)
+  * [`GlobalStepWaiterHook`](../../api_docs/python/train.md#GlobalStepWaiterHook)
   * [`GradientDescentOptimizer`](../../api_docs/python/train.md#GradientDescentOptimizer)
   * [`gradients`](../../api_docs/python/train.md#gradients)
   * [`hessians`](../../api_docs/python/train.md#hessians)
