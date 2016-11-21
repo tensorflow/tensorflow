@@ -43,23 +43,39 @@ def _UnpackGrad(op, *grads):
   return array_ops.pack(grads, axis=op.get_attr("axis"))
 
 
-@ops.RegisterGradient("Concat")
-def _ConcatGrad(op, grad):
-  """Gradient for concat op."""
+def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
+  """Gradient for concat op.
+
+  Args:
+    op: An operation.
+    grad: `Tensor` or `IndexedSlices` representing the gradients with respect
+      to each output of the op.
+    start_value_index: An integer index of the first value in the op.inputs.
+    end_value_index: An integer index of the last value in the op.inputs.
+    dim_index: An interger index of concat_dim or axis parameter in op.inputs.
+
+  Returns:
+    Tensors represending the partial gradients with respect to each input
+    of the op.
+
+  Raises:
+    ValueError: if concat_dim/axis is not statically known.
+  """
 
   def _CreateDenseMaskAndBegin(sizes, concat_dim):
     """Create variables for iteratively slicing a dense gradients tensor."""
     # Since shape is 1-D, shape_of_shape = [rank-of-inputs]
-    shape_of_shape = array_ops.shape(sizes[0])
+    shape_of_shape = array_ops.shape(sizes[dim_index])
     # Make a vector of length equal to the input's dimensions,
     # with 0's everywhere and 1 in the concat dim position.
     # Note: Can't use sparse_to_dense since it isn't GPU-capable (for now)
-    mask = array_ops.concat(0,
-                            [array_ops.fill(
-                                array_ops.expand_dims(concat_dim, 0), 0),
-                             [1],
-                             array_ops.fill(
-                                 shape_of_shape - concat_dim - 1, 0)])
+    mask = array_ops.concat_v2(
+        [array_ops.fill(
+            array_ops.expand_dims(concat_dim, 0), 0),
+         [1],
+         array_ops.fill(
+             shape_of_shape - concat_dim - 1, 0)],
+        0)
     begin = array_ops.fill(shape_of_shape, 0)
     return mask, begin
 
@@ -83,13 +99,14 @@ def _ConcatGrad(op, grad):
 
   # Degenerate concatenation, just return grad.
   if len(op.inputs) == 2:
-    return [None, grad]
+    return grad + [None] if end_value_index <= dim_index else [None] + grad
 
-  concat_dim = op.inputs[0]
+  concat_dim = op.inputs[dim_index]
+  input_values = op.inputs[start_value_index:end_value_index]
   out_grads = []
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
-    sizes = _ExtractInputShapes(op.inputs[1:])
+    sizes = _ExtractInputShapes(input_values)
     # The following line to be enabled once ready
     # if len(sizes) > 16:
     # sizes = array_ops.squeeze(array_ops.slice(
@@ -107,7 +124,7 @@ def _ConcatGrad(op, grad):
       raise ValueError("Can only compute IndexedSlices gradient with "
                        "statically-known concat_dim")
     # Get the inputs' tensor shapes
-    sizes = [array_ops.shape(x) for x in op.inputs[1:]]
+    sizes = [array_ops.shape(x) for x in input_values]
     if concat_dim_static > 0:
       # IndexedSlices, concat_dim > 0. Each input gets IndexedSlices gradients
       # with all the indices, but with grad.values sliced accordingly. This
@@ -118,7 +135,8 @@ def _ConcatGrad(op, grad):
         new_values = array_ops.slice(
             grad.values,
             begin,
-            array_ops.concat(0, [[-1], array_ops.slice(size, [1], [-1])]))
+            array_ops.concat_v2(
+                [[-1], array_ops.slice(size, [1], [-1])], 0))
         out_grads.append(
             ops.IndexedSlices(new_values, grad.indices, size))
         # Lint complains begin = begin + ...
@@ -146,7 +164,21 @@ def _ConcatGrad(op, grad):
   else:
     raise TypeError("Expected Tensor or IndexedSlices, got %s" % type(grad))
 
-  return [None] + out_grads
+  return (out_grads + [None] if end_value_index <= dim_index
+          else [None] + out_grads)
+
+
+@ops.RegisterGradient("Concat")
+def _ConcatGrad(op, grad):
+  return _ConcatGradHelper(
+      op, grad, start_value_index=1, end_value_index=len(op.inputs),
+      dim_index=0)
+
+
+@ops.RegisterGradient("ConcatV2")
+def _ConcatGradV2(op, grad):
+  return _ConcatGradHelper(
+      op, grad, start_value_index=0, end_value_index=-1, dim_index=-1)
 
 
 ops.NotDifferentiable("ConcatOffset")
