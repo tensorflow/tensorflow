@@ -609,21 +609,35 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
     stepper = NodeStepper(self.sess, "optim")
 
-    # The op "gradients/e_grad/Reshape_1" is in the transitive closure of the
+    # In the transitive closure of the stepper, look for an op of which the
+    # output tensor also is in the transitive closure.
+    # Do not assume a specific op, e.g., ""gradients/e_grad/Reshape_1",
+    # because it may vary between builds.
+    closure = stepper.sorted_transitive_closure()
+    op_with_output_in_closure = None
+    for element_name in closure:
+      if element_name + ":0" in closure:
+        op_with_output_in_closure = str(element_name)
+        break
+
+    self.assertIsNotNone(op_with_output_in_closure)
+    output_tensor = op_with_output_in_closure + ":0"
+
+    # The op "gradients/?_grad/Reshape_1" is in the transitive closure of the
     # stepper, because it is the control input to another o. However, its
-    # output tensor "gradients/e_grad/Reshape_1:0" is also in the transitive
+    # output tensor "gradients/?_grad/Reshape_1:0" is also in the transitive
     # closure, because it is the (non-control) input of certain ops. Calling
     # cont() on the op should lead to the caching of the tensor handle for
     # the output tensor.
-    stepper.cont("gradients/e_grad/Reshape_1")
+    stepper.cont(op_with_output_in_closure)
 
-    self.assertEqual(["gradients/e_grad/Reshape_1:0"], stepper.handle_names())
+    self.assertEqual([output_tensor], stepper.handle_names())
 
-    # "gradients/e_grad/tuple/control_dependency_1:0" uses input from
-    # "gradients/e_grad/Reshape_1:0".
-    stepper.cont("gradients/e_grad/tuple/control_dependency_1:0")
+    # Do a cont() call that uses the cached tensor of
+    # "gradients/?_grad/Reshape_1:0".
+    stepper.cont(output_tensor)
     self.assertEqual({
-        "gradients/e_grad/Reshape_1:0": NodeStepper.FEED_TYPE_HANDLE
+        output_tensor: NodeStepper.FEED_TYPE_HANDLE
     }, stepper.last_feed_types())
 
 
