@@ -1571,10 +1571,11 @@ def _set_call_cpp_shape_fn(call_cpp_shape_fn):
 
 
 class RegisterShape(object):
-  """A decorator for registering the shape function for an op type.
+  """No longer used.  Was: A decorator for registering a shape function.
 
-  Soon to be removed.  Shape functions should be registered via
-  the SetShapeFn on the original Op specification in C++.
+  Shape functions must now be registered via the SetShapeFn on the
+  original Op specification in C++.
+
   """
 
   def __init__(self, op_type):

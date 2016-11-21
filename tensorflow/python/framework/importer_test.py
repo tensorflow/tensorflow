@@ -141,7 +141,7 @@ text_format.Merge("""
 op_def_registry.register_op_list(_op_list)
 # NOTE(mrry): Dummy shape registrations for ops used in the tests.
 for op_def in _op_list.op:
-  tf.RegisterShape(op_def.name)(None)
+  ops.RegisterShape(op_def.name)(None)
 
 
 class ImportGraphDefTest(tf.test.TestCase):

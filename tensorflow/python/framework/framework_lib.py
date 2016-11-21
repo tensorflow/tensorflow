@@ -53,7 +53,6 @@
 @@RegisterGradient
 @@NotDifferentiable
 @@NoGradient
-@@RegisterShape
 @@TensorShape
 @@Dimension
 @@op_scope
