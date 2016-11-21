@@ -19,8 +19,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"image"
-	_ "image/jpeg"
 	"io"
 	"io/ioutil"
 	"log"
@@ -35,6 +33,8 @@ import (
 func Example() {
 	// An example for using the TensorFlow Go API for image recognition
 	// using a pre-trained inception model (http://arxiv.org/abs/1512.00567).
+	//
+	// Sample usage: <program> -dir=/tmp/modeldir -image=/path/to/some/jpeg
 	//
 	// The pre-trained model takes input in the form of a 4-dimensional
 	// tensor with shape [ BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, 3 ],
@@ -63,7 +63,7 @@ func Example() {
 	//   form suitable for the model (for example, resizing the image)
 	// - Creates an executes a Session to obtain a Tensor in this normalized form.
 	modeldir := flag.String("dir", "", "Directory containing the trained model files. The directory will be created and the model downloaded into it if necessary")
-	imagefile := flag.String("image", "", "Path of the image to extract labels for")
+	imagefile := flag.String("image", "", "Path of a JPEG-image to extract labels for")
 	flag.Parse()
 	if *modeldir == "" || *imagefile == "" {
 		flag.Usage()
@@ -92,10 +92,10 @@ func Example() {
 	}
 	defer session.Close()
 
-	// Run inference on thestImageFilename.
+	// Run inference on *imageFile.
 	// For multiple images, session.Run() can be called in a loop (and
-	// concurrently). Furthermore, images can be batched together since the
-	// model accepts batches of image data as input.
+	// concurrently). Alternatively, images can be batched since the model
+	// accepts batches of image data as input.
 	tensor, err := makeTensorFromImage(*imagefile)
 	if err != nil {
 		log.Fatal(err)
@@ -125,8 +125,8 @@ func printBestLabel(probabilities []float32, labelsFile string) {
 			bestIdx = i
 		}
 	}
-	// Found a best match, now read the string from the labelsFile where
-	// there is one line per label.
+	// Found the best match. Read the string from labelsFile, which
+	// contains one line per label.
 	file, err := os.Open(labelsFile)
 	if err != nil {
 		log.Fatal(err)
@@ -143,34 +143,14 @@ func printBestLabel(probabilities []float32, labelsFile string) {
 	fmt.Printf("BEST MATCH: (%2.0f%% likely) %s\n", probabilities[bestIdx]*100.0, labels[bestIdx])
 }
 
-// Conver the image in filename to a Tensor suitable as input to the Inception model.
+// Convert the image in filename to a Tensor suitable as input to the Inception model.
 func makeTensorFromImage(filename string) (*tf.Tensor, error) {
-	// Load the pixels from the file
-	file, err := os.Open(filename)
+	bytes, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	img, _, err := image.Decode(file)
-	file.Close()
-	if err != nil {
-		return nil, err
-	}
-	// Represent the image as [H][W][B,G,R]byte
-	contents := make([][][3]byte, img.Bounds().Size().Y)
-	for y := 0; y < len(contents); y++ {
-		contents[y] = make([][3]byte, img.Bounds().Size().X)
-		for x := 0; x < len(contents[y]); x++ {
-			px := x + img.Bounds().Min.X
-			py := y + img.Bounds().Min.Y
-			r, g, b, _ := img.At(px, py).RGBA()
-			// image.Image uses 16-bits for each color.
-			// We want 8-bits.
-			contents[y][x][0] = byte(b >> 8)
-			contents[y][x][1] = byte(g >> 8)
-			contents[y][x][2] = byte(r >> 8)
-		}
-	}
-	tensor, err := tf.NewTensor(contents)
+	// DecodeJpeg uses a scalar String-valued tensor as input.
+	tensor, err := tf.NewTensor(string(bytes))
 	if err != nil {
 		return nil, err
 	}
@@ -199,12 +179,9 @@ func makeTensorFromImage(filename string) (*tf.Tensor, error) {
 // specific normalized format (a particular image size, shape of the input tensor,
 // normalized pixel values etc.).
 //
-// This function constructs a graph of TensorFlow operations which takes as input
-// the raw pixel values of an image in the form of a Tensor of shape [Height, Width, 3]
-// and returns a tensor suitable for input to the inception model.
-//
-// T[y][x] is the (Blue, Green, Red) values of the pixel at position (x, y) in the image,
-// with each color value represented as a single byte.
+// This function constructs a graph of TensorFlow operations which takes as
+// input a JPEG-encoded string and returns a tensor suitable as input to the
+// inception model.
 func constructGraphToNormalizeImage() (graph *tf.Graph, input, output tf.Output, err error) {
 	// Some constants specific to the pre-trained model at:
 	// https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
@@ -212,27 +189,25 @@ func constructGraphToNormalizeImage() (graph *tf.Graph, input, output tf.Output,
 	// - The model was trained after with images scaled to 224x224 pixels.
 	// - The colors, represented as R, G, B in 1-byte each were converted to
 	//   float using (value - Mean)/Scale.
-	//
-	// If using a different pre-trained model, the values will have to be adjusted.
 	const (
 		H, W  = 224, 224
 		Mean  = float32(117)
 		Scale = float32(1)
 	)
-	// - input is a 3D tensor of shape [Height, Width, Colors=3], where
-	//   each pixel is represented as a triplet of 1-byte colors
-	// - ResizeBilinear (and the inception model) takes a 4D tensor of shape
+	// - input is a String-Tensor, where the string the JPEG-encoded image.
+	// - The inception model takes a 4D tensor of shape
 	//   [BatchSize, Height, Width, Colors=3], where each pixel is
 	//   represented as a triplet of floats
 	// - Apply normalization on each pixel and use ExpandDims to make
 	//   this single image be a "batch" of size 1 for ResizeBilinear.
 	s := op.NewScope()
-	input = op.Placeholder(s, tf.Uint8)
+	input = op.Placeholder(s, tf.String)
 	output = op.Div(s,
 		op.Sub(s,
 			op.ResizeBilinear(s,
 				op.ExpandDims(s,
-					op.Cast(s, input, tf.Float),
+					op.Cast(s,
+						op.DecodeJpeg(s, input, op.DecodeJpegChannels(3)), tf.Float),
 					op.Const(s.SubScope("make_batch"), int32(0))),
 				op.Const(s.SubScope("size"), []int32{H, W})),
 			op.Const(s.SubScope("mean"), Mean)),
