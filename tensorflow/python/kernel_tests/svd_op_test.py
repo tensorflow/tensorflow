@@ -85,13 +85,13 @@ def _GetSvdOpTest(dtype_, shape_):
       elif n > m:
         zeros = tf.zeros(batch_shape + (m, n - m), dtype=dtype_)
         diag_s = tf.concat(a.ndim - 1, [diag_s, zeros])
-    a_recon = tf.batch_matmul(u, diag_s)
-    a_recon = tf.batch_matmul(a_recon, v, adj_y=True)
+    a_recon = tf.matmul(u, diag_s)
+    a_recon = tf.matmul(a_recon, v, adjoint_b=True)
     self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = tf.batch_matmul(x, x, adj_x=True)
+    xx = tf.matmul(x, x, adjoint_a=True)
     identity = tf.matrix_band_part(tf.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5
