@@ -122,7 +122,8 @@ def is_built_with_cuda():
 
 def is_gpu_available():
   """Returns whether TensorFlow can access a GPU."""
-  return any(x.device_type == 'GPU' for x in _device_lib.list_local_devices())
+  return any((x.device_type == 'GPU' or x.device_type == 'SYCL') for x in _device_lib.list_local_devices())
+
 
 _allowed_symbols = [
     # We piggy-back googletest documentation.
