@@ -69,6 +69,7 @@ def _Collect(val, collections, default_collections):
   for key in collections:
     ops.add_to_collection(key, val)
 
+
 @deprecated(
     "2016-11-30", "Please switch to tf.summary.histogram. Note that "
     "tf.summary.histogram uses the node name instead of the tag. "
@@ -285,6 +286,7 @@ def get_summary_op():
     if summary_op is not None:
       ops.add_to_collection(ops.GraphKeys.SUMMARY_OP, summary_op)
   return summary_op
+
 
 @deprecated(
     "2016-11-30", "Please switch to tf.summary.scalar. Note that "
