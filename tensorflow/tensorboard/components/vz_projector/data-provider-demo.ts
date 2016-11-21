@@ -56,11 +56,6 @@ export class DemoDataProvider implements DataProvider {
     });
   }
 
-  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
-    // Return the first tensor as the default tensor.
-    callback(this.projectorConfig.embeddings[0].tensorName);
-  }
-
   retrieveTensor(run: string, tensorName: string,
       callback: (ds: DataSet) => void) {
     let embedding = this.getEmbeddingInfo(tensorName);

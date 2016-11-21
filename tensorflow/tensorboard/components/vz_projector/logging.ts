@@ -31,12 +31,12 @@ export function setDomContainer(domElement: HTMLElement) {
  * @param id The id of an existing message. If no id is provided, a unique id
  *     is assigned.
  * @param title The title of the notification.
- * @param showCloseButton If true, the dialog will have a close button.
+ * @param isErrorMsg If true, the message is error and the dialog will have a
+ *                   close button.
  * @return The id of the message.
  */
 export function setModalMessage(
-    msg: string, id: string = null, title = null,
-    showCloseButton = false): string {
+    msg: string, id: string = null, title = null, isErrorMsg = false): string {
   if (dom == null) {
     console.warn('Can\'t show modal message before the dom is initialized');
     return;
@@ -46,20 +46,31 @@ export function setModalMessage(
   }
   let dialog = dom.querySelector('#notification-dialog') as any;
   dialog.querySelector('.close-button').style.display =
-      showCloseButton ? null : 'none';
+      isErrorMsg ? null : 'none';
   let spinner = dialog.querySelector('.progress');
-  spinner.style.display = showCloseButton ? 'none' : null;
-  spinner.active = showCloseButton ? null : true;
+  spinner.style.display = isErrorMsg ? 'none' : null;
+  spinner.active = isErrorMsg ? null : true;
   dialog.querySelector('#notification-title').innerHTML = title;
   let msgsContainer = dialog.querySelector('#notify-msgs') as HTMLElement;
+  if (isErrorMsg) {
+    d3.select(msgsContainer).html('');
+  } else {
+    d3.select(msgsContainer).selectAll('.error').remove();
+  }
   let divId = `notify-msg-${id}`;
   let msgDiv = d3.select(dialog.querySelector('#' + divId));
   let exists = msgDiv.size() > 0;
   if (!exists) {
-    msgDiv = d3.select(msgsContainer).insert('div', ':first-child')
-      .attr('class', 'notify-msg')
-      .attr('id', divId);
-    numActiveMessages++;
+    msgDiv = d3.select(msgsContainer)
+                 .insert('div', ':first-child')
+                 .attr('class', 'notify-msg')
+                 .classed('error', isErrorMsg)
+                 .attr('id', divId);
+    if (!isErrorMsg) {
+      numActiveMessages++;
+    } else {
+      numActiveMessages = 0;
+    }
   }
   if (msg == null) {
     numActiveMessages--;
