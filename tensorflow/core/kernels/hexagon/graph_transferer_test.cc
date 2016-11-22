@@ -48,6 +48,7 @@ class GraphTransfererTest : public ::testing::Test {
 
 static const std::vector<string> OP_TYPES{"INPUT", "OUTPUT", "Conv2D",
                                           "MaxPool"};
+const GraphTransferer::OutputTensorMap EMPTY_OUTPUT_TENSOR_MAP;
 
 class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
  public:
@@ -191,9 +192,9 @@ static void SanityCheckNodes(const GraphTransferer& gt) {
 
 TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
-  ASSERT_TRUE(
-      gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, {}, {})
-          .ok());
+  ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
+                                     {}, {}, EMPTY_OUTPUT_TENSOR_MAP)
+                  .ok());
   SanityCheckNodes(gt_);
 
   const int const_node_count = gt_.GetConstNodeParams().size();
@@ -220,9 +221,6 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
 
 TEST_F(GraphTransfererTest, DryRunAddGraphA) {
   GraphDef def = CreateAddGraphDef();
-  ASSERT_TRUE(
-      gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, {}, {})
-          .ok());
   GraphTransferer::InputNodeInfo input_node_info;
   input_node_info.name = NAME_A;
   input_node_info.tensor = Tensor(DT_FLOAT, {});
@@ -234,9 +232,9 @@ TEST_F(GraphTransfererTest, DryRunAddGraphA) {
       def, inputs, outputs, false /* initialize_by_zero */, &output_tensors);
   ASSERT_TRUE(status.ok()) << status;
   EXPECT_EQ(outputs.size(), output_tensors.size());
-  EXPECT_NEAR(NODE_B_VAL, output_tensors[0].scalar<float>()(),
+  EXPECT_NEAR(NODE_B_VAL, output_tensors.at(0).scalar<float>()(),
               VALUE_TOLERANCE_FLOAT);
-  EXPECT_NEAR(1.0f + NODE_B_VAL, output_tensors[1].scalar<float>()(),
+  EXPECT_NEAR(1.0f + NODE_B_VAL, output_tensors.at(1).scalar<float>()(),
               VALUE_TOLERANCE_FLOAT);
 }
 
@@ -301,7 +299,8 @@ TEST_F(GraphTransfererTest, DryRunAddGraphForAllNodes) {
   ASSERT_TRUE(status.ok()) << status;
 
   // Assert output node count
-  ASSERT_EQ(2, output_tensors.size());
+  ASSERT_EQ(3, output_tensors.size());
+  ASSERT_EQ(1, output_tensor_map.count(NAME_A));
   ASSERT_EQ(1, output_tensor_map.count(NAME_B));
   ASSERT_EQ(1, output_tensor_map.count(NAME_A_PLUS_B));
 
@@ -313,6 +312,25 @@ TEST_F(GraphTransfererTest, DryRunAddGraphForAllNodes) {
   EXPECT_NEAR(1.0f + NODE_B_VAL, name_a_b_output, VALUE_TOLERANCE_FLOAT);
 }
 
+TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
+  GraphDef def = CreateAddGraphDef();
+  GraphTransferer::InputNodeInfo input_node_info_a;
+  input_node_info_a.name = NAME_A;
+  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
+  input_node_info_a.tensor.scalar<float>()() = 1.0f;
+  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a};
+  GraphTransferer::OutputTensorInfo output_tensor_info;
+  Status status = GraphTransferer::DryRunInferenceForAllNode(
+      def, inputs, {}, &output_tensor_info);
+  ASSERT_TRUE(status.ok()) << status;
+  const GraphTransferer::OutputTensorMap& output_tensor_map =
+      output_tensor_info.output_tensor_map;
+  const std::vector<string> output_node_names = {NAME_A_PLUS_B};
+  status = gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
+                                  inputs, output_node_names, output_tensor_map);
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(GraphTransfererTest, LoadConvGraph) {
   GraphDef def = CreateConvGraphDef();
   std::vector<GraphTransferer::InputNodeInfo> input_node_info_list;
@@ -320,7 +338,8 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
       GraphTransferer::InputNodeInfo{"input", Tensor{DT_FLOAT, {1, 1, 1, 1}}});
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
-                                     input_node_info_list, output_node_names)
+                                     input_node_info_list, output_node_names,
+                                     EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count = gt_.GetConstNodeParams().size();
@@ -345,7 +364,8 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
       GraphTransferer::InputNodeInfo{"input", Tensor{DT_FLOAT, {1, 1, 1, 1}}});
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
-                                     input_node_info_list, output_node_names)
+                                     input_node_info_list, output_node_names,
+                                     EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count = gt_.GetConstNodeParams().size();
@@ -391,9 +411,9 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   // output_node_names = { "softmax" };
   // is_text_proto = false;
   GraphTransferer gt;
-  Status status = gt.LoadGraphFromProtoFile(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS,
-                                            filename, input_node_info_list,
-                                            output_node_names, is_text_proto);
+  Status status = gt.LoadGraphFromProtoFile(
+      TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, filename, input_node_info_list,
+      output_node_names, EMPTY_OUTPUT_TENSOR_MAP, is_text_proto);
   // TODO(satok): Uncomment following assert once we fix the loader problem
   // ASSERT_TRUE(status.ok()) << status;
 }
