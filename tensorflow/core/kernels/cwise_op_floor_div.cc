@@ -28,9 +28,13 @@ REGISTER5(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
 TF_CALL_INTEGRAL_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
+REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, double);
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64);
+REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, double);
 #endif
 
 #if GOOGLE_CUDA
