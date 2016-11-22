@@ -110,15 +110,6 @@ py_binary(
 )
 
 py_binary(
-    name = "text_classification_builtin_rnn_model",
-    srcs = ["text_classification_builtin_rnn_model.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
     name = "text_classification_character_cnn",
     srcs = ["text_classification_character_cnn.py"],
     srcs_version = "PY2AND3",

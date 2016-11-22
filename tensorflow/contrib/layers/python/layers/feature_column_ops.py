@@ -454,6 +454,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
         'bias_weight',
         shape=[num_outputs],
         initializer=init_ops.zeros_initializer,
+        trainable=trainable,
         collections=_add_variable_collection(weight_collections))
     _log_variable(bias)
     predictions = nn_ops.bias_add(predictions_no_bias, bias)
@@ -545,6 +546,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
               name='weight',
               shape=[tensor.get_shape()[1], num_outputs],
               initializer=init_ops.zeros_initializer,
+              trainable=trainable,
               collections=weight_collections)]
           predictions = math_ops.matmul(tensor, variable[0], name='matmul')
       except ValueError as ee:
@@ -560,6 +562,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
         'bias_weight',
         shape=[num_outputs],
         initializer=init_ops.zeros_initializer,
+        trainable=trainable,
         collections=_add_variable_collection(weight_collections))
     _log_variable(bias)
     predictions = nn_ops.bias_add(predictions_no_bias, bias)

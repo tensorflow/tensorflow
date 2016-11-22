@@ -12,6 +12,7 @@ BUS_ANY was used.
   indicating its preferred use in language bindings for TensorFlow.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
 * Renamed TF_Port to TF_Output in the C API.
+* Removes RegisterShape from public API. Use C++ shape function registration instead.
 
 # Release 0.11.0
 

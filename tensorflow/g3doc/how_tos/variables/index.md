@@ -63,7 +63,7 @@ with tf.device("/job:ps/task:7"):
 ```
 
 **N.B.** Operations that mutate a variable, such as
-[`v.assign()`](../../api_docs/python/state.md#Variable.assign) and the parameter
+[`v.assign()`](../../api_docs/python/state_ops.md#Variable.assign) and the parameter
 update operations in a
 [`tf.train.Optimizer`](../../api_docs/python/train.md#Optimizer) *must* run on
 the same device as the variable. Incompatible device placement directives will

@@ -26,6 +26,7 @@ from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.contrib.tensorboard.plugins.projector import PROJECTOR_FILENAME
 from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
+from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
@@ -372,7 +373,11 @@ class ProjectorPlugin(TBPlugin):
                         (name, config.model_checkpoint_path),
                         'text/plain', 400)
         return
-      tensor = reader.get_tensor(name)
+      try:
+        tensor = reader.get_tensor(name)
+      except errors.InvalidArgumentError as e:
+        request.respond(str(e), 'text/plain', 400)
+        return
 
     if num_rows:
       tensor = tensor[:num_rows]

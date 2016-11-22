@@ -122,7 +122,7 @@ class _DistributionMeta(abc.ABCMeta):
 
     Raises:
       TypeError: If `Distribution` is not a subclass of `BaseDistribution`, or
-        the the new class is derived via multiple inheritance and the first
+        the new class is derived via multiple inheritance and the first
         parent class is not a subclass of `BaseDistribution`.
       AttributeError:  If `Distribution` does not implement e.g. `log_prob`.
       ValueError:  If a `Distribution` public method lacks a docstring.

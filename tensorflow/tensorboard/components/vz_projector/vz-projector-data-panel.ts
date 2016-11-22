@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, ColumnStats, SpriteAndMetadataInfo} from './data';
-import {ProjectorConfig, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
+import {DataProvider, EmbeddingInfo, parseRawMetadata, parseRawTensors, ProjectorConfig} from './data-provider';
+import * as util from './util';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -196,15 +197,30 @@ export class DataPanel extends DataPanelPolymer {
                 return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
               })
               .sort((a, b) => {
-                let sizeA = this.getEmbeddingInfoByName(a).tensorShape[0];
-                let sizeB = this.getEmbeddingInfoByName(b).tensorShape[0];
-                if (sizeA === sizeB) {
-                  // If the same dimension, sort alphabetically by tensor
-                  // name.
-                  return a <= b ? -1 : 1;
+                let embA = this.getEmbeddingInfoByName(a);
+                let embB = this.getEmbeddingInfoByName(b);
+
+                // Prefer tensors with metadata.
+                if (util.xor(!!embA.metadataPath, !!embB.metadataPath)) {
+                  return embA.metadataPath ? -1 : 1;
                 }
-                // Sort by first tensor dimension.
-                return sizeB - sizeA;
+
+                // Prefer non-generated tensors.
+                let isGenA = util.tensorIsGenerated(a);
+                let isGenB = util.tensorIsGenerated(b);
+                if (util.xor(isGenA, isGenB)) {
+                  return isGenB ? -1 : 1;
+                }
+
+                // Prefer bigger tensors.
+                let sizeA = embA.tensorShape[0];
+                let sizeB = embB.tensorShape[0];
+                if (sizeA !== sizeB) {
+                  return sizeB - sizeA;
+                }
+
+                // Sort alphabetically by tensor name.
+                return a <= b ? -1 : 1;
               });
       this.tensorNames = names.map(name => {
         return {
@@ -217,15 +233,14 @@ export class DataPanel extends DataPanelPolymer {
       this.dom.select('#checkpoint-file')
           .html(wordBreakablePath)
           .attr('title', this.projectorConfig.modelCheckpointPath);
-      this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
-        if (this.selectedTensor === defaultTensor) {
-          // Explicitly call the observer. Polymer won't call it if the previous
-          // string matches the current string.
-          this._selectedTensorChanged();
-        } else {
-          this.selectedTensor = defaultTensor;
-        }
-      });
+      let defaultTensor = names[0];
+      if (this.selectedTensor === defaultTensor) {
+        // Explicitly call the observer. Polymer won't call it if the previous
+        // string matches the current string.
+        this._selectedTensorChanged();
+      } else {
+        this.selectedTensor = defaultTensor;
+      }
     });
   }
 

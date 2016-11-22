@@ -1331,9 +1331,6 @@ def fully_connected(inputs,
     static_shape = inputs_shape.as_list()
     static_shape[-1] = num_outputs
 
-    out_shape = array_ops.unpack(array_ops.shape(inputs))
-    out_shape[-1] = num_outputs
-
     weights_shape = [num_input_units, num_outputs]
     weights_collections = utils.get_variable_collections(
         variables_collections, 'weights')
@@ -1345,6 +1342,8 @@ def fully_connected(inputs,
                                        collections=weights_collections,
                                        trainable=trainable)
     if len(static_shape) > 2:
+      out_shape = array_ops.unpack(array_ops.shape(inputs))
+      out_shape[-1] = num_outputs
       # Reshape inputs
       inputs = array_ops.reshape(inputs, [-1, num_input_units])
     outputs = standard_ops.matmul(inputs, weights)

@@ -35,8 +35,11 @@ func TestNewTensor(t *testing.T) {
 		{nil, float64(5)},
 		{nil, complex(float32(5), float32(6))},
 		{nil, complex(float64(5), float64(6))},
+		{nil, "a string"},
 		{[]int64{1}, []float64{1}},
 		{[]int64{1}, [1]float64{1}},
+		{[]int64{2}, []string{"string", "slice"}},
+		{[]int64{2}, [2]string{"string", "array"}},
 		{[]int64{3, 2}, [][]float64{{1, 2}, {3, 4}, {5, 6}}},
 		{[]int64{2, 3}, [2][3]float64{{1, 2, 3}, {3, 4, 6}}},
 		{[]int64{4, 3, 2}, [][][]float64{
@@ -46,6 +49,11 @@ func TestNewTensor(t *testing.T) {
 			{{-6, -7}, {-8, -9}, {-10, -11}},
 		}},
 		{[]int64{2, 0}, [][]int64{{}, {}}},
+		{[]int64{2, 2}, [][]string{{"row0col0", "row0,col1"}, {"row1col0", "row1,col1"}}},
+		{[]int64{2, 3}, [2][3]string{
+			{"row0col0", "row0,col1", "row0,col2"},
+			{"row1col0", "row1,col1", "row1,col2"},
+		}},
 	}
 
 	var errorTests = []interface{}{

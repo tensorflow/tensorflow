@@ -75,6 +75,25 @@ Example transformations:
                 = (1 / y) Normal(log(y); 0, 1)
     ```
 
+    Here is an example of how one might implement the `Exp` bijector:
+
+    ```
+      class Exp(Bijector):
+        def __init__(self, event_ndims=0, validate_args=False, name="exp"):
+          super(Exp, self).__init__(batch_ndims=0, event_ndims=event_ndims,
+                                    validate_args=validate_args, name=name)
+        def _forward(self, x):
+          return math_ops.exp(x)
+        def _inverse_and_inverse_log_det_jacobian(self, y):
+          x = math_ops.log(y)
+          return x, -self._forward_log_det_jacobian(x)
+        def _forward_log_det_jacobian(self, x):
+          if self.shaper is None:
+            raise ValueError("Jacobian requires known event_ndims.")
+          _, _, event_dims = self.shaper.get_dims(x)
+          return math_ops.reduce_sum(x, reduction_indices=event_dims)
+      ```
+
   - "ScaleAndShift"
 
     ```

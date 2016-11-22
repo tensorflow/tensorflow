@@ -83,13 +83,6 @@ export interface DataProvider {
   retrieveSpriteAndMetadata(run: string, tensorName: string,
       callback: (r: SpriteAndMetadataInfo) => void): void;
 
-  /**
-   * Returns the name of the tensor that should be fetched by default.
-   * Used in demo mode to load a tensor when the app starts. Returns null if no
-   * default tensor exists.
-   */
-  getDefaultTensor(run: string, callback: (tensorName: string) => void): void;
-
   getBookmarks(run: string, tensorName: string, callback: (r: State[]) => void):
       void;
 }

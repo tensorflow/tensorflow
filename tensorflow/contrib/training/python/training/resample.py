@@ -154,7 +154,7 @@ def weighted_resample(inputs, weights, overall_rate, scope=None,
 
   """
   # Algorithm: Just compute rates as weights/mean_weight *
-  # overall_rate. This way the the average weight corresponds to the
+  # overall_rate. This way the average weight corresponds to the
   # overall rate, and a weight twice the average has twice the rate,
   # etc.
   with ops.name_scope(scope, 'weighted_resample', inputs) as opscope:

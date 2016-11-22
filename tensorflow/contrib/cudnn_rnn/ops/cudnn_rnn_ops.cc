@@ -249,7 +249,7 @@ REGISTER_OP("CudnnRNNParamsFromCanonical")
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
     .Doc(strings::StrCat(R"doc(
-Writes a set of weights into the the opaque params buffer so they can be used in
+Writes a set of weights into the opaque params buffer so they can be used in
 upcoming training or inferences.
 )doc",
                          kCudnnRNNCommonAttrs, kCudnnRNNParamsBuffer,
