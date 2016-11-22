@@ -95,8 +95,8 @@ const IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
 /** Controls whether nearest neighbors computation is done on the GPU or CPU. */
 const KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
 
-/** Sampling is used when computing expensive operations such as T-SNE. */
-export const SAMPLE_SIZE = 10000;
+export const TSNE_SAMPLE_SIZE = 10000;
+export const PCA_SAMPLE_SIZE = 50000;
 /** Number of dimensions to sample when doing approximate PCA. */
 export const PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
@@ -115,7 +115,7 @@ export class DataSet {
   points: DataPoint[];
   traces: DataTrace[];
 
-  sampledDataIndices: number[] = [];
+  shuffledDataIndices: number[] = [];
 
   /**
    * This keeps a list of all current projections so you can easily test to see
@@ -137,8 +137,7 @@ export class DataSet {
   constructor(
       points: DataPoint[], spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
-    this.sampledDataIndices =
-        shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
+    this.shuffledDataIndices = shuffle(d3.range(this.points.length));
     this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
     this.spriteAndMetadataInfo = spriteAndMetadataInfo;
@@ -270,12 +269,15 @@ export class DataSet {
     return runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.
       let dim = this.points[0].vector.length;
-      let vectors = this.points.map(d => d.vector);
+      let vectors = this.shuffledDataIndices.map(i => this.points[i].vector);
       if (dim > PCA_SAMPLE_DIM) {
         vectors = vector.projectRandom(vectors, PCA_SAMPLE_DIM);
       }
+      let sampledVectors = vectors.slice(0, PCA_SAMPLE_SIZE);
+
       let sigma = numeric.div(
-          numeric.dot(numeric.transpose(vectors), vectors), vectors.length);
+          numeric.dot(numeric.transpose(sampledVectors), sampledVectors),
+          sampledVectors.length);
       let svd = numeric.svd(sigma);
 
       let variances: number[] = svd.S;
@@ -290,13 +292,13 @@ export class DataSet {
 
       let U: number[][] = svd.U;
       let pcaVectors = vectors.map(vector => {
-        let newV: number[] = [];
-        for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
+        let newV = new Float32Array(NUM_PCA_COMPONENTS);
+        for (let newDim = 0; newDim < NUM_PCA_COMPONENTS; newDim++) {
           let dot = 0;
-          for (let i = 0; i < vector.length; i++) {
-            dot += vector[i] * U[i][d];
+          for (let oldDim = 0; oldDim < vector.length; oldDim++) {
+            dot += vector[oldDim] * U[oldDim][newDim];
           }
-          newV.push(dot);
+          newV[newDim] = dot;
         }
         return newV;
       });
@@ -321,6 +323,7 @@ export class DataSet {
     this.tSNEShouldStop = false;
     this.tSNEIteration = 0;
 
+    let sampledIndices = this.shuffledDataIndices.slice(0, TSNE_SAMPLE_SIZE);
     let step = () => {
       if (this.tSNEShouldStop) {
         stepCallback(null);
@@ -329,7 +332,7 @@ export class DataSet {
       }
       this.tsne.step();
       let result = this.tsne.getSolution();
-      this.sampledDataIndices.forEach((index, i) => {
+      sampledIndices.forEach((index, i) => {
         let dataPoint = this.points[index];
 
         dataPoint.projections['tsne-0'] = result[i * tsneDim + 0];
@@ -350,7 +353,7 @@ export class DataSet {
       // We found the nearest neighbors before and will reuse them.
       knnComputation = Promise.resolve(this.nearest);
     } else {
-      let sampledData = this.sampledDataIndices.map(i => this.points[i]);
+      let sampledData = sampledIndices.map(i => this.points[i]);
       this.nearestK = k;
       knnComputation = KNN_GPU_ENABLED ?
           knn.findKNNGPUCosine(sampledData, k, (d => d.vector)) :
