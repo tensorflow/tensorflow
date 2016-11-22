@@ -131,7 +131,7 @@ RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
 )
 
 add_library(tf_python_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
-
+add_dependencies(tf_python_protos_cc tf_protos_cc)
 
 # tf_python_touchup_modules adds empty __init__.py files to all
 # directories containing Python code, so that Python will recognize
