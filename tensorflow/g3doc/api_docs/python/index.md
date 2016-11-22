@@ -737,7 +737,7 @@
   * [`CrfForwardRnnCell`](../../api_docs/python/contrib.crf.md#CrfForwardRnnCell)
   * [`viterbi_decode`](../../api_docs/python/contrib.crf.md#viterbi_decode)
 
-* **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
+* **[Statistical Distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
   * [`BernoulliWithSigmoidP`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidP)
   * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
@@ -1005,6 +1005,10 @@
   * [`StopAtStep`](../../api_docs/python/contrib.learn.monitors.md#StopAtStep)
   * [`SummarySaver`](../../api_docs/python/contrib.learn.monitors.md#SummarySaver)
   * [`ValidationMonitor`](../../api_docs/python/contrib.learn.monitors.md#ValidationMonitor)
+
+* **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
+  * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
+  * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)

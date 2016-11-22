@@ -1,6 +1,6 @@
 <!-- This file is machine generated: DO NOT EDIT! -->
 
-# Statistical distributions (contrib)
+# Statistical Distributions (contrib)
 [TOC]
 
 Classes representing statistical distributions and ops for working with them.
