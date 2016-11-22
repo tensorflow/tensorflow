@@ -1,4 +1,4 @@
-### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
+### `tf.convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None)` {#convert_to_tensor}
 
 Converts the given `value` to a `Tensor`.
 
@@ -32,8 +32,6 @@ and scalars in addition to `Tensor` objects.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
 *  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
     used when dtype is None. In some cases, a caller may not have a
     dtype in mind when converting to a tensor, so preferred_dtype
@@ -42,7 +40,7 @@ and scalars in addition to `Tensor` objects.
 
 ##### Returns:
 
-  A `Tensor` based on `value`.
+  An `Output` based on `value`.
 
 ##### Raises:
 

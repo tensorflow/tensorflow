@@ -1,4 +1,4 @@
-### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
+### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None)` {#convert_to_tensor_or_indexed_slices}
 
 Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -14,7 +14,6 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 *  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
 *  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
 
 ##### Returns:
 
