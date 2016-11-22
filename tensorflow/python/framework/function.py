@@ -654,12 +654,10 @@ class _DefinedFunction(object):
         for s in slist:
           update_str(s)
 
-      # TODO(josh11b): Switch .node to .node_def
-      for n in sorted(self._definition.node, key=lambda n: n.ret[0]):
-        update_strs(n.ret)
+      for n in sorted(self._definition.node_def, key=lambda n: n.name):
+        update_str(n.name)
         update_str(n.op)
-        update_strs(n.arg)
-        update_strs(n.dep)
+        update_strs(n.input)
         update_num(len(n.attr))
         # NOTE: protobuf map serialization does not guarantee ordering.
         for k in sorted(n.attr):

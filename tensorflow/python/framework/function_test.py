@@ -566,7 +566,7 @@ class FunctionTest(tf.test.TestCase):
     def Foo(x, y, z):
       return tf.tanh(tf.matmul(x, y) + z)
 
-    self.assertEqual("Foo_158cce4d", Foo.instantiate([tf.float32] * 3).name)
+    self.assertEqual("Foo_e0cb6030", Foo.instantiate([tf.float32] * 3).name)
 
 
 class FunctionOverloadTest(tf.test.TestCase):
