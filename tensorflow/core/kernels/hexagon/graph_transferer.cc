@@ -86,6 +86,7 @@ Status GraphTransferer::LoadGraphFromProto(
                                      false, input_node_info_list,
                                      output_node_names);
   }
+  ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
   }
@@ -139,15 +140,15 @@ Status GraphTransferer::LoadGraphFromProtoFile(
 
 /**
  * Dryrun functions
- * - DryRunInferenceAndCacheResult
+ * - DryRunInference
  * To determine shapes of output tensors of all nodes, dryrun the graph.
  * This function supplies memory allocation information when loading
  * the graph.
  * TODO(satok): Delete this function when all shapes of ops are implemented.
- * This fuction doesn't work if some ops changes it's shape even if input shape
+ * This function doesn't work if some ops changes its shape even if input shape
  * is fixed.
  */
-Status GraphTransferer::DryRunInferenceAndCacheResult(
+/* static */ Status GraphTransferer::DryRunInference(
     const GraphDef& graph_def,
     const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names, const bool initialize_by_zero,
@@ -213,6 +214,31 @@ Status GraphTransferer::DryRunInferenceAndCacheResult(
   return Status();
 }
 
+/* static */ Status GraphTransferer::DryRunInferenceForAllNode(
+    const GraphDef& graph_def,
+    const std::vector<GraphTransferer::InputNodeInfo>& input_node_info_list,
+    const bool initialize_by_zero, OutputTensorInfo* const output_tensor_info) {
+  CHECK(output_tensor_info != nullptr);
+  auto& output_tensors = output_tensor_info->output_tensors;
+  auto& output_tensor_map = output_tensor_info->output_tensor_map;
+  std::vector<string> output_node_names;
+  for (const NodeDef& node : graph_def.node()) {
+    if (!IsInputNode(input_node_info_list, node.name())) {
+      output_node_names.emplace_back(node.name());
+    }
+  }
+  const Status status =
+      DryRunInference(graph_def, input_node_info_list, output_node_names,
+                      initialize_by_zero, &output_tensors);
+  CHECK(output_node_names.size() == output_tensors.size());
+  for (int i = 0; i < output_node_names.size(); ++i) {
+    const string& name = output_node_names.at(i);
+    CHECK(output_tensor_map.count(name) == 0);
+    output_tensor_map.emplace(name, &output_tensors.at(i));
+  }
+  return status;
+}
+
 const std::vector<GraphTransferer::ConstNodeTransferParams>&
 GraphTransferer::GetConstNodeParams() const {
   return const_node_transfer_params_list_;
@@ -248,11 +274,11 @@ int GraphTransferer::CacheNode(const Node& node) {
   return node_name_cache_list_.size() - 1;
 }
 
-bool GraphTransferer::IsInputNode(
+/* static */ bool GraphTransferer::IsInputNode(
     const std::vector<InputNodeInfo>& input_node_info_list,
-    const Node& node) const {
+    const string& node_name) {
   for (const InputNodeInfo& input_node_info : input_node_info_list) {
-    if (node.name() == input_node_info.name) {
+    if (node_name == input_node_info.name) {
       return true;
     }
   }
@@ -276,7 +302,7 @@ void GraphTransferer::RegisterNode(
     const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names) {
   VLOG(1) << "Register node: " << node.name();
-  if (IsInputNode(input_node_info_list, node)) {
+  if (IsInputNode(input_node_info_list, node.name())) {
     RegisterInputNode(ops_definitions, shape_refiner, node);
   } else if (std::find(output_node_names.begin(), output_node_names.end(),
                        node.name()) != output_node_names.end()) {
@@ -543,6 +569,11 @@ GraphTransferer::BuildShapeArray(
       CHECK(false);
       return std::array<int64, SHAPE_ARRAY_SIZE>();
   }
+}
+
+void GraphTransferer::ClearCache() {
+  node_name_cache_list_.clear();
+  node_name_to_id_cache_map_.clear();
 }
 
 void GraphTransferer::DumpNodeTransferParams() const {

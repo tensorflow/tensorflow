@@ -79,6 +79,11 @@ class GraphTransferer {
     std::vector<int> max_sizes;
   };
 
+  struct OutputTensorInfo {
+    std::vector<Tensor> output_tensors;
+    std::unordered_map<string, Tensor*> output_tensor_map;
+  };
+
   GraphTransferer() = default;
 
   // Load graph structure into GraphTransferer
@@ -103,12 +108,21 @@ class GraphTransferer {
       const std::vector<string>& output_node_names);
 
   // Dry run inference and cache the result to get memory mapping
-  Status DryRunInferenceAndCacheResult(
+  static Status DryRunInference(
       const GraphDef& graph_def,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names,
       const bool initialize_by_zero,
       std::vector<tensorflow::Tensor>* output_tensors);
+
+  // Dry run inference and fill output tensors to output tensor info
+  // CAVEAT: Do not add or modify output_tensors in output_tensor_info
+  // otherwise, address map may be broken by re-allocation inside
+  // std::vector
+  static Status DryRunInferenceForAllNode(
+      const GraphDef& graph_def,
+      const std::vector<InputNodeInfo>& input_node_info_list,
+      const bool initialize_by_zero, OutputTensorInfo* output_tensor_info);
 
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
@@ -124,8 +138,9 @@ class GraphTransferer {
 
  private:
   int CacheNode(const Node& node);
-  bool IsInputNode(const std::vector<InputNodeInfo>& input_node_info_list,
-                   const Node& node) const;
+  static bool IsInputNode(
+      const std::vector<InputNodeInfo>& input_node_info_list,
+      const string& node_name);
   bool AreAllInputsCached(const Node& node) const;
   void RegisterNode(const IGraphTransferOpsDefinitions& ops_definitions,
                     const ShapeRefiner& shape_refiner, const Node& node,
@@ -166,6 +181,7 @@ class GraphTransferer {
       const string& padding_str, const int inputs_size,
       const std::vector<int>& extra_inputs, const int outputs_size,
       const bool append_input_params, const bool append_output_params);
+  void ClearCache();
   // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
   // Dump verification string of parameters to verify with offline tools
