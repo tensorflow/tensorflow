@@ -2767,7 +2767,7 @@ is `A B B B B`, the return value is:
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
-Since they are non-differentiable, they are typically used at evaluation time.
+They are typically used at evaluation time.
 
 - - -
 
