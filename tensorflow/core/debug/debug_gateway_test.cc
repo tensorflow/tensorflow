@@ -370,9 +370,9 @@ TEST_F(SessionDebugMinusAXTest,
   debug_gateway.SetNodeValueCallback(
       [this, &mu, &val_callback_count, &a_debug_identity_node_name,
        &x_debug_identity_node_name, &y_debug_identity_node_name,
-       &debug_identity_tensor_vals,
-       &callbacks_done](const string& node_name, const int output_slot,
-                        const Tensor& tensor_value, const bool is_ref) {
+       &debug_identity_tensor_vals, &callbacks_done, &kConcurrentRuns](
+           const string& node_name, const int output_slot,
+           const Tensor& tensor_value, const bool is_ref) {
         mutex_lock l(mu);
 
         if (node_name == a_debug_identity_node_name && output_slot == 0) {

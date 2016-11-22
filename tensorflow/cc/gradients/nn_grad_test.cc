@@ -63,7 +63,8 @@ TEST_F(NNGradTest, ReluGrad) {
   auto y = Relu(scope_, x);
   // Avoid input values where ReLU gradient is not well defined (around zero).
   Tensor x_init_value = test::AsTensor<float>(
-      {-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9}, {5, 2});
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
   RunTest(x, x_init_value, y, shape);
 }
 
@@ -74,7 +75,8 @@ TEST_F(NNGradTest, Relu6Grad) {
   // Avoid input values where ReLU gradient is not well defined (around zero
   // and six).
   Tensor x_init_value = test::AsTensor<float>(
-      {-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9}, {5, 2});
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 6.1f, 6.3f, 6.5f, 6.7f, 6.9f},
+      {5, 2});
   RunTest(x, x_init_value, y, shape);
 }
 
@@ -83,7 +85,8 @@ TEST_F(NNGradTest, EluGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = Elu(scope_, x);
   Tensor x_init_value = test::AsTensor<float>(
-      {-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9}, {5, 2});
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
   RunTest(x, x_init_value, y, shape);
 }
 

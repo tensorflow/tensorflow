@@ -126,16 +126,16 @@ TEST_F(SummaryImageOpTest, OneColorImage4dInput) {
   AddInputFromArray<float>(
       TensorShape({1 /*batch*/, 5 /*rows*/, 2 /*columns*/, 3 /*depth*/}),
       {
-          /* r0, c0, RGB */ 1.0, 0.1, 0.2,
-          /* r0, c1, RGB */ 1.0, 0.3, 0.4,
-          /* r1, c0, RGB */ 0.0, 1.0, 0.0,
-          /* r1, c1, RGB */ 0.0, 1.0, 0.0,
-          /* r2, c0, RGB */ 0.0, 0.0, 1.0,
-          /* r2, c1, RGB */ 0.0, 0.0, 1.0,
-          /* r3, c0, RGB */ 1.0, 1.0, 0.0,
-          /* r3, c1, RGB */ 1.0, 0.0, 1.0,
-          /* r4, c0, RGB */ 1.0, 1.0, 0.0,
-          /* r4, c1, RGB */ 1.0, 0.0, 1.0,
+          /* r0, c0, RGB */ 1.0f, 0.1f, 0.2f,
+          /* r0, c1, RGB */ 1.0f, 0.3f, 0.4f,
+          /* r1, c0, RGB */ 0.0f, 1.0f, 0.0f,
+          /* r1, c1, RGB */ 0.0f, 1.0f, 0.0f,
+          /* r2, c0, RGB */ 0.0f, 0.0f, 1.0f,
+          /* r2, c1, RGB */ 0.0f, 0.0f, 1.0f,
+          /* r3, c0, RGB */ 1.0f, 1.0f, 0.0f,
+          /* r3, c1, RGB */ 1.0f, 0.0f, 1.0f,
+          /* r4, c0, RGB */ 1.0f, 1.0f, 0.0f,
+          /* r4, c1, RGB */ 1.0f, 0.0f, 1.0f,
       });
   TF_ASSERT_OK(RunOpKernel());
 

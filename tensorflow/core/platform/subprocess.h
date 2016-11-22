@@ -53,7 +53,7 @@ class SubProcess;
     defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/posix/subprocess.h"
 #elif defined(PLATFORM_WINDOWS)
-#error SubProcess not yet implemented for Windows
+#include "tensorflow/core/platform/windows/subprocess.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
