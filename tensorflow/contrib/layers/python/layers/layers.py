@@ -220,14 +220,16 @@ def _fused_batch_norm(
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
     elif original_rank not in [2, 4]:
-      raise ValueError('Inputs %s has unsupported rank. \
-          Expected 2 or 4 but got %d' % (inputs.name, original_rank))
+      raise ValueError('Inputs %s has unsupported rank.'
+                       ' Expected 2 or 4 but got %d' % (
+                           inputs.name, original_rank))
     if original_rank == 2:
       channels = inputs.get_shape()[-1].value
       if channels is None:
         raise ValueError('`C` dimension must be known but is None')
-      new_shape = [-1, channels, 1, 1] if data_format == DATA_FORMAT_NCHW else \
-          [-1, 1, 1, channels]
+      new_shape = [-1, 1, 1, channels]
+      if data_format == DATA_FORMAT_NCHW:
+        new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
     dtype = inputs.dtype.base_dtype
@@ -316,7 +318,7 @@ def _fused_batch_norm(
     need_updates = is_training_value is None or is_training_value
     if need_updates:
       if updates_collections is None:
-        _no_updates = lambda: outputs
+        no_updates = lambda: outputs
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -326,7 +328,7 @@ def _fused_batch_norm(
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
-        outputs = utils.smart_cond(is_training, _force_updates, _no_updates)
+        outputs = utils.smart_cond(is_training, _force_updates, no_updates)
       else:
         moving_vars_fn = lambda: (moving_mean, moving_variance)
         def _delay_updates():
@@ -684,7 +686,7 @@ def bias_add(inputs,
       raise ValueError('Dims of shape must be known but is None')
     elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
       raise ValueError('Data format NCHW only supports 4D Tensor')
-    axis = 1 if data_format==DATA_FORMAT_NCHW else -1
+    axis = 1 if data_format == DATA_FORMAT_NCHW else -1
     num_features = inputs_shape[axis].value
     if num_features is None:
       raise ValueError('`C` dimension must be known but is None')
@@ -1081,7 +1083,6 @@ def convolution2d_transpose(
       output_shape = [batch_size, num_outputs, out_height, out_width]
       strides = [1, 1, stride_h, stride_w]
 
-
     output_shape = array_ops.pack(output_shape)
     outputs = nn.conv2d_transpose(inputs, weights, output_shape,
                                   strides,
@@ -1091,8 +1092,10 @@ def convolution2d_transpose(
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = num_outputs
-    out_shape[h_axis] = get_deconv_dim(out_shape[h_axis], stride_h, kernel_h, padding)
-    out_shape[w_axis] = get_deconv_dim(out_shape[w_axis], stride_w, kernel_w, padding)
+    out_shape[h_axis] = get_deconv_dim(
+        out_shape[h_axis], stride_h, kernel_h, padding)
+    out_shape[w_axis] = get_deconv_dim(
+        out_shape[w_axis], stride_w, kernel_w, padding)
     outputs.set_shape(out_shape)
 
     if normalizer_fn is not None:
@@ -1107,6 +1110,7 @@ def convolution2d_transpose(
                                           dtype=dtype,
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
+                                          trainable=trainable,
                                           collections=biases_collections)
         outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
