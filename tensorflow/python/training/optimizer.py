@@ -228,6 +228,44 @@ class Optimizer(object):
   def get_name(self):
     return self._name
 
+  def maximize(self, loss, global_step=None, var_list=None,
+               gate_gradients=GATE_OP, aggregation_method=None,
+               colocate_gradients_with_ops=False, name=None,
+               grad_loss=None):
+    """Add operations to maximize `loss` by updating `var_list`.
+
+    This method simply combines calls `compute_gradients()` and
+    `apply_gradients()`. If you want to process the gradient before applying
+    them call `compute_gradients()` and `apply_gradients()` explicitly instead
+    of using this function.
+
+    Args:
+      loss: A `Tensor` containing the value to maximize.
+      global_step: Optional `Variable` to increment by one after the
+        variables have been updated.
+      var_list: Optional list of `Variable` objects to update to maximize
+        `loss`.  Defaults to the list of variables collected in the graph
+        under the key `GraphKeys.TRAINABLE_VARIABLES`.
+      gate_gradients: How to gate the computation of gradients.  Can be
+        `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+      aggregation_method: Specifies the method used to combine gradient terms.
+        Valid values are defined in the class `AggregationMethod`.
+      colocate_gradients_with_ops: If True, try colocating gradients with
+        the corresponding op.
+      name: Optional name for the returned operation.
+      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+    Returns:
+      An Operation that updates the variables in `var_list`.  If `global_step`
+      was not `None`, that operation also increments `global_step`.
+
+    Raises:
+      ValueError: If some of the variables are not `Variable` objects.
+    """
+    return self.minimize(-loss, global_step, var_list, gate_gradients,
+                         aggregation_method, colocate_gradients_with_ops,
+                         name, grad_loss)
+
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,
                colocate_gradients_with_ops=False, name=None,
