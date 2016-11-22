@@ -155,13 +155,13 @@ class VocabularyProcessor(object):
     self.vocabulary_.freeze()
     return self
 
-  def fit_transform(self, raw_documents, return_docs_len=False, unused_y=None):
+  def fit_transform(self, raw_documents, unused_y=None, return_docs_len=False):
     """Learn the vocabulary dictionary and return indexies of words.
 
     Args:
       raw_documents: An iterable which yield either str or unicode.
-      return_docs_len: Boolean if True yields number of tokens also.
       unused_y: to match fit_transform signature of estimators.
+      return_docs_len: Boolean if True yields number of tokens also.
 
     Returns:
       x: iterable, [n_samples, max_document_length]. Word-id matrix.
