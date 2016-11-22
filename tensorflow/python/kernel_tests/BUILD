@@ -1356,6 +1356,15 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "qr_op_test",
+    size = "medium",
+    srcs = ["qr_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    shard_count = 20,
+    tags = ["nomsan"],  # fails in msan from numpy calls
+)
+
+cuda_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],

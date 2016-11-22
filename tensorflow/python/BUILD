@@ -1030,8 +1030,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":control_flow_ops_gen",
         ":data_flow_ops_gen",
         ":framework",
+        ":framework_for_generated_wrappers",
         ":math_ops_gen",
         ":sparse_ops_gen",
         ":state_ops",

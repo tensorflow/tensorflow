@@ -4,16 +4,16 @@ enable_testing()
 # get a temp path for test data
 #
 function(GetTestRunPath VAR_NAME OBJ_NAME)
-    if(WIN32) 
-      if(DEFINED ENV{TMP}) 
+    if(WIN32)
+      if(DEFINED ENV{TMP})
         set(TMPDIR "$ENV{TMP}")
       elseif(DEFINED ENV{TEMP})
         set(TMPDIR "$ENV{TEMP}")
       endif()
       string(REPLACE "\\" "/" TMPDIR ${TMPDIR})
-    else() 
-      set(TMPDIR "$ENV{TMPDIR}") 
-    endif() 
+    else()
+      set(TMPDIR "$ENV{TMPDIR}")
+    endif()
     if(NOT EXISTS "${TMPDIR}")
        message(FATAL_ERROR "Unable to determine a path to the temporary directory")
     endif()
@@ -45,7 +45,7 @@ endfunction(AddTests)
 #
 function(AddTest)
   cmake_parse_arguments(_AT "" "TARGET" "SOURCES;OBJECTS;LIBS;DATA;DEPENDS" ${ARGN})
-  
+
   list(REMOVE_DUPLICATES _AT_SOURCES)
   list(REMOVE_DUPLICATES _AT_OBJECTS)
   list(REMOVE_DUPLICATES _AT_LIBS)
@@ -55,7 +55,7 @@ function(AddTest)
   if (_AT_DEPENDS)
     list(REMOVE_DUPLICATES _AT_DEPENDS)
   endif(_AT_DEPENDS)
-  
+
   add_executable(${_AT_TARGET} ${_AT_SOURCES} ${_AT_OBJECTS})
   target_link_libraries(${_AT_TARGET} ${_AT_LIBS})
 
@@ -96,7 +96,7 @@ function(AddPythonTests)
   if (_AT_DEPENDS)
     list(REMOVE_DUPLICATES _AT_DEPENDS)
   endif(_AT_DEPENDS)
-  
+
   foreach(sourcefile ${_AT_SOURCES})
     add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile})
     if (_AT_DEPENDS)
@@ -108,11 +108,11 @@ endfunction(AddPythonTests)
 if (tensorflow_BUILD_PYTHON_TESTS)
   #
   # python tests. This assumes that the tensorflow wheel is
-  # installed on the test system. 
+  # installed on the test system.
   # TODO: we currently don't handle tests that need to have
   # some environment setup: see AddTest how to add this
   #
-  
+
   # include all test
   file(GLOB_RECURSE tf_test_src_py
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
@@ -124,14 +124,14 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
 	"${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/resource_variable_ops_test.py"
-  )  
+  )
   if (WIN32)
     set(tf_test_src_py_exclude
       ${tf_test_src_py_exclude}
       # generally excluded
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
-      
-      # TODO: failing tests. 
+
+      # TODO: failing tests.
       # Nothing critical in here but should get this list down to []
       # The failing list is grouped by failure source
       # stl on windows handles overflows different
@@ -148,9 +148,13 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
       # issues related to windows fs
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/io_ops_test.py"
-      # missing kernel      
+      # missing kernel
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/conv_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/depthwise_conv_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/fractional_avg_pool_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/pool_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/qr_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/svd_op_test.py"
       # cuda launch failed
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/trace_op_test.py"
@@ -158,10 +162,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
-  
+
   AddPythonTests(
     SOURCES ${tf_test_src_py}
-  )  
+  )
 endif(tensorflow_BUILD_PYTHON_TESTS)
 
 if (tensorflow_BUILD_CC_TESTS)
@@ -169,9 +173,9 @@ if (tensorflow_BUILD_CC_TESTS)
   # cc unit tests. Be aware that by default we include 250+ tests which
   # will take time and space to build.
   # If you wan to cut this down, for example to a specific test, modify
-  # tf_test_src_simple to your needs  
+  # tf_test_src_simple to your needs
   #
-  
+
   include_directories(${googletest_INCLUDE_DIRS})
 
   # cc tests wrapper
@@ -228,7 +232,7 @@ if (tensorflow_BUILD_CC_TESTS)
       # generally excluded
       "${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/default/ffmpeg_lib_test.cc"
       "${tensorflow_source_dir}/tensorflow/cc/framework/cc_ops_test.cc" # test_op.h missing
- 
+
       # TODO: test failing
       "${tensorflow_source_dir}/tensorflow/core/common_runtime/simple_placer_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/executor_test.cc"
@@ -254,7 +258,7 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops_test.cc" # status 5
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops_test.cc" # status 5
 
-      # TODO: not compiling 
+      # TODO: not compiling
       "${tensorflow_source_dir}/tensorflow/cc/framework/gradient_checker_test.cc"
       "${tensorflow_source_dir}/tensorflow/cc/gradients/math_grad_test.cc"
       "${tensorflow_source_dir}/tensorflow/cc/gradients/array_grad_test.cc"
@@ -344,13 +348,13 @@ if (tensorflow_BUILD_CC_TESTS)
   endif()
 
   list(REMOVE_ITEM tf_test_src_simple ${tf_test_src_simple_exclude})
-  
+
   set(tf_test_lib tf_test_lib)
   add_library(${tf_test_lib} STATIC ${tf_src_testlib})
 
-  # this is giving to much objects and libraries to the linker but 
+  # this is giving to much objects and libraries to the linker but
   # it makes this script much easier. So for now we do it this way.
-  set(tf_obj_test 
+  set(tf_obj_test
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
@@ -362,10 +366,10 @@ if (tensorflow_BUILD_CC_TESTS)
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
   )
 
-  set(tf_test_libs 
+  set(tf_test_libs
     tf_protos_cc
     tf_test_lib
-    ${tf_core_gpu_kernels_lib} 
+    ${tf_core_gpu_kernels_lib}
     ${googletest_STATIC_LIBRARIES}
     ${tensorflow_EXTERNAL_LIBRARIES}
   )
@@ -373,7 +377,7 @@ if (tensorflow_BUILD_CC_TESTS)
   AddTests(
     SOURCES ${tf_test_src_simple}
     OBJECTS ${tf_obj_test}
-    LIBS ${tf_test_libs} 
+    LIBS ${tf_test_libs}
     DEPENDS googletest
   )
 endif(tensorflow_BUILD_CC_TESTS)

@@ -104,6 +104,7 @@ functions on matrices to your graph.
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls
+@@qr
 @@self_adjoint_eig
 @@self_adjoint_eigvals
 @@svd
@@ -949,6 +950,7 @@ def div(x, y, name=None):
 def div_deprecated(x, y, name=None):
   return gen_math_ops.div(x, y, name)
 
+
 mod = gen_math_ops.floor_mod
 
 
@@ -1000,6 +1002,7 @@ def floordiv_deprecated(x, y, name=None):
       # TODO(aselle): Switch to math_ops.floor_div() when ready
       # return gen_math_ops.floor_div(x, y, name=name)
       return gen_math_ops.div(x, y, name=name)
+
 
 realdiv = gen_math_ops.real_div
 truncatediv = gen_math_ops.truncate_div

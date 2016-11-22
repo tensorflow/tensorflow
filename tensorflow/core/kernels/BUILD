@@ -1324,6 +1324,7 @@ tf_kernel_libraries(
         "matrix_solve_ls_op",
         "matrix_solve_op",
         "matrix_triangular_solve_op",
+        "qr_op",
         "svd_op",
     ],
     deps = [
