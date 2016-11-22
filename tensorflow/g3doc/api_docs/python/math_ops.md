@@ -108,21 +108,7 @@ multiply with arbitrary tensors.
 
 ### `tf.div(x, y, name=None)` {#div}
 
-Returns x / y element-wise.
 
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -323,9 +309,12 @@ with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
 
 ### `tf.mod(x, y, name=None)` {#mod}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
