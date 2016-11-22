@@ -22,8 +22,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/platform/google/integral_types.h"
-#include "tensorflow/core/platform/google/mutex.h"
 
 namespace tensorflow {
 
