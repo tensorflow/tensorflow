@@ -471,7 +471,7 @@ class BaseSaverBuilder(object):
         else:
           names_to_saveables[name] = [var]
       else:
-        var = ops.convert_to_tensor(var, as_ref=True)
+        var = ops.internal_convert_to_tensor(var, as_ref=True)
         if not BaseSaverBuilder._IsVariable(var):
           raise TypeError("Variable to save is not a Variable: %s" % var)
         name = var.op.name
@@ -532,7 +532,7 @@ class BaseSaverBuilder(object):
         # pylint: enable=protected-access
       else:
         # A variable or tensor.
-        variable = ops.convert_to_tensor(op, as_ref=True)
+        variable = ops.internal_convert_to_tensor(op, as_ref=True)
         if not BaseSaverBuilder._IsVariable(variable):
           raise TypeError("names_to_saveables must be a dict mapping string "
                           "names to Tensors/Variables. Not a variable: %s" %
