@@ -2518,7 +2518,7 @@ for more details.
 
 - - -
 
-### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
+### `tf.convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None)` {#convert_to_tensor}
 
 Converts the given `value` to a `Tensor`.
 
@@ -2552,8 +2552,6 @@ and scalars in addition to `Tensor` objects.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
 *  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
     used when dtype is None. In some cases, a caller may not have a
     dtype in mind when converting to a tensor, so preferred_dtype
@@ -2562,7 +2560,7 @@ and scalars in addition to `Tensor` objects.
 
 ##### Returns:
 
-  A `Tensor` based on `value`.
+  An `Output` based on `value`.
 
 ##### Raises:
 
@@ -2573,7 +2571,7 @@ and scalars in addition to `Tensor` objects.
 
 - - -
 
-### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
+### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None)` {#convert_to_tensor_or_indexed_slices}
 
 Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -2589,7 +2587,6 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 *  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
 *  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
 
 ##### Returns:
 
@@ -2984,29 +2981,6 @@ an attempt to request its gradient is made.
 
 
 *  <b>`TypeError`</b>: If `op_type` is not a string.
-
-
-- - -
-
-### `class tf.RegisterShape` {#RegisterShape}
-
-A decorator for registering the shape function for an op type.
-
-Soon to be removed.  Shape functions should be registered via
-the SetShapeFn on the original Op specification in C++.
-- - -
-
-#### `tf.RegisterShape.__call__(f)` {#RegisterShape.__call__}
-
-Registers "f" as the shape function for "op_type".
-
-
-- - -
-
-#### `tf.RegisterShape.__init__(op_type)` {#RegisterShape.__init__}
-
-Saves the `op_type` as the `Operation` type.
-
 
 
 - - -

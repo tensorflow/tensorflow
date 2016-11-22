@@ -37,7 +37,7 @@ with tf.Graph().as_default():
     # Compute unary scores from a linear layer.
     weights = tf.get_variable("weights", [num_features, num_tags])
     matricized_x_t = tf.reshape(x_t, [-1, num_features])
-    matricized_unary_scores = tf.batch_matmul(matricized_x_t, weights)
+    matricized_unary_scores = tf.matmul(matricized_x_t, weights)
     unary_scores = tf.reshape(matricized_unary_scores,
                               [num_examples, num_words, num_tags])
 

@@ -41,7 +41,7 @@ class CholeskyOpTest(tf.test.TestCase):
     # Verify that LL^T == x.
     with self.test_session() as sess:
       chol = tf.cholesky(x)
-      verification = tf.batch_matmul(chol, chol, adj_x=False, adj_y=True)
+      verification = tf.matmul(chol, chol, adjoint_b=True)
       self._verifyCholeskyBase(sess, x, chol, verification)
 
   def testBasic(self):

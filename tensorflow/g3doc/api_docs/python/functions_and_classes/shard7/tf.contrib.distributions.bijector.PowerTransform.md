@@ -1,47 +1,43 @@
-Bijector which computes Y = g(X) = exp(X).
+Bijector which computes `Y = g(X) = (1 + X * c)**(1 / c), X >= -1 / c`.
 
-Example Use:
+The [power transform](https://en.wikipedia.org/wiki/Power_transform) maps
+inputs from `[0, inf]` to `[-1/c, inf]`; this is equivalent to the `inverse`
+of this bijector.
 
-```python
-# Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
-# batch ndim and 2 event ndims (i.e., vector of matrices).
-exp = Exp(batch_ndims=1, event_ndims=2)
-x = [[[1., 2],
-       [3, 4]],
-      [[5, 6],
-       [7, 8]]]
-exp(x) == exp.forward(x)
-log(x) == exp.inverse(x)
-```
-
-Note: the exp(.) is applied element-wise but the Jacobian is a reduction
-over the event space.
+This bijector is equivalent to the `Exp` bijector when `c=0`.
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.__init__(event_ndims=0, validate_args=False, name='exp')` {#Exp.__init__}
+#### `tf.contrib.distributions.bijector.PowerTransform.__init__(power=0.0, event_ndims=0, validate_args=False, name='power_transform')` {#PowerTransform.__init__}
 
-Instantiates the `Exp` bijector.
+Instantiates the `PowerTransform` bijector.
 
 ##### Args:
 
 
-*  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
-    associated with a particular draw from the distribution.
+*  <b>`power`</b>: Python `float` scalar indicating the transform power, i.e.,
+    `Y = g(X) = (1 + X * c)**(1 / c)` where `c` is the `power`.
+*  <b>`event_ndims`</b>: Python scalar indicating the number of dimensions associated
+    with a particular draw from the distribution.
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
     for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `power < 0` or is not known statically.
+
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.dtype` {#Exp.dtype}
+#### `tf.contrib.distributions.bijector.PowerTransform.dtype` {#PowerTransform.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.forward(x, name='forward', **condition_kwargs)` {#Exp.forward}
+#### `tf.contrib.distributions.bijector.PowerTransform.forward(x, name='forward', **condition_kwargs)` {#PowerTransform.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -66,7 +62,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.forward_event_shape(input_shape, name='forward_event_shape')` {#Exp.forward_event_shape}
+#### `tf.contrib.distributions.bijector.PowerTransform.forward_event_shape(input_shape, name='forward_event_shape')` {#PowerTransform.forward_event_shape}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -86,7 +82,7 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Exp.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.PowerTransform.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#PowerTransform.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -112,7 +108,7 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.get_forward_event_shape(input_shape)` {#Exp.get_forward_event_shape}
+#### `tf.contrib.distributions.bijector.PowerTransform.get_forward_event_shape(input_shape)` {#PowerTransform.get_forward_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -133,7 +129,7 @@ Same meaning as `forward_event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.get_inverse_event_shape(output_shape)` {#Exp.get_inverse_event_shape}
+#### `tf.contrib.distributions.bijector.PowerTransform.get_inverse_event_shape(output_shape)` {#PowerTransform.get_inverse_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -154,7 +150,7 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.inverse(y, name='inverse', **condition_kwargs)` {#Exp.inverse}
+#### `tf.contrib.distributions.bijector.PowerTransform.inverse(y, name='inverse', **condition_kwargs)` {#PowerTransform.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -180,7 +176,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Exp.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.PowerTransform.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#PowerTransform.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -211,7 +207,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Exp.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.PowerTransform.inverse_event_shape(output_shape, name='inverse_event_shape')` {#PowerTransform.inverse_event_shape}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -231,7 +227,7 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Exp.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.PowerTransform.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#PowerTransform.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -261,7 +257,7 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.is_constant_jacobian` {#Exp.is_constant_jacobian}
+#### `tf.contrib.distributions.bijector.PowerTransform.is_constant_jacobian` {#PowerTransform.is_constant_jacobian}
 
 Returns true iff the Jacobian is not a function of x.
 
@@ -274,35 +270,35 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.name` {#Exp.name}
+#### `tf.contrib.distributions.bijector.PowerTransform.name` {#PowerTransform.name}
 
 Returns the string name of this `Bijector`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.parameters` {#Exp.parameters}
+#### `tf.contrib.distributions.bijector.PowerTransform.parameters` {#PowerTransform.parameters}
 
 Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.power` {#Exp.power}
+#### `tf.contrib.distributions.bijector.PowerTransform.power` {#PowerTransform.power}
 
 The `c` in: `Y = g(X) = (1 + X * c)**(1 / c)`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.shaper` {#Exp.shaper}
+#### `tf.contrib.distributions.bijector.PowerTransform.shaper` {#PowerTransform.shaper}
 
 Returns shape object used to manage shape constraints.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.validate_args` {#Exp.validate_args}
+#### `tf.contrib.distributions.bijector.PowerTransform.validate_args` {#PowerTransform.validate_args}
 
 Returns True if Tensor arguments will be validated.
 

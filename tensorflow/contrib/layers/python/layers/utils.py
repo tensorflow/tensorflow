@@ -285,7 +285,7 @@ def n_positive_integers(n, value):
   """Converts `value` to a sequence of `n` positive integers.
 
   `value` may be either be a sequence of values convertible to `int`, or a
-  single value convertible to `int`, in which case the the resultant integer is
+  single value convertible to `int`, in which case the resulting integer is
   duplicated `n` times.  It may also be a TensorShape of rank `n`.
 
   Args:

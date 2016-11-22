@@ -46,6 +46,7 @@ load(
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
+    "cuda_path_flags"
 )
 
 # List of proto files for android builds
@@ -428,7 +429,6 @@ def _cuda_copts():
             common_cuda_opts +
             [
                 "-fcuda-flush-denormals-to-zero",
-                "--cuda-path=external/local_config_cuda/cuda",
                 "--cuda-gpu-arch=sm_35",
             ]
         ),
@@ -437,7 +437,7 @@ def _cuda_copts():
         # optimizations are not enabled at O2.
         "@local_config_cuda//cuda:using_clang_opt": ["-O3"],
         "//conditions:default": [],
-    })
+    }) + cuda_path_flags()
 
 # Build defs for TensorFlow kernels
 
@@ -483,7 +483,10 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
+      deps = deps + if_cuda(cuda_deps + [
+          "//tensorflow/core:cuda",
+          "@local_config_cuda//cuda:cuda_headers"
+      ]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 

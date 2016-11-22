@@ -402,10 +402,10 @@ def pick_vector(cond,
 
 def gen_new_seed(seed, salt):
   """Generate a new seed, from the given seed and salt."""
-  if seed:
-    string = (str(seed) + salt).encode("utf-8")
-    return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
-  return None
+  if seed is None:
+    return None
+  string = (str(seed) + salt).encode("utf-8")
+  return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
 
 def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):

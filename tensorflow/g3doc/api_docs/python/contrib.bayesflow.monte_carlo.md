@@ -46,7 +46,7 @@ Log E_q[ f(Z) p(Z) / q(Z) ]
 C := Max[ Log[f(Z)] + Log[p(Z)] - Log[q(Z)] ].
 ```
 
-The maximum value of the exponentiated term will be 0.0, and the the expectation
+The maximum value of the exponentiated term will be 0.0, and the expectation
 can be evaluated in a stable manner.
 
 ## Ops

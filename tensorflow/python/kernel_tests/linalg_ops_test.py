@@ -45,8 +45,7 @@ class CholeskySolveTest(tf.test.TestCase):
           for k in range(1, 3):
             rhs = self.rng.randn(2, n, k).astype(np_type)
             x = tf.cholesky_solve(chol, rhs)
-            self.assertAllClose(
-                rhs, tf.batch_matmul(array, x).eval(), atol=atol)
+            self.assertAllClose(rhs, tf.matmul(array, x).eval(), atol=atol)
 
 
 class CholeskySolveGpuTest(CholeskySolveTest):

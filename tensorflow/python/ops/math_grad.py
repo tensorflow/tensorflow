@@ -812,18 +812,18 @@ def _BatchMatMul(op, grad):
 
   if not adj_x:
     if not adj_y:
-      grad_x = math_ops.batch_matmul(grad, y, False, True)
-      grad_y = math_ops.batch_matmul(x, grad, True, False)
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=True, adjoint_b=False)
     else:
-      grad_x = math_ops.batch_matmul(grad, y, False, False)
-      grad_y = math_ops.batch_matmul(grad, x, True, False)
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=False)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=False)
   else:
     if not adj_y:
-      grad_x = math_ops.batch_matmul(y, grad, False, True)
-      grad_y = math_ops.batch_matmul(x, grad, False, False)
+      grad_x = math_ops.matmul(y, grad, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=False, adjoint_b=False)
     else:
-      grad_x = math_ops.batch_matmul(y, grad, True, True)
-      grad_y = math_ops.batch_matmul(grad, x, True, True)
+      grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
 
   return grad_x, grad_y
 

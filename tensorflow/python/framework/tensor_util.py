@@ -625,6 +625,17 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "ConcatV2":
+    dim = constant_value(tensor.op.inputs[-1])
+    if dim is None:
+      return None
+    values = []
+    for x in tensor.op.inputs[:-1]:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.concatenate(values, axis=dim)
   elif tensor.op.type == "Pack":
     values = []
     for x in tensor.op.inputs:
@@ -709,6 +720,16 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # have been checked by a previous shape function.
     ret = tensor_shape.scalar()  # Empty list.
     for concat_input in tensor.op.inputs[1:]:
+      # `concat_input` must be a vector. Attempt to evaluate it as a shape,
+      # and concatenate it with `ret`.
+      ret = ret.concatenate(constant_value_as_shape(concat_input))
+    return ret
+  elif tensor.op.type == "ConcatV2":
+    # We assume that `tensor.op.inputs[-1]` evaluates to 0, as this is
+    # the only legal value when concatenating vectors, and it will
+    # have been checked by a previous shape function.
+    ret = tensor_shape.scalar()  # Empty list.
+    for concat_input in tensor.op.inputs[:-1]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.
       ret = ret.concatenate(constant_value_as_shape(concat_input))

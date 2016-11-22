@@ -62,10 +62,6 @@ export class ProtoDataProvider implements DataProvider {
     });
   }
 
-  getDefaultTensor(run: string, callback: (tensorName: string) => void): void {
-    callback('proto');
-  }
-
   getBookmarks(run: string, tensorName: string,
       callback: (r: State[]) => void): void {
     return callback([]);

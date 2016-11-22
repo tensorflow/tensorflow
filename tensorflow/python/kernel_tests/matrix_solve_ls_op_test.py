@@ -22,7 +22,7 @@ import tensorflow as tf
 
 
 def BatchMatMul(a, b):
-  # A numpy implementation of tf.batch_matmul().
+  # A numpy implementation of tf.matmul().
   if a.ndim < 3:
     return np.dot(a, b)
   # Get the number of matrices.

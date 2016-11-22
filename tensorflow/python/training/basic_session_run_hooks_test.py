@@ -21,11 +21,13 @@ from __future__ import print_function
 
 import shutil
 import tempfile
+import threading
 import time
 
 import tensorflow as tf
 
 from tensorflow.contrib import testing
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 
@@ -330,6 +332,29 @@ class CheckpointSaverHookTest(tf.test.TestCase):
         self.assertEqual(2, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
 
+  def test_summary_writer_defs(self):
+    testing.FakeSummaryWriter.install()
+    tf.train.SummaryWriterCache.clear()
+    summary_writer = tf.train.SummaryWriterCache.get(self.model_dir)
+
+    with self.graph.as_default():
+      hook = tf.train.CheckpointSaverHook(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      hook.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.model_dir,
+          expected_added_meta_graphs=[meta_graph.create_meta_graph_def(
+              graph_def=self.graph.as_graph_def(add_shapes=True),
+              saver_def=self.scaffold.saver.saver_def)])
+
+    testing.FakeSummaryWriter.uninstall()
+
 
 class StepCounterHookTest(tf.test.TestCase):
 
@@ -505,6 +530,42 @@ class SummarySaverHookTest(tf.test.TestCase):
             4: {'my_summary': 2.0},
             7: {'my_summary': 3.0},
         })
+
+
+class GlobalStepWaiterHookTest(tf.test.TestCase):
+
+  def test_not_wait_for_step_zero(self):
+    with tf.Graph().as_default():
+      tf.contrib.framework.get_or_create_global_step()
+      hook = tf.train.GlobalStepWaiterHook(wait_until_step=0)
+      hook.begin()
+      with tf.Session() as sess:
+        # Before run should return without waiting gstep increment.
+        hook.before_run(
+            tf.train.SessionRunContext(
+                original_args=None, session=sess))
+
+  def test_wait_for_step(self):
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      hook = tf.train.GlobalStepWaiterHook(wait_until_step=1000)
+      hook.begin()
+      with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
+        waiter = threading.Thread(
+            target=hook.before_run,
+            args=(tf.train.SessionRunContext(
+                original_args=None, session=sess),))
+        waiter.daemon = True
+        waiter.start()
+        time.sleep(1.0)
+        self.assertTrue(waiter.is_alive())
+        sess.run(tf.assign(gstep, 500))
+        time.sleep(1.0)
+        self.assertTrue(waiter.is_alive())
+        sess.run(tf.assign(gstep, 1100))
+        time.sleep(1.2)
+        self.assertFalse(waiter.is_alive())
 
 
 if __name__ == '__main__':

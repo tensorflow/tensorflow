@@ -196,8 +196,8 @@ def einsum(equation, *inputs):
     input_count = sum(1 for s in input_axis_labels if a in s)
     if input_count > 2 and a not in output_axis_labels:
       logging.warn(
-        'Falling back to exponential-space implementation of einsum() because '
-        'index "%s" is summed over more than two inputs.' % a)
+          'Falling back to exponential-space implementation of einsum() because'
+          ' index "%s" is summed over more than two inputs.', a)
       return _exponential_space_einsum(equation, *inputs)
 
   temp = inputs[0]
@@ -310,7 +310,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
     product_axes = sorted_axes[0] + sorted_axes[1][len(preserved_axes):]
     return product, ''.join(product_axes)
   else:
-    # Reduce to batch_matmul().
+    # Reduce to matmul().
 
     # Reshape both inputs so as to combine multiple broadcast axes
     # into a single axis, and combine multiple summed axes into a
@@ -331,7 +331,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
                                                   num_broadcast_elements_t1)
     t1 = _reshape_if_necessary(t1, new_shape)
 
-    product = math_ops.batch_matmul(t0, t1)
+    product = math_ops.matmul(t0, t1)
 
     # Undo compaction of broadcast axes
     uncompacted_shape = (
