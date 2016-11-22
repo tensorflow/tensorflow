@@ -769,10 +769,9 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
       m_ss = math_ops.sub(x, shift)
-      v_ss = math_ops.squared_difference(x, shift)
     else:  # no shift.
       m_ss = x
-      v_ss = math_ops.square(x)
+    v_ss = math_ops.square(m_ss)
     m_ss = math_ops.reduce_sum(m_ss, axes, keep_dims=keep_dims, name="mean_ss")
     v_ss = math_ops.reduce_sum(v_ss, axes, keep_dims=keep_dims, name="var_ss")
   return counts, m_ss, v_ss, shift
