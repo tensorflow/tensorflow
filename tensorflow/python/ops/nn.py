@@ -238,7 +238,7 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
-Since they are non-differentiable, they are typically used at evaluation time.
+They are typically used at evaluation time.
 
 @@top_k
 @@in_top_k
