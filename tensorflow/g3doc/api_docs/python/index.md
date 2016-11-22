@@ -262,6 +262,7 @@
   * [`negative`](../../api_docs/python/math_ops.md#negative)
   * [`polygamma`](../../api_docs/python/math_ops.md#polygamma)
   * [`pow`](../../api_docs/python/math_ops.md#pow)
+  * [`qr`](../../api_docs/python/math_ops.md#qr)
   * [`real`](../../api_docs/python/math_ops.md#real)
   * [`realdiv`](../../api_docs/python/math_ops.md#realdiv)
   * [`reciprocal`](../../api_docs/python/math_ops.md#reciprocal)
