@@ -28,6 +28,16 @@ REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_CPU), CopyOp);
 
 REGISTER_KERNEL_BUILDER(Name("CopyHost").Device(DEVICE_CPU), CopyOp);
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_SYCL), CopyOp);
+
+REGISTER_KERNEL_BUILDER(Name("CopyHost")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("input")
+                            .HostMemory("output"),
+                        CopyOp);
+#endif // TENSORFLOW_USE_SYCL
+
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_GPU), CopyOp);
 
@@ -50,6 +60,14 @@ REGISTER_KERNEL_BUILDER(Name("DebugIdentity")
                         DebugIdentityOp);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("DebugIdentity")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("input")
+                            .HostMemory("output"),
+                        DebugIdentityOp);
+#endif // TENSORFLOW_USE_SYCL
+
 // Register debug NaN-counter (non-ref and ref) ops.
 #define REGISTER_DEBUG_NAN_COUNT(type)                                    \
   REGISTER_KERNEL_BUILDER(                                                \
@@ -69,5 +87,16 @@ REGISTER_GPU_DEBUG_NAN_COUNT(Eigen::half);
 REGISTER_GPU_DEBUG_NAN_COUNT(float);
 REGISTER_GPU_DEBUG_NAN_COUNT(double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_GPU_DEBUG_NAN_COUNT(type)                \
+  REGISTER_KERNEL_BUILDER(Name("DebugNanCount")           \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("input")        \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          DebugNanCountOp<type>);
+REGISTER_GPU_DEBUG_NAN_COUNT(float);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
