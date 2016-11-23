@@ -285,32 +285,32 @@ def run_bottleneck_on_image(sess, image_data, image_data_tensor,
   return bottleneck_values
 
 
-def maybe_download_and_extract():
+#def maybe_download_and_extract():
   """Download and extract model tar file.
 
   If the pretrained model we're using doesn't already exist, this function
   downloads it from the TensorFlow.org website and unpacks it into a directory.
   """
-  dest_directory = FLAGS.model_dir
-  if not os.path.exists(dest_directory):
-    os.makedirs(dest_directory)
-  filename = DATA_URL.split('/')[-1]
-  filepath = os.path.join(dest_directory, filename)
-  if not os.path.exists(filepath):
+#  dest_directory = FLAGS.model_dir
+#  if not os.path.exists(dest_directory):
+#    os.makedirs(dest_directory)
+#  filename = DATA_URL.split('/')[-1]
+#  filepath = os.path.join(dest_directory, filename)
+#  if not os.path.exists(filepath):
 
-    def _progress(count, block_size, total_size):
-      sys.stdout.write('\r>> Downloading %s %.1f%%' %
-                       (filename,
-                        float(count * block_size) / float(total_size) * 100.0))
-      sys.stdout.flush()
+#    def _progress(count, block_size, total_size):
+ #     sys.stdout.write('\r>> Downloading %s %.1f%%' %
+  #                     (filename,
+   #                     float(count * block_size) / float(total_size) * 100.0))
+    #  sys.stdout.flush()
 
-    filepath, _ = urllib.request.urlretrieve(DATA_URL,
-                                             filepath,
-                                             _progress)
-    print()
-    statinfo = os.stat(filepath)
-    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
-  tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+#    filepath, _ = urllib.request.urlretrieve(DATA_URL,
+ #                                            filepath,
+  #                                           _progress)
+   # print()
+  #  statinfo = os.stat(filepath)
+   # print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
+ # tarfile.open(filepath, 'r:gz').extractall(dest_directory)
 
 
 def ensure_dir_exists(dir_name):
@@ -748,7 +748,7 @@ def main(_):
   tf.gfile.MakeDirs(FLAGS.summaries_dir)
 
   # Set up the pre-trained graph.
-  maybe_download_and_extract()
+ # maybe_download_and_extract()
   graph, bottleneck_tensor, jpeg_data_tensor, resized_image_tensor = (
       create_inception_graph())
 
