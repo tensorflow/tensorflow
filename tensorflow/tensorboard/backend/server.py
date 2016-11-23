@@ -69,7 +69,7 @@ def ParseEventFilesSpec(logdir):
   if logdir is None:
     return files
   # Make sure keeping consistent with ParseURI in core/lib/io/path.cc
-  uri_pattern = re.compile("[a-zA-Z][0-9a-zA-Z.]://.*")
+  uri_pattern = re.compile("[a-zA-Z][0-9a-zA-Z.]*://.*")
   for specification in logdir.split(','):
     # Check if the spec contains group. A spec start with xyz:// is regarded as
     # URI path spec instead of group spec. If the spec looks like /foo:bar/baz,
