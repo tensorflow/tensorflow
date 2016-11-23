@@ -1343,6 +1343,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":resource_variable_ops_gen",
         ":state_ops_gen",
     ],
 )
