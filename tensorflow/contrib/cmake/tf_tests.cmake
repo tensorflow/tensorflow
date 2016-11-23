@@ -304,6 +304,7 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantized_matmul_op_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantized_pooling_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantized_batch_norm_op_test.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/cloud/bigquery_table_accessor_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/gcs_file_system_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/google_auth_provider_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/http_request_test.cc"

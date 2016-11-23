@@ -133,6 +133,7 @@ filegroup(
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/cloud:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
