@@ -196,17 +196,14 @@ def sdca_model_fn(features, labels, mode, params):
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
 
-  # pylint: disable=protected-access
-  if isinstance(head, head_lib._BinarySvmHead):
+  if isinstance(head, head_lib._BinarySvmHead):  # pylint: disable=protected-access
     loss_type = "hinge_loss"
-  elif isinstance(
-      head, (head_lib._MultiClassHead, head_lib._BinaryLogisticHead)):
+  elif isinstance(head, head_lib._MultiClassHead):  # pylint: disable=protected-access
     loss_type = "logistic_loss"
-  elif isinstance(head, head_lib._RegressionHead):
+  elif isinstance(head, head_lib._RegressionHead):  # pylint: disable=protected-access
     loss_type = "squared_loss"
   else:
-    raise ValueError("Unsupported head type: {}".format(head))
-  # pylint: enable=protected-access
+    return ValueError("Unsupported head type: {}".format(head))
 
   parent_scope = "linear"
 

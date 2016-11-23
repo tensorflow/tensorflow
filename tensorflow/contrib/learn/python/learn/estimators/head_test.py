@@ -131,10 +131,13 @@ class MultiClassModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=logits)
       self.assertAlmostEqual(.15514446, sess.run(model_fn_ops.loss))
 
-  def testInvalidNClasses(self):
-    for n_classes in (None, -1, 0, 1):
-      with self.assertRaisesRegexp(ValueError, "n_classes must be > 1"):
-        head_lib._multi_class_head(n_classes=n_classes)
+  def testMultiClassWithInvalidNClass(self):
+    try:
+      head_lib._multi_class_head(n_classes=1)
+      self.fail("Softmax with no n_classes did not raise error.")
+    except ValueError:
+      # Expected
+      pass
 
 
 class BinarySvmModelHeadTest(tf.test.TestCase):
