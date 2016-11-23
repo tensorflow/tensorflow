@@ -276,8 +276,8 @@ class _RegressionHead(_Head):
     else:
       loss = self._training_loss(features, labels, logits)
       train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
-                  else self._train_op(features, labels, train_op_fn, logits))
-      eval_metric_ops = self._eval_metric_ops(features, labels, logits)
+                  else self._train_op(loss, labels, train_op_fn))
+      eval_metric_ops = self._eval_metric_ops(features, labels, predictions)
     signature_fn = self._signature_fn()
 
     return model_fn.ModelFnOps(
@@ -325,9 +325,8 @@ class _RegressionHead(_Head):
         _head_prefixed(self._head_name, "loss"), weighted_average_loss)
     return loss
 
-  def _train_op(self, features, labels, train_op_fn, logits):
+  def _train_op(self, loss, labels, train_op_fn):
     """Returns op for the training step."""
-    loss = self._training_loss(features, labels, logits)
     train_op = train_op_fn(loss)
 
     if self._enable_centered_bias:
@@ -340,10 +339,9 @@ class _RegressionHead(_Head):
 
     return train_op
 
-  def _eval_metric_ops(self, features, labels, logits):
+  def _eval_metric_ops(self, features, labels, predictions):
     """Returns a dict of metric ops keyed by name."""
     labels = _check_labels(labels, self._label_name)
-    predictions = self._predictions(logits)
     return estimator._make_metrics_ops(  # pylint: disable=protected-access
         self._default_metrics(), features, labels, predictions)
 
@@ -374,7 +372,7 @@ class _RegressionHead(_Head):
     predictions = {}
     if self.logits_dimension == 1:
       predictions[prediction_key.PredictionKey.SCORES] = array_ops.squeeze(
-          logits, squeeze_dims=[1])
+          logits, squeeze_dims=[1], name=prediction_key.PredictionKey.SCORES)
     else:
       predictions[prediction_key.PredictionKey.SCORES] = logits
     return predictions
@@ -461,8 +459,8 @@ class _MultiClassHead(_Head):
     else:
       loss = self._training_loss(features, labels, logits)
       train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
-                  else self._train_op(features, labels, train_op_fn, logits))
-      eval_metric_ops = self._eval_metric_ops(features, labels, logits)
+                  else self._train_op(loss, labels, train_op_fn))
+      eval_metric_ops = self._eval_metric_ops(features, labels, predictions)
     signature_fn = self._signature_fn()
 
     return model_fn.ModelFnOps(
@@ -510,9 +508,8 @@ class _MultiClassHead(_Head):
         _head_prefixed(self._head_name, "loss"), weighted_average_loss)
     return loss
 
-  def _train_op(self, features, labels, train_op_fn, logits):
+  def _train_op(self, loss, labels, train_op_fn):
     """Returns op for the training step."""
-    loss = self._training_loss(features, labels, logits)
     train_op = train_op_fn(loss)
 
     if self._enable_centered_bias:
@@ -525,10 +522,9 @@ class _MultiClassHead(_Head):
 
     return train_op
 
-  def _eval_metric_ops(self, features, labels, logits):
+  def _eval_metric_ops(self, features, labels, predictions):
     """Returns a dict of metric ops keyed by name."""
     labels = _check_labels(labels, self._label_name)
-    predictions = self._predictions(logits)
     return estimator._make_metrics_ops(  # pylint: disable=protected-access
         self._default_metrics(), features, labels, predictions)
 
@@ -675,7 +671,7 @@ class _BinarySvmHead(_MultiClassHead):
     predictions[prediction_key.PredictionKey.LOGITS] = logits
     logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
     predictions[prediction_key.PredictionKey.CLASSES] = math_ops.argmax(
-        logits, 1)
+        logits, 1, name=prediction_key.PredictionKey.CLASSES)
 
     return predictions
 
@@ -719,12 +715,14 @@ class _MultiLabelHead(_MultiClassHead):
     predictions = {prediction_key.PredictionKey.LOGITS: logits}
     if self.logits_dimension == 1:
       predictions[prediction_key.PredictionKey.LOGISTIC] = math_ops.sigmoid(
-          logits)
+          logits, name=prediction_key.PredictionKey.LOGISTIC)
       logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-    predictions[prediction_key.PredictionKey.PROBABILITIES] = math_ops.sigmoid(
-        logits)
+    predictions[
+        prediction_key.PredictionKey.PROBABILITIES] = math_ops.sigmoid(
+            logits, name=prediction_key.PredictionKey.PROBABILITIES)
     predictions[prediction_key.PredictionKey.CLASSES] = math_ops.to_int64(
-        math_ops.greater(logits, 0))
+        math_ops.greater(logits, 0),
+        name=prediction_key.PredictionKey.CLASSES)
     return predictions
 
 
@@ -751,14 +749,13 @@ def _loss(loss_unweighted, weight, name):
   if weight is None:
     loss = math_ops.reduce_mean(loss_unweighted, name=name)
     return loss, loss
-  else:
-    loss_weighted = _weighted_loss(loss_unweighted, weight)
-    weighted_average_loss = math_ops.div(
-        math_ops.reduce_sum(loss_weighted),
-        math_ops.to_float(math_ops.reduce_sum(weight)),
-        name="weighted_average_loss")
-    loss = math_ops.reduce_mean(loss_weighted, name=name)
-    return loss, weighted_average_loss
+  loss_weighted = _weighted_loss(loss_unweighted, weight)
+  weighted_average_loss = math_ops.div(
+      math_ops.reduce_sum(loss_weighted),
+      math_ops.to_float(math_ops.reduce_sum(weight)),
+      name="weighted_average_loss")
+  loss = math_ops.reduce_mean(loss_weighted, name=name)
+  return loss, weighted_average_loss
 
 
 def _check_logits_input_not_supported(logits, logits_input):
