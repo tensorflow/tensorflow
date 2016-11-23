@@ -66,7 +66,8 @@ def _embeddings_from_arguments(column,
     weight_tensor = layers._inner_flatten(args.weight_tensor, output_rank)
   # pylint: enable=protected-access
 
-  if args.hashed:
+  # This option is only enabled for scattered_embedding_column.
+  if args.hash_key:
     embeddings = contrib_variables.model_variable(
         name='weights',
         shape=[args.vocab_size],
@@ -77,6 +78,7 @@ def _embeddings_from_arguments(column,
 
     return embedding_ops.scattered_embedding_lookup_sparse(
         embeddings, input_tensor, args.dimension,
+        hash_key=args.hash_key,
         combiner=args.combiner, name='lookup')
 
   if args.shared_embedding_name is not None:
@@ -245,6 +247,7 @@ def input_from_feature_columns(columns_to_tensors,
                                      scope,
                                      output_rank=2,
                                      default_name='input_from_feature_columns')
+
 
 @experimental
 def sequence_input_from_feature_columns(columns_to_tensors,

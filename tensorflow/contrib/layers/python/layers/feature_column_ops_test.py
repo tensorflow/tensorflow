@@ -590,8 +590,9 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
 
     features = {"wire": wire_tensor}
     # Big enough hash space so that hopefully there is no collision
-    embedded_sparse = tf.contrib.layers.scattered_embedding_column("wire", 1000,
-                                                                   3)
+    embedded_sparse = tf.contrib.layers.scattered_embedding_column(
+        "wire", 1000, 3,
+        tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
     output = tf.contrib.layers.input_from_feature_columns(
         features, [embedded_sparse], weight_collections=["my_collection"])
     weights = tf.get_collection("my_collection")
