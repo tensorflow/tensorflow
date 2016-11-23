@@ -870,7 +870,6 @@ class TestClone(tf.test.TestCase):
       self.assertAllClose(y_out_, np.zeros((2, 5, 5, 2)))
 
   def testCloneBatchNorm(self):
-    print("##############################")
     g = tf.Graph()
     with g.as_default():
       np.random.seed(1234)
