@@ -79,7 +79,7 @@ class TimelineTest(tf.test.TestCase):
     self._validateTrace(ctf)
 
   def testTimelineGpu(self):
-    if not tf.test.is_gpu_available():
+    if not tf.test.is_gpu_available(cuda_only=True):
       return
 
     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
