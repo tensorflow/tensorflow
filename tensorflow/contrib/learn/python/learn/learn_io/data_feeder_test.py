@@ -52,14 +52,14 @@ class DataFeederTest(tf.test.TestCase):
   def _assert_dtype(self, expected_np_dtype, expected_tf_dtype, input_data):
     feeder = data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
     if isinstance(input_data, dict):
-      for k, v in feeder.input_dtype.items():
+      for k, v in list(feeder.input_dtype.items()):
         self.assertEqual(expected_np_dtype, v)
     else:
       self.assertEqual(expected_np_dtype, feeder.input_dtype)
     with tf.Graph().as_default() as g, self.test_session(g):
       inp, _ = feeder.input_builder()
       if isinstance(inp, dict):
-        for k, v in inp.items():
+        for k, v in list(inp.items()):
           self.assertEqual(expected_tf_dtype, v.dtype)
       else:
         self.assertEqual(expected_tf_dtype, inp.dtype)
@@ -124,7 +124,7 @@ class DataFeederTest(tf.test.TestCase):
       val = getattr(x, src_prop) if src_prop else x
       return val if src_key_of is None else src_key_of[val]
     if isinstance(src, dict):
-      for k in src.keys():
+      for k in list(src.keys()):
         self.assertAllClose(func(src[k]), dest)
     else:
       self.assertAllClose(func(src), dest)

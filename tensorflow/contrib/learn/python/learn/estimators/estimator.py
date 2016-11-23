@@ -816,7 +816,7 @@ class BaseEstimator(
     return result
 
   def _set_infer_mode_feature_signature(self, features):
-    for mode in self._features_info.keys():
+    for mode in list(self._features_info.keys()):
       if tensor_signature.tensors_compatible(features, self._features_info[mode]):
         self._features_info[model_fn_lib.ModeKeys.INFER] = self._features_info[mode]
         self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[mode]
@@ -825,7 +825,7 @@ class BaseEstimator(
     if model_fn_lib.ModeKeys.INFER not in self._features_info:
       logging.warning('Features for mode %s are incompatible with neither train mode nor eval mode.'
                       ' Given features: %s' % (model_fn_lib.ModeKeys.INFER, str(features)))
-      for mode in self._features_info.keys():
+      for mode in list(self._features_info.keys()):
         logging.warning('Whereas %s mode signatures: %s' % (mode, str(self._features_info[mode])))
       self._check_inputs(features, None, model_fn_lib.ModeKeys.INFER)
       if model_fn_lib.ModeKeys.TRAIN in self._labels_info:

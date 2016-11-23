@@ -48,13 +48,13 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
     assert (isinstance(n_classes, dict))
 
   if batch_size is None:
-    batch_size = x_shape.values()[0][0] if x_is_dict else x_shape[0]
+    batch_size = list(x_shape.values())[0][0] if x_is_dict else x_shape[0]
   elif batch_size <= 0:
     raise ValueError('Invalid batch_size %d.' % batch_size)
 
   if x_is_dict:
     input_shape = {}
-    for k, v in x_shape.items():
+    for k, v in list(x_shape.items()):
       input_shape[k] = [batch_size] + (list(v[1:]) if len(v) > 1 else [1])
   else:
     x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
@@ -77,7 +77,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
     output_shape = out_el_shape(y_shape, n_classes)
   else:
     output_shape = dict([(k, out_el_shape(v, n_classes[k] if n_classes is not None and k in n_classes else None))
-                         for k, v in y_shape.items()])
+                         for k, v in list(y_shape.items())])
 
   return input_shape, output_shape, batch_size
 
@@ -150,18 +150,18 @@ def _batch_data(x, batch_size=None):
   x_first_el = six.next(x)
   x = itertools.chain([x_first_el], x)
 
-  chunk = dict([(k, []) for k in x_first_el.keys()]) if isinstance(x_first_el, dict) else []
+  chunk = dict([(k, []) for k in list(x_first_el.keys())]) if isinstance(x_first_el, dict) else []
   chunk_filled = False
   for data in x:
     if isinstance(data, dict):
-      for k, v in data.items():
+      for k, v in list(data.items()):
         chunk[k].append(v)
         if (batch_size is not None) and (len(chunk[k]) >= batch_size):
           chunk[k] = np.matrix(chunk[k])
           chunk_filled = True
       if chunk_filled:
         yield chunk
-        chunk = dict([(k, []) for k in x_first_el.keys()]) if isinstance(x_first_el, dict) else []
+        chunk = dict([(k, []) for k in list(x_first_el.keys())]) if isinstance(x_first_el, dict) else []
         chunk_filled = False
     else:
       chunk.append(data)
@@ -170,7 +170,7 @@ def _batch_data(x, batch_size=None):
         chunk = []
 
   if isinstance(x_first_el, dict):
-    for k, v in data.items():
+    for k, v in list(data.items()):
       chunk[k] = np.matrix(chunk[k])
     yield chunk
   else:
@@ -303,9 +303,9 @@ class DataFeeder(object):
     if isinstance(y, list):
       y = np.array(y)
 
-    self._x = dict([(k, check_array(v, v.dtype)) for k, v in x.items()]) if x_is_dict else check_array(x, x.dtype)
+    self._x = dict([(k, check_array(v, v.dtype)) for k, v in list(x.items())]) if x_is_dict else check_array(x, x.dtype)
     self._y = None if y is None else \
-      dict([(k, check_array(v, v.dtype)) for k, v in y.items()]) if x_is_dict else check_array(y, y.dtype)
+      dict([(k, check_array(v, v.dtype)) for k, v in list(y.items())]) if x_is_dict else check_array(y, y.dtype)
 
     # self.n_classes is not None means we're converting raw target indices to one-hot.
     if n_classes is not None:
@@ -316,24 +316,24 @@ class DataFeeder(object):
     self.n_classes = n_classes
     self.max_epochs = epochs
 
-    x_shape = dict([(k, v.shape) for k, v in self._x.items()]) if x_is_dict else self._x.shape
+    x_shape = dict([(k, v.shape) for k, v in list(self._x.items())]) if x_is_dict else self._x.shape
     y_shape = dict(
-      [(k, v.shape) for k, v in self._y.items()]) if y_is_dict else None if y is None else self._y.shape
+      [(k, v.shape) for k, v in list(self._y.items())]) if y_is_dict else None if y is None else self._y.shape
 
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
       x_shape, y_shape, n_classes, batch_size)
 
     # Input dtype matches dtype of x.
-    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in self._x.items()]) if x_is_dict \
+    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in list(self._x.items())]) if x_is_dict \
       else _check_dtype(self._x.dtype)
 
     # note: self._output_dtype = np.float32 when y is None
-    self._output_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in self._y.items()]) if y_is_dict \
+    self._output_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in list(self._y.items())]) if y_is_dict \
       else _check_dtype(self._y.dtype) if y is not None else np.float32
 
     # self.n_classes is None means we're passing in raw target indices
     if n_classes is not None and y_is_dict:
-      for key in n_classes.keys():
+      for key in list(n_classes.keys()):
         if key in self._output_dtype:
           self._output_dtype[key] = np.float32
 
@@ -341,7 +341,7 @@ class DataFeeder(object):
     self.random_state = np.random.RandomState(
       42) if random_state is None else random_state
 
-    num_samples = self._x.values()[0].shape[0] if x_is_dict else self._x.shape[0]
+    num_samples = list(self._x.values())[0].shape[0] if x_is_dict else self._x.shape[0]
     if self._shuffle:
       self.indices = self.random_state.permutation(num_samples)
     else:
@@ -396,7 +396,7 @@ class DataFeeder(object):
         return None
       if isinstance(shape, dict):
         placeholder = {}
-        for key in shape.keys():
+        for key in list(shape.keys()):
           placeholder[key] = array_ops.placeholder(
             dtypes.as_dtype(dtype[key]),
             [None] + shape[key][1:],
@@ -481,13 +481,13 @@ class DataFeeder(object):
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
       # Take next batch of indices.
-      x_len = self._x.values()[0].shape[0] if x_is_dict else self._x.shape[0]
+      x_len = list(self._x.values())[0].shape[0] if x_is_dict else self._x.shape[0]
       end = min(x_len, self.offset + self._batch_size)
       batch_indices = self.indices[self.offset:end]
 
       # adding input placeholder
       feed_dict.update(
-        dict([(self._input_placeholder[k].name, extract(v, batch_indices)) for k, v in self._x.items()])
+        dict([(self._input_placeholder[k].name, extract(v, batch_indices)) for k, v in list(self._x.items())])
         if x_is_dict else {self._input_placeholder.name: extract(self._x, batch_indices)})
 
       # move offset and reset it if necessary
@@ -503,7 +503,7 @@ class DataFeeder(object):
 
       # adding output placeholders
       if y_is_dict:
-        for k, v in self._y.items():
+        for k, v in list(self._y.items()):
           n_classes = (
             self.n_classes[k] if k in self.n_classes else None) if self.n_classes is not None else None
           shape, dtype = self.output_shape[k], self._output_dtype[k]
@@ -571,10 +571,10 @@ class StreamingDataFeeder(DataFeeder):
       assert (isinstance(n_classes, dict))
 
     # extract shapes for first_elements
-    x_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in x_first_el.items()]) if x_is_dict \
+    x_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in list(x_first_el.items())]) if x_is_dict \
       else [1] + list(x_first_el.shape)
 
-    y_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in y_first_el.items()]) if y_is_dict \
+    y_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in list(y_first_el.items())]) if y_is_dict \
       else ([1] + list(y_first_el[0].shape if isinstance(y_first_el, list) else y_first_el.shape)
             if y is not None else None)
 
@@ -582,7 +582,7 @@ class StreamingDataFeeder(DataFeeder):
                                                                               n_classes, batch_size)
 
     # Input dtype of x_first_el.
-    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in x_first_el.items()]) if x_is_dict \
+    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in list(x_first_el.items())]) if x_is_dict \
       else _check_dtype(x_first_el.dtype)
 
     # Output dtype of y_first_el.
@@ -599,7 +599,7 @@ class StreamingDataFeeder(DataFeeder):
     if n_classes is not None and n_classes > 0 and (y is None or not y_is_dict):
       self._output_dtype = np.float32
     else:
-      self._output_dtype = dict([(k, check_y_dtype(v)) for k, v in y_first_el.items()]) if y_is_dict \
+      self._output_dtype = dict([(k, check_y_dtype(v)) for k, v in list(y_first_el.items())]) if y_is_dict \
         else (check_y_dtype(y_first_el) if y is not None else None)
 
   def get_feed_params(self):
@@ -630,8 +630,7 @@ class StreamingDataFeeder(DataFeeder):
         if shape is None:
           return None
         else:
-          return dict([(k, np.zeros(shape[k], dtype[k])) for k in shape.keys()]) if isinstance(shape,
-                                                                                               dict) else \
+          return dict([(k, np.zeros(shape[k], dtype[k])) for k in list(shape.keys())]) if isinstance(shape, dict) else \
             np.zeros(shape, dtype=dtype)
 
       def put_data_array(dest, index, source=None, n_classes=None):
@@ -655,7 +654,7 @@ class StreamingDataFeeder(DataFeeder):
           return None
         if isinstance(holder, dict):
           assert (isinstance(data, dict))
-          for k, v in holder.items():
+          for k, v in list(holder.items()):
             num_classes = n_classes[k] if (n_classes is not None and k in n_classes) else None
             holder[k] = put_data_array(holder[k], index, data[k], num_classes)
         else:
@@ -686,11 +685,11 @@ class StreamingDataFeeder(DataFeeder):
           out = put_data_array_or_dict(out, i, next_out, self.n_classes)
 
       # creating feed_dict
-      feed_dict = dict([(self._input_placeholder[k].name, inp[k]) for k in self._input_placeholder.keys()]) if \
+      feed_dict = dict([(self._input_placeholder[k].name, inp[k]) for k in list(self._input_placeholder.keys())]) if \
         isinstance(inp, dict) else {self._input_placeholder.name: inp}
       if self._y is not None:
         feed_dict.update(
-          dict([(self._output_placeholder[k].name, out[k]) for k in self._output_placeholder.keys()]) \
+          dict([(self._output_placeholder[k].name, out[k]) for k in list(self._output_placeholder.keys())]) \
             if isinstance(out, dict) else {self._output_placeholder.name: out})
 
       return feed_dict
