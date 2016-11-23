@@ -30,9 +30,9 @@ cd ${SCRIPT_DIR}/../../../
 # You can set the parallelism of the make process with the first argument, with
 # a default of four if nothing is supplied.
 if [ "$#" -gt 1 ]; then
-    JOBS_COUNT=$1
+    JOB_COUNT=$1
 else
-    JOBS_COUNT=4
+    JOB_COUNT=4
 fi
 
 # Remove any old files first.
@@ -43,10 +43,10 @@ rm -rf tensorflow/contrib/makefile/downloads
 tensorflow/contrib/makefile/download_dependencies.sh
 
 # Compile protobuf for the target iOS device architectures.
-tensorflow/contrib/makefile/compile_ios_protobuf.sh ${JOBS_COUNT}
+tensorflow/contrib/makefile/compile_ios_protobuf.sh ${JOB_COUNT}
 
 # Build the iOS TensorFlow libraries.
-tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3" -j ${JOBS_COUNT}
+tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3" -j ${JOB_COUNT}
 
 # Creates a static universal library in 
 # tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a
