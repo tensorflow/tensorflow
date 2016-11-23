@@ -39,6 +39,7 @@ py_library(
         ":platform",
         ":platform_test",
         ":summary",
+        ":layers",
         ":training",
         ":ops",
         ":test_ops",
@@ -2252,6 +2253,51 @@ py_tests(
     additional_deps = [
         ":summary",
         ":training",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = glob(
+        ["layers/*.py"],
+    ),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":init_ops",
+        ":standard_ops",
+        ":util",
+        ":variable_scope",
+    ],
+)
+
+py_test(
+    name = "layers_base_test",
+    size = "small",
+    srcs = [
+        "layers/base_test.py",
+    ],
+    main = "layers/base_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "layers_core_test",
+    size = "small",
+    srcs = [
+        "layers/core_test.py",
+    ],
+    main = "layers/core_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
         "//tensorflow:tensorflow_py",
     ],
 )

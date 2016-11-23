@@ -27,11 +27,10 @@ from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
-
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
@@ -1312,16 +1311,57 @@ def fully_connected(inputs,
     scope: Optional scope for variable_scope.
 
   Returns:
-     the tensor variable representing the result of the series of operations.
+     The tensor variable representing the result of the series of operations.
 
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
   if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
+
+  # Currently, the layers in this module do not create variables via
+  # `tf.get_variable`, rather they use their own variable management system
+  # which wraps `tf.get_variable` (the `model_variable()` interface from Slim).
+  # This interface is globally-configured via an argscope. This global
+  # configuration mechanism is used for instance by Slim-deploy to globally
+  # configure the target device of the variables of a model.
+  #
+  # We have the following the constraints:
+  #   - Argscopes are not currently moving into core, thus core layers cannot
+  #     rely on the Slim variable wrapper, and should instead
+  #     use `tf.get_variable`.
+  #   - Contrib layers require to use the argscope-enabled Slim variable wrapper
+  #     rather than raw TF variables.
+  #   - We want to be able to reuse at least the logic across core layers
+  #     and contrib layers.
+  #
+  # We use the following strategy:
+  #   - We instantiate variables in the contrib layer via the Slim interface.
+  #   - We instantiate a core layer and set its variables to be the Slim ones.
+  #   - We call the core layer.
+  #
+  # This enables us to reuse the `call` method across both implementations.
+
   with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
                                      reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
+
+    # Instantiate the FullyConnected layer.
+    layer = core_layers.FullyConnected(
+        num_outputs,
+        activation=None,
+        use_bias=not normalizer_fn and biases_initializer,
+        w_initializer=weights_initializer,
+        bias_initializer=biases_initializer,
+        w_regularizer=weights_regularizer,
+        bias_regularizer=biases_regularizer,
+        activity_regularizer=None,
+        trainable=trainable,
+        name=sc.name,
+        dtype=inputs.dtype.base_dtype,
+        _scope=sc,
+        _reuse_weights=reuse)
+
     dtype = inputs.dtype.base_dtype
     inputs_shape = inputs.get_shape()
     num_input_units = utils.last_dimension(inputs_shape, min_rank=2)
@@ -1339,35 +1379,33 @@ def fully_connected(inputs,
                                        regularizer=weights_regularizer,
                                        collections=weights_collections,
                                        trainable=trainable)
-    if len(static_shape) > 2:
-      out_shape = array_ops.unpack(array_ops.shape(inputs))
-      out_shape[-1] = num_outputs
-      # Reshape inputs
-      inputs = array_ops.reshape(inputs, [-1, num_input_units])
-    outputs = standard_ops.matmul(inputs, weights)
+    layer.w = weights
+
+    if layer.use_bias:
+      biases_collections = utils.get_variable_collections(
+          variables_collections, 'biases')
+      biases = variables.model_variable('biases',
+                                        shape=[num_outputs,],
+                                        dtype=dtype,
+                                        initializer=biases_initializer,
+                                        regularizer=biases_regularizer,
+                                        collections=biases_collections,
+                                        trainable=trainable)
+      layer.bias = biases
+
+    outputs = layer.call(inputs)
+
+    # Apply normalizer function / layer.
     if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
+      if not normalizer_params:
+        normalizer_params = {}
       outputs = normalizer_fn(outputs, **normalizer_params)
-    else:
-      if biases_initializer is not None:
-        biases_collections = utils.get_variable_collections(
-            variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_outputs,],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          collections=biases_collections,
-                                          trainable=trainable)
-        outputs = nn.bias_add(outputs, biases)
+
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    if len(static_shape) > 2:
-      # Reshape back outputs
-      outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
-      outputs.set_shape(static_shape)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -2055,3 +2093,4 @@ conv2d = convolution2d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d
+
