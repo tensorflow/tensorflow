@@ -136,11 +136,12 @@ def maybe_download(filename, work_directory, source_url):
     gfile.MakeDirs(work_directory)
   filepath = os.path.join(work_directory, filename)
   if not gfile.Exists(filepath):
-    with tempfile.NamedTemporaryFile() as tmpfile:
+    with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
       temp_file_name = tmpfile.name
       urllib.request.urlretrieve(source_url, temp_file_name)
       gfile.Copy(temp_file_name, filepath)
       with gfile.GFile(filepath) as f:
         size = f.size()
       print('Successfully downloaded', filename, size, 'bytes.')
+    os.remove(tmpfile.name)
   return filepath
