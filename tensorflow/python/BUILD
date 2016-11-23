@@ -809,7 +809,7 @@ py_library(
         ":array_ops",
         ":framework",
         ":math_ops",
-        ":nn_ops",
+        ":nn_ops_gen",
     ],
 )
 
@@ -885,6 +885,7 @@ py_library(
         ":data_flow_ops",
         ":framework",
         ":math_ops",
+        ":resource_variable_ops",
     ],
 )
 
@@ -1066,26 +1067,22 @@ py_library(
 
 py_library(
     name = "nn",
-    srcs = ["ops/nn.py"],
+    srcs = [
+        "ops/nn.py",
+        "ops/nn_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":candidate_sampling_ops",
-        ":control_flow_ops",
         ":ctc_ops",
         ":embedding_ops",
-        ":framework",
-        ":init_ops",
         ":math_ops",
-        ":nn_grad",
         ":nn_ops",
-        ":numerics",
-        ":random_ops",
         ":rnn",
         ":rnn_cell",
         ":seq2seq",
         ":sparse_ops",
-        ":variable_scope",
     ],
 )
 
@@ -1109,10 +1106,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops_gen",
+        ":candidate_sampling_ops",
+        ":clip_ops",
+        ":embedding_ops",
         ":framework",
         ":math_ops",
         ":nn_ops_gen",
         ":random_ops",
+        ":sparse_ops",
     ],
 )
 
