@@ -911,9 +911,6 @@ class TestClone(tf.test.TestCase):
       self.assertAllClose(y_test_1, y_out_1)
       self.assertAllClose(y_test_2, y_out_3)
 
-      train_writer = tf.train.SummaryWriter('/tmp/zhusuan',
-                                            tf.get_default_graph())
-      train_writer.close()
 
 if __name__ == "__main__":
   tf.test.main()
