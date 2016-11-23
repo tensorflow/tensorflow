@@ -406,18 +406,29 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
-    "//tensorflow/core/debug:debug_io_utils",
     "//third_party/eigen3",
 ]
 
-tf_kernel_libraries(
+cc_library(
     name = "array_not_windows",
-    prefixes = [
-        "debug_ops",
-        "immutable_constant_op",
+    deps = [
+        ":debug_ops",
+        ":immutable_constant_op",
     ],
+)
+
+tf_kernel_library(
+    name = "immutable_constant_op",
+    prefix = "immutable_constant_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "debug_ops",
+    prefix = "debug_ops",
     deps = ARRAY_DEPS + [
         "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core/debug:debug_io_utils",
     ],
 )
 
