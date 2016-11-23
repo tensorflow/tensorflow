@@ -75,7 +75,7 @@ def _embeddings_from_arguments(column,
         trainable=trainable,
         collections=weight_collections)
 
-    return embedding_ops.hashed_embedding_lookup_sparse(
+    return embedding_ops.scattered_embedding_lookup_sparse(
         embeddings, input_tensor, args.dimension,
         combiner=args.combiner, name='lookup')
 
@@ -256,9 +256,9 @@ def sequence_input_from_feature_columns(columns_to_tensors,
 
   See documentation for `input_from_feature_columns`. The following types of
   `FeatureColumn` are permitted in `feature_columns`: `_OneHotColumn`,
-  `_EmbeddingColumn`, `_HashedEmbeddingColumn`, `_RealValuedColumn`,
+  `_EmbeddingColumn`, `_ScatteredEmbeddingColumn`, `_RealValuedColumn`,
   `_DataFrameColumn`. In addition, columns in `feature_columns` may not be
-  constructed using any of the following: `HashedEmbeddingColumn`,
+  constructed using any of the following: `ScatteredEmbeddingColumn`,
   `BucketizedColumn`, `CrossedColumn`.
 
   Args:
@@ -892,7 +892,7 @@ _SUPPORTED_SEQUENCE_COLUMNS = (fc._OneHotColumn,
                                fc._EmbeddingColumn,
                                fc._RealValuedColumn)
 
-_FORBIDDEN_SEQUENCE_COLUMNS = (fc._HashedEmbeddingColumn,
+_FORBIDDEN_SEQUENCE_COLUMNS = (fc._ScatteredEmbeddingColumn,
                                fc._BucketizedColumn,
                                fc._CrossedColumn)
 

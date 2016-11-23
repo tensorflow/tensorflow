@@ -9,12 +9,6 @@ with tf.control_dependencies([tf.assert_less_equal(x, y)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_less_equal(x, y)], x)
-```
-
 This condition holds if for every pair of (possibly broadcast) elements
 `x[i]`, `y[i]`, we have `x[i] <= y[i]`.
 If both `x` and `y` are empty, this is trivially satisfied.

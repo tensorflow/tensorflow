@@ -15,11 +15,11 @@ limitations under the License.
 
 import {DataSet, SpriteAndMetadataInfo, State} from './data';
 import * as dataProvider from './data-provider';
-import {DataProvider, EmbeddingInfo, ProjectorConfig, TENSORS_MSG_ID} from './data-provider';
+import {DataProvider, EmbeddingInfo, ProjectorConfig} from './data-provider';
 import * as logging from './logging';
 
 // Limit for the number of data points we receive from the server.
-const LIMIT_NUM_POINTS = 100000;
+export const LIMIT_NUM_POINTS = 100000;
 
 /**
  * Data provider that loads data provided by a python server (usually backed
@@ -82,40 +82,13 @@ export class ServerDataProvider implements DataProvider {
 
   retrieveTensor(run: string, tensorName: string,
       callback: (ds: DataSet) => void) {
-    // Get the tensor.
-    logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
-    let xhr = new XMLHttpRequest();
-    xhr.open('GET', `${this.routePrefix}/tensor?` +
-        `run=${run}&name=${tensorName}&num_rows=${LIMIT_NUM_POINTS}`);
-    xhr.responseType = 'arraybuffer';
-    xhr.onprogress = (ev) => {
-      if (ev.lengthComputable) {
-        let percent = (ev.loaded * 100 / ev.total).toFixed(1);
-        logging.setModalMessage('Fetching tensor values: ' + percent + '%',
-                                TENSORS_MSG_ID);
-      }
-    };
-    xhr.onload = () => {
-      if (xhr.status !== 200) {
-        let msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
-        logging.setErrorMessage(msg);
-        return;
-      }
-      let data = new Float32Array(xhr.response);
-      this.getEmbeddingInfo(run, tensorName, embedding => {
-        if (embedding.tensorShape[0] > LIMIT_NUM_POINTS) {
-          logging.setWarningMessage(
-            `Showing the first ${LIMIT_NUM_POINTS.toLocaleString()}` +
-            ` of ${embedding.tensorShape[0].toLocaleString()} data points`);
-        }
-        let dim = embedding.tensorShape[1];
-        dataProvider.parseTensorsFromFloat32Array(data, dim).then(
-            dataPoints => {
-          callback(new DataSet(dataPoints));
-        });
-      });
-    };
-    xhr.send();
+    this.getEmbeddingInfo(run, tensorName, embedding => {
+      dataProvider.retrieveTensorAsBytes(
+          this, embedding, run, tensorName,
+          `${this.routePrefix}/tensor?run=${run}&name=${tensorName}` +
+              `&num_rows=${LIMIT_NUM_POINTS}`,
+          callback);
+    });
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,

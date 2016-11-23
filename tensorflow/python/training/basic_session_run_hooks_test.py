@@ -430,7 +430,9 @@ class SummarySaverHookTest(tf.test.TestCase):
 
     var = tf.Variable(0.0)
     tensor = tf.assign_add(var, 1.0)
+    tensor2 = tensor * 2
     self.summary_op = tf.summary.scalar('my_summary', tensor)
+    self.summary_op2 = tf.summary.scalar('my_summary2', tensor2)
 
     global_step = tf.contrib.framework.get_or_create_global_step()
     self.train_op = tf.assign_add(global_step, 1)
@@ -480,6 +482,34 @@ class SummarySaverHookTest(tf.test.TestCase):
             9: {'my_summary': 2.0},
             17: {'my_summary': 3.0},
             25: {'my_summary': 4.0},
+        })
+
+  def test_multiple_summaries(self):
+    hook = tf.train.SummarySaverHook(
+        save_steps=8,
+        summary_writer=self.summary_writer,
+        summary_op=[self.summary_op, self.summary_op2])
+
+    with self.test_session() as sess:
+      hook.begin()
+      sess.run(tf.global_variables_initializer())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(10):
+        mon_sess.run(self.train_op)
+      hook.end(sess)
+
+    self.summary_writer.assert_summaries(
+        test_case=self,
+        expected_logdir=self.log_dir,
+        expected_summaries={
+            1: {
+                'my_summary': 1.0,
+                'my_summary2': 2.0
+            },
+            9: {
+                'my_summary': 2.0,
+                'my_summary2': 4.0
+            },
         })
 
   def test_save_secs_saving_once_every_step(self):
