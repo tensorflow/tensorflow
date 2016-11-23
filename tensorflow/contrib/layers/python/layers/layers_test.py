@@ -22,7 +22,6 @@ import math
 import numpy as np
 import tensorflow as tf
 
-# TODO(sguada) Expose tf.with_dependencies
 from tensorflow.contrib.layers.python.layers import layers as _layers
 from tensorflow.python.ops import control_flow_ops
 
