@@ -34,24 +34,28 @@
 ## Breaking Changes to the API
 
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
-  indexing now starts from 1 instead of 0, and `bus_id==0` is used where previously
-  `BUS_ANY` was used.
-* `Env::FileExists` and `FileSystem::FileExists` now return a `tensorflow::Status`
-  intead of a bool. Any callers to this function can be converted to a bool
-  by adding `.ok()` to the call.
-* The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
-  indicating its preferred use in language bindings for TensorFlow.
-  What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
-* Renamed `TF_Port` to `TF_Output` in the C API.
-* In the C API the caller retains ownership of `TF_Tensor` objects provided to `TF_Run`,
-  `TF_SessionRun`, `TF_SetAttrTensor` etc.
-* Renamed `tf.image.per_image_whitening()` to `tf.image.per_image_standardization()`
+  indexing now starts from 1 instead of 0, and `bus_id==0` is used where
+  previously `BUS_ANY` was used.
+* `Env::FileExists` and `FileSystem::FileExists` now return a
+  `tensorflow::Status` intead of a bool. Any callers to this function can be
+  converted to a bool by adding `.ok()` to the call.
+* C API: Type `TF_SessionWithGraph` has been renamed to `TF_Session`, indicating
+  its preferred use in language bindings for TensorFlow. What was previously
+  `TF_Session` has been renamed to `TF_DeprecatedSession`.
+* C API: Renamed `TF_Port` to `TF_Output`.
+* C API: The caller retains ownership of `TF_Tensor` objects provided to
+  `TF_Run`, `TF_SessionRun`, `TF_SetAttrTensor` etc.
+* Renamed `tf.image.per_image_whitening()` to
+  `tf.image.per_image_standardization()`
 * Move Summary protobuf constructors to `tf.summary` submodule.
-* Deprecate `histogram_summary`, `audio_summary`, `scalar_summary`, `image_summary`,
-  `merge_summary`, and `merge_all_summaries`.
+* Deprecate `histogram_summary`, `audio_summary`, `scalar_summary`,
+  `image_summary`, `merge_summary`, and `merge_all_summaries`.
 * Combined `batch_*` and regular version of linear algebra and FFT ops. The
   regular op now handles batches as well. All `batch_*` Python interfaces were
   removed.
+* `tf.all_variables`, `tf.VARIABLES` and `tf.initialize_all_variables` renamed
+  to `tf.global_variables`, `tf.GLOBAL_VARIABLES` and
+  `tf.global_variable_initializers` respectively.
 
 ## Bug Fixes and Other Changes
 
@@ -60,8 +64,8 @@
 * Fixed bug causing incorrect number of threads to be used for multi-threaded
   benchmarks.
 * Performance optimizations for `batch_matmul` on multi-core CPUs.
-* Improve trace, `matrix_set_diag`, `matrix_diag_part` and their gradients to work
-  for rectangular matrices.
+* Improve trace, `matrix_set_diag`, `matrix_diag_part` and their gradients to
+  work for rectangular matrices.
 * Support for SVD of complex valued matrices.
 
 
@@ -74,20 +78,20 @@ Alexander Rosenberg Johansen, @amcrae, Amlan Kar, Andre Simpelo, Andreas Eberle,
 Andrew Hundt, Arnaud Lenglet, @b0noI, Balachander Ramachandran, Ben Barsdell,
 Ben Guidarelli, Benjamin Mularczyk, Burness Duan, @c0g, Changming Sun,
 @chanis, Corey Wharton, Dan J, Daniel Trebbien, Darren Garvey, David Brailovsky,
-David Jones, Di Zeng, @DjangoPeng, Dr. Kashif Rasul, @drag0, Fabrizio (Misto) Milo,
-FabríCio Ceschin, @fp, @Ghedeon, @guschmue, Gökçen Eraslan, Haosdent Huang,
-Haroen Viaene, Harold Cooper, Henrik Holst, @hoangmit, Ivan Ukhov, Javier Dehesa,
-Jingtian Peng, Jithin Odattu, Joan Pastor, Johan Mathe, Johannes Mayer,
+David Jones, Di Zeng, @DjangoPeng, Dr. Kashif Rasul, @drag0, Fabrizio (Misto)
+Milo, FabríCio Ceschin, @fp, @Ghedeon, @guschmue, Gökçen Eraslan, Haosdent
+Huang, Haroen Viaene, Harold Cooper, Henrik Holst, @hoangmit, Ivan Ukhov, Javier
+Dehesa, Jingtian Peng, Jithin Odattu, Joan Pastor, Johan Mathe, Johannes Mayer,
 Jongwook Choi, Justus Schwabedal, Kai Wolf, Kamil Hryniewicz, Kamran Amini,
 Karen Brems, Karl Lattimer, @kborer, Ken Shirriff, Kevin Rose, Larissa Laich,
 Laurent Mazare, Leonard Lee, Liang-Chi Hsieh, Liangliang He, Luke Iwanski,
-Marek Kolodziej, Moustafa Alzantot, @MrQianjinsi, @nagachika, Neil Han, Nick Meehan,
-Niels Ole Salscheider, Nikhil Mishra, @nschuc, Ondrej Skopek, OndřEj Filip,
-@OscarDPan, Pablo Moyano, Przemyslaw Tredak, @qitaishui, @Quarazy, @raix852,
-Philipp Helo, Sam Abrahams, @SriramRamesh, Till Hoffmann, Tushar Soni, @tvn,
-@tyfkda, Uwe Schmidt, Victor Villas, Vit Stepanovs, Vladislav Gubarev, @wujingyue,
-Xuesong Yang, Yi Liu, Yilei Yang, @youyou3, Yuan (Terry) Tang, Yuming Wang,
-Zafar Takhirov, @zhongyuk, Ziming Dong, @guotong1988
+Marek Kolodziej, Moustafa Alzantot, @MrQianjinsi, @nagachika, Neil Han, Nick
+Meehan, Niels Ole Salscheider, Nikhil Mishra, @nschuc, Ondrej Skopek, OndřEj
+Filip, @OscarDPan, Pablo Moyano, Przemyslaw Tredak, @qitaishui, @Quarazy,
+@raix852, Philipp Helo, Sam Abrahams, @SriramRamesh, Till Hoffmann, Tushar Soni,
+@tvn, @tyfkda, Uwe Schmidt, Victor Villas, Vit Stepanovs, Vladislav Gubarev,
+@wujingyue, Xuesong Yang, Yi Liu, Yilei Yang, @youyou3, Yuan (Terry) Tang,
+Yuming Wang, Zafar Takhirov, @zhongyuk, Ziming Dong, @guotong1988
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
