@@ -804,6 +804,32 @@ class TensorArrayCPUTest(tf.test.TestCase):
     self._testWhileLoopWritePackGradients(
         dynamic_size=True, dtype=tf.float32)
 
+  def testGradSerialTwoLoops(self):
+    with self.test_session():
+      num_steps = 100
+      acc = tf.TensorArray(dtype=tf.float32, size=num_steps,
+                           clear_after_read=False,
+                           elem_shape=tensor_shape.scalar())
+      i = tf.constant(0, name="i")
+      x = tf.constant(2.0, name="x")
+
+      c = lambda i, acc: i < 5
+      def b(i, acc):
+        x1 = tf.cond(tf.equal(i, 0),
+                     lambda: x,
+                     lambda: tf.mul(acc.read(i - 1), 2.0))
+        return i + 1, acc.write(i, x1)
+      i1, acc1 = tf.while_loop(c, b, [i, acc])
+
+      z = tf.constant(0.0)
+      def fn(i, acc):
+        return i + 1, acc.write(i, z)
+      _, acc2 = tf.while_loop(lambda i, acc: i < num_steps, fn, [i1, acc1])
+
+      r = acc2.pack()
+      grad = tf.gradients(r, [x])[0]
+      self.assertAllClose(31.0, grad.eval())
+
   def testSumOfTwoReadVariablesWithoutRepeatGrad(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
       a = tf.identity(np.arange(3*5, dtype=np.float32).reshape(3, 5) + 1)

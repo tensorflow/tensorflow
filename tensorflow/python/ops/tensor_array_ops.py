@@ -63,7 +63,7 @@ class TensorArray(object):
 
   def __init__(self, dtype, size=None, dynamic_size=None,
                clear_after_read=None, tensor_array_name=None, handle=None,
-               flow=None, infer_shape=True, name=None):
+               flow=None, infer_shape=True, elem_shape=None, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
     A note about the parameter `name`:
@@ -91,6 +91,8 @@ class TensorArray(object):
         `TensorArray.flow`.
       infer_shape: (optional, default: True) If True, shape inference
         is enabled.  In this case, all elements must have the same shape.
+      elem_shape: (optional, default: None) A TensorShape object specifying
+        the shape of all the elements of the TensorArray.
       name: A name for the operation (optional).
 
     Raises:
@@ -119,11 +121,16 @@ class TensorArray(object):
     dynamic_size = dynamic_size or False
 
     self._dtype = dtype
-    self._infer_shape = infer_shape
-    # Record the current static shape for the array elements. The first
-    # write adds the shape of the tensor it writes, and all subsequent
-    # writes checks for shape equality.
-    self._elem_shape = []
+    # Record the current static shape for the array elements. The element
+    # shape is defined either by `elem_shape` or the shape of the tensor
+    # of the first write. If `infer_shape` is true, all writes checks for
+    # shape equality.
+    if elem_shape is None:
+      self._infer_shape = infer_shape
+      self._elem_shape = []
+    else:
+      self._infer_shape = True
+      self._elem_shape = [tensor_shape.TensorShape(elem_shape)]
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
@@ -175,6 +182,7 @@ class TensorArray(object):
           flow = array_ops.identity(flow, name="gradient_flow")
         g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow,
                         infer_shape=self._infer_shape)
+        g._elem_shape = self._elem_shape
         return g
 
   def read(self, index, name=None):
