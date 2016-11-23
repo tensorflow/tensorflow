@@ -427,7 +427,7 @@ class OpDefLibrary(object):
           try:
             if not input_arg.is_ref and dtype:
               dtype = dtypes.as_dtype(dtype).base_dtype
-            values = ops.convert_n_to_tensor(
+            values = ops.internal_convert_n_to_tensor(
                 values,
                 name=input_arg.name,
                 dtype=dtype if dtype else None,
@@ -441,7 +441,7 @@ class OpDefLibrary(object):
             observed_types = []
             for value in values:
               try:
-                converted_value = ops.convert_to_tensor(
+                converted_value = ops.internal_convert_to_tensor(
                     value, as_ref=input_arg.is_ref)
                 observed_types.append(converted_value.dtype.base_dtype.name)
               except (TypeError, ValueError):
@@ -482,7 +482,7 @@ class OpDefLibrary(object):
             default_dtype = default_type_attr_map[input_arg.type_attr]
 
           try:
-            values = ops.convert_to_tensor(
+            values = ops.internal_convert_to_tensor(
                 values,
                 name=input_arg.name,
                 dtype=dtype,
@@ -499,8 +499,8 @@ class OpDefLibrary(object):
                    repr(values), type(values).__name__))
           except ValueError:
             # What type does convert_to_tensor think it has?
-            observed = ops.convert_to_tensor(values,
-                                             as_ref=input_arg.is_ref).dtype.name
+            observed = ops.internal_convert_to_tensor(
+                values, as_ref=input_arg.is_ref).dtype.name
             prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
@@ -607,7 +607,7 @@ class OpDefLibrary(object):
             assert False, "Unreachable"
 
         if input_arg.is_ref:
-          if not all(x.is_ref_dtype for x in types):
+          if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
                 "Input '%s' of '%s' Op requires l-value input" %
                 (input_name, op_type_name))
@@ -741,7 +741,7 @@ class OpDefLibrary(object):
           types = [arg.type]
           output_structure.append(None)
         if arg.is_ref:
-          types = [dtypes.as_dtype(x).as_ref for x in types]
+          types = [dtypes.as_dtype(x)._as_ref for x in types]  # pylint: disable=protected-access
         output_types.extend(types)
 
       if keywords:

@@ -46,6 +46,7 @@ load(
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
+    "cuda_path_flags"
 )
 
 # List of proto files for android builds
@@ -165,6 +166,9 @@ def tf_copts():
               "//tensorflow:windows": [
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
+                "/DPLATFORM_WINDOWS",
+                "/DEIGEN_HAS_C99_MATH",
+                "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
@@ -417,7 +421,7 @@ def _cuda_copts():
         "@local_config_cuda//cuda:using_nvcc": (
             common_cuda_opts +
             [
-                "-nvcc_options=relaxed-constexpr",
+                "-nvcc_options=expt-relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
@@ -425,7 +429,6 @@ def _cuda_copts():
             common_cuda_opts +
             [
                 "-fcuda-flush-denormals-to-zero",
-                "--cuda-path=external/local_config_cuda/cuda",
                 "--cuda-gpu-arch=sm_35",
             ]
         ),
@@ -434,7 +437,7 @@ def _cuda_copts():
         # optimizations are not enabled at O2.
         "@local_config_cuda//cuda:using_clang_opt": ["-O3"],
         "//conditions:default": [],
-    })
+    }) + cuda_path_flags()
 
 # Build defs for TensorFlow kernels
 
@@ -443,7 +446,7 @@ def _cuda_copts():
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                           **kwargs):
-  copts = copts + _cuda_copts() + if_cuda(cuda_copts)
+  copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
 
   native.cc_library(
       srcs = srcs,
@@ -480,7 +483,10 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
+      deps = deps + if_cuda(cuda_deps + [
+          "//tensorflow/core:cuda",
+          "@local_config_cuda//cuda:cuda_headers"
+      ]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 

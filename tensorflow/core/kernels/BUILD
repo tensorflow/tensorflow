@@ -1092,8 +1092,10 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
+        ":dense_update_ops",
         ":gather_functor",
         ":scatter_functor",
+        ":state",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1243,22 +1245,37 @@ tf_cuda_cc_test(
 
 tf_kernel_libraries(
     name = "io",
+    libs = [":save_restore"],
     prefixes = [
         "fixed_length_record_reader_op",
         "identity_reader_op",
         "matching_files_op",
         "reader_ops",
-        "restore_op",
-        "save_op",
-        "save_restore_v2_ops",
         "text_line_reader_op",
         "tf_record_reader_op",
         "whole_file_read_ops",
     ],
     deps = [
-        ":bounds_check_lib",
         ":ops_util",
         ":reader_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:io_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_kernel_libraries(
+    name = "save_restore",
+    prefixes = [
+        "restore_op",
+        "save_op",
+        "save_restore_v2_ops",
+    ],
+    deps = [
+        ":bounds_check_lib",
         ":save_restore_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:io_ops_op_lib",
@@ -1689,7 +1706,6 @@ tf_kernel_libraries(
         ":bounds_check",
         ":conv_2d",
         ":conv_ops",
-        ":depthwise_conv_grad_op",
         ":dilation_ops",
         ":fused_batch_norm_util_gpu",
         ":ops_util",
@@ -1701,6 +1717,7 @@ tf_kernel_libraries(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ] + if_not_windows([
+        ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
     ]),
 )

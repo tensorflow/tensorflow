@@ -34,6 +34,13 @@ REQUIRED_PACKAGES = [
     'protobuf == 3.1.0',
 ]
 
+project_name = 'tensorflow'
+if '--project_name' in sys.argv:
+  project_name_idx = sys.argv.index('--project_name')
+  project_name = sys.argv[project_name_idx + 1]
+  sys.argv.remove('--project_name')
+  sys.argv.pop(project_name_idx)
+
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')
@@ -153,7 +160,7 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
 
 
 setup(
-    name='tensorflow',
+    name=project_name,
     version=_VERSION,
     description='TensorFlow helps the tensors flow',
     long_description='',

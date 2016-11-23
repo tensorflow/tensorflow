@@ -1,6 +1,6 @@
 ### `tf.contrib.metrics.streaming_specificity_at_sensitivity(predictions, labels, sensitivity, weights=None, num_thresholds=200, metrics_collections=None, updates_collections=None, name=None)` {#streaming_specificity_at_sensitivity}
 
-Computes the the specificity at a given sensitivity.
+Computes the specificity at a given sensitivity.
 
 The `streaming_specificity_at_sensitivity` function creates four local
 variables, `true_positives`, `true_negatives`, `false_positives` and

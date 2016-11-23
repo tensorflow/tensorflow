@@ -28,58 +28,14 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
+from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import server_lib
-from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import training_util
 
 
 __all__ = ["Experiment"]
-
-
-class _GlobalStepWaiterHook(session_run_hook.SessionRunHook):
-  """Delay execution until global step reaches to wait_until_step."""
-
-  def __init__(self, wait_until_step):
-    """Create a _GlobalStepWaiterHook.
-
-    This hook delays execution until global step reaches to wait_until_step. It
-    is used to gradually start workers in distributed settings.
-
-    Args:
-      wait_until_step: an `int` shows until which global step should we wait.
-    """
-    self._wait_until_step = wait_until_step
-
-  def begin(self):
-    self._worker_is_started = False
-    self._global_step_tensor = training_util.get_global_step()
-    if self._global_step_tensor is None:
-      raise RuntimeError(
-          "Global step should be created to use _GlobalStepWaiterHook.")
-
-  def before_run(self, run_context):
-    if self._worker_is_started:
-      return None
-
-    if self._wait_until_step <= 0:
-      self._worker_is_started = True
-      return None
-
-    logging.info("Waiting for global step %d before starting training.",
-                 self._wait_until_step)
-    last_logged_step = 0
-    while True:
-      current_step = run_context.session.run(self._global_step_tensor)
-      if current_step >= self._wait_until_step:
-        self._worker_is_started = True
-        return None
-      if current_step - last_logged_step > 10000:
-        logging.info("Waiting for global step %d before starting training. "
-                     "Current step is %d.", self._wait_until_step, current_step)
-        last_logged_step = current_step
-      time.sleep(0.5)
 
 
 class Experiment(object):
@@ -191,16 +147,21 @@ class Experiment(object):
     # we (optionally) sleep for the case where no device_filters are set.
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
-    if self._estimator.config.cluster_spec and self._estimator.config.master:
+    config = self._estimator.config
+    if (config.environment != run_config.Environment.LOCAL and
+        config.environment != run_config.Environment.GOOGLE and
+        config.cluster_spec and config.master):
       self._start_server()
 
     extra_hooks = []
     if delay_secs is None:
-      task_id = self._estimator.config.task or 0
+      task_id = self._estimator.config.task_id or 0
       if self._delay_workers_by_global_step:
         # Wait 5500 global steps for the second worker. Each worker waits more
         # then previous one but with a diminishing number of steps.
-        extra_hooks.append(_GlobalStepWaiterHook(8000*int(math.log(task_id+1))))
+        extra_hooks.append(
+            basic_session_run_hooks.GlobalStepWaiterHook(
+                int(8000.0 * math.log(task_id + 1))))
         delay_secs = 0
       else:
         # Wait 5 secs more for each new worker up to 60 secs.
@@ -397,15 +358,15 @@ class Experiment(object):
   def _start_server(self):
     """Creates, starts, and returns a server_lib.Server."""
     config = self._estimator.config
-    if (not config.cluster_spec or not config.job_name or not config.master or
-        config.task is None):
+    if (not config.cluster_spec or not config.task_type or not config.master or
+        config.task_id is None):
       raise ValueError("Could not start server; be sure to specify "
-                       "cluster_spec, job_name, master, and task in "
+                       "cluster_spec, task_type, master, and task in "
                        "RunConfig or set the TF_CONFIG environment variable.")
     server = server_lib.Server(
         config.cluster_spec,
-        job_name=config.job_name,
-        task_index=config.task,
+        job_name=config.task_type,
+        task_index=config.task_id,
         config=config.tf_config,
         start=False)
     server.start()

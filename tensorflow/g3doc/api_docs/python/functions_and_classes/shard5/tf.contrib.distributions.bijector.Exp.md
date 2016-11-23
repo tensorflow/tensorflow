@@ -288,6 +288,13 @@ Returns this `Bijector`'s parameters as a name/value dictionary.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Exp.power` {#Exp.power}
+
+The `c` in: `Y = g(X) = (1 + X * c)**(1 / c)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Exp.shaper` {#Exp.shaper}
 
 Returns shape object used to manage shape constraints.

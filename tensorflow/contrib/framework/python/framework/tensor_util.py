@@ -356,8 +356,7 @@ def with_shape(expected_shape, tensor):
   return tensor
 
 
-def convert_to_tensor_or_sparse_tensor(
-    value, dtype=None, name=None, as_ref=False):
+def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
   """Converts value to a `SparseTensor` or `Tensor`.
 
   Args:
@@ -366,8 +365,6 @@ def convert_to_tensor_or_sparse_tensor(
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor. Only used if a new
-      `Tensor` is created.
 
   Returns:
     A `SparseTensor` or `Tensor` based on `value`.
@@ -385,4 +382,5 @@ def convert_to_tensor_or_sparse_tensor(
           'Sparse dtype: requested = %s, actual = %s' % (
               dtype.name, value.dtype.name))
     return value
-  return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
+  return ops.internal_convert_to_tensor(
+      value, dtype=dtype, name=name)

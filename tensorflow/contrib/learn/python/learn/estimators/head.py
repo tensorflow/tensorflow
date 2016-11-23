@@ -203,7 +203,7 @@ class _Head(object):
 
   @abc.abstractmethod
   def head_ops(self, features, labels, mode, train_op_fn, logits=None,
-               logits_input=None):
+               logits_input=None, scope=None):
     """Returns ops for a model_fn.
 
     Args:
@@ -214,6 +214,8 @@ class _Head(object):
           optimize with the loss.
       logits: logits to be used for the head.
       logits_input: tensor to build logits from.
+      scope: Optional scope for variable_scope. Only used by heads which create
+        variables.
 
     Returns:
       `ModelFnOps`.
@@ -262,7 +264,7 @@ class _RegressionHead(_Head):
     return self._logits_dimension
 
   def head_ops(self, features, labels, mode, train_op_fn, logits=None,
-               logits_input=None):
+               logits_input=None, scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
     _check_logits_input_not_supported(logits, logits_input)
@@ -273,7 +275,7 @@ class _RegressionHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(features, labels, train_op_fn, logits))
       eval_metric_ops = self._eval_metric_ops(features, labels, logits)
     signature_fn = self._signature_fn()
@@ -447,7 +449,7 @@ class _MultiClassHead(_Head):
     return self._logits_dimension
 
   def head_ops(self, features, labels, mode, train_op_fn, logits=None,
-               logits_input=None):
+               logits_input=None, scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
     _check_logits_input_not_supported(logits, logits_input)
@@ -458,7 +460,7 @@ class _MultiClassHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(features, labels, train_op_fn, logits))
       eval_metric_ops = self._eval_metric_ops(features, labels, logits)
     signature_fn = self._signature_fn()

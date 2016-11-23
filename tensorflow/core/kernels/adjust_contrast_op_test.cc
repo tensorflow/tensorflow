@@ -56,7 +56,7 @@ TEST_F(AdjustContrastOpTest, Simple_1223) {
   TF_EXPECT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({1, 2, 2, 3}),
                            {1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12});
-  AddInputFromArray<float>(TensorShape({}), {0.2});
+  AddInputFromArray<float>(TensorShape({}), {0.2f});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 3}));
@@ -78,7 +78,7 @@ TEST_F(AdjustContrastOpTest, Big_99x99x3) {
   }
 
   AddInputFromArray<float>(TensorShape({1, 99, 99, 3}), values);
-  AddInputFromArray<float>(TensorShape({}), {0.2});
+  AddInputFromArray<float>(TensorShape({}), {0.2f});
   TF_ASSERT_OK(RunOpKernel());
 }
 

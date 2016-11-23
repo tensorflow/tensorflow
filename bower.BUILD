@@ -515,6 +515,17 @@ filegroup(
 )
 
 filegroup(
+    name = "paper_spinner",
+    srcs = [
+        "index.html",
+        "paper-spinner.html",
+        "paper-spinner-behavior.html",
+        "paper-spinner-lite.html",
+        "paper-spinner-styles.html",
+    ],
+)
+
+filegroup(
     name = "paper_styles",
     srcs = [
         "classes/global.html",

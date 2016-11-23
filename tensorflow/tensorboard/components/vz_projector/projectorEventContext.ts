@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, DistanceFunction} from './data';
+import {DistanceFunction, Projection} from './data';
 import {NearestEntry} from './knn';
 
 export type HoverListener = (index: number) => void;
 export type SelectionChangedListener =
     (selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[]) =>
         void;
-export type ProjectionChangedListener = (dataSet: DataSet) => void;
-
+export type ProjectionChangedListener = (projection: Projection) => void;
+export type DistanceMetricChangedListener =
+    (distanceMetric: DistanceFunction) => void;
 export interface ProjectorEventContext {
   /** Register a callback to be invoked when the mouse hovers over a point. */
   registerHoverListener(listener: HoverListener);
@@ -37,6 +38,8 @@ export interface ProjectorEventContext {
   /** Registers a callback to be invoked when the projection changes. */
   registerProjectionChangedListener(listener: ProjectionChangedListener);
   /** Notify listeners that a reprojection occurred. */
-  notifyProjectionChanged(dataSet: DataSet);
+  notifyProjectionChanged(projection: Projection);
+  registerDistanceMetricChangedListener(listener:
+                                            DistanceMetricChangedListener);
   notifyDistanceMetricChanged(distMetric: DistanceFunction);
 }

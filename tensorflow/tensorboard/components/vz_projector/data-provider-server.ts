@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {DataSet, SpriteAndMetadataInfo, State} from './data';
-import {ProjectorConfig, DataProvider, TENSORS_MSG_ID, EmbeddingInfo} from './data-provider';
 import * as dataProvider from './data-provider';
+import {DataProvider, EmbeddingInfo, ProjectorConfig, TENSORS_MSG_ID} from './data-provider';
 import * as logging from './logging';
 
 // Limit for the number of data points we receive from the server.
@@ -96,6 +96,11 @@ export class ServerDataProvider implements DataProvider {
       }
     };
     xhr.onload = () => {
+      if (xhr.status !== 200) {
+        let msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
+        logging.setErrorMessage(msg);
+        return;
+      }
       let data = new Float32Array(xhr.response);
       this.getEmbeddingInfo(run, tensorName, embedding => {
         if (embedding.tensorShape[0] > LIMIT_NUM_POINTS) {
@@ -110,10 +115,7 @@ export class ServerDataProvider implements DataProvider {
         });
       });
     };
-    xhr.onerror = () => {
-      logging.setErrorMessage(xhr.responseText);
-    };
-    xhr.send(null);
+    xhr.send();
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,
@@ -132,21 +134,6 @@ export class ServerDataProvider implements DataProvider {
       }
       dataProvider.retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath,
           embedding.sprite, callback);
-    });
-  }
-
-  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
-    this.retrieveProjectorConfig(run, config => {
-      let tensorNames = config.embeddings.map(e => e.tensorName);
-      // Return the first tensor that has metadata.
-      for (let i = 0; i < tensorNames.length; i++) {
-        let e = config.embeddings[i];
-        if (e.metadataPath) {
-          callback(e.tensorName);
-          return;
-        }
-      }
-      callback(tensorNames.length >= 1 ? tensorNames[0] : null);
     });
   }
 

@@ -398,7 +398,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
       * num_ps_replicas: The number of parameter server replicas.
 
   Returns:
-    `estimator.ModelFnOps`
+    `ModelFnOps`
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`

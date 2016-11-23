@@ -27,7 +27,7 @@ from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.ops import convert_to_tensor
+from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -228,18 +228,18 @@ class SparseFeatureColumn(object):
     """
     with name_scope(None, 'SparseFeatureColumn',
                     [example_indices, feature_indices]):
-      self._example_indices = convert_to_tensor(example_indices,
-                                                name='example_indices',
-                                                dtype=dtypes.int64)
-      self._feature_indices = convert_to_tensor(feature_indices,
-                                                name='feature_indices',
-                                                dtype=dtypes.int64)
+      self._example_indices = internal_convert_to_tensor(example_indices,
+                                                         name='example_indices',
+                                                         dtype=dtypes.int64)
+      self._feature_indices = internal_convert_to_tensor(feature_indices,
+                                                         name='feature_indices',
+                                                         dtype=dtypes.int64)
     self._feature_values = None
     if feature_values is not None:
       with name_scope(None, 'SparseFeatureColumn', [feature_values]):
-        self._feature_values = convert_to_tensor(feature_values,
-                                                 name='feature_values',
-                                                 dtype=dtypes.float32)
+        self._feature_values = internal_convert_to_tensor(feature_values,
+                                                          name='feature_values',
+                                                          dtype=dtypes.float32)
 
   @property
   def example_indices(self):
@@ -459,7 +459,7 @@ class SdcaModel(object):
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
-    return [convert_to_tensor(x, as_ref=as_ref) for x in input_list]
+    return [internal_convert_to_tensor(x, as_ref=as_ref) for x in input_list]
 
   def _linear_predictions(self, examples):
     """Returns predictions of the form w*x."""
@@ -536,7 +536,7 @@ class SdcaModel(object):
 
       # pylint: disable=protected-access
       example_ids_hashed = gen_sdca_ops._sdca_fprint(
-          convert_to_tensor(self._examples['example_ids']))
+          internal_convert_to_tensor(self._examples['example_ids']))
       # pylint: enable=protected-access
       example_state_data = self._hashtable.lookup(example_ids_hashed)
       # Solver returns example_state_update, new delta sparse_feature_weights
@@ -561,8 +561,8 @@ class SdcaModel(object):
           sparse_feature_indices,
           sparse_features_values,
           self._convert_n_to_tensor(self._examples['dense_features']),
-          convert_to_tensor(self._examples['example_weights']),
-          convert_to_tensor(self._examples['example_labels']),
+          internal_convert_to_tensor(self._examples['example_weights']),
+          internal_convert_to_tensor(self._examples['example_labels']),
           sparse_indices,
           sparse_weights,
           self._convert_n_to_tensor(self._slots[
@@ -676,9 +676,11 @@ class SdcaModel(object):
       predictions = math_ops.cast(
           self._linear_predictions(examples), dtypes.float64)
       labels = math_ops.cast(
-          convert_to_tensor(examples['example_labels']), dtypes.float64)
+          internal_convert_to_tensor(
+              examples['example_labels']), dtypes.float64)
       weights = math_ops.cast(
-          convert_to_tensor(examples['example_weights']), dtypes.float64)
+          internal_convert_to_tensor(
+              examples['example_weights']), dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
         return math_ops.reduce_sum(math_ops.mul(
@@ -722,7 +724,7 @@ class SdcaModel(object):
                            'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/regularized_loss'):
-      weights = convert_to_tensor(examples['example_weights'])
+      weights = internal_convert_to_tensor(examples['example_weights'])
       return ((
           self._l1_loss() +
           # Note that here we are using the raw regularization

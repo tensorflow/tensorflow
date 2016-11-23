@@ -49,7 +49,7 @@ py_library(
 
 py_test(
     name = "core_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "python/ops/core_test.py",
     ],
@@ -119,6 +119,7 @@ py_library(
 
 py_test(
     name = "ops_test",
+    size = "medium",
     srcs = [
         "python/ops/ops_test.py",
     ],

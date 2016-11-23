@@ -58,7 +58,7 @@ Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 
 - - -
 
-### `tf.contrib.framework.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_sparse_tensor}
+### `tf.contrib.framework.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None)` {#convert_to_tensor_or_sparse_tensor}
 
 Converts value to a `SparseTensor` or `Tensor`.
 
@@ -70,8 +70,6 @@ Converts value to a `SparseTensor` or `Tensor`.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
 
 ##### Returns:
 
@@ -812,7 +810,8 @@ Gets the list of variables, filtered by scope and/or suffix.
 ##### Args:
 
 
-*  <b>`scope`</b>: an optional scope for filtering the variables to return.
+*  <b>`scope`</b>: an optional scope for filtering the variables to return. Can be a
+    variable scope or a string.
 *  <b>`suffix`</b>: an optional suffix for filtering the variables to return.
 *  <b>`collection`</b>: in which collection search for. Defaults to
     `GraphKeys.GLOBAL_VARIABLES`.

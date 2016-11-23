@@ -405,7 +405,8 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
@@ -1100,6 +1101,33 @@ beta function.
   A `Tensor`. Has the same type as `a`.
 
 
+- - -
+
+### `tf.rint(x, name=None)` {#rint}
+
+Returns element-wise integer closest to x.
+
+If the result is midway between two representable values,
+the even representable is chosen.
+For example:
+
+```
+rint(-1.5) ==> -2.0
+rint(0.5000001) ==> 1.0
+rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
 
 ## Matrix Math Functions
 
@@ -1545,22 +1573,25 @@ tf.matrix_transpose(x) ==> [[1 4]
 
 - - -
 
-### `tf.matmul(a, b, transpose_a=False, transpose_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
+### `tf.matmul(a, b, transpose_a=False, transpose_b=False, adjoint_a=False, adjoint_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
 
 Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-The inputs must be two-dimensional matrices, with matching inner dimensions,
-possibly after transposition.
+The inputs must be matrices (or tensors of rank > 2, representing batches of
+matrices), with matching inner dimensions, possibly after transposition.
 
 Both matrices must be of the same type. The supported types are:
-`float32`, `float64`, `int32`, `complex64`.
+`float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
 
-Either matrix can be transposed on the fly by setting the corresponding flag
-to `True`. This is `False` by default.
+Either matrix can be transposed or adjointed (conjugated and transposed) on
+the fly by setting one of the corresponding flag to `True`. These are `False`
+by default.
 
 If one or both of the matrices contain a lot of zeros, a more efficient
 multiplication algorithm can be used by setting the corresponding
 `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
+This optimization is only available for plain matrices (rank-2 tensors) with
+datatypes `bfloat16` or `float32`.
 
 For example:
 
@@ -1574,22 +1605,57 @@ b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2]) => [[7. 8.]
                                                          [11. 12.]]
 c = tf.matmul(a, b) => [[58 64]
                         [139 154]]
+
+
+# 3-D tensor `a`
+a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+                                                       [ 4.  5.  6.]],
+                                                      [[ 7.  8.  9.]
+                                                       [10. 11. 12.]]]
+
+# 3-D tensor `b`
+b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+                                                        [15. 16.]
+                                                        [17. 18.]],
+                                                       [[19. 20.]
+                                                        [21. 22.]
+                                                        [23. 24.]]]
+c = tf.matmul(a, b) => [[[ 94 100]
+                         [229 244]],
+                        [[508 532]
+                         [697 730]]]
 ```
 
 ##### Args:
 
 
-*  <b>`a`</b>: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
-*  <b>`b`</b>: `Tensor` with same type as `a`.
+*  <b>`a`</b>: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+    `complex128` and rank > 1.
+*  <b>`b`</b>: `Tensor` with same type and rank as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
+*  <b>`adjoint_a`</b>: If `True`, `a` is conjugated and transposed before
+    multiplication.
+*  <b>`adjoint_b`</b>: If `True`, `b` is conjugated and transposed before
+    multiplication.
 *  <b>`a_is_sparse`</b>: If `True`, `a` is treated as a sparse matrix.
 *  <b>`b_is_sparse`</b>: If `True`, `b` is treated as a sparse matrix.
 *  <b>`name`</b>: Name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of the same type as `a`.
+  A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
+  the product of the corresponding matrices in `a` and `b, e.g. if all
+  transpose or adjoint attributes are `False`:
+
+  output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If transpose_a and adjoint_a, or transpose_b and adjoint_b
+    are both set to True.
 
 
 - - -
@@ -2105,7 +2171,8 @@ tf.imag(input) ==> [4.75, 5.75]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+    `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

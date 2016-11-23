@@ -59,8 +59,6 @@ class DType(object):
   @@name
   @@base_dtype
   @@real_dtype
-  @@is_ref_dtype
-  @@as_ref
   @@is_floating
   @@is_complex
   @@is_integer
@@ -97,14 +95,14 @@ class DType(object):
     self._type_enum = type_enum
 
   @property
-  def is_ref_dtype(self):
+  def _is_ref_dtype(self):
     """Returns `True` if this `DType` represents a reference type."""
     return self._type_enum > 100
 
   @property
-  def as_ref(self):
+  def _as_ref(self):
     """Returns a reference `DType` based on this `DType`."""
-    if self.is_ref_dtype:
+    if self._is_ref_dtype:
       return self
     else:
       return _INTERN_TABLE[self._type_enum + 100]
@@ -112,7 +110,7 @@ class DType(object):
   @property
   def base_dtype(self):
     """Returns a non-reference `DType` based on this `DType`."""
-    if self.is_ref_dtype:
+    if self._is_ref_dtype:
       return _INTERN_TABLE[self._type_enum - 100]
     else:
       return self
@@ -269,7 +267,7 @@ class DType(object):
       return False
     try:
       dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype
+      return self._type_enum == dtype  # pylint: disable=protected-access
     except TypeError:
       return False
 

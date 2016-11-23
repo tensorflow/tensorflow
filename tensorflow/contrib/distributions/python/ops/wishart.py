@@ -245,7 +245,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
     if not self.cholesky_input_output_matrices:
       # Complexity: O(nbk^3)
-      x = math_ops.batch_matmul(x, x, adj_y=True)
+      x = math_ops.matmul(x, x, adjoint_b=True)
 
     return x
 
@@ -353,7 +353,7 @@ class _WishartOperatorPD(distribution.Distribution):
   def _variance(self):
     x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
     d = array_ops.expand_dims(array_ops.matrix_diag_part(x), -1)
-    v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
+    v = math_ops.square(x) + math_ops.matmul(d, d, adjoint_b=True)
     if self.cholesky_input_output_matrices:
       return linalg_ops.cholesky(v)
     return v

@@ -11,8 +11,8 @@ BUS_ANY was used.
 * The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
   indicating its preferred use in language bindings for TensorFlow.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
-* Renamed Tensor to Output in the Python API. Tensor will be an alias for Output
-  until TensorFlow 2.0 is released.
+* Renamed TF_Port to TF_Output in the C API.
+* Removes RegisterShape from public API. Use C++ shape function registration instead.
 
 # Release 0.11.0
 

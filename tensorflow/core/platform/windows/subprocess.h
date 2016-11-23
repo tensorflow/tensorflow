@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_CONSTANTS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_CONSTANTS_H_
+#ifndef TENSORFLOW_PLATFORM_WINDOWS_SUBPROCESS_H_
+#define TENSORFLOW_PLATFORM_WINDOWS_SUBPROCESS_H_
 
 namespace tensorflow {
-namespace serving {
 
-// Key in the signature def map for `default` signatures.
-static constexpr char kDefaultSignatureDefKey[] = "default";
+// SubProcess is not yet implemented for Windows.
+class SubProcess {
+};
 
-}  // namespace serving
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_CONSTANTS_H_
+#endif  // TENSORFLOW_PLATFORM_WINDOWS_SUBPROCESS_H_

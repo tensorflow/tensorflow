@@ -119,7 +119,7 @@ def lanczos_bidiag(operator,
     """Makes v orthogonal to the j'th vector in basis."""
     v_shape = v.get_shape()
     basis_vec = read_colvec(basis, j)
-    v -= tf.batch_matmul(basis_vec, v, adj_x=True) * basis_vec
+    v -= tf.matmul(basis_vec, v, adjoint_a=True) * basis_vec
     v.set_shape(v_shape)
     return j + 1, basis, v
 

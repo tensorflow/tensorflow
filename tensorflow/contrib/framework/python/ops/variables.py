@@ -259,7 +259,8 @@ def get_variables(scope=None, suffix=None,
   """Gets the list of variables, filtered by scope and/or suffix.
 
   Args:
-    scope: an optional scope for filtering the variables to return.
+    scope: an optional scope for filtering the variables to return. Can be a
+      variable scope or a string.
     suffix: an optional suffix for filtering the variables to return.
     collection: in which collection search for. Defaults to
       `GraphKeys.GLOBAL_VARIABLES`.
@@ -267,6 +268,8 @@ def get_variables(scope=None, suffix=None,
   Returns:
     a list of variables in collection with scope and suffix.
   """
+  if isinstance(scope, variable_scope.VariableScope):
+    scope = scope.name
   if suffix is not None:
     if ':' not in suffix:
       suffix += ':'

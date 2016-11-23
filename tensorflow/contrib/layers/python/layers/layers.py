@@ -173,7 +173,10 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average.
+    decay: decay for the moving average. Reasonable values for `decay` are close 
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+      good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -396,7 +399,10 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average.
+    decay: decay for the moving average. Reasonable values for `decay` are close 
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+      good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -436,9 +442,8 @@ def batch_norm(
   Raises:
     ValueError: if `batch_weights` is not None and `fused` is True.
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if `data_format` is `NCHW` while `fused` is False.
     ValueError: if the rank of `inputs` is undefined.
-    ValueError: if rank or last dimension of `inputs` is undefined.
+    ValueError: if rank or channels dimension of `inputs` is undefined.
   """
   if fused:
     if batch_weights is not None:
@@ -463,8 +468,6 @@ def batch_norm(
 
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
-  if data_format == DATA_FORMAT_NCHW:
-    raise ValueError('data_format must be NHWC if fused is False.')
 
   with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
                                      reuse=reuse) as sc:
@@ -480,10 +483,21 @@ def batch_norm(
       # Reshape batch weight values so they broadcast across inputs.
       nshape = [-1] + [1 for _ in range(inputs_rank - 1)]
       batch_weights = array_ops.reshape(batch_weights, nshape)
-    axis = list(range(inputs_rank - 1))
-    params_shape = inputs_shape[-1:]
+
+    if data_format == DATA_FORMAT_NCHW:
+      moments_axes = [0] + list(range(2, inputs_rank))
+      params_shape = inputs_shape[1:2]
+      # For NCHW format, rather than relying on implicit broadcasting, we
+      # explicitly reshape the params to params_shape_broadcast when computing
+      # the moments and the batch normalization.
+      params_shape_broadcast = list(
+          [1, inputs_shape[1].value] + [1 for _ in range(2, inputs_rank)])
+    else:
+      moments_axes = list(range(inputs_rank - 1))
+      params_shape = inputs_shape[-1:]
+      params_shape_broadcast = None
     if not params_shape.is_fully_defined():
-      raise ValueError('Inputs %s has undefined last dimension %s.' % (
+      raise ValueError('Inputs %s has undefined channels dimension %s.' % (
           inputs.name, params_shape))
 
     # Allocate parameters for the beta and gamma of the normalization.
@@ -555,9 +569,23 @@ def batch_norm(
       if batch_weights is None:
         # Use a copy of moving_mean as a shift to compute more reliable moments.
         shift = math_ops.add(moving_mean, 0)
-        mean, variance = nn.moments(inputs, axis, shift=shift)
+        if data_format == DATA_FORMAT_NCHW:
+          shift = array_ops.reshape(shift, params_shape_broadcast)
+          mean, variance = nn.moments(inputs, moments_axes, shift=shift,
+                                      keep_dims=True)
+          mean = array_ops.reshape(mean, [-1])
+          variance = array_ops.reshape(variance, [-1])
+        else:
+          mean, variance = nn.moments(inputs, moments_axes, shift=shift)
       else:
-        mean, variance = nn.weighted_moments(inputs, axis, batch_weights)
+        if data_format == DATA_FORMAT_NCHW:
+          mean, variance = nn.weighted_moments(inputs, moments_axes,
+                                               batch_weights, keep_dims=True)
+          mean = array_ops.reshape(mean, [-1])
+          variance = array_ops.reshape(variance, [-1])
+        else:
+          mean, variance = nn.weighted_moments(inputs, moments_axes,
+                                               batch_weights)
 
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
@@ -592,6 +620,13 @@ def batch_norm(
         mean, variance = utils.smart_cond(is_training, vars_fn, moving_vars_fn)
     else:
       mean, variance = moving_mean, moving_variance
+    if data_format == DATA_FORMAT_NCHW:
+      mean = array_ops.reshape(mean, params_shape_broadcast)
+      variance = array_ops.reshape(variance, params_shape_broadcast)
+      beta = array_ops.reshape(beta, params_shape_broadcast)
+      if gamma is not None:
+        gamma = array_ops.reshape(gamma, params_shape_broadcast)
+
     # Compute batch_normalization.
     outputs = nn.batch_normalization(inputs, mean, variance, beta, gamma,
                                      epsilon)
@@ -1284,7 +1319,7 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
+  if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
   with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
                                      reuse=reuse) as sc:
@@ -1295,9 +1330,6 @@ def fully_connected(inputs,
 
     static_shape = inputs_shape.as_list()
     static_shape[-1] = num_outputs
-
-    out_shape = array_ops.unpack(array_ops.shape(inputs))
-    out_shape[-1] = num_outputs
 
     weights_shape = [num_input_units, num_outputs]
     weights_collections = utils.get_variable_collections(
@@ -1310,6 +1342,8 @@ def fully_connected(inputs,
                                        collections=weights_collections,
                                        trainable=trainable)
     if len(static_shape) > 2:
+      out_shape = array_ops.unpack(array_ops.shape(inputs))
+      out_shape[-1] = num_outputs
       # Reshape inputs
       inputs = array_ops.reshape(inputs, [-1, num_input_units])
     outputs = standard_ops.matmul(inputs, weights)

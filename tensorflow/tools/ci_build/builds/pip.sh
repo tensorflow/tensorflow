@@ -118,6 +118,12 @@ else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
 fi
 
+MAC_FLAG=""
+if [[ $(uname) == "Darwin" ]]; then
+  MAC_FLAG="--mac"
+fi
+
+
 # If still in a virtualenv, deactivate it first
 if [[ ! -z "$(which deactivate)" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
@@ -143,13 +149,12 @@ fi
 echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
-
 # Build PIP Wheel file
 PIP_TEST_ROOT="pip_test"
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
-bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
+bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} || \
     die "build_pip_package FAILED"
 
 WHL_PATH=$(ls ${PIP_WHL_DIR}/tensorflow*.whl)
@@ -173,10 +178,10 @@ elif [[ $(uname) == "Darwin" ]]; then
   PLATFORM_TAG="any"
 fi
 
-if [[ ! -z "${PY_TAGS}" ]]; then
-  WHL_DIR=$(dirname "${WHL_PATH}")
-  WHL_BASE_NAME=$(basename "${WHL_PATH}")
+WHL_DIR=$(dirname "${WHL_PATH}")
+WHL_BASE_NAME=$(basename "${WHL_PATH}")
 
+if [[ ! -z "${PY_TAGS}" ]]; then
   NEW_WHL_BASE_NAME=$(echo ${WHL_BASE_NAME} | cut -d \- -f 1)-\
 $(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
 
@@ -187,8 +192,27 @@ $(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
   fi
 fi
 
-echo "whl file path = ${WHL_PATH}"
+if [[ $(uname) == "Linux" ]]; then
+  AUDITED_WHL_NAME="${WHL_DIR}/$(echo ${WHL_BASE_NAME} | sed "s/linux/manylinux1/")"
 
+  # Repair the wheels for cpu manylinux1
+  if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
+    echo "auditwheel repairing ${WHL_PATH}"
+    auditwheel repair -w ${WHL_DIR} ${WHL_PATH}
+
+    if [[ -f ${AUDITED_WHL_NAME} ]]; then
+      WHL_PATH=${AUDITED_WHL_NAME}
+      echo "Repaired manylinx1 wheel file at: ${WHL_PATH}"
+    else
+      die "ERROR: Cannot find repaired wheel."
+    fi
+  # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
+  elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+    WHL_PATH=${AUDITED_WHL_NAME}
+    cp ${WHL_DIR}/${WHL_BASE_NAME} ${WHL_PATH}
+    echo "Copied manylinx1 wheel file at ${WHL_PATH}"
+  fi
+fi
 
 # Perform installation
 echo "Installing pip whl file: ${WHL_PATH}"
@@ -250,7 +274,7 @@ fi
 
 # Call test_installation.sh to perform test-on-install
 
-"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ||
+"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG} ||
     die "PIP tests-on-install FAILED"
 
 # Test user ops

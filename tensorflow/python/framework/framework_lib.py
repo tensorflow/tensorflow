@@ -20,7 +20,6 @@
 
 @@Graph
 @@Operation
-@@Output
 @@Tensor
 
 ## Tensor types
@@ -54,7 +53,6 @@
 @@RegisterGradient
 @@NotDifferentiable
 @@NoGradient
-@@RegisterShape
 @@TensorShape
 @@Dimension
 @@op_scope
@@ -74,7 +72,6 @@ from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-from tensorflow.python.framework.ops import Output
 from tensorflow.python.framework.ops import IndexedSlices
 
 from tensorflow.python.framework.sparse_tensor import SparseTensor

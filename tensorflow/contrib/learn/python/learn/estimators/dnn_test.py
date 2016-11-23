@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import tempfile
 
 import numpy as np
@@ -516,16 +517,24 @@ class DNNClassifierTest(tf.test.TestCase):
         tf.contrib.layers.embedding_column(sparse_column, dimension=1)
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=5)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=3,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=5))
+        config=config)
 
     classifier.fit(input_fn=_input_fn, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
@@ -947,15 +956,23 @@ class DNNRegressorTest(tf.test.TestCase):
         tf.contrib.layers.real_valued_column('age')
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=1))
+        config=config)
 
     regressor.fit(input_fn=_input_fn, steps=5)
 

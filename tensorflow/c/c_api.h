@@ -235,27 +235,28 @@ extern size_t TF_TensorByteSize(const TF_Tensor*);
 extern void* TF_TensorData(const TF_Tensor*);
 
 // --------------------------------------------------------------------------
-// Encode the string "src" ("src_len" bytes long) into "dst" in the format
-// required by TF_STRING tensors. Does not write to memory more than "dst_len"
-// bytes beyond "*dst". "dst_len" should be at least
+// Encode the string `src` (`src_len` bytes long) into `dst` in the format
+// required by TF_STRING tensors. Does not write to memory more than `dst_len`
+// bytes beyond `*dst`. `dst_len` should be at least
 // TF_StringEncodedSize(src_len).
 //
 // On success returns the size in bytes of the encoded string.
+// Returns an error into `status` otherwise.
 extern size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
                               size_t dst_len, TF_Status* status);
 
 // Decode a string encoded using TF_StringEncode.
 //
-// On success, sets "*dst" to the start of the decoded string and "*dst_len" to
-// its length. Returns the number of bytes starting at "src" consumed while
-// decoding. "*dst" points to memory within the encoded buffer.  On failure,
-// "*dst" and "*dst_len" are undefined.
+// On success, sets `*dst` to the start of the decoded string and `*dst_len` to
+// its length. Returns the number of bytes starting at `src` consumed while
+// decoding. `*dst` points to memory within the encoded buffer.  On failure,
+// `*dst` and `*dst_len` are undefined and an error is set in `status`.
 //
-// Does not read memory pointed to by "limit" or beyond.
-extern size_t TF_DecodeString(const char* src, size_t src_len, char** dst,
+// Does not read memory more than `src_len` bytes beyond `src`.
+extern size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
                               size_t* dst_len, TF_Status* status);
 
-// Return the size in bytes required to encode a string "len" bytes long into a
+// Return the size in bytes required to encode a string `len` bytes long into a
 // TF_STRING tensor.
 extern size_t TF_StringEncodedSize(size_t len);
 
@@ -309,44 +310,49 @@ typedef struct TF_OperationDescription TF_OperationDescription;
 // invalidate old TF_Operation* pointers.
 typedef struct TF_Operation TF_Operation;
 
-// Represents a specific input or output of an operation, e.g. to
-// specify the specific output to pass as an input to a new op.
-typedef struct TF_Port {
+// Represents a specific input of an operation.
+typedef struct TF_Input {
   TF_Operation* oper;
-  int index;  // Specifies the index of the input or output within oper.
-} TF_Port;
+  int index;  // The index of the input within oper.
+} TF_Input;
 
-// Sets the shape of the Tensor referenced by `port` in `graph` to
+// Represents a specific output of an operation.
+typedef struct TF_Output {
+  TF_Operation* oper;
+  int index;  // The index of the output within oper.
+} TF_Output;
+
+// Sets the shape of the Tensor referenced by `output` in `graph` to
 // the shape described by `dims` and `num_dims`.
 //
 // If the number of dimensions is unknown, `num_dims` must be
 // set to -1 and dims can be null. If a dimension is unknown,
 // the corresponding entry in the `dims` array must be -1.
 //
-// This does not overwrite the existing shape associated with `port`,
+// This does not overwrite the existing shape associated with `output`,
 // but merges the input shape with the existing shape.  For example,
 // setting a shape of [-1, 2] with an existing shape [2, -1] would set
 // a final shape of [2, 2] based on shape merging semantics.
 //
 // Returns an error into `status` if:
-//   * `port` is not in `graph`.
+//   * `output` is not in `graph`.
 //   * An invalid shape is being set (e.g., the shape being set
 //     is incompatible with the existing shape).
-extern void TF_GraphSetTensorShape(TF_Graph* graph, TF_Port port,
+extern void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
                                    const int64_t* dims, const int num_dims,
                                    TF_Status* status);
 
-// Returns the number of dimensions of the Tensor referenced by `port`
+// Returns the number of dimensions of the Tensor referenced by `output`
 // in `graph`.
 //
 // If the number of dimensions in the shape is unknown, returns -1.
 //
 // Returns an error into `status` if:
-//   * `port` is not in `graph`.
-extern int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port,
+//   * `output` is not in `graph`.
+extern int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Output output,
                                     TF_Status* status);
 
-// Returns the shape of the Tensor referenced by `port` in `graph`
+// Returns the shape of the Tensor referenced by `output` in `graph`
 // into `dims`. `dims` must be an array large enough to hold `num_dims`
 // entries (e.g., the return value of TF_GraphGetTensorNumDims).
 //
@@ -356,10 +362,11 @@ extern int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port,
 // unknown dimension is represented by `-1`.
 //
 // Returns an error into `status` if:
-//   * `port` is not in `graph`.
+//   * `output` is not in `graph`.
 //   * `num_dims` does not match the actual number of dimensions.
-extern void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
-                                   int num_dims, TF_Status* status);
+extern void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output,
+                                   int64_t* dims, int num_dims,
+                                   TF_Status* status);
 
 // Operation will only be added to *graph when TF_FinishOperation() is
 // called (assuming TF_FinishOperation() does not return an error).
@@ -387,18 +394,18 @@ extern void TF_SetDevice(TF_OperationDescription* desc, const char* device);
 // it takes a list, even if you were to pass a list with a single
 // tensor), as in:
 //   TF_OperationDescription* desc = TF_NewOperation(graph, "Concat", "c");
-//   TF_Port concat_dim_input = {...};
+//   TF_Output concat_dim_input = {...};
 //   TF_AddInput(desc, concat_dim_input);
-//   TF_Port values_inputs[5] = {{...}, ..., {...}};
+//   TF_Output values_inputs[5] = {{...}, ..., {...}};
 //   TF_AddInputList(desc, values_inputs, 5);
 
 // For inputs that take a single tensor.
-extern void TF_AddInput(TF_OperationDescription* desc, TF_Port input);
+extern void TF_AddInput(TF_OperationDescription* desc, TF_Output input);
 
 // For inputs that take a list of tensors.
-// inputs must point to TF_Port[num_inputs].
+// inputs must point to TF_Output[num_inputs].
 extern void TF_AddInputList(TF_OperationDescription* desc,
-                            const TF_Port* inputs, int num_inputs);
+                            const TF_Output* inputs, int num_inputs);
 
 // Call once per control input to `desc`.
 extern void TF_AddControlInput(TF_OperationDescription* desc,
@@ -510,26 +517,26 @@ extern const char* TF_OperationOpType(TF_Operation* oper);
 extern const char* TF_OperationDevice(TF_Operation* oper);
 
 extern int TF_OperationNumOutputs(TF_Operation* oper);
-extern TF_DataType TF_OperationOutputType(TF_Port oper_out);
+extern TF_DataType TF_OperationOutputType(TF_Output oper_out);
 extern int TF_OperationOutputListLength(TF_Operation* oper,
                                         const char* arg_name,
                                         TF_Status* status);
 
 extern int TF_OperationNumInputs(TF_Operation* oper);
-extern TF_DataType TF_OperationInputType(TF_Port oper_in);
+extern TF_DataType TF_OperationInputType(TF_Input oper_in);
 extern int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
                                        TF_Status* status);
 
 // In this code:
-//   TF_Port producer = TF_OperationInput(consumer);
+//   TF_Output producer = TF_OperationInput(consumer);
 // There is an edge from producer.oper's output (given by
 // producer.index) to consumer.oper's input (given by consumer.index).
-extern TF_Port TF_OperationInput(TF_Port oper_in);
+extern TF_Output TF_OperationInput(TF_Input oper_in);
 
 // Get the number of current consumers of a specific output of an
 // operation.  Note that this number can change when new operations
 // are added to the graph.
-extern int TF_OperationOutputNumConsumers(TF_Port oper_out);
+extern int TF_OperationOutputNumConsumers(TF_Output oper_out);
 
 // Get list of all current consumers of a specific output of an
 // operation.  `consumers` must point to an array of length at least
@@ -538,7 +545,7 @@ extern int TF_OperationOutputNumConsumers(TF_Port oper_out);
 // modification of the graph can increase the number of consumers of
 // an operation.  Returns the number of output consumers (should match
 // TF_OperationOutputNumConsumers(oper_out)).
-extern int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
+extern int TF_OperationOutputConsumers(TF_Output oper_out, TF_Input* consumers,
                                        int max_consumers);
 
 // Get the number of control inputs to an operation.
@@ -865,10 +872,10 @@ extern void TF_SessionRun(TF_Session* session,
                           // RunOptions
                           const TF_Buffer* run_options,
                           // Input tensors
-                          const TF_Port* inputs, TF_Tensor* const* input_values,
-                          int ninputs,
+                          const TF_Output* inputs,
+                          TF_Tensor* const* input_values, int ninputs,
                           // Output tensors
-                          const TF_Port* outputs, TF_Tensor** output_values,
+                          const TF_Output* outputs, TF_Tensor** output_values,
                           int noutputs,
                           // Target operations
                           const TF_Operation* const* target_opers, int ntargets,
@@ -887,9 +894,9 @@ extern void TF_SessionRun(TF_Session* session,
 // NOTE: This is EXPERIMENTAL and subject to change.
 extern void TF_SessionPRunSetup(TF_Session*,
                                 // Input names
-                                const TF_Port* inputs, int ninputs,
+                                const TF_Output* inputs, int ninputs,
                                 // Output names
-                                const TF_Port* outputs, int noutputs,
+                                const TF_Output* outputs, int noutputs,
                                 // Target operations
                                 const TF_Operation* const* target_opers,
                                 int ntargets,
@@ -903,10 +910,10 @@ extern void TF_SessionPRunSetup(TF_Session*,
 // NOTE: This is EXPERIMENTAL and subject to change.
 extern void TF_SessionPRun(TF_Session*, const char* handle,
                            // Input tensors
-                           const TF_Port* inputs,
+                           const TF_Output* inputs,
                            TF_Tensor* const* input_values, int ninputs,
                            // Output tensors
-                           const TF_Port* outputs, TF_Tensor** output_values,
+                           const TF_Output* outputs, TF_Tensor** output_values,
                            int noutputs,
                            // Target operations
                            const TF_Operation* const* target_opers,
