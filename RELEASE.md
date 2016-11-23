@@ -30,6 +30,9 @@
 * Large cleanup to add second order gradient for ops with C++ gradients and
   improve existing gradients such that most ops can now be differentiated
   multiple times.
+* Added a solver for ordinary differential equations,
+  `tf.contrib.integrate.odeint`.
+* New contrib module for tensors with named axes, `tf.contrib.labeled_tensor`.
 
 ## Breaking Changes to the API
 
