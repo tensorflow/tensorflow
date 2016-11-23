@@ -900,7 +900,7 @@ class TestClone(tf.test.TestCase):
       x_new = tf.constant(x_value, dtype=tf.float32, name='x')
       y_out = meta_graph.clone(y, "copy", replace={x: x_new})
       optimizer = tf.train.AdamOptimizer()
-      optimize = optimizer.minimize(tf.reduce_sum(y_out[0]))
+      optimize = optimizer.minimize(tf.reduce_sum(y_out))
       with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         y_out_1 = sess.run(y_out, feed_dict={is_training: False})

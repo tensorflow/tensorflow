@@ -481,8 +481,6 @@ def import_scoped_meta_graph(meta_graph_or_file,
             not input_map or
             sorted(set([compat.as_str(v) for v in field.value])) !=
             sorted(input_map)):
-          # print(sorted([compat.as_str(v) for v in field.value]))
-          # print(sorted(input_map))
           raise ValueError("Graph contains unbound inputs: %s. Must "
                            "provide these inputs through input_map." %
                            ",".join([compat.as_str(v) for v in field.value]))
@@ -784,7 +782,6 @@ def export_ops_meta_graph(op_list,
     if not op.name.startswith(export_scope):
       raise ValueError("The Operation (%s) to export is not under "
                        "'export_scope'." % op.name)
-  print("Export op_list:", [i.name for i in op_list])
 
   graph = graph or ops.get_default_graph()
   as_unbound_inputs = as_unbound_inputs or []
@@ -858,9 +855,6 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope, replace=None):
   input_map = {}
   as_unbound_inputs = []
   for op in op_list:
-    from tensorflow.python.ops import control_flow_ops
-    if control_flow_ops.IsSwitch(op):
-      print(op._get_control_flow_context().to_proto())
     for tensor in op.inputs:
       if not (tensor in op_outputs) or (tensor in replace):
         name = tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
@@ -879,12 +873,9 @@ def copy_ops_meta_graph(op_list, from_scope, to_scope, replace=None):
         as_unbound_inputs.append(name)
         input_map[_unbound_name(name)] = ops.get_default_graph(). \
           as_graph_element(name[5:])
-  print('input_map:', input_map)
 
   orig_meta_graph = export_ops_meta_graph(
     op_list, export_scope=from_scope, as_unbound_inputs=as_unbound_inputs)
-  # print(orig_meta_graph.graph_def)
-  # print(orig_meta_graph.collection_def)
   _ = import_scoped_meta_graph(orig_meta_graph,
                                import_scope=to_scope,
                                input_map=input_map)
@@ -977,7 +968,6 @@ def clone(outputs, to_scope, from_scope="", replace=None):
 
   as_inputs = list(replace.keys())
   backward_ops = _get_backward_ops(seed_tensors, as_inputs)
-  print("backward_ops:", [op.name for op in backward_ops])
   copied_ops = set()
   copied_tensors = set()
   for op in backward_ops:
