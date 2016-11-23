@@ -28,7 +28,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean`</b>: A tensor representing the current mean, the value of `total` divided
+*  <b>`mean`</b>: A `Tensor` representing the current mean, the value of `total` divided
     by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_value`.
