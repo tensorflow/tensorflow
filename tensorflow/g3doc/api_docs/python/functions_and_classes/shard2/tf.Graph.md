@@ -772,18 +772,23 @@ with g.colocate_with(a):
 `b` and `c` will always be colocated with `a`, no matter where `a`
 is eventually placed.
 
+**NOTE** Using a colocation scope resets any existing device constraints.
+
+If `op` is `None` then `ignore_existing` must be `True` and the new
+scope resets all colocation and device constraints.
+
 ##### Args:
 
 
-*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`op`</b>: The op to colocate all created ops with, or `None`.
 *  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
     the context, rather than applying all colocation properties
-    on the stack.
+    on the stack.  If `op` is `None`, this value must be `True`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if op is None.
+*  <b>`ValueError`</b>: if op is None but ignore_existing is False.
 
 ##### Yields:
 
