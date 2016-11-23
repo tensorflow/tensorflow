@@ -617,6 +617,12 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/TAG
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/)
 
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+if(${tensorflow_ENABLE_GPU})
+  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+else()
+  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+endif(${tensorflow_ENABLE_GPU})
