@@ -15,9 +15,25 @@
 # ==============================================================================
 
 set -e
+ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
+  awk -F'.' '{print $1}')
 
 # Install dependencies from ubuntu deb repository.
 apt-get update
+
+set +e
+ffmpeg_location=$(which ffmpeg)
+if [[ -z "$ffmpeg_location"  && "$ubuntu_version" == "14" ]]; then
+  set -e
+  # specifically for trusty linked from ffmpeg.org
+  add-apt-repository -y ppa:mc3man/trusty-media
+  apt-get update
+  apt-get dist-upgrade -y
+  apt-get install -y ffmpeg libav-tools
+else
+  set -e
+  apt-get install -y ffmpeg libav-tools
+fi
 
 apt-get install -y --no-install-recommends \
     autoconf \
@@ -25,7 +41,6 @@ apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     curl \
-    ffmpeg \
     git \
     libcurl4-openssl-dev \
     libtool \
@@ -46,7 +61,7 @@ apt-get install -y --no-install-recommends \
     zlib1g-dev
 
 # Install ca-certificates, and update the certificate store.
-apt-get install ca-certificates-java
+apt-get install -y ca-certificates-java
 update-ca-certificates -f
 
 apt-get clean
