@@ -561,10 +561,9 @@ class BaseSaverBuilder(object):
           raise TypeError("names_to_saveables must be a dict mapping string "
                           "names to Tensors/Variables. Not a variable: %s" %
                           variable)
-        if variable.op.type == "Variable":
+        if variable.op.type in ["Variable", "AutoReloadVariable"]:
           saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
         else:
-          # TODO(apassos): this assumes all non-variables are ResourceVariables.
           saveable = BaseSaverBuilder.ResourceVariableSaveable(
               variable, "", name)
         self._AddSaveable(saveables, seen_ops, saveable)
