@@ -27,13 +27,6 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd ${SCRIPT_DIR}/../../../
 
-# You can set the parallelism of the make process with the first argument, with
-# a default of four if nothing is supplied.
-if [ "$#" -gt 1 ]; then
-    JOB_COUNT=$1
-else
-    JOB_COUNT=4
-fi
 
 # Remove any old files first.
 make -f tensorflow/contrib/makefile/Makefile clean
@@ -43,10 +36,11 @@ rm -rf tensorflow/contrib/makefile/downloads
 tensorflow/contrib/makefile/download_dependencies.sh
 
 # Compile protobuf for the target iOS device architectures.
-tensorflow/contrib/makefile/compile_ios_protobuf.sh ${JOB_COUNT}
+tensorflow/contrib/makefile/compile_ios_protobuf.sh
 
 # Build the iOS TensorFlow libraries.
-tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3" -j ${JOB_COUNT}
+tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3"
 
 # Creates a static universal library in 
 # tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a
+
