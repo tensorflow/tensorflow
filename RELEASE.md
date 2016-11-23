@@ -1,17 +1,99 @@
-# Changes since the last release
+# Release 0.12.0
+
+## Major Features and Improvements
+
+* TensorFlow now builds and runs on Microsoft Windows (tested on Windows 10,
+  Windows 7, and Windows Server 2016). Supported languages include Python (via a
+  PIP package) and C++. CUDA 8.0 and cuDNN 5.1 are supported for GPU
+  acceleration. Known limitations include: It is not currently possible to load
+  a custom op library. The GCS and HDFS file systems are not currently
+  supported. The following ops are not currently implemented:
+  DepthwiseConv2dNative, DepthwiseConv2dNativeBackpropFilter,
+  DepthwiseConv2dNativeBackpropInput, Dequantize, Digamma, Erf, Erfc, Igamma,
+  Igammac, Lgamma, Polygamma, QuantizeAndDequantize, QuantizedAvgPool,
+  QuantizedBatchNomWithGlobalNormalization, QuantizedBiasAdd, QuantizedConcat,
+  QuantizedConv2D, QuantizedMatmul, QuantizedMaxPool,
+  QuantizeDownAndShrinkRange, QuantizedRelu, QuantizedRelu6, QuantizedReshape,
+  QuantizeV2, RequantizationRange, and Requantize.
+* Go: Experimental API in Go to create and execute graphs
+  (https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
+* New checkpoint format becomes the default in tf.train.Saver.  Old V1
+  checkpoints continue to be readable; controlled by the "write\_version"
+  argument, tf.train.Saver now by default writes out in the new V2
+  format.  It significantly reduced the peak memory required and latency
+  incurred during restore.
+* Added a new library for library of matrix-free (iterative) solvers for linear
+  equations, linear least-squares, eigenvalues and singular values in
+  tensorflow/contrib/solvers. Initial version has lanczos bidiagonalization,
+  conjugate gradients and CGLS. More functionality will be added in the coming
+  quarter. Contributions welcome.
+* Combined batch\_\* and regular version of linear algebra and FFT ops. The
+  regular op now handles batches as well. All batch\_\* Python interfaces were
+  removed,  except for batch\_matmul.
+  Added gradients for matrix\_solve\_ls and self\_adjoint\_eig.
+* Large cleanup to add second order gradient for ops with C++ gradients and
+  improve existing gradients such that most ops can now be differentiated
+  multiple times.
 
 ## Breaking Changes to the API
 
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
-indexing now starts from 1 instead of 0, and bus_id==0 is used where previously
-BUS_ANY was used.
+  indexing now starts from 1 instead of 0, and bus\_id==0 is used where previously
+  BUS\_ANY was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
   intead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
-* The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
+* The C API type `TF\_SessionWithGraph` has been renamed to `TF\_Session`,
   indicating its preferred use in language bindings for TensorFlow.
-  What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
-* Renamed TF_Port to TF_Output in the C API.
+  What was previously `TF\_Session` has been renamed to `TF\_DeprecatedSession`.
+* Renamed TF\_Port to TF\_Output in the C API.
+* In the C API the caller retains ownership of TF\_Tensor objects provided to TF\_Run,
+  TF\_SessionRun, TF\_SetAttrTensor etc.
+* Renamed tf.image.per\_image\_whitening() to tf.image.per\_image\_standardization()
+* Move Summary protobuf constructors to tf.summary submodule.
+* Deprecate histogram\_summary, audio\_summary, scalar\_summary, image\_summary,
+  merge\_summary, and merge\_all\_summaries.
+
+## Bug Fixes and Other Changes
+
+* Use threadsafe version of lgamma function.
+* Fix tf.sqrt handling of negative arguments.
+* Fixed bug causing incorrect number of threads to be used for multi-threaded
+  benchmarks.
+* Performance optimizations for batch\_matmul on multi-core CPUs.
+* Improve trace, matrix\_set\_diag, matrix\_diag\_part and their gradients to work
+  for rectangular matrices.
+* Support for SVD of complex valued matrices.
+* Changed FileExists in Env and FileSystem to return tensorflow::Status instead
+  of bool.
+
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+@a7744hsc, Abhi Agg, @admcrae, Adriano Carmezim, Aki Sukegawa, Alex Kendall,
+Alexander Rosenberg Johansen, @amcrae, Amlan Kar, Andre Simpelo, Andreas Eberle,
+Andrew Hundt, Arnaud Lenglet, @b0noI, Balachander Ramachandran, Ben Barsdell,
+Ben Guidarelli, Benjamin Mularczyk, Burness Duan, @c0g, Changming Sun,
+@chanis, Corey Wharton, Dan J, Daniel Trebbien, Darren Garvey, David Brailovsky,
+David Jones, Di Zeng, @DjangoPeng, Dr. Kashif Rasul, @drag0, Fabrizio (Misto) Milo,
+FabríCio Ceschin, @fp, @Ghedeon, @guschmue, Gökçen Eraslan, Haosdent Huang,
+Haroen Viaene, Harold Cooper, Henrik Holst, @hoangmit, Ivan Ukhov, Javier Dehesa,
+Jingtian Peng, Jithin Odattu, Joan Pastor, Johan Mathe, Johannes Mayer,
+Jongwook Choi, Justus Schwabedal, Kai Wolf, Kamil Hryniewicz, Kamran Amini,
+Karen Brems, Karl Lattimer, @kborer, Ken Shirriff, Kevin Rose, Larissa Laich,
+Laurent Mazare, Leonard Lee, Liang-Chi Hsieh, Liangliang He, Luke Iwanski,
+Marek Kolodziej, Moustafa Alzantot, @MrQianjinsi, @nagachika, Neil Han, Nick Meehan,
+Niels Ole Salscheider, Nikhil Mishra, @nschuc, Ondrej Skopek, OndřEj Filip,
+@OscarDPan, Pablo Moyano, Przemyslaw Tredak, @qitaishui, @Quarazy, @raix852,
+Philipp Helo, Sam Abrahams, @SriramRamesh, Till Hoffmann, Tushar Soni, @tvn,
+@tyfkda, Uwe Schmidt, Victor Villas, Vit Stepanovs, Vladislav Gubarev, @wujingyue,
+Xuesong Yang, Yi Liu, Yilei Yang, @youyou3, Yuming Wang, Zafar Takhirov, @zhongyuk,
+Ziming Dong, @guotong1988
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 0.11.0
 
