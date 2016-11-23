@@ -21,10 +21,10 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.summary.summary_iterator import summary_iterator
-from google3.third_party.tensorflow.python.summary.writer.writer import FileWriter as _FileWriter
+from tensorflow.python.summary.writer.writer import FileWriter as _FileWriter
 from tensorflow.python.summary.writer.writer_cache import SummaryWriterCache
 # pylint: enable=unused-import
-from google3.third_party.tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated
 
 
 class SummaryWriter(_FileWriter):

@@ -26,7 +26,7 @@ from tensorflow.python.ops import gen_logging_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
-from google3.third_party.tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated
 
 # The python wrapper for Assert is in control_flow_ops, as the Assert
 # call relies on certain conditionals for its dependencies.  Use
