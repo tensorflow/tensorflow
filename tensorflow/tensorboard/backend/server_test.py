@@ -465,6 +465,11 @@ class ParseEventFilesSpecTest(tf.test.TestCase):
     expected = {'gs://foo/path': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
 
+  def testRespectsHDFSPath(self):
+    logdir_string = 'hdfs://foo/path'
+    expected = {'hdfs://foo/path': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
   def testDoesNotExpandUserInGCSPath(self):
     logdir_string = 'gs://~/foo/path'
     expected = {'gs://~/foo/path': None}
