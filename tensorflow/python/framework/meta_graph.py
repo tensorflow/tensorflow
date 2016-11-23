@@ -768,8 +768,7 @@ def export_ops_meta_graph(op_list,
       saver_def, collection_list.
 
   Returns:
-    A `MetaGraphDef` proto and dictionary of `Variables` in the exported
-    name scope.
+    A `MetaGraphDef` proto.
   """
   op_list = set(op_list)
   for op in op_list:
