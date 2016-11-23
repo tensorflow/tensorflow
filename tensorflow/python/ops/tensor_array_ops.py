@@ -35,6 +35,24 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
+def _maybe_set_device(handle_op, value_t):
+  # NOTE(ebrevdo): Do not try this at home, kids
+  # _______________________________________________
+  # | I WILL NOT ACCESS PRIVATE METHODS ^^^^^^^^\ |
+  # | I WILL NOT ACCESS PRIVATE METHODS |       | |
+  # | I WILL NOT ACCESS PRIVATE METHODS |_ __   | |
+  # | I WILL NOT ACCESS PRIVATE METHODS (.(. )  | |
+  # | I WILL NOT ACCESS PRIVATE         (_      ) |
+  # |                           \\      /___/' /  |
+  # |                           _\\_      \    |  |
+  # |                          ((   )     /====|  |
+  # |                           \  <.__._-      \ |
+  # |___________________________ <//___.         ||
+  #
+  if not handle_op.device and value_t.device:
+    handle_op._set_device(value_t.device)  # pylint: disable=protected-access
+
+
 # TensorArray object accesses many of the hidden generated ops, but is
 # in fact built to wrap these methods.
 # pylint: disable=protected-access
@@ -142,10 +160,14 @@ class TensorArray(object):
                 clear_after_read=clear_after_read,
                 tensor_array_name=tensor_array_name, name=scope)
         else:
-          self._handle = gen_data_flow_ops._tensor_array_v2(
-              dtype=dtype, size=size, dynamic_size=dynamic_size,
-              clear_after_read=clear_after_read,
-              tensor_array_name=tensor_array_name, name=scope)
+          # Construct the TensorArray with an empty device.  The first
+          # write into the TensorArray from a Tensor with a set device
+          # will retroactively set the device value of this op.
+          with ops.device(None), ops.colocate_with(None, ignore_existing=True):
+            self._handle = gen_data_flow_ops._tensor_array_v2(
+                dtype=dtype, size=size, dynamic_size=dynamic_size,
+                clear_after_read=clear_after_read,
+                tensor_array_name=tensor_array_name, name=scope)
       if flow is not None:
         self._flow = flow
       else:
@@ -218,10 +240,13 @@ class TensorArray(object):
     Raises:
       ValueError: if there are more writers than specified.
     """
-    with ops.colocate_with(self._handle):
-      flow_out = gen_data_flow_ops._tensor_array_write_v2(
-          handle=self._handle, index=index, value=value, flow_in=self._flow,
-          name=name)
+    with ops.name_scope(name, "TensorArrayWrite", [self._handle, index, value]):
+      value = ops.convert_to_tensor(value, name="value")
+      _maybe_set_device(self._handle.op, value)
+      with ops.colocate_with(self._handle):
+        flow_out = gen_data_flow_ops._tensor_array_write_v2(
+            handle=self._handle, index=index, value=value, flow_in=self._flow,
+            name=name)
       ta = TensorArray(dtype=self._dtype, handle=self._handle)
       ta._flow = flow_out
       ta._infer_shape = self._infer_shape
@@ -324,11 +349,10 @@ class TensorArray(object):
     Raises:
       ValueError: if the shape inference fails.
     """
-    with ops.colocate_with(self._handle):
-      with ops.name_scope(name, "TensorArrayPack", [self._handle, value]):
-        num_elements = array_ops.shape(value)[0]
-        return self.scatter(
-            indices=math_ops.range(0, num_elements), value=value, name=name)
+    with ops.name_scope(name, "TensorArrayPack", [self._handle, value]):
+      num_elements = array_ops.shape(value)[0]
+      return self.scatter(
+          indices=math_ops.range(0, num_elements), value=value, name=name)
 
   def scatter(self, indices, value, name=None):
     """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
@@ -346,10 +370,14 @@ class TensorArray(object):
     Raises:
       ValueError: if the shape inference fails.
     """
-    with ops.colocate_with(self._handle):
-      flow_out = gen_data_flow_ops._tensor_array_scatter_v2(
-          handle=self._handle, indices=indices, value=value, flow_in=self._flow,
-          name=name)
+    with ops.name_scope(name, "TensorArrayScatter",
+                        [self._handle, value, indices]):
+      value = ops.convert_to_tensor(value, name="value")
+      _maybe_set_device(self._handle.op, value)
+      with ops.colocate_with(self._handle):
+        flow_out = gen_data_flow_ops._tensor_array_scatter_v2(
+            handle=self._handle, indices=indices, value=value,
+            flow_in=self._flow, name=name)
       ta = TensorArray(dtype=self._dtype, handle=self._handle)
       ta._flow = flow_out
       ta._infer_shape = self._infer_shape
@@ -384,13 +412,15 @@ class TensorArray(object):
     Raises:
       ValueError: if the shape inference fails.
     """
-    with ops.colocate_with(self._handle):
-      with ops.name_scope(name, "TensorArraySplit",
-                          [self._handle, value, lengths]):
-        lengths_64 = math_ops.to_int64(lengths)
-      flow_out = gen_data_flow_ops._tensor_array_split_v2(
-          handle=self._handle, value=value, lengths=lengths_64,
-          flow_in=self._flow, name=name)
+    with ops.name_scope(name, "TensorArraySplit",
+                        [self._handle, value, lengths]):
+      value = ops.convert_to_tensor(value, name="value")
+      _maybe_set_device(self._handle.op, value)
+      lengths_64 = math_ops.to_int64(lengths)
+      with ops.colocate_with(self._handle):
+        flow_out = gen_data_flow_ops._tensor_array_split_v2(
+            handle=self._handle, value=value, lengths=lengths_64,
+            flow_in=self._flow, name=name)
       ta = TensorArray(dtype=self._dtype, handle=self._handle)
       ta._flow = flow_out
       ta._infer_shape = self._infer_shape
