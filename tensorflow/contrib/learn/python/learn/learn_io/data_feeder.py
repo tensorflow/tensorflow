@@ -596,7 +596,7 @@ class StreamingDataFeeder(DataFeeder):
         return _check_dtype(np.dtype(type(el)))
 
     # Output types are floats, due to both softmaxes and regression req.
-    if n_classes is not None and n_classes > 0 and (y is None or not y_is_dict):
+    if n_classes is not None and (y is None or not y_is_dict) and n_classes > 0:
       self._output_dtype = np.float32
     else:
       self._output_dtype = dict([(k, check_y_dtype(v)) for k, v in list(y_first_el.items())]) if y_is_dict \
