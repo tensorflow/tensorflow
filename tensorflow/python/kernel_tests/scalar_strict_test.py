@@ -65,7 +65,7 @@ class ScalarStrictTest(tf.test.TestCase):
 
   def testConcat(self):
     self.check(tf.concat, ([0], ([2], [3], [7])),
-               'concat_dim tensor should be a scalar integer', [2, 3, 7])
+               'axis tensor should be a scalar integer', [2, 3, 7])
     for data in (2, 3, 7), (2, [3], 7), (2, 3, [7]):
       self.check(tf.concat, (0, data),
                  r'Expected \w+ dimensions in the range \[0, 0\)', [2, 3, 7])
