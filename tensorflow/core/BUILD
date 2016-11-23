@@ -656,7 +656,6 @@ filegroup(
     name = "android_srcs",
     srcs = [
         ":proto_text_srcs_all",
-        "//tensorflow/core/debug:android_srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -685,6 +684,7 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "debug/**/*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -723,7 +723,10 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts() + [
+        "-Os",
+        "-DNOTFDBG",
+    ],
     linkopts = ["-lz"],
     tags = [
         "manual",
@@ -749,7 +752,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"] + ["-DNOTFDBG"],
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
@@ -782,7 +785,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts(),
+    copts = tf_copts() + ["-DNOTFDBG"],
     tags = [
         "manual",
         "notap",
@@ -807,6 +810,7 @@ cc_library(
     copts = tf_copts() + [
         "-Os",
         "-DSUPPORT_SELECTIVE_REGISTRATION",
+        "-DNOTFDBG",
     ],
     tags = [
         "manual",
