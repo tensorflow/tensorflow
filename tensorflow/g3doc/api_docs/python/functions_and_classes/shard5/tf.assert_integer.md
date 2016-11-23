@@ -9,12 +9,6 @@ with tf.control_dependencies([tf.assert_integer(x)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_integer(x)], x)
-```
-
 ##### Args:
 
 
