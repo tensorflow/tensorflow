@@ -51,12 +51,28 @@ py_library(
 
 py_library(
     name = "platform",
-    srcs = glob(["platform/*.py"]),
+    srcs = glob(
+        ["platform/*.py"],
+        exclude = [
+            "**/*test.py",
+            "**/benchmark.py",  # In platform_benchmark.
+        ],
+    ),
     srcs_version = "PY2AND3",
     deps = [
         ":lib",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "platform_benchmark",
+    srcs = ["platform/benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client",
+        ":platform",
     ],
 )
 
@@ -68,6 +84,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+        ":platform_benchmark",
         ":timeline",
     ],
 )
@@ -277,6 +294,7 @@ py_library(
     srcs = [
         "framework/common_shapes.py",
         "framework/framework_lib.py",
+        "framework/graph_io.py",
         "framework/graph_util.py",
         "framework/graph_util_impl.py",
         "framework/importer.py",
@@ -292,6 +310,7 @@ py_library(
         ":cpp_shape_inference_proto_py",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":lib",
         ":pywrap_tensorflow",
     ],
 )
@@ -772,7 +791,6 @@ py_library(
     deps = [
         ":array_ops_gen",
         ":framework",
-        ":logging_ops",
         ":math_ops_gen",
     ],
 )
@@ -797,7 +815,6 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":framework",
-        ":logging_ops",
         ":math_ops",
     ],
 )
@@ -822,7 +839,7 @@ py_library(
         ":control_flow_ops",
         ":control_flow_ops_gen",
         ":framework",
-        ":math_ops_gen",
+        ":math_ops",
     ],
 )
 
@@ -847,6 +864,7 @@ py_library(
     srcs = ["ops/ctc_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":ctc_ops_gen",
         ":framework",
         ":nn_grad",
@@ -874,6 +892,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops_gen",
         ":framework",
+        ":math_ops",
     ],
 )
 
@@ -883,10 +902,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":clip_ops",
         ":data_flow_ops",
         ":framework",
         ":math_ops",
+        ":platform",
         ":resource_variable_ops",
+        ":variables",
     ],
 )
 
@@ -964,6 +986,7 @@ py_library(
     deps = [
         ":array_ops",
         ":framework",
+        ":linalg_ops",
         ":math_ops",
         ":nn_ops",
         ":random_ops",
@@ -1061,6 +1084,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":math_ops",
         ":resource_variable_ops_gen",
         ":resources",
     ],
@@ -1079,6 +1103,7 @@ py_library(
         ":ctc_ops",
         ":embedding_ops",
         ":math_ops",
+        ":nn_grad",
         ":nn_ops",
         ":rnn",
         ":rnn_cell",
@@ -1106,15 +1131,11 @@ py_library(
     srcs = ["ops/nn_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":array_ops_gen",
-        ":candidate_sampling_ops",
-        ":clip_ops",
-        ":embedding_ops",
+        ":array_ops",
         ":framework",
         ":math_ops",
         ":nn_ops_gen",
         ":random_ops",
-        ":sparse_ops",
     ],
 )
 
@@ -1137,7 +1158,6 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":framework",
-        ":logging_ops",
         ":math_ops",
         ":parsing_ops_gen",
     ],
@@ -1161,7 +1181,6 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":framework",
-        ":logging_ops",
         ":math_ops",
         ":random_ops_gen",
     ],
@@ -1708,6 +1727,7 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     deps = [
+        ":errors",
         ":framework",
         ":session",
         ":session_ops",
@@ -1987,7 +2007,9 @@ py_library(
     srcs = ["client/session.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":errors",
         ":framework",
+        ":platform",
         ":pywrap_tensorflow",
         ":session_ops",
     ],
@@ -2418,6 +2440,7 @@ cuda_py_test(
         "ops/split_benchmark.py",
     ],
     additional_deps = [
+        ":platform_benchmark",
         ":nn_ops",
         "//tensorflow:tensorflow_py",
     ],
