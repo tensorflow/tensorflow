@@ -2591,7 +2591,7 @@ for correctness than performance, unlike in rnn().
     transposes at the beginning and end of the RNN calculation.  However,
     most TensorFlow data is batch-major, so by default this function
     accepts input and emits output in batch-major form.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 
@@ -2675,7 +2675,7 @@ The dynamic calculation performed is, at time `t` for batch row `b`,
     dtype.
 *  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs.
     An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 
@@ -2713,7 +2713,7 @@ RNN that accepts a state saver for time-truncated RNN calculation.
     be a single string.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector size [batch_size].
     See the documentation for rnn() for more details about sequence_length.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 
@@ -2784,7 +2784,8 @@ given.
     accepts input and emits output in batch-major form.
 *  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
     either of the initial states are not provided.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "bidirectional_rnn"
 
 ##### Returns:
 
@@ -2848,7 +2849,8 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
     either of the initial states are not provided.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector, size `[batch_size]`,
     containing the actual lengths for each of the sequences.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "bidirectional_rnn"
 
 ##### Returns:
 
@@ -3005,7 +3007,7 @@ outputs = outputs_ta.pack()
     but needed for back prop from GPU to CPU.  This allows training RNNs
     which would typically not fit on a single GPU, with very minimal (or no)
     performance penalty.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 
