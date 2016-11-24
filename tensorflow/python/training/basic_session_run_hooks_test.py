@@ -419,6 +419,34 @@ class StepCounterHookTest(tf.test.TestCase):
         self.assertEqual('global_step/sec', summary_value.tag)
         self.assertGreater(summary_value.simple_value, 0)
 
+  def test_global_step_name(self):
+    with tf.Graph().as_default() as g, tf.Session() as sess:
+      with tf.variable_scope('bar'):
+        foo_step = tf.get_variable('foo', initializer=0, trainable=False,
+                                   collections=[tf.GraphKeys.GLOBAL_STEP,
+                                                tf.GraphKeys.GLOBAL_VARIABLES])
+      train_op = tf.assign_add(foo_step, 1)
+      summary_writer = testing.FakeSummaryWriter(self.log_dir, g)
+      hook = tf.train.StepCounterHook(
+          summary_writer=summary_writer, every_n_steps=1, every_n_secs=None)
+
+      hook.begin()
+      sess.run(tf.global_variables_initializer())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      mon_sess.run(train_op)
+      mon_sess.run(train_op)
+      hook.end(sess)
+
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertTrue(summary_writer.summaries, 'No summaries were created.')
+      self.assertItemsEqual([2], summary_writer.summaries.keys())
+      summary_value = summary_writer.summaries[2][0].value[0]
+      self.assertEqual('bar/foo/sec', summary_value.tag)
+
 
 class SummarySaverHookTest(tf.test.TestCase):
 
@@ -581,7 +609,7 @@ class GlobalStepWaiterHookTest(tf.test.TestCase):
       hook = tf.train.GlobalStepWaiterHook(wait_until_step=1000)
       hook.begin()
       with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         waiter = threading.Thread(
             target=hook.before_run,
             args=(tf.train.SessionRunContext(

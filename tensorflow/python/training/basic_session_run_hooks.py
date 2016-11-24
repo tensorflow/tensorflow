@@ -314,7 +314,6 @@ class StepCounterHook(session_run_hook.SessionRunHook):
                every_n_secs=None,
                output_dir=None,
                summary_writer=None):
-    self._summary_tag = "global_step/sec"
 
     if (every_n_steps is None) == (every_n_secs is None):
       raise ValueError(
@@ -328,6 +327,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
 
   def begin(self):
     self._global_step_tensor = training_util.get_global_step()
+    self._summary_tag = self._global_step_tensor.op.name + "/sec"
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use StepCounterHook.")
