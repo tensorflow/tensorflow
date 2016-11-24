@@ -21,7 +21,7 @@ else(tensorflow_BUILD_ALL_KERNELS)
      "${tensorflow_source_dir}/tensorflow/core/kernels/no_op.cc"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.h"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.cc"
-  )
+ t )
 endif(tensorflow_BUILD_ALL_KERNELS)
 
 if(tensorflow_BUILD_CONTRIB_KERNELS)
@@ -84,7 +84,6 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
       # not working on windows yet
-      "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
       "${tensorflow_source_dir}/tensorflow/core/kernels/fact_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
