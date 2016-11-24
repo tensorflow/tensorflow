@@ -21,7 +21,7 @@ else(tensorflow_BUILD_ALL_KERNELS)
      "${tensorflow_source_dir}/tensorflow/core/kernels/no_op.cc"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.h"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.cc"
- t )
+  )
 endif(tensorflow_BUILD_ALL_KERNELS)
 
 if(tensorflow_BUILD_CONTRIB_KERNELS)
