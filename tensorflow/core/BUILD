@@ -1291,7 +1291,10 @@ cc_library(
     hdrs = [
         "platform/regexp.h",
     ],
-    visibility = ["//tensorflow/tools/tfprof:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/tools/tfprof:__subpackages__",
+    ],
     deps = [":lib_internal"],
 )
 
