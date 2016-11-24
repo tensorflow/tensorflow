@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numpy as np
 import tensorflow as tf
 
@@ -49,7 +48,6 @@ class TransformerTest(tf.test.TestCase):
     self.assertIn(bucket, output)
     with self.test_session():
       self.assertAllEqual(output[bucket].eval(), [[2], [3], [0]])
-
 
   def testBucketizedColumnWithMultiDimensions(self):
     bucket = tf.contrib.layers.bucketized_column(
@@ -585,14 +583,16 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
       tf.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [4, 10])
 
-  def testHashedEmbeddingColumnSucceedsForDNN(self):
+  def testScatteredEmbeddingColumnSucceedsForDNN(self):
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo", "omar"],
                                   indices=[[0, 0], [1, 0], [1, 1], [2, 0]],
                                   shape=[3, 2])
 
     features = {"wire": wire_tensor}
     # Big enough hash space so that hopefully there is no collision
-    embedded_sparse = tf.contrib.layers.hashed_embedding_column("wire", 1000, 3)
+    embedded_sparse = tf.contrib.layers.scattered_embedding_column(
+        "wire", 1000, 3,
+        tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
     output = tf.contrib.layers.input_from_feature_columns(
         features, [embedded_sparse], weight_collections=["my_collection"])
     weights = tf.get_collection("my_collection")
@@ -2054,11 +2054,9 @@ class ParseExampleTest(tf.test.TestCase):
       self.assertAllEqual(output[wire_cast].indices.eval(), [[0, 0], [0, 1]])
       self.assertAllEqual(output[wire_cast].values.eval(), [2, 0])
 
-
   def testParseSequenceExample(self):
     location_keys = ["east_side", "west_side", "nyc"]
     embedding_dimension = 10
-
 
     location = tf.contrib.layers.sparse_column_with_keys(
         "location", keys=location_keys)
@@ -2067,7 +2065,8 @@ class ParseExampleTest(tf.test.TestCase):
         "wire_cast", ["marlo", "omar", "stringer"])
     wire_cast_embedded = tf.contrib.layers.embedding_column(
         wire_cast, dimension=embedding_dimension)
-    measurements = tf.contrib.layers.real_valued_column("measurements", dimension=2)
+    measurements = tf.contrib.layers.real_valued_column(
+        "measurements", dimension=2)
 
     context_feature_columns = [location_onehot]
     sequence_feature_columns = [wire_cast_embedded, measurements]
@@ -2098,11 +2097,10 @@ class ParseExampleTest(tf.test.TestCase):
             ])
         }))
 
-
     ctx, seq = tf.contrib.layers.parse_feature_columns_from_sequence_examples(
-         serialized=sequence_example.SerializeToString(),
-         context_feature_columns=context_feature_columns,
-         sequence_feature_columns=sequence_feature_columns)
+        serialized=sequence_example.SerializeToString(),
+        context_feature_columns=context_feature_columns,
+        sequence_feature_columns=sequence_feature_columns)
 
     self.assertIn("location", ctx)
     self.assertIsInstance(ctx["location"], tf.SparseTensor)
@@ -2127,6 +2125,7 @@ class ParseExampleTest(tf.test.TestCase):
 
     self.assertAllClose(
         measurement_val, np.array([[0.2, 0.3], [0.1, 0.8], [0.5, 0.0]]))
+
 
 class InferRealValuedColumnTest(tf.test.TestCase):
 

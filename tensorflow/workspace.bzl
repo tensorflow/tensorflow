@@ -193,6 +193,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     build_file = str(Label("//:linenoise.BUILD")),
   )
 
+  # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
+  # Switch to an official source of snapshots if/when possible.
+  native.new_http_archive(
+    name = "llvm",
+    url = "http://github.com/llvm-mirror/llvm/archive/ad27fdae895df1b9ad11a93102de6622f63e1220.tar.gz",
+    sha256 = "ce7abf076586f2ef13dcd1c4e7ba13604a0826a0f44fe0a6faceeb9bdffc8544",
+    strip_prefix = "llvm-ad27fdae895df1b9ad11a93102de6622f63e1220",
+    build_file = str(Label("//third_party/llvm:llvm.BUILD")),
+  )
+
   native.new_http_archive(
     name = "jsoncpp_git",
     url = "http://github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",

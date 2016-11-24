@@ -480,15 +480,16 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
         "No operation.\nI.e., do nothing.",
         prefix_aliases=["n", "NOOP"])
 
-    help_intro = ["Introductory comments.", ""]
+    help_intro = debugger_cli_common.RichTextLines(
+        ["Introductory comments.", ""])
     registry.set_help_intro(help_intro)
 
     output = registry.dispatch_command("help", [])
-    self.assertEqual(
-        help_intro + ["help", "  Aliases: h", "", "  Print this help message.",
-                      "", "", "noop", "  Aliases: n, NOOP", "",
-                      "  No operation.", "  I.e., do nothing.", "", ""],
-        output.lines)
+    self.assertEqual(help_intro.lines + [
+        "help", "  Aliases: h", "", "  Print this help message.", "", "",
+        "noop", "  Aliases: n, NOOP", "", "  No operation.",
+        "  I.e., do nothing.", "", ""
+    ], output.lines)
 
 
 class RegexFindTest(test_util.TensorFlowTestCase):

@@ -38,7 +38,7 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 ##### Returns:
 
 
-*  <b>`specificity`</b>: A scalar tensor representing the specificity at the given
+*  <b>`specificity`</b>: A scalar `Tensor` representing the specificity at the given
     `specificity` value.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables

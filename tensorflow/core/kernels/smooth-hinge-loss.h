@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_
 #define TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_
 
-#include <algorithm>
 #include <limits>
 
 #include "tensorflow/core/kernels/loss.h"

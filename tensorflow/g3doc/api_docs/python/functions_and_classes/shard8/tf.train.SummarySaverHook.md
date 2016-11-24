@@ -16,9 +16,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_writer`</b>: `SummaryWriter`. If `None` and an `output_dir` was passed,
       one will be created accordingly.
 *  <b>`scaffold`</b>: `Scaffold` to get summary_op if it's not provided.
-*  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `tf.summary.scalar` or
-      `tf.summary.merge_all`.
+*  <b>`summary_op`</b>: `Tensor` of type `string` containing the serialized `Summary`
+      protocol buffer or a list of `Tensor`. They are most likely an output
+      by TF summary methods like `tf.summary.scalar` or
+      `tf.summary.merge_all`. It can be passed in as one tensor; if more
+      than one, they must be passed in as a list.
 
 ##### Raises:
 

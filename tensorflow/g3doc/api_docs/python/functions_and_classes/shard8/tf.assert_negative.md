@@ -9,12 +9,6 @@ with tf.control_dependencies([tf.assert_negative(x)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_negative(x)], x)
-```
-
 Negative means, for every element `x[i]` of `x`, we have `x[i] < 0`.
 If `x` is empty this is trivially satisfied.
 

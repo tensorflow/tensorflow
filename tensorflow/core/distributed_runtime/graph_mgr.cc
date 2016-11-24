@@ -394,6 +394,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
   args.step_resource_manager = step_resource_manager;
+  args.sync_on_finish = true;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

@@ -3,7 +3,7 @@ The most basic RNN cell.
 
 #### `tf.nn.rnn_cell.BasicRNNCell.__call__(inputs, state, scope=None)` {#BasicRNNCell.__call__}
 
-Most basic RNN: output = new_state = activation(W * input + U * state + B).
+Most basic RNN: output = new_state = act(W * input + U * state + B).
 
 
 - - -

@@ -127,6 +127,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -201,3 +202,24 @@ def init_variable(v, init, name="init"):
         else:
           init = ops.convert_to_tensor(init, name="init")
           return gen_state_ops.assign(v, init, name=scope)
+
+
+def is_variable_initialized(ref, name=None):
+  """Checks whether a tensor has been initialized.
+
+  Outputs boolean scalar indicating whether the tensor has been initialized.
+
+  Args:
+    ref: A mutable `Tensor`.
+      Should be from a `Variable` node. May be uninitialized.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `bool`.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.is_variable_initialized(ref=ref, name=name)
+  # Handle resource variables.
+  if ref.op.type == "ReadVariableOp":
+    return gen_resource_variable_ops.var_is_initialized_op(ref.op.inputs[0],
+                                                           name=name)

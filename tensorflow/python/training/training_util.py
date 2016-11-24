@@ -18,13 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import os.path
 
+from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+
+
+# TODO(drpng): remove this after legacy uses are resolved.
+write_graph = graph_io.write_graph
 
 
 def global_step(sess, global_step_tensor):
@@ -105,44 +107,3 @@ def assert_global_step(global_step_tensor):
   if global_step_tensor.get_shape().ndims != 0:
     raise TypeError('Existing "global_step" is not scalar: %s' %
                     global_step_tensor.get_shape())
-
-
-def write_graph(graph_or_graph_def, logdir, name, as_text=True):
-  """Writes a graph proto to a file.
-
-  The graph is written as a binary proto unless `as_text` is `True`.
-
-  ```python
-  v = tf.Variable(0, name='my_variable')
-  sess = tf.Session()
-  tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
-  ```
-
-  or
-
-  ```python
-  v = tf.Variable(0, name='my_variable')
-  sess = tf.Session()
-  tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
-  ```
-
-  Args:
-    graph_or_graph_def: A `Graph` or a `GraphDef` protocol buffer.
-    logdir: Directory where to write the graph. This can refer to remote
-      filesystems, such as Google Cloud Storage (GCS).
-    name: Filename for the graph.
-    as_text: If `True`, writes the graph as an ASCII proto.
-  """
-  if isinstance(graph_or_graph_def, ops.Graph):
-    graph_def = graph_or_graph_def.as_graph_def()
-  else:
-    graph_def = graph_or_graph_def
-
-  # gcs does not have the concept of directory at the moment.
-  if not file_io.file_exists(logdir) and not logdir.startswith('gs:'):
-    file_io.recursive_create_dir(logdir)
-  path = os.path.join(logdir, name)
-  if as_text:
-    file_io.atomic_write_string_to_file(path, str(graph_def))
-  else:
-    file_io.atomic_write_string_to_file(path, graph_def.SerializeToString())

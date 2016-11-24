@@ -32,6 +32,15 @@ REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
 REGISTER_SYCL_KERNEL(float)
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
+REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, double);
+#if GOOGLE_CUDA
+REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
+          int64);
+REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, double);
+#endif
+
 #if GOOGLE_CUDA
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
