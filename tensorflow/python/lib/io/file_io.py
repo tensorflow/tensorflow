@@ -287,7 +287,9 @@ def create_dir(dirname):
 
 
 def recursive_create_dir(dirname):
-  """Create a directory and all parent/intermediate directories.
+  """Creates a directory and all parent/intermediate directories.
+
+  It succeeds if dirname already exists and is writable.
 
   Args:
     dirname: string, name of the directory to be created
