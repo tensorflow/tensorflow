@@ -81,13 +81,13 @@ def create_slot(primary, val, name, colocate_with_primary=True):
     A `Variable` object.
   """
   # Scope the slot name in the namespace of the primary variable.
-  #with variable_scope.variable_scope(primary.op.name + "/" + name) as scope:
   scope_name = primary.op.name + "/" + name
-  if colocate_with_primary:
-    with ops.colocate_with(primary):
+  with ops.name_scope(scope_name + '/'):
+    if colocate_with_primary:
+      with ops.colocate_with(primary):
+        return _create_slot_var(primary, val, scope_name)
+    else:
       return _create_slot_var(primary, val, scope_name)
-  else:
-    return _create_slot_var(primary, val, scope_name)
 
 
 def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
