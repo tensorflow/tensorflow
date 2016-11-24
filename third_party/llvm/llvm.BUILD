@@ -1032,7 +1032,7 @@ cc_library(
         "include/llvm/Transforms/Instrumentation/*.h",
         "include/llvm/Transforms/Instrumentation/*.def",
         "include/llvm/Transforms/Instrumentation/*.inc",
-        "include/llvm/Transforms/GCovProfiler.h",
+        "include/llvm/Transforms/GCOVProfiler.h",
         "include/llvm/Transforms/Instrumentation.h",
         "include/llvm/Transforms/InstrProfiling.h",
         "include/llvm/Transforms/PGOInstrumentation.h",
