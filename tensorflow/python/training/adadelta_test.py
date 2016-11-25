@@ -25,7 +25,6 @@ import tensorflow as tf
 class AdadeltaOptimizerTest(tf.test.TestCase):
   def testBasic(self):
     num_updates = 4 # number of ADADELTA steps to perform
-
     for dtype in [tf.half, tf.float32]:
       for grad in [0.2, 0.1, 0.01]:
         for lr in [1.0, 0.5, 0.1]:
