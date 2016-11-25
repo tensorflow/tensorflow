@@ -173,7 +173,7 @@ construct an [Input Reader](https://www.tensorflow.org/versions/r0.9/api_docs/py
 that represents a file or other data source, and iterates through the file as
 TensorFlow runs the graph. Each continuous column in the train or test dataframe
 will be converted into a `Tensor`, which in general is a good format to
-represent dense data. For cateogorical data, we must represent the data as a
+represent dense data. For categorical data, we must represent the data as a
 `SparseTensor`. This data format is good for representing sparse data.
 
 ```python
