@@ -2,6 +2,10 @@
 
 ## Breaking Changes to the API
 
+* Division and modulus operators (/, //, %) now match Python (flooring)
+  semantics. tf.div is renamed to tf.division. New operators tf.truncatediv and
+  tf.truncatemod are available for achieving the previous C++ (truncation)
+  division/modulus semantics.
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
 indexing now starts from 1 instead of 0, and bus_id==0 is used where previously
 BUS_ANY was used.

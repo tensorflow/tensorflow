@@ -1324,6 +1324,7 @@ tf_kernel_libraries(
         "matrix_solve_ls_op",
         "matrix_solve_op",
         "matrix_triangular_solve_op",
+        "qr_op",
         "svd_op",
     ],
     deps = [
@@ -2115,6 +2116,7 @@ tf_kernel_library(
     prefix = "sdca_ops",
     deps = [
         ":loss_updaters",
+        ":sdca_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -2123,6 +2125,19 @@ tf_kernel_library(
         "@farmhash_archive//:farmhash",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "sdca_internal",
+    srcs = ["sdca_internal.cc"],
+    hdrs = ["sdca_internal.h"],
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_kernel_libraries(
@@ -2640,6 +2655,7 @@ filegroup(
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
+            "sdca_internal.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
             "encode_png_op.*",

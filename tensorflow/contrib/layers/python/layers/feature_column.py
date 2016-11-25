@@ -1094,10 +1094,12 @@ def shared_embedding_columns(sparse_id_columns,
     return tuple(embedded_columns)
 
 
-class _HashedEmbeddingColumn(collections.namedtuple(
-    "_HashedEmbeddingColumn", ["column_name", "size", "dimension", "combiner",
-                               "initializer"]), _EmbeddingColumn):
-  """See `hashed_embedding_column`."""
+class _ScatteredEmbeddingColumn(
+    collections.namedtuple(
+        "_ScatteredEmbeddingColumn",
+        ["column_name", "size", "dimension", "combiner", "initializer"]),
+    _EmbeddingColumn):
+  """See `scattered_embedding_column`."""
 
   def __new__(cls,
               column_name,
@@ -1113,13 +1115,13 @@ class _HashedEmbeddingColumn(collections.namedtuple(
       # TODO(b/25671353): Better initial value?
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)
-    return super(_HashedEmbeddingColumn, cls).__new__(cls, column_name, size,
-                                                      dimension, combiner,
-                                                      initializer)
+    return super(_ScatteredEmbeddingColumn, cls).__new__(cls, column_name, size,
+                                                         dimension, combiner,
+                                                         initializer)
 
   @property
   def name(self):
-    return "{}_hashed_embedding".format(self.column_name)
+    return "{}_scattered_embedding".format(self.column_name)
 
   @property
   def config(self):
@@ -1141,15 +1143,27 @@ class _HashedEmbeddingColumn(collections.namedtuple(
         max_norm=None)
 
 
-def hashed_embedding_column(column_name,
-                            size,
-                            dimension,
-                            combiner=None,
-                            initializer=None):
+def scattered_embedding_column(column_name,
+                               size,
+                               dimension,
+                               combiner=None,
+                               initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
   The i-th embedding component of a value v is found by retrieving an
   embedding weight whose index is a fingerprint of the pair (v,i).
+
+  An embedding column with sparse_column_with_hash_bucket such as
+    embedding_column(
+        sparse_column_with_hash_bucket(column_name, bucket_size),
+        dimension)
+
+  could be replaced by
+    scattered_embedding_column(
+        column_name, size=bucket_size * dimension, dimension=dimension)
+
+  for the same number of embedding parameters and hopefully reduced impact of
+  collisions with a cost of slowing down training.
 
   Args:
     column_name: A string defining sparse column name.
@@ -1167,7 +1181,7 @@ def hashed_embedding_column(column_name,
       `tf.truncated_normal_initializer` with mean 0 and standard deviation 0.1.
 
   Returns:
-    A _HashedEmbeddingColumn.
+    A _ScatteredEmbeddingColumn.
 
   Raises:
     ValueError: if dimension or size is not a positive integer; or if combiner
@@ -1188,8 +1202,8 @@ def hashed_embedding_column(column_name,
                      "combiner: {}, column_name: {}".format(combiner,
                                                             column_name))
 
-  return _HashedEmbeddingColumn(column_name, size, dimension, combiner,
-                                initializer)
+  return _ScatteredEmbeddingColumn(column_name, size, dimension, combiner,
+                                   initializer)
 
 
 def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
