@@ -88,13 +88,30 @@ class StringSplitOpTest(tf.test.TestCase):
         sess.run(tokens, feed_dict={delimiter: ["a", "b"]})
       with self.assertRaises(tf.errors.InvalidArgumentError):
         sess.run(tokens, feed_dict={delimiter: ["a"]})
-      with self.assertRaises(tf.errors.InvalidArgumentError):
-        sess.run(tokens, feed_dict={delimiter: "abc"})
       indices, values, shape = sess.run(tokens, feed_dict={delimiter: "|"})
 
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0]])
       self.assertAllEqual(values, [b"hello", b"world", b"hello world"])
       self.assertAllEqual(shape, [2, 2])
+
+  def testStringSplitWithDelimitersTensor(self):
+    strings = ["hello.cruel,world", "hello cruel world"]
+
+    with self.test_session() as sess:
+      delimiter = tf.placeholder(tf.string)
+
+      tokens = tf.string_split(strings, delimiter=delimiter)
+
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        sess.run(tokens, feed_dict={delimiter: ["a", "b"]})
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        sess.run(tokens, feed_dict={delimiter: ["a"]})
+      indices, values, shape = sess.run(tokens, feed_dict={delimiter: ".,"})
+
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [1, 0]])
+      self.assertAllEqual(values, [b"hello", b"cruel", b"world",
+                                   b"hello cruel world"])
+      self.assertAllEqual(shape, [2, 3])
 
 
 if __name__ == "__main__":
