@@ -254,7 +254,7 @@ site](https://www.continuum.io/downloads).
 Note: If tensorflow has been installed via pip previously, then one should 
 uninstall it before installation in Anaconda environment. Because Anaconda 
 searches system site-packages from `.local` with higher priority.
-```
+```bash
 # Python 2
 $ pip uninstall tensorflow
 
