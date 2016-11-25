@@ -68,6 +68,14 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)
 
+if(NOT tensorflow_ENABLE_SSL_SUPPORT)
+  # Cloud libraries require boringssl.
+  file(GLOB tf_core_kernels_cloud_srcs
+      "${tensorflow_source_dir}/tensorflow/core/kernels/cloud/*.h"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/cloud/*.cc"
+  )
+list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_cloud_srcs})
+endif()
 
 file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.h"

@@ -29,7 +29,8 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
     either of the initial states are not provided.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector, size `[batch_size]`,
     containing the actual lengths for each of the sequences.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "bidirectional_rnn"
 
 ##### Returns:
 

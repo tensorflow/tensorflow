@@ -23,6 +23,7 @@ from tensorflow.contrib import bayesflow
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
+from tensorflow.contrib import deprecated
 from tensorflow.contrib import distributions
 from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
@@ -32,6 +33,7 @@ from tensorflow.contrib import integrate
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
+from tensorflow.contrib import linalg
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup
 from tensorflow.contrib import losses

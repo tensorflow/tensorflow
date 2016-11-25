@@ -382,7 +382,7 @@ run:
 
 ```none
 bazel build -c opt tensorflow/python/debug:debug_tflearn_iris && \
-    bazel-bin/tensorflow/python/debug/debug_tflearn_iris
+    bazel-bin/tensorflow/python/debug/debug_tflearn_iris --debug
 ```
 
 **Q**: _Does tfdbg help debugging runtime errors such as shape mismatches?_

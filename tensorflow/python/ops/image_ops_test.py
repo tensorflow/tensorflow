@@ -393,7 +393,7 @@ class AdjustHueBenchmark(test.Benchmark):
     self._benchmarkAdjustHue('/cpu:0', None)
 
   def benchmarkAdjustHueGpu(self):
-    self._benchmarkAdjustHue('/gpu:0', None)
+    self._benchmarkAdjustHue(test.gpu_device_name(), None)
 
 
 class AdjustSaturationTest(test_util.TensorFlowTestCase):

@@ -260,8 +260,8 @@ class RNNTest(tf.test.TestCase):
       # check that all the variables names starts
       # with the proper scope.
       tf.global_variables_initializer()
-      all_vars = tf.all_variables()
-      prefix = prefix or "RNN"
+      all_vars = tf.global_variables()
+      prefix = prefix or "rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
@@ -333,8 +333,8 @@ class GRUTest(tf.test.TestCase):
 
       # check that all the variables names starts
       # with the proper scope.
-      all_vars = tf.all_variables()
-      prefix = prefix or "RNN"
+      all_vars = tf.global_variables()
+      prefix = prefix or "rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
@@ -567,13 +567,14 @@ class LSTMTest(tf.test.TestCase):
       cell_tuple = tf.nn.rnn_cell.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer, state_is_tuple=True)
-      outputs_notuple, state_notuple = tf.nn.rnn(
-          cell_notuple, inputs, dtype=tf.float32,
-          sequence_length=sequence_length)
-      tf.get_variable_scope().reuse_variables()
-      outputs_tuple, state_tuple = tf.nn.rnn(
-          cell_tuple, inputs, dtype=tf.float32,
-          sequence_length=sequence_length)
+      with tf.variable_scope("root") as scope:
+        outputs_notuple, state_notuple = tf.nn.rnn(
+            cell_notuple, inputs, dtype=tf.float32,
+            sequence_length=sequence_length, scope=scope)
+        scope.reuse_variables()
+        outputs_tuple, state_tuple = tf.nn.rnn(
+            cell_tuple, inputs, dtype=tf.float32,
+            sequence_length=sequence_length, scope=scope)
       self.assertEqual(len(outputs_notuple), len(inputs))
       self.assertEqual(len(outputs_tuple), len(inputs))
       self.assertTrue(isinstance(state_tuple, tuple))
@@ -623,31 +624,6 @@ class LSTMTest(tf.test.TestCase):
       tf.global_variables_initializer().run()
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
-
-  def _testTooManyShards(self, use_gpu):
-    num_units = 3
-    input_size = 5
-    num_proj = 4
-    num_proj_shards = 4
-    num_unit_shards = 2
-    max_length = 8
-    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()):
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-
-      inputs = max_length * [
-          tf.placeholder(tf.float32, shape=(None, input_size))]
-
-      cell = tf.nn.rnn_cell.LSTMCell(
-          num_units,
-          use_peepholes=True,
-          num_proj=num_proj,
-          num_unit_shards=num_unit_shards,
-          num_proj_shards=num_proj_shards,
-          initializer=initializer,
-          state_is_tuple=False)
-
-      with self.assertRaises(ValueError):
-        tf.nn.rnn(cell, inputs, dtype=tf.float32)
 
   def _testDoubleInput(self, use_gpu):
     num_units = 3
@@ -871,13 +847,14 @@ class LSTMTest(tf.test.TestCase):
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer, state_is_tuple=True)
-      outputs_static, state_static = tf.nn.rnn(
-          cell, inputs, dtype=tf.float32,
-          sequence_length=sequence_length)
-      tf.get_variable_scope().reuse_variables()
-      outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-          cell, inputs_c, dtype=tf.float32, time_major=True,
-          sequence_length=sequence_length)
+      with tf.variable_scope("root") as scope:
+        outputs_static, state_static = tf.nn.rnn(
+            cell, inputs, dtype=tf.float32,
+            sequence_length=sequence_length, scope=scope)
+        scope.reuse_variables()
+        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
+            cell, inputs_c, dtype=tf.float32, time_major=True,
+            sequence_length=sequence_length, scope=scope)
       self.assertTrue(isinstance(state_static, tf.nn.rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(state_dynamic, tf.nn.rnn_cell.LSTMStateTuple))
       self.assertEqual(state_static[0], state_static.c)
@@ -932,13 +909,14 @@ class LSTMTest(tf.test.TestCase):
         self.assertEqual(test_zero[i][0].get_shape()[1], cell.state_size[i][0])
         self.assertEqual(test_zero[i][1].get_shape()[1], cell.state_size[i][1])
 
-      outputs_static, state_static = tf.nn.rnn(
-          cell, inputs, dtype=tf.float32,
-          sequence_length=sequence_length)
-      tf.get_variable_scope().reuse_variables()
-      outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-          cell, inputs_c, dtype=tf.float32, time_major=True,
-          sequence_length=sequence_length)
+      with tf.variable_scope("root") as scope:
+        outputs_static, state_static = tf.nn.rnn(
+            cell, inputs, dtype=tf.float32,
+            sequence_length=sequence_length, scope=scope)
+        scope.reuse_variables()
+        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
+            cell, inputs_c, dtype=tf.float32, time_major=True,
+            sequence_length=sequence_length, scope=scope)
 
       tf.global_variables_initializer().run()
 
@@ -1125,10 +1103,6 @@ class LSTMTest(tf.test.TestCase):
   def testProjSharding(self):
     self._testProjSharding(use_gpu=False)
     self._testProjSharding(use_gpu=True)
-
-  def testTooManyShards(self):
-    self._testTooManyShards(use_gpu=False)
-    self._testTooManyShards(use_gpu=True)
 
   def testShardNoShardEquivalentOutput(self):
     self._testShardNoShardEquivalentOutput(use_gpu=False)
@@ -1415,8 +1389,8 @@ class BidirectionalRNNTest(tf.test.TestCase):
       # check that all the variables names starts
       # with the proper scope.
       tf.global_variables_initializer()
-      all_vars = tf.all_variables()
-      prefix = prefix or "BiRNN"
+      all_vars = tf.global_variables()
+      prefix = prefix or "bidirectional_rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("BiRNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
@@ -1667,13 +1641,16 @@ class RawRNNTest(tf.test.TestCase):
             lambda: inputs_ta.read(time_))
         return (elements_finished, next_input, next_state, emit_output, None)
 
-      outputs_ta, final_state, _ = tf.nn.raw_rnn(cell, loop_fn)
+      reuse_scope = tf.get_variable_scope()
+
+      outputs_ta, final_state, _ = tf.nn.raw_rnn(
+          cell, loop_fn, scope=reuse_scope)
       outputs = outputs_ta.pack()
 
-      tf.get_variable_scope().reuse_variables()
+      reuse_scope.reuse_variables()
       outputs_dynamic_rnn, final_state_dynamic_rnn = tf.nn.dynamic_rnn(
           cell, inputs, time_major=True, dtype=tf.float32,
-          sequence_length=sequence_length)
+          sequence_length=sequence_length, scope=reuse_scope)
 
       variables = tf.trainable_variables()
       gradients = tf.gradients([outputs, final_state], [inputs] + variables)
@@ -1854,8 +1831,8 @@ class RawRNNTest(tf.test.TestCase):
 
       # check that all the variables names starts
       # with the proper scope.
-      all_vars = tf.all_variables()
-      prefix = prefix or "RNN"
+      all_vars = tf.global_variables()
+      prefix = prefix or "rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
@@ -1917,8 +1894,8 @@ class StateSaverRNNTest(tf.test.TestCase):
 
       # check that all the variables names starts
       # with the proper scope.
-      all_vars = tf.all_variables()
-      prefix = prefix or "RNN"
+      all_vars = tf.global_variables()
+      prefix = prefix or "rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))

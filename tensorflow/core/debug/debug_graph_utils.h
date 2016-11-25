@@ -94,11 +94,11 @@ class DebugNodeInserter {
       const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,
       Device* device);
 
-  // Get canonical name of the copy node.
+  // Get canonical name of a copy node.
   static const string GetCopyNodeName(const string& node_name,
                                       const int output_slot);
 
-  // Get canonical name of the debug node.
+  // Get canonical name of a debug node.
   static const string GetDebugNodeName(const string& tensor_name,
                                        const int debug_op_num,
                                        const string& debug_op_name);

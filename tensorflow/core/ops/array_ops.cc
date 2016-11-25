@@ -4152,7 +4152,7 @@ input_min: If range is given, this is the min of the range.
 input_max: If range is given, this is the max of the range.
 )doc");
 
-// EXPERIMENTAL: tfdb debugger-inserted ops.
+// EXPERIMENTAL: tfdbg debugger-inserted ops.
 REGISTER_OP("Copy")
     .Input("input: T")
     .Output("output: T")

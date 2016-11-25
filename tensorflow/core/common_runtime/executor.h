@@ -90,6 +90,9 @@ class Executor {
     TensorStore* tensor_store = nullptr;
     ResourceMgr* step_resource_manager = nullptr;
 
+    // If true, calls Sync() on the device.
+    bool sync_on_finish = false;
+
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;

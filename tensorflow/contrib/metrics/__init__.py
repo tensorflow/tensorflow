@@ -100,7 +100,9 @@ labels and predictions tensors and results in a weighted average of the metric.
 @@streaming_accuracy
 @@streaming_mean
 @@streaming_recall
+@@streaming_recall_at_thresholds
 @@streaming_precision
+@@streaming_precision_at_thresholds
 @@streaming_auc
 @@streaming_recall_at_k
 @@streaming_mean_absolute_error
@@ -119,6 +121,14 @@ labels and predictions tensors and results in a weighted average of the metric.
 @@streaming_sparse_recall_at_k
 @@streaming_specificity_at_sensitivity
 @@streaming_concat
+@@streaming_false_negatives
+@@streaming_false_negatives_at_thresholds
+@@streaming_false_positives
+@@streaming_false_positives_at_thresholds
+@@streaming_true_negatives
+@@streaming_true_negatives_at_thresholds
+@@streaming_true_positives
+@@streaming_true_positives_at_thresholds
 
 @@auc_using_histogram
 
@@ -151,6 +161,10 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_concat
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_covariance
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives_at_thresholds
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positives_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_absolute_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_cosine_distance
@@ -172,6 +186,10 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_pr
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_specificity_at_sensitivity
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_negatives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_negatives_at_thresholds
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_positives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_positives_at_thresholds
 from tensorflow.contrib.metrics.python.ops.set_ops import set_difference
 from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size
