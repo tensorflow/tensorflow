@@ -8,7 +8,7 @@ function(tb_new_http_archive)
   ExternalProject_Add(${_TB_NAME}
     PREFIX ${_TB_NAME}
     URL ${_TB_URL}
-    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
+    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}/${_TB_NAME}"
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND ""
@@ -30,9 +30,9 @@ endfunction()
 function(tb_http_file)
   cmake_parse_arguments(_TB "" "NAME;URL" "" ${ARGN})
   get_filename_component(src_file ${_TB_URL} NAME)
-  file(DOWNLOAD ${_TB_URL} "${DOWNLOAD_LOCATION}/${src_file}")
+  file(DOWNLOAD ${_TB_URL} "${DOWNLOAD_LOCATION}/${_TB_NAME}/${src_file}")
   
-  set(src_dir "${DOWNLOAD_LOCATION}")
+  set(src_dir "${DOWNLOAD_LOCATION}/${_TB_NAME}")
   set(dst_dir "${CMAKE_CURRENT_BINARY_DIR}/tensorboard_external/${_TB_NAME}/file")
   
   add_custom_command(
