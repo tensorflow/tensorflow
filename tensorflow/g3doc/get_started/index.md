@@ -43,6 +43,9 @@ for step in range(201):
         print(step, sess.run(W), sess.run(b))
 
 # Learns best fit is W: [0.1], b: [0.3]
+
+# Close the Session when we're done.
+sess.close()
 ```
 
 The first part of this code builds the data flow graph.  TensorFlow does not
