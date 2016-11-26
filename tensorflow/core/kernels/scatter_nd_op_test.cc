@@ -217,8 +217,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
   EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Must have updates.shape = indices.shape[0] + "
-                            "params_shape[IXDIM:], got"))
+                  .contains("Must have updates.shape = indices.shape[:IXDIM]"))
 
       << s;
 }
@@ -233,9 +232,10 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("The outermost dimension of updates and indices "
-                            "must match. Got "))
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains(
+              "The outermost dimension of updates and indices must match."))
       << s;
 }
 

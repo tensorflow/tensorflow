@@ -227,6 +227,24 @@ class ScatterNdTest(tf.test.TestCase):
         tf.scatter_nd_update(ref, indices, updates).get_shape().as_list(),
         shape)
 
+  def testExtraIndicesDimensions(self):
+    indices = tf.zeros([1, 1, 2], tf.int32)
+    updates = tf.zeros([1, 1], tf.int32)
+    shape = np.array([2, 2])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    self.assertAllEqual(scatter.get_shape().as_list(), shape)
+    expected_result = np.zeros([2, 2], dtype=np.int32)
+    with self.test_session():
+      self.assertAllEqual(expected_result, scatter.eval())
+
+    ref = tf.Variable(tf.zeros(shape, tf.int32))
+    scatter_update = tf.scatter_nd_update(ref, indices, updates)
+    self.assertAllEqual(scatter_update.get_shape().as_list(), shape)
+
+    with self.test_session():
+      ref.initializer.run()
+      self.assertAllEqual(expected_result, scatter_update.eval())
+
   def testUndefinedIndicesShape(self):
     indices = tf.placeholder(tf.int32, shape=None)
     updates = tf.placeholder(tf.int32, shape=[2, 2, 2])
