@@ -125,7 +125,6 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import summary
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
