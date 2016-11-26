@@ -329,8 +329,7 @@ def evaluate_once(master,
   global_step = variables.get_or_create_global_step()
 
   saver = tf_saver.Saver(
-      variables_to_restore or variables.get_variables_to_restore(),
-      write_version=saver_pb2.SaverDef.V1)
+    variables_to_restore or variables.get_variables_to_restore())
 
   summary_writer = summary_io.SummaryWriter(logdir)
 
