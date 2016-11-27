@@ -239,8 +239,8 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
           counter += 1
           if counter % 100000 == 0:
             print("  tokenizing line %d" % counter)
-          token_ids = sentence_to_token_ids(line, vocab, tokenizer,
-                                            normalize_digits)
+          token_ids = sentence_to_token_ids(tf.compat.as_bytes(line), vocab,
+                                            tokenizer, normalize_digits)
           tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
