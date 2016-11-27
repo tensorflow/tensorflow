@@ -251,9 +251,10 @@ Install Anaconda:
 Follow the instructions on the [Anaconda download
 site](https://www.continuum.io/downloads).
 
-Note: If tensorflow has been installed via pip previously, then one should 
-uninstall it before installation in Anaconda environment. Because Anaconda 
-searches system site-packages from `.local` with higher priority.
+Note: If tensorflow has been installed via pip outside the Anaconda environment
+previously, then one should uninstall it if one wants to use the tensorflow 
+installed within an Anaconda environment, because Anaconda searches system 
+site-packages from `.local` with higher priority.
 ```bash
 # Python 2
 $ pip uninstall tensorflow
