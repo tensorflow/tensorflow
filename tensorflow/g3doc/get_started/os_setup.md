@@ -61,7 +61,17 @@ $ sudo easy_install pip
 $ sudo easy_install --upgrade six
 ```
 
-Then, select the correct binary to install:
+We have also uploaded the CPU version of the binaries to Pypi, so you can
+simply install on Linux, Mac or Windows with:
+
+```bash
+$ pip install tensorflow
+```
+
+Note that you will need pip version 8.1 or later for the above command to work on Linux.
+
+If the above command does not work on your system or you want to install the GPU version
+of the binary, you can install tensorflow by following these instructions:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7
