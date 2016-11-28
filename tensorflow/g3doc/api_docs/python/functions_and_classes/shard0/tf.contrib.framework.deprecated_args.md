@@ -1,4 +1,4 @@
-### `tf.contrib.framework.deprecated_args(date, instructions, *deprecated_arg_names)` {#deprecated_args}
+### `tf.contrib.framework.deprecated_args(date, instructions, *deprecated_arg_names_or_tuples)` {#deprecated_args}
 
 Decorator for marking specific function arguments as deprecated.
 
@@ -22,7 +22,10 @@ prepended to the rest of the docstring.
     ISO 8601 (YYYY-MM-DD).
 *  <b>`instructions`</b>: String. Instructions on how to update code using the
     deprecated function.
-*  <b>`*deprecated_arg_names`</b>: String. The deprecated arguments.
+*  <b>`*deprecated_arg_names_or_tuples`</b>: String. or 2-Tuple(String,
+    [ok_vals]).  The string is the deprecated argument name.
+    Optionally, an ok-value may be provided.  If the user provided
+    argument equals this value, the warning is suppressed.
 
 ##### Returns:
 
@@ -31,6 +34,8 @@ prepended to the rest of the docstring.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If date is not in ISO 8601 format, instructions are empty, or
-    the deprecated arguments are not present in the function signature.
+*  <b>`ValueError`</b>: If date is not in ISO 8601 format, instructions are
+    empty, the deprecated arguments are not present in the function
+    signature, or the second element of a deprecated_tuple is not a
+    list.
 
