@@ -302,12 +302,13 @@ export class DataSet {
         }
         return newV;
       });
-      for (let j = 0; j < NUM_PCA_COMPONENTS; j++) {
-        let label = 'pca-' + j;
+      for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
+        let label = 'pca-' + d;
         this.projections.add(label);
-        this.points.forEach((d, i) => {
-          d.projections[label] = pcaVectors[i][j];
-        });
+        for (let i = 0; i < pcaVectors.length; i++) {
+          let pointIndex = this.shuffledDataIndices[i];
+          this.points[pointIndex].projections[label] = pcaVectors[i][d];
+        }
       }
     });
   }
