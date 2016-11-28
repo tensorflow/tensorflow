@@ -89,7 +89,7 @@ def mask_activations_and_labels(activations, labels, sequence_lengths):
 
   Returns:
     activations_masked: `logit` values with those beyond `sequence_lengths`
-    removed for each batch. Batches are then concatenated. Shape
+      removed for each batch. Batches are then concatenated. Shape
       `[tf.sum(sequence_lengths), k]` if `sequence_lengths` is not `None` and
       shape `[batch_size * padded_length, k]` otherwise.
     labels_masked: Label values after removing unneeded entries. Shape
@@ -474,7 +474,7 @@ def apply_dropout(
     cell: An `RNNCell`.
     input_keep_probability: Probability to keep inputs to `cell`. If `None`,
       no dropout is applied.
-    output_keep_probability: Probability to keep outputs to `cell`. If `None`,
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
     random_seed: Seed for random dropout.
 
@@ -515,7 +515,6 @@ def _get_dynamic_rnn_model_fn(cell,
 
   Args:
     cell: An initialized `RNNCell` to be used in the RNN.
-      'basic_rnn,' 'lstm' or 'gru'.
     target_column: An initialized `TargetColumn`, used to calculate prediction
       and loss.
     problem_type: `ProblemType.CLASSIFICATION` or`ProblemType.REGRESSION`.
@@ -527,23 +526,23 @@ def _get_dynamic_rnn_model_fn(cell,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
-      for all classes. Should only be used with `ProblemType.CLASSIFICATION`.
+      for all classes. Must only be used with `ProblemType.CLASSIFICATION`.
     learning_rate: Learning rate used for optimization. This argument has no
       effect if `optimizer` is an instance of an `Optimizer`.
     gradient_clipping_norm: A float. Gradients will be clipped to this value.
     input_keep_probability: Probability to keep inputs to `cell`. If `None`,
       no dropout is applied.
-    output_keep_probability: Probability to keep outputs to `cell`. If `None`,
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
     sequence_length_key: The key that will be used to look up sequence length in
       the `features` dict.
     initial_state_key: The key that will be used to look up initial_state in
       the `features` dict.
-    dtype: The dtype of the state and output for the given `cell_num`
+    dtype: The dtype of the state and output of the given `cell`.
     parallel_iterations: Number of iterations to run in parallel. Values >> 1
       use more memory but take less time, while smaller values use less memory
       but computations take longer.
@@ -620,7 +619,7 @@ def _get_dynamic_rnn_model_fn(cell,
           default_metrics, features, labels, prediction_dict)
       train_op = optimizers.optimize_loss(
           loss=loss,
-          global_step=None,
+          global_step=None,  # Get it internally.
           learning_rate=learning_rate,
           optimizer=optimizer,
           clip_gradients=gradient_clipping_norm,
@@ -681,36 +680,40 @@ def multi_value_rnn_regressor(num_units,
                               config=None,
                               params=None,
                               feature_engineering_fn=None):
-
   """Creates a RNN `Estimator` that predicts sequences of values.
 
   Args:
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
+    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
     gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
       then no clipping is performed.
     input_keep_probability: Probability to keep inputs to `cell`. If `None`,
       no dropout is applied.
-    output_keep_probability: Probability to keep outputs to `cell`. If `None`,
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
     params: `dict` of hyperparameters. Passed through to `Estimator`.
+      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
+      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -765,21 +768,24 @@ def multi_value_rnn_classifier(num_classes,
 
   Args:
     num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     predict_probabilities: A boolean indicating whether to predict probabilities
       for all classes.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
@@ -787,12 +793,14 @@ def multi_value_rnn_classifier(num_classes,
       then no clipping is performed.
     input_keep_probability: Probability to keep inputs to `cell`. If `None`,
       no dropout is applied.
-    output_keep_probability: Probability to keep outputs to `cell`. If `None`,
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
     params: `dict` of hyperparameters. Passed through to `Estimator`.
+      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
+      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -845,32 +853,37 @@ def single_value_rnn_regressor(num_units,
   """Create a RNN `Estimator` that predicts single values.
 
   Args:
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
     gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
       then no clipping is performed.
     input_keep_probability: Probability to keep inputs to `cell`. If `None`,
       no dropout is applied.
-    output_keep_probability: Probability to keep outputs to `cell`. If `None`,
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
     params: `dict` of hyperparameters. Passed through to `Estimator`.
+      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
+      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -925,21 +938,24 @@ def single_value_rnn_classifier(num_classes,
 
   Args:
     num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     predict_probabilities: A boolean indicating whether to predict probabilities
       for all classes.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
@@ -947,12 +963,14 @@ def single_value_rnn_classifier(num_classes,
       then no clipping is performed.
     input_keep_probability: Probability to keep inputs to `cell`. If `None`,
       no dropout is applied.
-    output_keep_probability: Probability to keep outputs to `cell`. If `None`,
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
     params: `dict` of hyperparameters. Passed through to `Estimator`.
+      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
+      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
