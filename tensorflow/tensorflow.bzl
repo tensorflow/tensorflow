@@ -147,8 +147,9 @@ def if_not_windows(a):
   return select({
       "//tensorflow:windows": [],
       "//conditions:default": a,
-  })  
+  })
 
+# LINT.IfChange
 def tf_copts():
   return (["-DEIGEN_AVOID_STL_ARRAY",
            "-Iexternal/gemmlowp",
@@ -176,6 +177,7 @@ def tf_opts_nortti_if_android():
       "-DGOOGLE_PROTOBUF_NO_RTTI",
       "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
   ])
+# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
