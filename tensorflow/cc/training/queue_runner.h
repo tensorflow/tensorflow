@@ -56,6 +56,11 @@ class QueueRunner : public RunnerInterface {
   // specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for_ms);
 
+  // Requests to stop and runs the cancel op. It would be called in a separate
+  // thread when coordinator is set. If there is no coordinator it should be
+  // called before calling Join.
+  void Stop(Session* sess);
+
   // Joins all the threads. Returns okay if all threads run successfully;
   // otherwise returns the first captured failure status.
   Status Join() final;
@@ -71,10 +76,6 @@ class QueueRunner : public RunnerInterface {
 
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
-
-  // Requests to stop and runs the cancel op. It would be called in a separate
-  // thread when coordinator is set.
-  void Stop(Session* sess);
 
   // Updates the internal status; it only keeps OK or the first unexpected error
   // status.
