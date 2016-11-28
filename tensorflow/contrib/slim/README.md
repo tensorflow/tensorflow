@@ -109,7 +109,7 @@ weights = variables.variable('weights',
 Note that in native TensorFlow, there are two types of variables: regular
 variables and local (transient) variables. The vast majority of variables are
 regular variables: once created, they can be saved to disk using a
-[saver](https://www.tensorflow.org/versions/r0.9/api_docs/python/state_ops.html#Saver).
+[saver](https://www.tensorflow.org/versions/r0.11/api_docs/python/state_ops.html#Saver).
 Local variables are those variables that only exist for the duration of a
 session and are not saved to disk.
 
