@@ -538,6 +538,39 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args1[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions, "d2"]), set(args2[1:]))
 
+  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  def test_positional_and_named_with_ok_vals(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated_args(
+        date,
+        instructions,
+        ("d1", None),
+        ("d2", "my_ok_val"))
+    def _fn(arg0, d1=None, arg1=2, d2=None):
+      return arg0 + arg1 if d1 else arg1 + arg0 if d2 else arg0 * arg1
+
+    # Assert calls without the deprecated arguments log nothing.
+    self.assertEqual(2, _fn(1, arg1=2))
+    self.assertEqual(0, mock_warning.call_count)
+
+    # Assert calls with the deprecated arguments log warnings.
+    self.assertEqual(2, _fn(1, False, 2, d2=False))
+    self.assertEqual(2, mock_warning.call_count)
+    (args1, _) = mock_warning.call_args_list[0]
+    self.assertRegexpMatches(args1[0], r"deprecated and will be removed after")
+    self._assert_subset(set([date, instructions, "d1"]), set(args1[1:]))
+    (args2, _) = mock_warning.call_args_list[1]
+    self.assertRegexpMatches(args1[0], r"deprecated and will be removed after")
+    self._assert_subset(set([date, instructions, "d2"]), set(args2[1:]))
+
+    # Assert calls with the deprecated arguments dont log warnings if
+    # the value matches the 'ok_val'.
+    mock_warning.reset_mock()
+    self.assertEqual(3, _fn(1, None, 2, d2="my_ok_val"))
+    self.assertEqual(0, mock_warning.call_count)
+
 
 class DeprecatedArgValuesTest(tf.test.TestCase):
 
