@@ -165,30 +165,6 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
     expected_state_shape = np.array([3, self.NUM_RNN_CELL_UNITS])
     self.assertAllEqual(expected_state_shape, final_state.shape)
 
-  def testPaddingMask(self):
-    """Test `padding_mask`."""
-    batch_size = 16
-    padded_length = 32
-    np.random.seed(1234)
-    sequence_lengths = np.random.randint(0, padded_length + 1, batch_size)
-
-    padding_mask_t = dynamic_rnn_estimator.padding_mask(
-        tf.constant(sequence_lengths, dtype=tf.int32),
-        tf.constant(padded_length, dtype=tf.int32))
-
-    with tf.Session() as sess:
-      padding_mask = sess.run(padding_mask_t)
-
-    for i in range(batch_size):
-      actual_mask = padding_mask[i]
-      expected_mask = np.concatenate(
-          [np.ones(sequence_lengths[i]),
-           np.zeros(padded_length - sequence_lengths[i])],
-          axis=0)
-      np.testing.assert_equal(actual_mask, expected_mask,
-                              'Mismatch on row {}. Got {}; expected {}.'.format(
-                                  i, actual_mask, expected_mask))
-
   def testMaskActivationsAndLabels(self):
     """Test `mask_activations_and_labels`."""
     batch_size = 4
@@ -353,6 +329,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         input_fn=get_input_fn(tf.contrib.learn.ModeKeys.INFER),
         use_deprecated_input_fn=False,
         input_feature_key=input_feature_key)
+
 
 # TODO(jamieas): move all tests below to a benchmark test.
 class DynamicRNNEstimatorLearningTest(tf.test.TestCase):

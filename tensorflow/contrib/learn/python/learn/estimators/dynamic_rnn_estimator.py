@@ -59,25 +59,6 @@ _CELL_TYPES = {'basic_rnn': rnn_cell.BasicRNNCell,
                'gru': rnn_cell.GRUCell,}
 
 
-# TODO(jamieas): move `padding_mask` to array_ops.
-def padding_mask(sequence_lengths, padded_length):
-  """Creates a mask used for calculating losses with padded input.
-
-  Args:
-    sequence_lengths: A `Tensor` of shape `[batch_size]` containing the unpadded
-      length of  each sequence.
-    padded_length: A scalar `Tensor` indicating the length of the sequences
-      after padding
-  Returns:
-    A boolean `Tensor` M of shape `[batch_size, padded_length]` where
-    `M[i, j] == True` when `lengths[i] > j`.
-
-  """
-  range_tensor = math_ops.range(padded_length)
-  return math_ops.less(array_ops.expand_dims(range_tensor, 0),
-                       array_ops.expand_dims(sequence_lengths, 1))
-
-
 def mask_activations_and_labels(activations, labels, sequence_lengths):
   """Remove entries outside `sequence_lengths` and returned flattened results.
 
@@ -107,7 +88,7 @@ def mask_activations_and_labels(activations, labels, sequence_lengths):
                                              [flattened_dimension, -1])
       labels_masked = array_ops.reshape(labels, [flattened_dimension])
     else:
-      mask = padding_mask(sequence_lengths, padded_length)
+      mask = array_ops.sequence_mask(sequence_lengths, padded_length)
       activations_masked = array_ops.boolean_mask(activations, mask)
       labels_masked = array_ops.boolean_mask(labels, mask)
     return activations_masked, labels_masked
@@ -236,7 +217,7 @@ def construct_rnn(initial_state,
                   num_label_columns,
                   dtype=dtypes.float32,
                   parallel_iterations=32,
-                  swap_memory=False):
+                  swap_memory=True):
   """Build an RNN and apply a fully connected layer to get the desired output.
 
   Args:
@@ -273,6 +254,9 @@ def construct_rnn(initial_state,
         num_outputs=num_label_columns,
         activation_fn=None,
         trainable=True)
+    # Use `identitiy` to rename `final_state`.
+    final_state = array_ops.identity(
+        final_state, name=RNNKeys.FINAL_STATE_KEY)
     return activations, final_state
 
 
@@ -371,13 +355,15 @@ def _multi_value_predictions(
         probability_shape = array_ops.concat(0, [activations_shape[:2], [2]])
       else:
         probability_shape = activations_shape
-      probabilities = array_ops.reshape(flat_probabilities, probability_shape)
+      probabilities = array_ops.reshape(
+          flat_probabilities, probability_shape, name=RNNKeys.PROBABILITIES_KEY)
       prediction_dict[RNNKeys.PROBABILITIES_KEY] = probabilities
     else:
       flat_predictions = target_column.logits_to_predictions(
           flattened_activations, proba=False)
     predictions = array_ops.reshape(
-        flat_predictions, [activations_shape[0], activations_shape[1]])
+        flat_predictions, [activations_shape[0], activations_shape[1]],
+        name=RNNKeys.PREDICTIONS_KEY)
     prediction_dict[RNNKeys.PREDICTIONS_KEY] = predictions
     return prediction_dict
 
@@ -509,7 +495,7 @@ def _get_dynamic_rnn_model_fn(cell,
                               initial_state_key=RNNKeys.INITIAL_STATE_KEY,
                               dtype=dtypes.float32,
                               parallel_iterations=None,
-                              swap_memory=False,
+                              swap_memory=True,
                               name='DynamicRNNModel'):
   """Creates an RNN model function for an `Estimator`.
 
@@ -684,7 +670,7 @@ def multi_value_rnn_regressor(num_units,
                               optimizer_type='SGD',
                               learning_rate=0.1,
                               momentum=None,
-                              gradient_clipping_norm=10.0,
+                              gradient_clipping_norm=5.0,
                               input_keep_probability=None,
                               output_keep_probability=None,
                               model_dir=None,
@@ -763,7 +749,7 @@ def multi_value_rnn_classifier(num_classes,
                                learning_rate=0.1,
                                predict_probabilities=False,
                                momentum=None,
-                               gradient_clipping_norm=10.0,
+                               gradient_clipping_norm=5.0,
                                input_keep_probability=None,
                                output_keep_probability=None,
                                model_dir=None,
@@ -844,7 +830,7 @@ def single_value_rnn_regressor(num_units,
                                optimizer_type='SGD',
                                learning_rate=0.1,
                                momentum=None,
-                               gradient_clipping_norm=10.0,
+                               gradient_clipping_norm=5.0,
                                input_keep_probability=None,
                                output_keep_probability=None,
                                model_dir=None,
@@ -923,7 +909,7 @@ def single_value_rnn_classifier(num_classes,
                                 learning_rate=0.1,
                                 predict_probabilities=False,
                                 momentum=None,
-                                gradient_clipping_norm=10.0,
+                                gradient_clipping_norm=5.0,
                                 input_keep_probability=None,
                                 output_keep_probability=None,
                                 model_dir=None,
