@@ -372,12 +372,11 @@ class VariablesTestCase(tf.test.TestCase):
 
   def testLoad(self):
     with self.test_session():
-      var = tf.Variable(np.random.randn(5, 5))
+      var = tf.Variable(np.zeros((5,5), np.float32))
       tf.global_variables_initializer().run()
-      data = np.random.randn(5, 5)
-      var.load(data)
+      var.load(np.ones((5, 5), np.float32))
 
-      self.assertAllClose(data, var.eval())
+      self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
 
 
 class IsInitializedTest(tf.test.TestCase):
