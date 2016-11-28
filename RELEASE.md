@@ -33,6 +33,7 @@
 * Added a solver for ordinary differential equations,
   `tf.contrib.integrate.odeint`.
 * New contrib module for tensors with named axes, `tf.contrib.labeled_tensor`.
+* Visualization of embeddings in TensorBoard.
 
 ## Breaking Changes to the API
 
