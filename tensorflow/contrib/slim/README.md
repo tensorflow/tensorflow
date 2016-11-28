@@ -67,8 +67,6 @@ contains popular network definitions such as
 and
 [AlexNet](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/nets/alexnet.py)
 models.
-* [preprocess](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/preprocess.py):
-is a module with various preprocessing utilities.
 * [queues](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/queues.py):
 provides a context manager for easily and safely starting and closing
 QueueRunners.
