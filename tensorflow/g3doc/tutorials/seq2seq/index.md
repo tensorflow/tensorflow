@@ -35,7 +35,7 @@ File | What's in it?
 `models/rnn/translate/translate.py` | Binary that trains and runs the translation model.
 
 
-## Sequence-to-Sequence Basics
+## Sequence-to-sequence basics
 
 A basic sequence-to-sequence model, as introduced in
 [Cho et al., 2014](http://arxiv.org/abs/1406.1078)
@@ -69,7 +69,7 @@ attention mechanism in the decoder looks like this.
 <img style="width:100%" src="../../images/attention_seq2seq.png" />
 </div>
 
-## TensorFlow seq2seq Library
+## TensorFlow seq2seq library
 
 As you can see above, there are many different sequence-to-sequence
 models. Each of these models can use different RNN cells, but all
@@ -148,7 +148,7 @@ more sequence-to-sequence models in `seq2seq.py`, take a look there. They all
 have similar interfaces, so we will not describe them in detail. We will use
 `embedding_attention_seq2seq` for our translation model below.
 
-## Neural Translation Model
+## Neural translation model
 
 While the core of the sequence-to-sequence model is constructed by
 the functions in `python/ops/seq2seq.py`, there are still a few tricks
@@ -238,7 +238,7 @@ with encoder inputs representing `[PAD PAD "." "go" "I"]` and decoder
 inputs `[GO "Je" "vais" "." EOS PAD PAD PAD PAD PAD]`.
 
 
-## Let's Run It
+## Let's run it
 
 To train the model described above, we need to a large English-French corpus.
 We will use the *10^9-French-English corpus* from the
@@ -312,7 +312,7 @@ Reading model parameters from /tmp/translate.ckpt-340000
  Qui est le président des États-Unis ?
 ```
 
-## What Next?
+## What next?
 
 The example above shows how you can build your own English-to-French
 translator, end-to-end. Run it and see how the model performs for yourself.

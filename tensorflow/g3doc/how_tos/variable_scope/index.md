@@ -69,7 +69,7 @@ def my_image_filter(input_images, variables_dict):
         strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv2 + variables_dict["conv2_biases"])
 
-# The 2 calls to my_image_filter() now use the same variables
+# Both calls to my_image_filter() now use the same variables
 result1 = my_image_filter(image1, variables_dict)
 result2 = my_image_filter(image2, variables_dict)
 ```
@@ -90,7 +90,7 @@ while constructing a graph.
 
 ## Variable Scope Example
 
-Variable Scope mechanism in TensorFlow consists of 2 main functions:
+Variable Scope mechanism in TensorFlow consists of two main functions:
 
 * `tf.get_variable(<name>, <shape>, <initializer>)`:
   Creates or returns a variable with a given name.
@@ -280,9 +280,9 @@ when opening a new variable scope.
 ```python
 with tf.variable_scope("foo") as foo_scope:
     v = tf.get_variable("v", [1])
-with tf.variable_scope(foo_scope)
+with tf.variable_scope(foo_scope):
     w = tf.get_variable("w", [1])
-with tf.variable_scope(foo_scope, reuse=True)
+with tf.variable_scope(foo_scope, reuse=True):
     v1 = tf.get_variable("v", [1])
     w1 = tf.get_variable("w", [1])
 assert v1 is v
@@ -296,7 +296,7 @@ different one. This is fully independent of where we do it.
 ```python
 with tf.variable_scope("foo") as foo_scope:
     assert foo_scope.name == "foo"
-with tf.variable_scope("bar")
+with tf.variable_scope("bar"):
     with tf.variable_scope("baz") as other_scope:
         assert other_scope.name == "bar/baz"
         with tf.variable_scope(foo_scope) as foo_scope2:
