@@ -63,9 +63,6 @@ class StringSplitOpTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       self.assertRaises(
-          ValueError, tf.string_split, strings, delimiter="delimiter")
-
-      self.assertRaises(
           ValueError, tf.string_split, strings, delimiter=["|", ""])
 
       self.assertRaises(ValueError, tf.string_split, strings, delimiter=["a"])
@@ -74,6 +71,12 @@ class StringSplitOpTest(tf.test.TestCase):
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0]])
       self.assertAllEqual(values, [b"hello", b"world", b"hello world"])
+      self.assertAllEqual(shape, [2, 2])
+
+      tokens = tf.string_split(strings, delimiter="| ")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"hello", b"world", b"hello", b"world"])
       self.assertAllEqual(shape, [2, 2])
 
   def testStringSplitWithDelimiterTensor(self):
