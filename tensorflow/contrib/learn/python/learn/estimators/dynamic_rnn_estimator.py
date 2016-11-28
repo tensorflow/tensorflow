@@ -600,30 +600,41 @@ def _get_dynamic_rnn_model_fn(cell,
           dtype=dtype,
           parallel_iterations=parallel_iterations,
           swap_memory=swap_memory)
+
+      loss = None  # Created below for modes TRAIN and EVAL.
       if prediction_type == PredictionType.MULTIPLE_VALUE:
         prediction_dict = _multi_value_predictions(
             rnn_activations, target_column, predict_probabilities)
-        loss = _multi_value_loss(
-            rnn_activations, labels, sequence_length, target_column, features)
+        if mode != model_fn.ModeKeys.INFER:
+          loss = _multi_value_loss(
+              rnn_activations, labels, sequence_length, target_column, features)
       elif prediction_type == PredictionType.SINGLE_VALUE:
         prediction_dict = _single_value_predictions(
             rnn_activations, sequence_length, target_column,
             predict_probabilities)
-        loss = _single_value_loss(
-            rnn_activations, labels, sequence_length, target_column, features)
-      # TODO(roumposg): Return eval_metric_ops here, instead of default_metrics.
-      default_metrics = _get_default_metrics(
-          problem_type, prediction_type, sequence_length)
+        if mode != model_fn.ModeKeys.INFER:
+          loss = _single_value_loss(
+              rnn_activations, labels, sequence_length, target_column, features)
       prediction_dict[RNNKeys.FINAL_STATE_KEY] = final_state
-      eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
-          default_metrics, features, labels, prediction_dict)
-      train_op = optimizers.optimize_loss(
-          loss=loss,
-          global_step=None,  # Get it internally.
-          learning_rate=learning_rate,
-          optimizer=optimizer,
-          clip_gradients=gradient_clipping_norm,
-          summaries=optimizers.OPTIMIZER_SUMMARIES)
+
+      eval_metric_ops = None
+      if mode != model_fn.ModeKeys.INFER:
+        # TODO(roumposg): Return eval_metric_ops instead of default_metrics.
+        default_metrics = _get_default_metrics(
+            problem_type, prediction_type, sequence_length)
+        eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
+            default_metrics, features, labels, prediction_dict)
+
+      train_op = None
+      if mode == model_fn.ModeKeys.TRAIN:
+        train_op = optimizers.optimize_loss(
+            loss=loss,
+            global_step=None,  # Get it internally.
+            learning_rate=learning_rate,
+            optimizer=optimizer,
+            clip_gradients=gradient_clipping_norm,
+            summaries=optimizers.OPTIMIZER_SUMMARIES)
+
     return model_fn.ModelFnOps(mode=mode,
                                predictions=prediction_dict,
                                loss=loss,
