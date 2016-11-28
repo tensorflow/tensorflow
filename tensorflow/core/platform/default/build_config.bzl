@@ -25,7 +25,7 @@ def tf_deps(deps, suffix):
   return tf_deps
 
 def tf_proto_library_cc(name, srcs = [], has_services = None,
-                        deps = [], visibility = [], testonly = 0,
+                        protodeps = [], visibility = [], testonly = 0,
                         cc_libs = [],
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
@@ -34,7 +34,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         js_api_version = 2, js_codegen = "jspb"):
   native.filegroup(
       name = name + "_proto_srcs",
-      srcs = srcs + tf_deps(deps, "_proto_srcs"),
+      srcs = srcs + tf_deps(protodeps, "_proto_srcs"),
       testonly = testonly,
   )
 
@@ -43,10 +43,14 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
     use_grpc_plugin = True
   cc_proto_library(
       name = name + "_cc",
-      srcs = srcs + tf_deps(deps, "_proto_srcs"),
-      deps = deps + ["@protobuf//:cc_wkt_protos"],
+      srcs = srcs,
+      deps = tf_deps(protodeps, "_cc") + ["@protobuf//:cc_wkt_protos"],
       cc_libs = cc_libs + ["@protobuf//:protobuf"],
-      copts = ["-Wno-unused-but-set-variable", "-Wno-sign-compare"],
+      copts = [
+          "-Wno-unknown-warning-option",
+          "-Wno-unused-but-set-variable",
+          "-Wno-sign-compare",
+      ],
       protoc = "@protobuf//:protoc",
       default_runtime = "@protobuf//:protobuf",
       use_grpc_plugin = use_grpc_plugin,
@@ -54,13 +58,14 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       visibility = visibility,
   )
 
-def tf_proto_library_py(name, srcs=[], deps=[], visibility=[], testonly=0,
+def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
+                        testonly=0,
                         srcs_version="PY2AND3"):
   py_proto_library(
       name = name + "_py",
       srcs = srcs,
       srcs_version = srcs_version,
-      deps = deps,
+      deps = deps + tf_deps(protodeps, "_py") + ["@protobuf//:protobuf_python"],
       protoc = "@protobuf//:protoc",
       default_runtime = "@protobuf//:protobuf_python",
       visibility = visibility,
@@ -68,15 +73,16 @@ def tf_proto_library_py(name, srcs=[], deps=[], visibility=[], testonly=0,
   )
 
 def tf_proto_library(name, srcs = [], has_services = None,
-                     deps = [], visibility = [], testonly = 0,
+                     protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, go_api_version = 2,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb"):
+  """Make a proto library, possibly depending on other proto libraries."""
   tf_proto_library_cc(
       name = name,
-      srcs = srcs + tf_deps(deps, "_proto_srcs"),
-      deps = deps,
+      srcs = srcs,
+      protodeps = protodeps,
       cc_libs = cc_libs,
       testonly = testonly,
       visibility = visibility,
@@ -84,9 +90,9 @@ def tf_proto_library(name, srcs = [], has_services = None,
 
   tf_proto_library_py(
       name = name,
-      srcs = srcs + tf_deps(deps, "_proto_srcs"),
+      srcs = srcs,
+      protodeps = protodeps,
       srcs_version = "PY2AND3",
-      deps = deps + ["@protobuf//:protobuf_python"],
       testonly = testonly,
       visibility = visibility,
   )
