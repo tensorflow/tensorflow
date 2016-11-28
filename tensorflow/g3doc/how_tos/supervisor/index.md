@@ -374,7 +374,7 @@ following keyword arguments to the `Supervisor()` constructor:
  * `ready_op`: Op to check if the model is initialized.
 
    After running the local init op, the init op, and the init function, the
-   supervisor verifies that the model is fully intialized by running the ready
+   supervisor verifies that the model is fully initialized by running the ready
    op.  This is an op that returns an empty string if the model is initialized,
    or a description of what parts of the model are not initialized if not.
 
