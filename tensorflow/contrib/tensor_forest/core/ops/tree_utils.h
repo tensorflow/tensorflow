@@ -228,6 +228,11 @@ inline bool CheckTensorBounds(OpKernelContext* context, const Tensor& tensor) {
   return true;
 }
 
+void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
+                           float parent_sum, const float* parent_data,
+                           float valid_leaf_threshold, int num_outputs,
+                           std::vector<float>* mean);
+
 }  // namespace tensorforest
 }  // namespace tensorflow
 
