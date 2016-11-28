@@ -578,8 +578,8 @@ class AppendDocstring(object):
         if "\n" in value:
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
-        bullets.append("*  <b>`%s`</b>: %s" % (key, value))
-      self._additional_note += ("\n\n##### <b>`condition_kwargs`</b>:\n\n" +
+        bullets.append("*  `%s`: %s" % (key, value))
+      self._additional_note += ("\n\n##### `condition_kwargs`:\n\n" +
                                 "\n".join(bullets))
 
   def __call__(self, fn):
