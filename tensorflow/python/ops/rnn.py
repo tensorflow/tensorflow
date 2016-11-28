@@ -27,13 +27,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell._state_size_with_prefix
+_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
 # pylint: enable=protected-access
 
 

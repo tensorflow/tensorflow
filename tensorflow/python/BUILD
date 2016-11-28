@@ -1204,7 +1204,10 @@ py_library(
 
 py_library(
     name = "rnn_cell",
-    srcs = ["ops/rnn_cell.py"],
+    srcs = [
+        "ops/rnn_cell.py",
+        "ops/rnn_cell_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",

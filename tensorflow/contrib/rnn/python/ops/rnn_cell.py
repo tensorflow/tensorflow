@@ -30,6 +30,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -998,7 +999,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 
 # pylint: disable=protected-access
-_linear = rnn_cell._linear
+_linear = rnn_cell_impl._linear
 # pylint: enable=protected-access
 
 
