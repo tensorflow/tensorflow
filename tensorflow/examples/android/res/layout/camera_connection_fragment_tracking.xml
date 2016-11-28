@@ -1,5 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
+<?xml version="1.0" encoding="utf-8"?><!--
  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +13,18 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
 
-<resources>
-    <string name="app_name">TensorFlow Demo</string>
-    <string name="activity_name_classification">TF Classify</string>
-    <string name="activity_name_detection">TF Detect</string>
-</resources>
+      <org.tensorflow.demo.AutoFitTextureView
+          android:id="@+id/texture"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"/>
+
+      <org.tensorflow.demo.OverlayView
+          android:id="@+id/overlay"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"/>
+
+</FrameLayout>
