@@ -1215,6 +1215,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -1352,6 +1353,15 @@ cuda_py_test(
     srcs = ["self_adjoint_eig_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 20,
+)
+
+cuda_py_test(
+    name = "qr_op_test",
+    size = "medium",
+    srcs = ["qr_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    shard_count = 20,
+    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(

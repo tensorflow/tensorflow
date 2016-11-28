@@ -36,7 +36,7 @@ public:
   void DeallocateRaw(void *ptr) override;
 
   void EnterLameDuckMode();
-
+  virtual bool ShouldAllocateEmptyTensors() override final { return true; }
 private:
   Eigen::QueueInterface *device_;  // not owned
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);

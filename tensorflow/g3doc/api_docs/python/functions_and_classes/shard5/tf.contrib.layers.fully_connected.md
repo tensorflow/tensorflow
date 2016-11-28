@@ -41,7 +41,7 @@ prior to the initial matrix multiply by `weights`.
 
 ##### Returns:
 
-   the tensor variable representing the result of the series of operations.
+   The tensor variable representing the result of the series of operations.
 
 ##### Raises:
 

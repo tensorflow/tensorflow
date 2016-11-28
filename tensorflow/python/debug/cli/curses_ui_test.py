@@ -419,7 +419,8 @@ class CursesTest(test_util.TensorFlowTestCase):
         80,
         command_sequence=[string_to_codes("help\n"), self._EXIT])
 
-    help_intro = ["This is a curses UI.", "All it can do is 'babble'.", ""]
+    help_intro = debugger_cli_common.RichTextLines(
+        ["This is a curses UI.", "All it can do is 'babble'.", ""])
     ui.register_command_handler(
         "babble", self._babble, "babble some", prefix_aliases=["b"])
     ui.set_help_intro(help_intro)
@@ -427,7 +428,7 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(1, len(ui.unwrapped_outputs))
     self.assertEqual(
-        help_intro + ["babble", "  Aliases: b", "", "  babble some"],
+        help_intro.lines + ["babble", "  Aliases: b", "", "  babble some"],
         ui.unwrapped_outputs[0].lines[:7])
 
   def testCommandHistoryNavBackwardOnce(self):

@@ -383,7 +383,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
       # check that all the variables names starts with the proper scope.
       tf.global_variables_initializer()
       all_vars = tf.all_variables()
-      prefix = prefix or "StackRNN"
+      prefix = prefix or "stack_bidirectional_rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("StackRNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))

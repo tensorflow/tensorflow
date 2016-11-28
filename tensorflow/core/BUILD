@@ -656,7 +656,6 @@ filegroup(
     name = "android_srcs",
     srcs = [
         ":proto_text_srcs_all",
-        "//tensorflow/core/debug:android_srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -685,6 +684,7 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "debug/**/*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -723,7 +723,10 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts() + [
+        "-Os",
+        "-DNOTFDBG",
+    ],
     linkopts = ["-lz"],
     tags = [
         "manual",
@@ -749,7 +752,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"] + ["-DNOTFDBG"],
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
@@ -782,7 +785,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts(),
+    copts = tf_copts() + ["-DNOTFDBG"],
     tags = [
         "manual",
         "notap",
@@ -807,6 +810,7 @@ cc_library(
     copts = tf_copts() + [
         "-Os",
         "-DSUPPORT_SELECTIVE_REGISTRATION",
+        "-DNOTFDBG",
     ],
     tags = [
         "manual",
@@ -927,7 +931,7 @@ tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -938,8 +942,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":worker_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":worker_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -949,7 +953,7 @@ tf_proto_library_cc(
     name = "master_proto",
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -960,8 +964,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":master_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":master_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1541,22 +1545,8 @@ tf_cc_tests(
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
+        "platform/subprocess_test.cc",
     ],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_tests(
-    size = "small",
-    srcs = ["platform/subprocess_test.cc"],
-    tags = ["manual"],
     deps = [
         ":lib",
         ":lib_internal",

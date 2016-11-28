@@ -48,6 +48,7 @@ done
 shift $((OPTIND - 1))
 
 source "${SCRIPT_DIR}/build_helper.subr"
+JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
 if [[ -z "${NDK_ROOT}" ]]
 then
@@ -177,7 +178,7 @@ if [[ ${clean} == true ]]; then
   make clean
 fi
 
-make
+make -j"${JOB_COUNT}"
 if [ $? -ne 0 ]
 then
   echo "make command failed."

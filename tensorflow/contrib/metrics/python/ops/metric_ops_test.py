@@ -136,10 +136,19 @@ def _assert_nan(test_case, actual):
   test_case.assertTrue(math.isnan(actual), 'Expected NAN, got %s.' % actual)
 
 
+def _assert_local_variables(test_case, expected):
+  test_case.assertEquals(
+      set(expected), set(v.name for v in tf.local_variables()))
+
+
 class StreamingMeanTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_mean(tf.ones([4, 3]))
+    _assert_local_variables(self, ('mean/count:0', 'mean/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -299,6 +308,11 @@ class StreamingMeanTensorTest(tf.test.TestCase):
   def setUp(self):
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_mean_tensor(tf.ones([4, 3]))
+    _assert_local_variables(self, (
+        'mean/total_tensor:0', 'mean/count_tensor:0'))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_mean_tensor(
@@ -450,6 +464,13 @@ class StreamingAccuracyTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_accuracy(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)),
+        name='my_accuracy')
+    _assert_local_variables(self, (
+        'my_accuracy/count:0', 'my_accuracy/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -607,11 +628,403 @@ class StreamingAccuracyTest(tf.test.TestCase):
       self.assertEqual(1.0, accuracy.eval())
 
 
+class StreamingTruePositivesTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_true_positives((0, 1, 0), (0, 1, 1))
+    _assert_local_variables(self, ('true_positives/count:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tp, tp_update_op = metrics.streaming_true_positives(predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, tp.eval())
+      self.assertEqual(1, tp_update_op.eval())
+      self.assertEqual(1, tp.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tp, tp_update_op = metrics.streaming_true_positives(
+        predictions, labels, weights=(37.0,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, tp.eval())
+      self.assertEqual(37.0, tp_update_op.eval())
+      self.assertEqual(37.0, tp.eval())
+
+
+class StreamingFalseNegativesTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_negatives((0, 1, 0), (0, 1, 1))
+    _assert_local_variables(self, ('false_negatives/count:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fn, fn_update_op = metrics.streaming_false_negatives(predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, fn.eval())
+      self.assertEqual(2, fn_update_op.eval())
+      self.assertEqual(2, fn.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fn, fn_update_op = metrics.streaming_false_negatives(
+        predictions, labels, weights=((3.0,), (5.0,), (7.0,)))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, fn.eval())
+      self.assertEqual(8.0, fn_update_op.eval())
+      self.assertEqual(8.0, fn.eval())
+
+
+class StreamingFalsePositivesTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_positives((0, 1, 0), (0, 1, 1))
+    _assert_local_variables(self, ('false_positives/count:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fp, fp_update_op = metrics.streaming_false_positives(predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, fp.eval())
+      self.assertEqual(4, fp_update_op.eval())
+      self.assertEqual(4, fp.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fp, fp_update_op = metrics.streaming_false_positives(
+        predictions, labels, weights=(
+            (1.0, 2.0, 3.0, 5.0),
+            (7.0, 11.0, 13.0, 17.0),
+            (19.0, 23.0, 29.0, 31.0)))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, fp.eval())
+      self.assertEqual(42.0, fp_update_op.eval())
+      self.assertEqual(42.0, fp.eval())
+
+
+class StreamingTrueNegativesTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_true_negatives((0, 1, 0), (0, 1, 1))
+    _assert_local_variables(self, ('true_negatives/count:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tn, tn_update_op = metrics.streaming_true_negatives(predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, tn.eval())
+      self.assertEqual(5, tn_update_op.eval())
+      self.assertEqual(5, tn.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (1, 0, 1, 0),
+        (0, 1, 1, 1),
+        (0, 0, 0, 0)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tn, tn_update_op = metrics.streaming_true_negatives(
+        predictions, labels, weights=(0.0, 2.0, 3.0, 5.0))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertEqual(0, tn.eval())
+      self.assertEqual(15.0, tn_update_op.eval())
+      self.assertEqual(15.0, tn.eval())
+
+
+class StreamingTruePositivesAtThresholdsTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_true_positives_at_thresholds(
+        (0.0, 1.0, 0.0), (0, 1, 1), thresholds=(0.15, 0.5, 0.85,))
+    _assert_local_variables(self, ('true_positives:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tp, tp_update_op = metrics.streaming_true_positives_at_thresholds(
+        predictions, labels, thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), tp.eval())
+      self.assertAllEqual((3, 1, 0), tp_update_op.eval())
+      self.assertAllEqual((3, 1, 0), tp.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tp, tp_update_op = metrics.streaming_true_positives_at_thresholds(
+        predictions, labels, weights=(37.0,), thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), tp.eval())
+      self.assertAllEqual((111.0, 37.0, 0.0), tp_update_op.eval())
+      self.assertAllEqual((111.0, 37.0, 0.0), tp.eval())
+
+
+class StreamingFalseNegativesAtThresholdsTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_negatives_at_thresholds(
+        (0.0, 1.0, 0.0), (0, 1, 1), thresholds=(0.15, 0.5, 0.85,))
+    _assert_local_variables(self, ('false_negatives:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fn, fn_update_op = metrics.streaming_false_negatives_at_thresholds(
+        predictions, labels, thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), fn.eval())
+      self.assertAllEqual((0, 2, 3), fn_update_op.eval())
+      self.assertAllEqual((0, 2, 3), fn.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fn, fn_update_op = metrics.streaming_false_negatives_at_thresholds(
+        predictions, labels, weights=((3.0,), (5.0,), (7.0,)),
+        thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), fn.eval())
+      self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op.eval())
+      self.assertAllEqual((0.0, 8.0, 11.0), fn.eval())
+
+
+class StreamingFalsePositivesAtThresholdsTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_positives_at_thresholds(
+        (0.0, 1.0, 0.0), (0, 1, 1), thresholds=(0.15, 0.5, 0.85,))
+    _assert_local_variables(self, ('false_positives:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fp, fp_update_op = metrics.streaming_false_positives_at_thresholds(
+        predictions, labels, thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), fp.eval())
+      self.assertAllEqual((7, 4, 2), fp_update_op.eval())
+      self.assertAllEqual((7, 4, 2), fp.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    fp, fp_update_op = metrics.streaming_false_positives_at_thresholds(
+        predictions, labels, weights=(
+            (1.0, 2.0, 3.0, 5.0),
+            (7.0, 11.0, 13.0, 17.0),
+            (19.0, 23.0, 29.0, 31.0)), thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), fp.eval())
+      self.assertAllEqual((125.0, 42.0, 12.0), fp_update_op.eval())
+      self.assertAllEqual((125.0, 42.0, 12.0), fp.eval())
+
+
+class StreamingTrueNegativesAtThresholdsTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_true_negatives_at_thresholds(
+        (0.0, 1.0, 0.0), (0, 1, 1), thresholds=(0.15, 0.5, 0.85,))
+    _assert_local_variables(self, ('true_negatives:0',))
+
+  def testUnweighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tn, tn_update_op = metrics.streaming_true_negatives_at_thresholds(
+        predictions, labels, thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0, 0, 0), tn.eval())
+      self.assertAllEqual((2, 5, 7), tn_update_op.eval())
+      self.assertAllEqual((2, 5, 7), tn.eval())
+
+  def testWeighted(self):
+    predictions = tf.constant((
+        (0.9, 0.2, 0.8, 0.1),
+        (0.2, 0.9, 0.7, 0.6),
+        (0.1, 0.2, 0.4, 0.3)))
+    labels = tf.constant((
+        (0, 1, 1, 0),
+        (1, 0, 0, 0),
+        (0, 0, 0, 0)))
+    tn, tn_update_op = metrics.streaming_true_negatives_at_thresholds(
+        predictions, labels, weights=(0.0, 2.0, 3.0, 5.0),
+        thresholds=(0.15, 0.5, 0.85,))
+
+    with self.test_session() as sess:
+      sess.run(tf.local_variables_initializer())
+      self.assertAllEqual((0.0, 0.0, 0.0), tn.eval())
+      self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op.eval())
+      self.assertAllEqual((5.0, 15.0, 23.0), tn.eval())
+
+
 class StreamingPrecisionTest(tf.test.TestCase):
 
   def setUp(self):
     np.random.seed(1)
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_precision(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'precision/false_positives/count:0',
+        'precision/true_positives/count:0'
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -770,6 +1183,14 @@ class StreamingRecallTest(tf.test.TestCase):
     np.random.seed(1)
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_recall(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'recall/false_negatives/count:0',
+        'recall/true_positives/count:0'
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_recall(
@@ -884,6 +1305,16 @@ class StreamingAUCTest(tf.test.TestCase):
   def setUp(self):
     np.random.seed(1)
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_auc(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'auc/true_positives:0',
+        'auc/false_negatives:0',
+        'auc/false_positives:0',
+        'auc/true_negatives:0'
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1127,6 +1558,16 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
     np.random.seed(1)
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_specificity_at_sensitivity(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)), sensitivity=0.7)
+    _assert_local_variables(self, (
+        'specificity_at_sensitivity/true_positives:0',
+        'specificity_at_sensitivity/false_negatives:0',
+        'specificity_at_sensitivity/false_positives:0',
+        'specificity_at_sensitivity/true_negatives:0'
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_specificity_at_sensitivity(
@@ -1250,6 +1691,16 @@ class StreamingSensitivityAtSpecificityTest(tf.test.TestCase):
     np.random.seed(1)
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_sensitivity_at_specificity(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)), specificity=0.7)
+    _assert_local_variables(self, (
+        'sensitivity_at_specificity/true_positives:0',
+        'sensitivity_at_specificity/false_negatives:0',
+        'sensitivity_at_specificity/false_positives:0',
+        'sensitivity_at_specificity/true_negatives:0'
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_sensitivity_at_specificity(
@@ -1353,6 +1804,15 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
   def setUp(self):
     np.random.seed(1)
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_precision_at_thresholds(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0])
+    _assert_local_variables(self, (
+        'precision_at_thresholds/true_positives:0',
+        'precision_at_thresholds/false_positives:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1634,6 +2094,15 @@ class StreamingRecallAtKTest(tf.test.TestCase):
                                       '0.0 0.9 0.1;'
                                       '0.2 0.0 0.8'))
     self._np_labels = [0, 0, 0, 0]
+
+  def testVars(self):
+    metrics.streaming_recall_at_k(
+        predictions=tf.ones((self._batch_size, self._num_classes)),
+        labels=tf.ones((self._batch_size,), dtype=tf.int32), k=1)
+    _assert_local_variables(self, (
+        'recall_at_1/count:0',
+        'recall_at_1/total:0'
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2767,6 +3236,14 @@ class StreamingMeanAbsoluteErrorTest(tf.test.TestCase):
   def setUp(self):
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_mean_absolute_error(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'mean_absolute_error/count:0',
+        'mean_absolute_error/total:0'
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_mean_absolute_error(
@@ -2819,6 +3296,15 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_mean_relative_error(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)),
+        normalizer=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'mean_relative_error/count:0',
+        'mean_relative_error/total:0'
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2895,6 +3381,14 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_mean_squared_error(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'mean_squared_error/count:0',
+        'mean_squared_error/total:0'
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3061,6 +3555,14 @@ class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
   def setUp(self):
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_root_mean_squared_error(
+        predictions=tf.ones((10, 1)), labels=tf.ones((10, 1)))
+    _assert_local_variables(self, (
+        'root_mean_squared_error/count:0',
+        'root_mean_squared_error/total:0'
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_root_mean_squared_error(
@@ -3144,6 +3646,17 @@ class StreamingCovarianceTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_covariance(
+        predictions=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        labels=tf.to_float(tf.range(10)) + tf.ones([10, 10]))
+    _assert_local_variables(self, (
+        'covariance/comoment:0',
+        'covariance/count:0',
+        'covariance/mean_label:0',
+        'covariance/mean_prediction:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3288,6 +3801,25 @@ class StreamingPearsonRTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_pearson_correlation(
+        predictions=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        labels=tf.to_float(tf.range(10)) + tf.ones([10, 10]))
+    _assert_local_variables(self, (
+        'pearson_r/covariance/comoment:0',
+        'pearson_r/covariance/count:0',
+        'pearson_r/covariance/mean_label:0',
+        'pearson_r/covariance/mean_prediction:0',
+        'pearson_r/variance_labels/count:0',
+        'pearson_r/variance_labels/comoment:0',
+        'pearson_r/variance_labels/mean_label:0',
+        'pearson_r/variance_labels/mean_prediction:0',
+        'pearson_r/variance_predictions/comoment:0',
+        'pearson_r/variance_predictions/count:0',
+        'pearson_r/variance_predictions/mean_label:0',
+        'pearson_r/variance_predictions/mean_prediction:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3442,6 +3974,14 @@ class StreamingMeanCosineDistanceTest(tf.test.TestCase):
   def setUp(self):
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_mean_cosine_distance(
+        predictions=tf.ones((10, 3)), labels=tf.ones((10, 3)), dim=1)
+    _assert_local_variables(self, (
+        'mean_cosine_distance/count:0',
+        'mean_cosine_distance/total:0',
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_mean_cosine_distance(
@@ -3579,6 +4119,13 @@ class PcntBelowThreshTest(tf.test.TestCase):
   def setUp(self):
     tf.reset_default_graph()
 
+  def testVars(self):
+    metrics.streaming_percentage_less(values=tf.ones((10,)), threshold=2)
+    _assert_local_variables(self, (
+        'percentage_below_threshold/count:0',
+        'percentage_below_threshold/total:0',
+    ))
+
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.streaming_percentage_less(
@@ -3641,6 +4188,11 @@ class StreamingMeanIOUTest(tf.test.TestCase):
   def setUp(self):
     np.random.seed(1)
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_mean_iou(
+        predictions=tf.ones([10, 1]), labels=tf.ones([10, 1]), num_classes=2)
+    _assert_local_variables(self, ('mean_iou/total_confusion_matrix:0',))
 
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
@@ -3864,6 +4416,13 @@ class StreamingConcatTest(tf.test.TestCase):
 
   def setUp(self):
     tf.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_concat(values=tf.ones((10,)))
+    _assert_local_variables(self, (
+        'streaming_concat/array:0',
+        'streaming_concat/size:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'

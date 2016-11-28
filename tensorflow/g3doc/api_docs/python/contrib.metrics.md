@@ -125,7 +125,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`accuracy`</b>: A tensor representing the accuracy, the value of `total` divided
+*  <b>`accuracy`</b>: A `Tensor` representing the accuracy, the value of `total` divided
     by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `accuracy`.
@@ -171,7 +171,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean`</b>: A tensor representing the current mean, the value of `total` divided
+*  <b>`mean`</b>: A `Tensor` representing the current mean, the value of `total` divided
     by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_value`.
@@ -234,6 +234,55 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 - - -
 
+### `tf.contrib.metrics.streaming_recall_at_thresholds(predictions, labels, thresholds, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_recall_at_thresholds}
+
+Computes various recall values for different `thresholds` on `predictions`.
+
+The `streaming_recall_at_thresholds` function creates four local variables,
+`true_positives`, `true_negatives`, `false_positives` and `false_negatives`
+for various values of thresholds. `recall[i]` is defined as the total weight
+of values in `predictions` above `thresholds[i]` whose corresponding entry in
+`labels` is `True`, divided by the total weight of `True` values in `labels`
+(`true_positives[i] / (true_positives[i] + false_negatives[i])`).
+
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the `recall`.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
+    are in the range `[0, 1]`.
+*  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
+*  <b>`thresholds`</b>: A python list or tuple of float thresholds in `[0, 1]`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that `recall` should be
+    added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
+    be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`recall`</b>: A float `Tensor` of shape `[len(thresholds)]`.
+*  <b>`update_op`</b>: An operation that increments the `true_positives`,
+    `true_negatives`, `false_positives` and `false_negatives` variables that
+    are used in the computation of `recall`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
+
+
+- - -
+
 ### `tf.contrib.metrics.streaming_precision(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_precision}
 
 Computes the precision of the predictions with respect to the labels.
@@ -272,6 +321,57 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_positives` variables appropriately and whose value matches
     `precision`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_precision_at_thresholds(predictions, labels, thresholds, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_precision_at_thresholds}
+
+Computes precision values for different `thresholds` on `predictions`.
+
+The `streaming_precision_at_thresholds` function creates four local variables,
+`true_positives`, `true_negatives`, `false_positives` and `false_negatives`
+for various values of thresholds. `precision[i]` is defined as the total
+weight of values in `predictions` above `thresholds[i]` whose corresponding
+entry in `labels` is `True`, divided by the total weight of values in
+`predictions` above `thresholds[i]` (`true_positives[i] / (true_positives[i] +
+false_positives[i])`).
+
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`precision`.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
+    are in the range `[0, 1]`.
+*  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
+*  <b>`thresholds`</b>: A python list or tuple of float thresholds in `[0, 1]`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that `auc` should be
+    added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
+    be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`precision`</b>: A float `Tensor` of shape `[len(thresholds)]`.
+*  <b>`update_op`</b>: An operation that increments the `true_positives`,
+    `true_negatives`, `false_positives` and `false_negatives` variables that
+    are used in the computation of `precision`.
 
 ##### Raises:
 
@@ -333,7 +433,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`auc`</b>: A scalar tensor representing the current area-under-curve.
+*  <b>`auc`</b>: A scalar `Tensor` representing the current area-under-curve.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
     appropriately and whose value matches `auc`.
@@ -373,8 +473,8 @@ Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: A floating point tensor of dimension [batch_size, num_classes]
-    labels: A tensor of dimension [batch_size] whose type is in `int32`,
+    predictions: A float `Tensor` of dimension [batch_size, num_classes].
+    labels: A `Tensor` of dimension [batch_size] whose type is in `int32`,
       `int64`.
     k: The number of top elements to look at for computing recall.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
@@ -385,7 +485,7 @@ Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] 
     name: An optional variable_scope name.
 
   Returns:
-    recall_at_k: A tensor representing the recall@k, the fraction of labels
+    recall_at_k: A `Tensor` representing the recall@k, the fraction of labels
       which fall into the top `k` predictions.
     update_op: An operation that increments the `total` and `count` variables
       appropriately and whose value matches `recall_at_k`.
@@ -434,7 +534,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_absolute_error`</b>: A tensor representing the current mean, the value of
+*  <b>`mean_absolute_error`</b>: A `Tensor` representing the current mean, the value of
     `total` divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_absolute_error`.
@@ -472,10 +572,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: A tensor of prediction results for semantic labels, whose
+*  <b>`predictions`</b>: A `Tensor` of prediction results for semantic labels, whose
     shape is [batch size] and type `int32` or `int64`. The tensor will be
     flattened, if its rank > 1.
-*  <b>`labels`</b>: A tensor of ground truth labels with shape [batch size] and of
+*  <b>`labels`</b>: A `Tensor` of ground truth labels with shape [batch size] and of
     type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
 *  <b>`num_classes`</b>: The possible number of labels the prediction task can
     have. This value must be provided, since a confusion matrix of
@@ -490,7 +590,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_iou`</b>: A tensor representing the mean intersection-over-union.
+*  <b>`mean_iou`</b>: A `Tensor` representing the mean intersection-over-union.
 *  <b>`update_op`</b>: An operation that increments the confusion matrix.
 
 ##### Raises:
@@ -540,7 +640,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_relative_error`</b>: A tensor representing the current mean, the value of
+*  <b>`mean_relative_error`</b>: A `Tensor` representing the current mean, the value of
     `total` divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_relative_error`.
@@ -591,7 +691,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_squared_error`</b>: A tensor representing the current mean, the value of
+*  <b>`mean_squared_error`</b>: A `Tensor` representing the current mean, the value of
     `total` divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_squared_error`.
@@ -642,7 +742,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`root_mean_squared_error`</b>: A tensor representing the current mean, the value
+*  <b>`root_mean_squared_error`</b>: A `Tensor` representing the current mean, the value
     of `total` divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `root_mean_squared_error`.
@@ -752,7 +852,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Returns:
 
 
-*  <b>`pearson_r`</b>: A tensor representing the current Pearson product-moment
+*  <b>`pearson_r`</b>: A `Tensor` representing the current Pearson product-moment
     correlation coefficient, the value of
     `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
 *  <b>`update_op`</b>: An operation that updates the underlying variables appropriately.
@@ -800,7 +900,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_distance`</b>: A tensor representing the current mean, the value of `total`
+*  <b>`mean_distance`</b>: A `Tensor` representing the current mean, the value of `total`
     divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately.
@@ -847,7 +947,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`percentage`</b>: A tensor representing the current mean, the value of `total`
+*  <b>`percentage`</b>: A `Tensor` representing the current mean, the value of `total`
     divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately.
@@ -902,7 +1002,7 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 ##### Returns:
 
 
-*  <b>`sensitivity`</b>: A scalar tensor representing the sensitivity at the given
+*  <b>`sensitivity`</b>: A scalar `Tensor` representing the sensitivity at the given
     `specificity` value.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
@@ -1238,7 +1338,7 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 ##### Returns:
 
 
-*  <b>`specificity`</b>: A scalar tensor representing the specificity at the given
+*  <b>`specificity`</b>: A scalar `Tensor` representing the specificity at the given
     `specificity` value.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
@@ -1274,8 +1374,8 @@ using the same framework as other streaming metrics.
 ##### Args:
 
 
-*  <b>`values`</b>: tensor to concatenate. Rank and the shape along all axes other than
-    the axis to concatenate along must be statically known.
+*  <b>`values`</b>: `Tensor` to concatenate. Rank and the shape along all axes other
+    than the axis to concatenate along must be statically known.
 *  <b>`axis`</b>: optional integer axis to concatenate along.
 *  <b>`max_size`</b>: optional integer maximum size of `value` along the given axis.
     Once the maximum size is reached, further updates are no-ops. By default,
@@ -1289,7 +1389,7 @@ using the same framework as other streaming metrics.
 ##### Returns:
 
 
-*  <b>`value`</b>: A tensor representing the concatenated values.
+*  <b>`value`</b>: A `Tensor` representing the concatenated values.
 *  <b>`update_op`</b>: An operation that concatenates the next values.
 
 ##### Raises:
@@ -1298,6 +1398,181 @@ using the same framework as other streaming metrics.
 *  <b>`ValueError`</b>: if `values` does not have a statically known rank, `axis` is
     not in the valid range or the size of `values` is not statically known
     along any axis other than `axis`.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_false_negatives(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_false_negatives}
+
+Computes the total number of false positives.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
+    dimensions.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
+    match `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that the metric
+    value variable should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that the metric update
+    ops should be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`value_tensor`</b>: A `Tensor` representing the current value of the metric.
+*  <b>`update_op`</b>: An operation that accumulates the error from a batch of data.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match `values`,
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_false_negatives_at_thresholds(predictions, labels, thresholds, weights=None)` {#streaming_false_negatives_at_thresholds}
+
+
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_false_positives(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_false_positives}
+
+Sum the weights of false positives.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
+    dimensions.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
+    match `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that the metric
+    value variable should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that the metric update
+    ops should be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`value_tensor`</b>: A `Tensor` representing the current value of the metric.
+*  <b>`update_op`</b>: An operation that accumulates the error from a batch of data.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_false_positives_at_thresholds(predictions, labels, thresholds, weights=None)` {#streaming_false_positives_at_thresholds}
+
+
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_true_negatives(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_true_negatives}
+
+Sum the weights of true_negatives.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
+    dimensions.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
+    match `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that the metric
+    value variable should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that the metric update
+    ops should be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`value_tensor`</b>: A `Tensor` representing the current value of the metric.
+*  <b>`update_op`</b>: An operation that accumulates the error from a batch of data.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_true_negatives_at_thresholds(predictions, labels, thresholds, weights=None)` {#streaming_true_negatives_at_thresholds}
+
+
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_true_positives(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_true_positives}
+
+Sum the weights of true_positives.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
+    dimensions.
+*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
+    match `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`metrics_collections`</b>: An optional list of collections that the metric
+    value variable should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that the metric update
+    ops should be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`value_tensor`</b>: A `Tensor` representing the current value of the metric.
+*  <b>`update_op`</b>: An operation that accumulates the error from a batch of data.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_true_positives_at_thresholds(predictions, labels, thresholds, weights=None)` {#streaming_true_positives_at_thresholds}
+
+
 
 
 
@@ -1447,7 +1722,7 @@ Aggregates the metric value tensors and update ops into two lists.
 
 ##### Returns:
 
-  a list of value tensors and a list of update ops.
+  A list of value `Tensor` objects and a list of update ops.
 
 ##### Raises:
 

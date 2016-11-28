@@ -433,8 +433,6 @@ class Variable(object):
 
     Returns a `Tensor` which holds the value of the variable.  You can not
     assign a new value to this tensor as it is not a reference to the variable.
-    See [`ref()`](#Variable.ref) if you want to get a reference to the
-    variable.
 
     To avoid copies, if the consumer of the returned value is on the same device
     as the variable, this actually returns the live value of the variable, not

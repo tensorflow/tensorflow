@@ -104,6 +104,7 @@ functions on matrices to your graph.
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls
+@@qr
 @@self_adjoint_eig
 @@self_adjoint_eigvals
 @@svd
@@ -928,7 +929,33 @@ def truediv(x, y, name=None):
     if dtype is not None:
       x = cast(x, dtype)
       y = cast(y, dtype)
-    return gen_math_ops.div(x, y, name=name)
+    return gen_math_ops.real_div(x, y, name=name)
+
+
+def div(x, y, name=None):
+  with ops.name_scope(name, "truediv", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    if x_dtype.is_floating or x_dtype.is_complex:
+      return gen_math_ops.real_div(x, y, name=name)
+    else:
+      return gen_math_ops.floor_div(x, y, name=name)
+
+
+def div_deprecated(x, y, name=None):
+  return gen_math_ops.div(x, y, name)
+
+
+mod = gen_math_ops.floor_mod
+
+
+def mod_deprecated(x, y, name=None):
+  return gen_math_ops.mod(x, y, name)
 
 
 # TODO(aselle): Deprecate this once all internal functionality uses
@@ -959,6 +986,11 @@ def floordiv(x, y, name=None):
   Raises:
     TypeError: If the inputs are complex.
   """
+  with ops.name_scope(name, "floordiv", [x, y]) as name:
+    return gen_math_ops.floor_div(x, y, name=name)
+
+
+def floordiv_deprecated(x, y, name=None):
   with ops.name_scope(name, "floordiv", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     dtype = x.dtype
@@ -1002,12 +1034,12 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
 _OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
+_OverrideBinaryOperatorHelper(div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 # TODO(aselle): Switch mod to floor_mod when ready
 # _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
-_OverrideBinaryOperatorHelper(gen_math_ops.mod, "mod")
+_OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
 

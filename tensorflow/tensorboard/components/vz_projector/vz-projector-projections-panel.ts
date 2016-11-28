@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, PCA_SAMPLE_DIM, Projection, ProjectionType, SAMPLE_SIZE, SpriteAndMetadataInfo, State} from './data';
+import {DataSet, PCA_SAMPLE_DIM, PCA_SAMPLE_SIZE, Projection, ProjectionType, SpriteAndMetadataInfo, State, TSNE_SAMPLE_SIZE} from './data';
 import * as vector from './vector';
 import {Vector} from './vector';
 import {Projector} from './vz-projector';
@@ -296,9 +296,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.clearCentroids();
 
     this.dom.select('#tsne-sampling')
-        .style('display', dataSet.points.length > SAMPLE_SIZE ? null : 'none');
+        .style(
+            'display',
+            dataSet.points.length > TSNE_SAMPLE_SIZE ? null : 'none');
+    let wasSampled =
+        dataSet.dim[0] > PCA_SAMPLE_SIZE || dataSet.dim[1] > PCA_SAMPLE_DIM;
     this.dom.select('#pca-sampling')
-        .style('display', dataSet.dim[1] > PCA_SAMPLE_DIM ? null : 'none');
+        .style('display', wasSampled ? null : 'none');
     this.showTab('pca');
   }
 
@@ -538,12 +542,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     return {centroid: vector.centroid(r, accessor), numMatches: r.length};
   }
 
-  getPcaSampledDim() {
+  getPcaSampledDimText() {
     return PCA_SAMPLE_DIM.toLocaleString();
   }
 
-  getTsneSampleSize() {
-    return SAMPLE_SIZE.toLocaleString();
+  getPcaSampleSizeText() {
+    return PCA_SAMPLE_SIZE.toLocaleString();
+  }
+
+  getTsneSampleSizeText() {
+    return TSNE_SAMPLE_SIZE.toLocaleString();
   }
 }
 
