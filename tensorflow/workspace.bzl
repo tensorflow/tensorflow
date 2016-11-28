@@ -248,3 +248,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "zlib",
     actual = "@zlib_archive//:zlib",
   )
+
+  # Make junit-4.12 available as //external:junit
+  native.http_jar(
+    name = "junit_jar",
+    url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
+    sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+  )
+
+  native.bind(
+    name = "junit",
+    actual = "@junit_jar//jar",
+  )
