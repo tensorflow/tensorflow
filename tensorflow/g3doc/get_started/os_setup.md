@@ -70,8 +70,15 @@ $ pip install tensorflow
 
 Note that you will need pip version 8.1 or later for the above command to work on Linux.
 
-If the above command does not work on your system or you want to install the GPU version
-of the binary, you can install tensorflow by following these instructions:
+For Windows users, you can also install the GPU version of the binary with:
+```bash
+$ pip install tensorflow-gpu
+```
+Unfortunately, this command is not yet available for Linux or Mac GPU binaries
+due to their sizes exceeding the Pypi limit.
+
+If the above commands do not work on your system or you want to install the GPU version
+of the binary on Linux or Mac, you can follow these instructions:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7
