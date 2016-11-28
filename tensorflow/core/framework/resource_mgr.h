@@ -79,6 +79,24 @@ class ResourceBase : public core::RefCounted {
   virtual string DebugString() = 0;
 };
 
+// Container used for per-step resources.
+class ScopedStepContainer {
+ public:
+  // step_id: the unique ID of this step. Doesn't have to be sequential, just
+  // has to be unique.
+  // cleanup: callback to delete a container of this name.
+  ScopedStepContainer(const int64 step_id,
+                      std::function<void(const string&)> cleanup)
+      : name_(strings::StrCat("__per_step_", step_id)), cleanup_(cleanup) {}
+  ~ScopedStepContainer() { cleanup_(name_); }
+
+  const string& name() const { return name_; }
+
+ private:
+  const string name_;
+  const std::function<void(const string&)> cleanup_;
+};
+
 class ResourceMgr {
  public:
   ResourceMgr();
@@ -165,6 +183,9 @@ class ResourceMgr {
 template <typename T>
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name);
+template <typename T>
+ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
+                                         const string& name);
 
 // Returns a resource handle from a numbered op input.
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
@@ -383,6 +404,12 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   return result;
+}
+
+template <typename T>
+ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
+                                         const string& name) {
+  return MakeResourceHandle<T>(ctx, ctx->step_container()->name(), name);
 }
 
 namespace internal {
