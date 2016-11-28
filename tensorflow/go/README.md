@@ -76,5 +76,4 @@ go test -v github.com/tensorflow/tensorflow/tensorflow/go
 This API has been built on top of the [C
 API](https://www.tensorflow.org/code/tensorflow/c/c_api.h),
 which is intended for building language bindings for TensorFlow functionality.
-However, this is far from complete. Contributions are welcome. To monitor
-progress follow [issue 10](https://github.com/tensorflow/tensorflow/issues/10).
+However, this is far from complete. Contributions are welcome.
