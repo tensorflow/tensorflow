@@ -23,6 +23,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -34,6 +35,7 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python import summary
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -64,6 +66,31 @@ def _add_hidden_layer_summary(value, tag):
   summary.histogram("%s_activation" % tag, value)
 
 
+def _get_embedding_variable(column, collection_key, input_layer_scope):
+  return ops.get_collection(collection_key,
+                            input_layer_scope + "/" + column.name)
+
+
+def _extract_embedding_lr_multipliers(embedding_lr_multipliers, collection_key,
+                                      input_layer_scope):
+  """Convert embedding lr multipliers to variable based gradient multiplier."""
+  if not embedding_lr_multipliers:
+    return None
+  gradient_multipliers = {}
+  for column, lr_mult in embedding_lr_multipliers.items():
+    if not isinstance(column, feature_column_lib._EmbeddingColumn):  # pylint: disable=protected-access
+      raise ValueError(
+          "learning rate multipler can be defined for embedding columns. "
+          "It is defined for {}".format(column))
+    embedding = _get_embedding_variable(
+        column, collection_key, input_layer_scope)
+    if not embedding:
+      raise ValueError("Couldn't find a variable for column {}".format(column))
+    for v in embedding:
+      gradient_multipliers[v] = lr_mult
+  return gradient_multipliers
+
+
 def _dnn_model_fn(features, labels, mode, params):
   """Deep Neural Net model_fn.
 
@@ -89,6 +116,9 @@ def _dnn_model_fn(features, labels, mode, params):
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
       * num_ps_replicas: The number of parameter server replicas.
+      * embedding_lr_multipliers: Optional. A dictionary from
+        `EbeddingColumn` to a `float` multiplier. Multiplier will be used to
+        multiply with learning rate for the embedding variables.
 
   Returns:
     predictions: A dict of `Tensor` objects.
@@ -103,6 +133,7 @@ def _dnn_model_fn(features, labels, mode, params):
   dropout = params.get("dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
   num_ps_replicas = params.get("num_ps_replicas", 0)
+  embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
 
   features = _get_feature_dict(features)
   parent_scope = "dnn"
@@ -111,8 +142,9 @@ def _dnn_model_fn(features, labels, mode, params):
       partitioned_variables.min_max_variable_partitioner(
           max_partitions=num_ps_replicas,
           min_slice_size=64 << 20))
+  input_layer_scope = parent_scope + "/input_from_feature_columns"
   with variable_scope.variable_scope(
-      parent_scope + "/input_from_feature_columns",
+      input_layer_scope,
       values=features.values(),
       partitioner=input_layer_partitioner) as scope:
     net = layers.input_from_feature_columns(
@@ -160,6 +192,8 @@ def _dnn_model_fn(features, labels, mode, params):
         global_step=contrib_variables.get_global_step(),
         learning_rate=_LEARNING_RATE,
         optimizer=_get_optimizer(optimizer),
+        gradient_multipliers=_extract_embedding_lr_multipliers(
+            embedding_lr_multipliers, parent_scope, input_layer_scope),
         clip_gradients=gradient_clip_norm,
         name=parent_scope,
         # Empty summaries to prevent optimizers from logging the training_loss.
@@ -234,7 +268,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                gradient_clip_norm=None,
                enable_centered_bias=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               embedding_lr_multipliers=None):
     """Initializes a DNNClassifier instance.
 
     Args:
@@ -271,6 +306,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
+      embedding_lr_multipliers: Optional. A dictionary from `EbeddingColumn` to
+          a `float` multiplier. Multiplier will be used to multiply with
+          learning rate for the embedding variables.
 
     Returns:
       A `DNNClassifier` estimator.
@@ -287,17 +325,27 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         model_dir=model_dir,
         config=config,
         params={
-            "head": head_lib._multi_class_head(  # pylint: disable=protected-access
-                n_classes,
-                weight_column_name=weight_column_name,
-                enable_centered_bias=enable_centered_bias),
-            "hidden_units": hidden_units,
-            "feature_columns": feature_columns,
-            "optimizer": optimizer,
-            "activation_fn": activation_fn,
-            "dropout": dropout,
-            "gradient_clip_norm": gradient_clip_norm,
-            "num_ps_replicas": config.num_ps_replicas if config else 0,
+            "head":
+                head_lib._multi_class_head(  # pylint: disable=protected-access
+                    n_classes,
+                    weight_column_name=weight_column_name,
+                    enable_centered_bias=enable_centered_bias),
+            "hidden_units":
+                hidden_units,
+            "feature_columns":
+                feature_columns,
+            "optimizer":
+                optimizer,
+            "activation_fn":
+                activation_fn,
+            "dropout":
+                dropout,
+            "gradient_clip_norm":
+                gradient_clip_norm,
+            "num_ps_replicas":
+                config.num_ps_replicas if config else 0,
+            "embedding_lr_multipliers":
+                embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
 
