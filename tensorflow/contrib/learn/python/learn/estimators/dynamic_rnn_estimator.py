@@ -689,7 +689,6 @@ def multi_value_rnn_regressor(num_units,
                               output_keep_probability=None,
                               model_dir=None,
                               config=None,
-                              params=None,
                               feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts sequences of values.
 
@@ -722,9 +721,6 @@ def multi_value_rnn_regressor(num_units,
     model_dir: The directory in which to save and restore the model graph,
       parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
-      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
-      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -753,7 +749,6 @@ def multi_value_rnn_regressor(num_units,
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
 
 
@@ -773,7 +768,6 @@ def multi_value_rnn_classifier(num_classes,
                                output_keep_probability=None,
                                model_dir=None,
                                config=None,
-                               params=None,
                                feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts sequences of labels.
 
@@ -809,9 +803,6 @@ def multi_value_rnn_classifier(num_classes,
     model_dir: The directory in which to save and restore the model graph,
       parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
-      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
-      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -841,7 +832,6 @@ def multi_value_rnn_classifier(num_classes,
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
 
 
@@ -859,7 +849,6 @@ def single_value_rnn_regressor(num_units,
                                output_keep_probability=None,
                                model_dir=None,
                                config=None,
-                               params=None,
                                feature_engineering_fn=None):
   """Create a RNN `Estimator` that predicts single values.
 
@@ -892,9 +881,6 @@ def single_value_rnn_regressor(num_units,
     model_dir: The directory in which to save and restore the model graph,
       parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
-      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
-      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -923,7 +909,6 @@ def single_value_rnn_regressor(num_units,
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
 
 
@@ -943,7 +928,6 @@ def single_value_rnn_classifier(num_classes,
                                 output_keep_probability=None,
                                 model_dir=None,
                                 config=None,
-                                params=None,
                                 feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts single labels.
 
@@ -979,9 +963,6 @@ def single_value_rnn_classifier(num_classes,
     model_dir: The directory in which to save and restore the model graph,
       parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
-      TODO(arnoegw): Remove it. Any value but None raises a ValueError in
-      Estimator.__init__ because our `model_fn` does not accept params.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -1011,5 +992,4 @@ def single_value_rnn_classifier(num_classes,
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
