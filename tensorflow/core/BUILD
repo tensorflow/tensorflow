@@ -931,7 +931,7 @@ tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -942,8 +942,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":worker_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":worker_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -953,7 +953,7 @@ tf_proto_library_cc(
     name = "master_proto",
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -964,8 +964,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":master_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":master_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
