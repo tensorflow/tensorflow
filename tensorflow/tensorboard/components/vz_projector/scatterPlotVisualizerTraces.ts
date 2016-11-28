@@ -69,7 +69,7 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
   }
 
   dispose() {
-    if (!this.traces) {
+    if (this.traces == null) {
       return;
     }
     for (let i = 0; i < this.traces.length; i++) {
@@ -85,32 +85,30 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
     this.scene = scene;
   }
 
-  onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
+  setDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
-    if (dataSet == null) {
+  }
+
+  onPointPositionsChanged(newPositions: Float32Array) {
+    if ((newPositions == null) || (this.traces != null)) {
+      this.dispose();
+    }
+    if ((newPositions == null) || (this.dataSet == null)) {
       return;
     }
+    // Set up the position buffer arrays for each trace.
+    for (let i = 0; i < this.dataSet.traces.length; i++) {
+      let dataTrace = this.dataSet.traces[i];
+      const vertexCount = 2 * (dataTrace.pointIndices.length - 1);
 
-    if ((this.traces == null) ||
-        (this.traces.length !== dataSet.traces.length)) {
-      if (this.traces != null) {
-        this.dispose();
-      }
-      // Set up the position buffer arrays for each trace.
-      for (let i = 0; i < this.dataSet.traces.length; i++) {
-        let dataTrace = this.dataSet.traces[i];
-        const vertexCount = 2 * (dataTrace.pointIndices.length - 1);
+      let traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
+      this.tracePositionBuffer[i] =
+          new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
 
-        let traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
-        this.tracePositionBuffer[i] =
-            new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
-
-        let colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
-        this.traceColorBuffer[i] =
-            new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
-      }
+      let colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
+      this.traceColorBuffer[i] =
+          new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
     }
-
     for (let i = 0; i < this.dataSet.traces.length; i++) {
       const dataTrace = this.dataSet.traces[i];
       let src = 0;

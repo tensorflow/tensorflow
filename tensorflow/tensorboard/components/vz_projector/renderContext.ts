@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+import {DataSet} from './data';
 
 /**
  * LabelRenderParams describes the set of points that should have labels
@@ -19,7 +20,7 @@ limitations under the License.
  */
 export class LabelRenderParams {
   constructor(
-      public labelAccessor: (index: number) => string,
+      public labelAccessor: (ds: DataSet, index: number) => string,
       public pointIndices: Float32Array, public scaleFactors: Float32Array,
       public useSceneOpacityFlags: Int8Array, public defaultFontSize: number,
       public fillColors: Uint8Array, public strokeColors: Uint8Array) {}

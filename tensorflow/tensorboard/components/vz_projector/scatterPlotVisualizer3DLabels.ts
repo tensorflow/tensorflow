@@ -98,7 +98,7 @@ type GlyphTexture = {
 export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private dataSet: DataSet;
   private scene: THREE.Scene;
-  private labelAccessor: (index: number) => string;
+  private labelAccessor: (ds: DataSet, index: number) => string;
   private geometry: THREE.BufferGeometry;
   private worldSpacePointPositions: Float32Array;
   private pickingColors: Float32Array;
@@ -110,6 +110,10 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private totalVertexCount: number;
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
+
+  setDataSet(ds: DataSet) {
+    this.dataSet = ds;
+  }
 
   private createGlyphTexture(): GlyphTexture {
     let canvas = document.createElement('canvas');
@@ -139,11 +143,11 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     return {texture: tex, lengths: glyphLengths, offsets: glyphOffset};
   }
 
-  private processLabelVerts() {
+  private processLabelVerts(pointCount: number) {
     let numTotalLetters = 0;
     this.labelVertexMap = [];
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      let label: string = this.labelAccessor(i).toString();
+    for (let i = 0; i < pointCount; i++) {
+      let label: string = this.labelAccessor(this.dataSet, i).toString();
       let vertsArray: number[] = [];
       for (let j = 0; j < label.length; j++) {
         for (let k = 0; k < VERTICES_PER_GLYPH; k++) {
@@ -156,13 +160,12 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     this.totalVertexCount = numTotalLetters * VERTICES_PER_GLYPH;
   }
 
-  private createColorBuffers() {
-    let numPoints = this.dataSet.points.length;
+  private createColorBuffers(pointCount: number) {
     this.pickingColors =
         new Float32Array(this.totalVertexCount * RGB_ELEMENTS_PER_ENTRY);
     this.renderColors =
         new Float32Array(this.totalVertexCount * RGB_ELEMENTS_PER_ENTRY);
-    for (let i = 0; i < numPoints; i++) {
+    for (let i = 0; i < pointCount; i++) {
       let color = new THREE.Color(i);
       this.labelVertexMap[i].forEach((j) => {
         this.pickingColors[RGB_ELEMENTS_PER_ENTRY * j] = color.r;
@@ -175,7 +178,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private createLabels(dataSet: DataSet) {
+  private createLabels(pointCount: number) {
     this.glyphTexture = this.createGlyphTexture();
 
     this.uniforms = {
@@ -190,8 +193,8 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       fragmentShader: FRAGMENT_SHADER,
     });
 
-    this.processLabelVerts();
-    this.createColorBuffers();
+    this.processLabelVerts(pointCount);
+    this.createColorBuffers(pointCount);
 
     let positionArray =
         new Float32Array(this.totalVertexCount * XYZ_ELEMENTS_PER_ENTRY);
@@ -215,8 +218,8 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     this.geometry.addAttribute('color', colors);
 
     let lettersSoFar = 0;
-    for (let i = 0; i < dataSet.points.length; i++) {
-      let label: string = this.labelAccessor(i).toString();
+    for (let i = 0; i < pointCount; i++) {
+      let label: string = this.labelAccessor(this.dataSet, i).toString();
       let leftOffset = 0;
       // Determine length of word in pixels.
       for (let j = 0; j < label.length; j++) {
@@ -262,8 +265,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       }
     }
 
-    const n = dataSet.points.length;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < pointCount; i++) {
       const p = util.vector3FromPackedArray(this.worldSpacePointPositions, i);
       this.labelVertexMap[i].forEach((j) => {
         this.positions.setXYZ(j, p.x, p.y, p.z);
@@ -319,39 +321,41 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  setLabelAccessor(labelAccessor: (index: number) => string) {
+  setLabelAccessor(labelAccessor: (ds: DataSet, index: number) => string) {
     this.labelAccessor = labelAccessor;
     this.dispose();
-    this.onPointPositionsChanged(this.worldSpacePointPositions, this.dataSet);
+    this.onPointPositionsChanged(this.worldSpacePointPositions);
   }
 
   onPickingRender(rc: RenderContext) {
+    if (this.geometry == null) {
+      return;
+    }
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = true;
-
-    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.pickingColors;
     colors.needsUpdate = true;
   }
 
   onRender(rc: RenderContext) {
+    if (this.geometry == null) {
+      return;
+    }
     this.colorLabels(rc.pointColors);
-
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = false;
-
     const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
     colors.needsUpdate = true;
   }
 
-  onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
+  onPointPositionsChanged(newPositions: Float32Array) {
     this.worldSpacePointPositions = newPositions;
-    this.dataSet = dataSet;
     this.dispose();
-    if ((this.dataSet != null) && (this.labelAccessor != null) &&
+    if ((this.labelAccessor != null) &&
         (this.worldSpacePointPositions != null)) {
-      this.createLabels(this.dataSet);
+      this.createLabels(newPositions.length / 3);
     }
   }
 

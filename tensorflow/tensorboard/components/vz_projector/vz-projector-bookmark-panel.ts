@@ -168,32 +168,33 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
   /** Deselects any selected state selection. */
   clearStateSelection() {
     for (let i = 0; i < this.savedStates.length; i++) {
-      if (this.savedStates[i].isSelected) {
-        this.savedStates[i].isSelected = false;
-        this.notifyPath('savedStates.' + i + '.isSelected', false, false);
-        return;
-      }
+      this.setSelectionState(i, false);
     }
   }
 
   /** Handles a radio button click on a saved state. */
   _radioButtonHandler(evt: Event) {
-    this.loadSavedState(this.getParentDataIndex(evt));
+    const index = this.getParentDataIndex(evt);
+    this.loadSavedState(index);
+    this.setSelectionState(index, true);
   }
 
   loadSavedState(index: number) {
     for (let i = 0; i < this.savedStates.length; i++) {
       if (this.savedStates[i].isSelected) {
-        this.savedStates[i].isSelected = false;
-        this.notifyPath('savedStates.' + i + '.isSelected', false, false);
+        this.setSelectionState(i, false);
       } else if (index === i) {
-        this.savedStates[i].isSelected = true;
-        this.notifyPath('savedStates.' + i + '.isSelected', true, false);
-
+        this.setSelectionState(i, true);
         this.ignoreNextProjectionEvent = true;
         this.projector.loadState(this.savedStates[i]);
       }
     }
+  }
+
+  private setSelectionState(stateIndex: number, selected: boolean) {
+    this.savedStates[stateIndex].isSelected = selected;
+    const path = 'savedStates.' + stateIndex + '.isSelected';
+    this.notifyPath(path, selected, false);
   }
 
   /**
