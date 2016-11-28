@@ -32,150 +32,200 @@ class DataFeederTest(tf.test.TestCase):
   # pylint: disable=undefined-variable
   """Tests for `DataFeeder`."""
 
+  def _wrap_dict(self, data, prepend=''):
+    return {prepend+'1': data, prepend+'2': data}
+
   def _assert_raises(self, input_data):
     with self.assertRaisesRegexp(TypeError, 'annot convert'):
       data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
 
   def test_input_uint32(self):
-    self._assert_raises(np.matrix([[1, 2], [3, 4]], dtype=np.uint32))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint32)
+    self._assert_raises(data)
+    self._assert_raises(self._wrap_dict(data))
 
   def test_input_uint64(self):
-    self._assert_raises(np.matrix([[1, 2], [3, 4]], dtype=np.uint64))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint64)
+    self._assert_raises(data)
+    self._assert_raises(self._wrap_dict(data))
 
   def _assert_dtype(self, expected_np_dtype, expected_tf_dtype, input_data):
     feeder = data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
-    self.assertEqual(expected_np_dtype, feeder.input_dtype)
+    if isinstance(input_data, dict):
+      for k, v in list(feeder.input_dtype.items()):
+        self.assertEqual(expected_np_dtype, v)
+    else:
+      self.assertEqual(expected_np_dtype, feeder.input_dtype)
     with tf.Graph().as_default() as g, self.test_session(g):
       inp, _ = feeder.input_builder()
-      self.assertEqual(expected_tf_dtype, inp.dtype)
+      if isinstance(inp, dict):
+        for k, v in list(inp.items()):
+          self.assertEqual(expected_tf_dtype, v.dtype)
+      else:
+        self.assertEqual(expected_tf_dtype, inp.dtype)
 
   def test_input_int8(self):
-    self._assert_dtype(
-        np.int8, tf.int8, np.matrix([[1, 2], [3, 4]], dtype=np.int8))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.int8)
+    self._assert_dtype(np.int8, tf.int8, data)
+    self._assert_dtype(np.int8, tf.int8, self._wrap_dict(data))
 
   def test_input_int16(self):
-    self._assert_dtype(
-        np.int16, tf.int16, np.matrix([[1, 2], [3, 4]], dtype=np.int16))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.int16)
+    self._assert_dtype(np.int16, tf.int16, data)
+    self._assert_dtype(np.int16, tf.int16, self._wrap_dict(data))
 
   def test_input_int32(self):
-    self._assert_dtype(
-        np.int32, tf.int32, np.matrix([[1, 2], [3, 4]], dtype=np.int32))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.int32)
+    self._assert_dtype(np.int32, tf.int32, data)
+    self._assert_dtype(np.int32, tf.int32, self._wrap_dict(data))
 
   def test_input_int64(self):
-    self._assert_dtype(
-        np.int64, tf.int64, np.matrix([[1, 2], [3, 4]], dtype=np.int64))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.int64)
+    self._assert_dtype(np.int64, tf.int64, data)
+    self._assert_dtype(np.int64, tf.int64, self._wrap_dict(data))
 
   def test_input_uint8(self):
-    self._assert_dtype(
-        np.uint8, tf.uint8, np.matrix([[1, 2], [3, 4]], dtype=np.uint8))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint8)
+    self._assert_dtype(np.uint8, tf.uint8, data)
+    self._assert_dtype(np.uint8, tf.uint8, self._wrap_dict(data))
 
   def test_input_uint16(self):
-    self._assert_dtype(
-        np.uint16, tf.uint16, np.matrix([[1, 2], [3, 4]], dtype=np.uint16))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint16)
+    self._assert_dtype(np.uint16, tf.uint16, data)
+    self._assert_dtype(np.uint16, tf.uint16, self._wrap_dict(data))
 
   def test_input_float16(self):
-    self._assert_dtype(
-        np.float16, tf.float16, np.matrix([[1, 2], [3, 4]], dtype=np.float16))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.float16)
+    self._assert_dtype(np.float16, tf.float16, data)
+    self._assert_dtype(np.float16, tf.float16, self._wrap_dict(data))
 
   def test_input_float32(self):
-    self._assert_dtype(
-        np.float32, tf.float32, np.matrix([[1, 2], [3, 4]], dtype=np.float32))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.float32)
+    self._assert_dtype(np.float32, tf.float32, data)
+    self._assert_dtype(np.float32, tf.float32, self._wrap_dict(data))
 
   def test_input_float64(self):
-    self._assert_dtype(
-        np.float64, tf.float64, np.matrix([[1, 2], [3, 4]], dtype=np.float64))
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.float64)
+    self._assert_dtype(np.float64, tf.float64, data)
+    self._assert_dtype(np.float64, tf.float64, self._wrap_dict(data))
 
   def test_input_bool(self):
-    self._assert_dtype(
-        np.bool, tf.bool,
-        np.array([[False for _ in xrange(2)] for _ in xrange(2)]))
+    data = np.array([[False for _ in xrange(2)] for _ in xrange(2)])
+    self._assert_dtype(np.bool, tf.bool, data)
+    self._assert_dtype(np.bool, tf.bool, self._wrap_dict(data))
 
   def test_input_string(self):
     input_data = np.array([['str%d' % i for i in xrange(2)] for _ in xrange(2)])
     self._assert_dtype(input_data.dtype, tf.string, input_data)
+    self._assert_dtype(input_data.dtype, tf.string, self._wrap_dict(input_data))
+
+  def _assertAllClose(self, src, dest, src_key_of=None, src_prop=None):
+    def func(x):
+      val = getattr(x, src_prop) if src_prop else x
+      return val if src_key_of is None else src_key_of[val]
+    if isinstance(src, dict):
+      for k in list(src.keys()):
+        self.assertAllClose(func(src[k]), dest)
+    else:
+      self.assertAllClose(func(src), dest)
 
   def test_unsupervised(self):
+    def func(feeder):
+      with self.test_session():
+        inp, _ = feeder.input_builder()
+        feed_dict_fn = feeder.get_feed_dict_fn()
+        feed_dict = feed_dict_fn()
+        self._assertAllClose(inp, [[1, 2]], feed_dict, 'name')
     data = np.matrix([[1, 2], [2, 3], [3, 4]])
-    feeder = data_feeder.DataFeeder(data, None, n_classes=0, batch_size=1)
-    with self.test_session():
-      inp, _ = feeder.input_builder()
-      feed_dict_fn = feeder.get_feed_dict_fn()
-      feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[inp.name], [[1, 2]])
+    func(data_feeder.DataFeeder(data, None, n_classes=0, batch_size=1))
+    func(data_feeder.DataFeeder(self._wrap_dict(data), None, n_classes=0, batch_size=1))
 
   def test_data_feeder_regression(self):
+    def func(df):
+      inp, out = df.input_builder()
+      feed_dict_fn = df.get_feed_dict_fn()
+      feed_dict = feed_dict_fn()
+      self._assertAllClose(inp, [[3, 4], [1, 2]], feed_dict, 'name')
+      self._assertAllClose(out, [2, 1], feed_dict, 'name')
     x = np.matrix([[1, 2], [3, 4]])
     y = np.array([1, 2])
-    df = data_feeder.DataFeeder(x, y, n_classes=0, batch_size=3)
-    inp, out = df.input_builder()
-    feed_dict_fn = df.get_feed_dict_fn()
-    feed_dict = feed_dict_fn()
-
-    self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
-    self.assertAllClose(feed_dict[out.name], [2, 1])
+    func(data_feeder.DataFeeder(x, y, n_classes=0, batch_size=3))
+    func(data_feeder.DataFeeder(self._wrap_dict(x, 'in'), self._wrap_dict(y, 'out'),
+                                n_classes=self._wrap_dict(0, 'out'), batch_size=3))
 
   def test_epoch(self):
+    def func(feeder):
+      with self.test_session():
+        feeder.input_builder()
+        epoch = feeder.make_epoch_variable()
+        feed_dict_fn = feeder.get_feed_dict_fn()
+        # First input
+        feed_dict = feed_dict_fn()
+        self.assertAllClose(feed_dict[epoch.name], [0])
+        # Second input
+        feed_dict = feed_dict_fn()
+        self.assertAllClose(feed_dict[epoch.name], [0])
+        # Third input
+        feed_dict = feed_dict_fn()
+        self.assertAllClose(feed_dict[epoch.name], [0])
+        # Back to the first input again, so new epoch.
+        feed_dict = feed_dict_fn()
+        self.assertAllClose(feed_dict[epoch.name], [1])
     data = np.matrix([[1, 2], [2, 3], [3, 4]])
     labels = np.array([0, 0, 1])
-    feeder = data_feeder.DataFeeder(data, labels, n_classes=0, batch_size=1)
-    with self.test_session():
-      feeder.input_builder()
-      epoch = feeder.make_epoch_variable()
-      feed_dict_fn = feeder.get_feed_dict_fn()
-      # First input
-      feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], [0])
-      # Second input
-      feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], [0])
-      # Third input
-      feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], [0])
-      # Back to the first input again, so new epoch.
-      feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], [1])
+    func(data_feeder.DataFeeder(data, labels, n_classes=0, batch_size=1))
+    func(data_feeder.DataFeeder(self._wrap_dict(data, 'in'), self._wrap_dict(labels, 'out'),
+                                n_classes=self._wrap_dict(0, 'out'), batch_size=1))
 
   def test_data_feeder_multioutput_regression(self):
+    def func(df):
+      inp, out = df.input_builder()
+      feed_dict_fn = df.get_feed_dict_fn()
+      feed_dict = feed_dict_fn()
+      self._assertAllClose(inp, [[3, 4], [1, 2]], feed_dict, 'name')
+      self._assertAllClose(out, [[3, 4], [1, 2]], feed_dict, 'name')
     x = np.matrix([[1, 2], [3, 4]])
     y = np.array([[1, 2], [3, 4]])
-    df = data_feeder.DataFeeder(x, y, n_classes=0, batch_size=2)
-    inp, out = df.input_builder()
-    feed_dict_fn = df.get_feed_dict_fn()
-    feed_dict = feed_dict_fn()
-    self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
-    self.assertAllClose(feed_dict[out.name], [[3, 4], [1, 2]])
+    func(data_feeder.DataFeeder(x, y, n_classes=0, batch_size=2))
+    func(data_feeder.DataFeeder(self._wrap_dict(x, 'in'), self._wrap_dict(y, 'out'),
+                                n_classes=self._wrap_dict(0, 'out'), batch_size=2))
 
   def test_data_feeder_multioutput_classification(self):
+    def func(df):
+      inp, out = df.input_builder()
+      feed_dict_fn = df.get_feed_dict_fn()
+      feed_dict = feed_dict_fn()
+      self._assertAllClose(inp, [[3, 4], [1, 2]], feed_dict, 'name')
+      self._assertAllClose(out,
+                          [[[0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1]],
+                           [[1, 0, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0]]],
+                          feed_dict, 'name')
+
     x = np.matrix([[1, 2], [3, 4]])
     y = np.array([[0, 1, 2], [2, 3, 4]])
-    df = data_feeder.DataFeeder(x, y, n_classes=5, batch_size=2)
-    inp, out = df.input_builder()
-    feed_dict_fn = df.get_feed_dict_fn()
-    feed_dict = feed_dict_fn()
-    self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
-    self.assertAllClose(feed_dict[out.name],
-                        [[[0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1]],
-                         [[1, 0, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0]]])
+    func(data_feeder.DataFeeder(x, y, n_classes=5, batch_size=2))
+    func(data_feeder.DataFeeder(self._wrap_dict(x, 'in'), self._wrap_dict(y, 'out'),
+                                n_classes=self._wrap_dict(5, 'out'), batch_size=2))
 
   def test_streaming_data_feeder(self):
+    def func(df):
+      inp, out = df.input_builder()
+      feed_dict_fn = df.get_feed_dict_fn()
+      feed_dict = feed_dict_fn()
+      self._assertAllClose(inp, [[1, 2], [3, 4]], feed_dict, 'name')
+      self._assertAllClose(out, [1, 2], feed_dict, 'name' )
 
-    def x_iter():
-      yield np.array([1, 2])
-      yield np.array([3, 4])
+    def x_iter(wrap_dict=False):
+      yield np.array([1, 2]) if not wrap_dict else self._wrap_dict(np.array([1, 2]), 'in')
+      yield np.array([3, 4]) if not wrap_dict else self._wrap_dict(np.array([3, 4]), 'in')
 
-    def y_iter():
-      yield np.array([1])
-      yield np.array([2])
+    def y_iter(wrap_dict=False):
+      yield np.array([1]) if not wrap_dict else self._wrap_dict(np.array([1]), 'out')
+      yield np.array([2]) if not wrap_dict else self._wrap_dict(np.array([2]), 'out')
 
-    df = data_feeder.StreamingDataFeeder(x_iter(),
-                                         y_iter(),
-                                         n_classes=0,
-                                         batch_size=2)
-    inp, out = df.input_builder()
-    feed_dict_fn = df.get_feed_dict_fn()
-    feed_dict = feed_dict_fn()
-    self.assertAllClose(feed_dict[inp.name], [[1, 2], [3, 4]])
-    self.assertAllClose(feed_dict[out.name], [1, 2])
+    func(data_feeder.StreamingDataFeeder(x_iter(), y_iter(), n_classes=0, batch_size=2))
+    func(data_feeder.StreamingDataFeeder(x_iter(True), y_iter(True),
+                                         n_classes=self._wrap_dict(0, 'out'), batch_size=2))
 
   def test_dask_data_feeder(self):
     if HAS_PANDAS and HAS_DASK:
@@ -196,6 +246,13 @@ class DataFeederTest(tf.test.TestCase):
       self.assertAllClose(feed_dict[out.name], [[0., 0., 1.], [0., 1., 0.]])
 
   def test_hdf5_data_feeder(self):
+    def func(df):
+      inp, out = df.input_builder()
+      feed_dict_fn = df.get_feed_dict_fn()
+      feed_dict = feed_dict_fn()
+      self._assertAllClose(inp, [[3, 4], [1, 2]], feed_dict, 'name')
+      self.assertAllClose(out, [2, 1], feed_dict, 'name')
+
     try:
       import h5py  # pylint: disable=g-import-not-at-top
       x = np.matrix([[1, 2], [3, 4]])
@@ -207,25 +264,28 @@ class DataFeederTest(tf.test.TestCase):
       h5f = h5py.File('test_hdf5.h5', 'r')
       x = h5f['x']
       y = h5f['y']
-      df = data_feeder.DataFeeder(x, y, n_classes=0, batch_size=3)
-      inp, out = df.input_builder()
-      feed_dict_fn = df.get_feed_dict_fn()
-      feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
-      self.assertAllClose(feed_dict[out.name], [2, 1])
+      func(data_feeder.DataFeeder(x, y, n_classes=0, batch_size=3))
+      func(data_feeder.DataFeeder(self._wrap_dict(x, 'in'), self._wrap_dict(y, 'out'),
+                                  n_classes=self._wrap_dict(0, 'out'), batch_size=3))
     except ImportError:
       print("Skipped test for hdf5 since it's not installed.")
 
 
-class SetupPredictDataFeederTest(tf.test.TestCase):
+class SetupPredictDataFeederTest(DataFeederTest):
   """Tests for `DataFeeder.setup_predict_data_feeder`."""
 
   def test_iterable_data(self):
     # pylint: disable=undefined-variable
-    x = iter([[1, 2], [3, 4], [5, 6]])
-    df = data_feeder.setup_predict_data_feeder(x, batch_size=2)
-    self.assertAllClose(six.next(df), [[1, 2], [3, 4]])
-    self.assertAllClose(six.next(df), [[5, 6]])
+
+    def func(df):
+      self._assertAllClose(six.next(df), [[1, 2], [3, 4]])
+      self._assertAllClose(six.next(df), [[5, 6]])
+
+    data = [[1, 2], [3, 4], [5, 6]]
+    x = iter(data)
+    x_dict = iter([self._wrap_dict(v) for v in iter(data)])
+    func(data_feeder.setup_predict_data_feeder(x, batch_size=2))
+    func(data_feeder.setup_predict_data_feeder(x_dict, batch_size=2))
 
 
 if __name__ == '__main__':
