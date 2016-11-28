@@ -370,6 +370,15 @@ class VariablesTestCase(tf.test.TestCase):
       for i in v2.initializer.inputs:
         self.assertEqual(expected_group_v2, i.op.colocation_groups())
 
+  def testLoad(self):
+    with self.test_session():
+      var = tf.Variable(np.random.randn(5, 5))
+      tf.global_variables_initializer().run()
+      data = np.random.randn(5, 5)
+      var.load(data)
+
+      self.assertAllClose(data, var.eval())
+
 
 class IsInitializedTest(tf.test.TestCase):
 
