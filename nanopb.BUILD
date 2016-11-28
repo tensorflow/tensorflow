@@ -3,6 +3,8 @@
 
 licenses(["notice"])  # zlib license
 
+exports_files(["LICENSE.txt"])
+
 cc_library(
     name = "nanopb",
     srcs = [

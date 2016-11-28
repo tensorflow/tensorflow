@@ -4,6 +4,8 @@
 
 licenses(["notice"])  # 3-clause BSD
 
+exports_files(["LICENSE"])
+
 cc_library(
     name = "gtest",
     srcs = [

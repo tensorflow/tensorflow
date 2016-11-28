@@ -291,6 +291,71 @@ do_buildifier(){
   fi
 }
 
+do_external_licenses_check(){
+  echo "Running do_external_licenses_check"
+  echo ""
+
+  EXTERNAL_LICENSES_CHECK_START_TIME=$(date +'%s')
+
+  EXTERNAL_DEPENDENCIES_FILE="$(mktemp)_external_dependencies.log"
+  LICENSES_FILE="$(mktemp)_licenses.log"
+  MISSING_LICENSES_FILE="$(mktemp)_missing_licenses.log"
+  EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
+
+  echo "Getting external dependencies for //tensorflow/tools/pip_package:build_pip_package."
+ bazel query 'attr("licenses", "notice", deps(//tensorflow/tools/pip_package:build_pip_package))' --no_implicit_deps --no_host_deps --keep_going \
+  | egrep -v "^//tensorflow" \
+  | sed -e 's|:.*||' \
+  | sort \
+  | uniq 2>&1 \
+  | tee ${EXTERNAL_DEPENDENCIES_FILE}
+
+  echo
+  echo "Getting list of external licenses."
+  bazel query 'deps(//tensorflow/tools/pip_package:licenses)' --no_implicit_deps --no_host_deps --keep_going \
+  | egrep -v "^//tensorflow" \
+  | sed -e 's|:.*||' \
+  | sort \
+  | uniq 2>&1 \
+  | tee ${LICENSES_FILE}
+
+  echo
+  comm -1 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${EXTRA_LICENSES_FILE}
+  echo
+  comm -2 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${MISSING_LICENSES_FILE}
+
+  EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
+
+  echo
+  echo "do_external_licenses_check took $((${EXTERNAL_LICENSES_CHECK_END_TIME} - ${EXTERNAL_LICENSES_CHECK_START_TIME})) s"
+  echo
+
+  if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
+    echo "FAIL: pip package external dependencies vs licenses mismatch."
+    if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
+      echo "Missing the licenses for the following external dependencies:"
+      cat ${MISSING_LICENSES_FILE}
+    fi
+    if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
+      echo "Please remove the licenses for the following external dependencies:"
+      cat ${EXTRA_LICENSES_FILE}
+    fi
+    rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
+    rm -rf ${LICENSES_FILE}
+    rm -rf ${MISSING_LICENSES_FILE}
+    rm -rf ${EXTRA_LICENSES_FILE}
+    return 1
+  else
+    echo "PASS: all external licenses included."
+    rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
+    rm -rf ${LICENSES_FILE}
+    rm -rf ${MISSING_LICENSES_FILE}
+    rm -rf ${EXTRA_LICENSES_FILE}
+    return 0
+  fi
+}
+
+
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
@@ -311,8 +376,8 @@ do_bazel_nobuild() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_external_licenses_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "external dependencies licenses check")
 
 INCREMENTAL_FLAG=""
 

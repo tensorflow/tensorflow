@@ -4,6 +4,8 @@
 
 licenses(["notice"])
 
+exports_files(["LICENSE.TXT"])
+
 load(
     "@//third_party/llvm:llvm.bzl",
     "gentbl",

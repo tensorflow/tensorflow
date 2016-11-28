@@ -3,6 +3,8 @@
 
 licenses(["notice"])  # BSD/MIT-like license
 
+exports_files(["LICENSE"])
+
 cc_library(
     name = "png",
     srcs = [

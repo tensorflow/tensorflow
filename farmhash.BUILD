@@ -1,5 +1,7 @@
 licenses(["notice"])  # MIT
 
+exports_files(["COPYING"])
+
 config_setting(
     name = "windows",
     values = {
@@ -10,13 +12,13 @@ config_setting(
 
 cc_library(
     name = "farmhash",
-    srcs = ["farmhash.cc"],
-    hdrs = ["farmhash.h"],
+    srcs = ["src/farmhash.cc"],
+    hdrs = ["src/farmhash.h"],
     # Disable __builtin_expect support on Windows
     copts = select({
         ":windows" : ["/DFARMHASH_OPTIONAL_BUILTIN_EXPECT"],
         "//conditions:default" : [],
     }),
-    includes = ["."],
+    includes = ["src/."],
     visibility = ["//visibility:public"],
 )

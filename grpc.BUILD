@@ -45,6 +45,8 @@ licenses(["notice"])  # 3-clause BSD
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["LICENSE"])
+
 genrule(
     name = "pb_h",
     outs = ["third_party/nanopb/pb.h"],

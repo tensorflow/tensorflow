@@ -9,6 +9,8 @@ licenses([
     "notice",  # Portions BSD
 ])
 
+exports_files(["COPYING.MPL2",])
+
 # License-restricted (i.e. not reciprocal or notice) files inside Eigen/...
 EIGEN_RESTRICTED_FILES = [
     "Eigen/src/OrderingMethods/Amd.h",

@@ -9,6 +9,8 @@ licenses([
     "notice",  # Portions BSD
 ])
 
+exports_files(["LICENSE"])
+
 cc_library(
     name = "eigen3",
     hdrs = glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"]) + [
