@@ -687,6 +687,7 @@
 * **[Summary Operations](../../api_docs/python/summary.md)**:
   * [`audio`](../../api_docs/python/summary.md#audio)
   * [`FileWriter`](../../api_docs/python/summary.md#FileWriter)
+  * [`FileWriterCache`](../../api_docs/python/summary.md#FileWriterCache)
   * [`get_summary_description`](../../api_docs/python/summary.md#get_summary_description)
   * [`histogram`](../../api_docs/python/summary.md#histogram)
   * [`image`](../../api_docs/python/summary.md#image)
