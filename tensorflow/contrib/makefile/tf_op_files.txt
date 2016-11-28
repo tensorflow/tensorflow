@@ -183,6 +183,8 @@ tensorflow/core/ops/script_ops.cc
 tensorflow/core/ops/random_ops.cc
 tensorflow/core/ops/random_grad.cc
 tensorflow/core/ops/parsing_ops.cc
+tensorflow/core/ops/one_hot_op.cc
+tensorflow/core/ops/non_max_suppression_op.cc
 tensorflow/core/ops/no_op.cc
 tensorflow/core/ops/nn_ops.cc
 tensorflow/core/ops/nn_grad.cc
