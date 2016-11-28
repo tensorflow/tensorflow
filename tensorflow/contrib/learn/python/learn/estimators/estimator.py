@@ -73,6 +73,11 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
     'available in the SKCompat class, Estimator will only accept input_fn.\n'
     'Example conversion:\n'
     '  est = Estimator(...) -> est = SKCompat(Estimator(...))')
+PARAMS_DATE = '2017-02-1'
+PARAMS_INSTRUCTIONS = """\
+    Pass params to the Estimator constructor as individual keyword (or positional) arguments
+    and they will be passed through to the model_fn when it is called
+    """
 
 
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
@@ -334,7 +339,7 @@ class BaseEstimator(
       SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
   )
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+          monitors=None, max_steps=None, *input_fn_args, **input_fn_kwargs):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Trainable`.
 
@@ -348,11 +353,14 @@ class BaseEstimator(
     input_fn, feed_fn = _get_input_fn(x, y, input_fn, feed_fn=None,
                                       batch_size=batch_size, shuffle=True,
                                       epochs=None)
-    loss = self._train_model(input_fn=input_fn,
+    loss = self._train_model(input_fn,
+                             input_fn_args,
+                             input_fn_kwargs,
                              feed_fn=feed_fn,
                              steps=steps,
                              monitors=monitors,
                              max_steps=max_steps)
+
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -405,7 +413,7 @@ class BaseEstimator(
   )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, *input_fn_args, **inputs_fn_kwargs):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Evaluable`.
 
@@ -424,7 +432,9 @@ class BaseEstimator(
                                                      feed_fn=feed_fn,
                                                      steps=steps,
                                                      metrics=metrics,
-                                                     name=name)
+                                                     name=name,
+                                                     *input_fn_args,
+                                                     **inputs_fn_kwargs)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results
@@ -435,7 +445,7 @@ class BaseEstimator(
   )
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
-      as_iterable=True):
+      as_iterable=True, *input_fn_args, **input_fn_kwargs):
     """Returns predictions for given features.
 
     Args:
@@ -451,6 +461,10 @@ class BaseEstimator(
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
         num_epochs=1 if you are using something like read_batch_features).
+      *input_fn_args: Any remaining positional arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified.
+      **input_fn_kwargs: Any remaining keyword arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified.
 
     Returns:
       A numpy array of predicted classes or regression values if the
@@ -465,7 +479,7 @@ class BaseEstimator(
         x, None, input_fn=input_fn, feed_fn=None, batch_size=batch_size,
         shuffle=False, epochs=1)
     return self._infer_model(
-        input_fn=input_fn, feed_fn=feed_fn, outputs=outputs,
+        input_fn, input_fn_args, input_fn_kwargs, feed_fn=feed_fn, outputs=outputs,
         as_iterable=as_iterable)
 
   def get_variable_value(self, name):
@@ -508,7 +522,9 @@ class BaseEstimator(
              signature_fn=None,
              prediction_key=None,
              default_batch_size=1,
-             exports_to_keep=None):
+             exports_to_keep=None,
+             *input_fn_args,
+             **input_fn_kwargs):
     """Exports inference graph into given dir.
 
     Args:
@@ -535,6 +551,12 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+      *input_fn_args: Any remaining positional arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified. Not passed through
+        if `use_deprecated_input_fn` is True.
+      **input_fn_kwargs: Any remaining keyword arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified. Not passed through
+        if `use_deprecated_input_fn` is True.
 
     Returns:
       The string path to the exported directory. NB: this functionality was
@@ -549,6 +571,8 @@ class BaseEstimator(
         signature_fn=signature_fn,
         prediction_key=prediction_key,
         input_fn=input_fn,
+        input_fn_args=input_fn_args,
+        input_fn_kwargs=input_fn_kwargs,
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
@@ -655,6 +679,8 @@ class BaseEstimator(
 
   def _train_model(self,
                    input_fn,
+                   input_fn_args,
+                   input_fn_kwargs,
                    steps,
                    feed_fn=None,
                    init_op=None,
@@ -687,7 +713,7 @@ class BaseEstimator(
     with self._graph.as_default() as g, g.device(device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
-      features, labels = input_fn()
+      features, labels = input_fn(*input_fn_args, **input_fn_kwargs)
       self._check_inputs(features, labels)
 
       # The default return type of _get_train_ops is ModelFnOps. But there are
@@ -761,7 +787,9 @@ class BaseEstimator(
                       steps,
                       feed_fn=None,
                       metrics=None,
-                      name=''):
+                      name='',
+                      *input_fn_args,
+                      **input_fn_kwargs):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
@@ -780,7 +808,7 @@ class BaseEstimator(
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
-      features, labels = input_fn()
+      features, labels = input_fn(*input_fn_args, **input_fn_kwargs)
       self._check_inputs(features, labels)
 
       # The default return type of _get_eval_ops is ModelFnOps. But there are
@@ -810,14 +838,19 @@ class BaseEstimator(
 
       return eval_results, current_global_step
 
-  def _get_features_from_input_fn(self, input_fn):
-    result = input_fn()
+  def _get_features_from_input_fn(self, input_fn, input_fn_args, input_fn_kwargs):
+    result = input_fn(*input_fn_args, **input_fn_kwargs)
     if isinstance(result, (list, tuple)):
       return result[0]
     return result
 
-  def _infer_model(
-      self, input_fn, feed_fn=None, outputs=None, as_iterable=True):
+  def _infer_model(self,
+                   input_fn,
+                   input_fn_args,
+                   input_fn_kwargs,
+                   feed_fn=None,
+                   outputs=None,
+                   as_iterable=True):
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
@@ -827,7 +860,7 @@ class BaseEstimator(
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
-      features = self._get_features_from_input_fn(input_fn)
+      features = self._get_features_from_input_fn(input_fn, input_fn_args, input_fn_kwargs)
 
       # The default return type of _get_predict_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
@@ -922,13 +955,15 @@ def _identity_feature_engineering_fn(features, labels):
 class Estimator(BaseEstimator):
   """Estimator class is the basic TensorFlow model trainer/evaluator.
   """
-
+  @deprecated_args(PARAMS_DATE, PARAMS_INSTRUCTIONS, 'params')
   def __init__(self,
                model_fn=None,
                model_dir=None,
                config=None,
+               feature_engineering_fn=None,
                params=None,
-               feature_engineering_fn=None):
+               *model_fn_args,
+               **model_fn_kwargs):
     """Constructs an `Estimator` instance.
 
     Args:
@@ -943,9 +978,6 @@ class Estimator(BaseEstimator):
                  `labels=None`.
           * `mode` specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
-          * `params` is a `dict` of hyperparameters. Will receive what
-                 is passed to Estimator in `params` parameter. This allows
-                 to configure Estimators from hyper parameter tuning.
 
         * Returns:
           `ModelFnOps`
@@ -958,11 +990,10 @@ class Estimator(BaseEstimator):
           * loss: Scalar loss `Tensor`.
           * train_op: Training update `Tensor` or `Operation`.
 
-        Supports next three signatures for the function:
+        Supports next two signatures for the function:
 
           * `(features, labels) -> (predictions, loss, train_op)`
           * `(features, labels, mode) -> (predictions, loss, train_op)`
-          * `(features, labels, mode, params) -> (predictions, loss, train_op)`
 
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
@@ -970,29 +1001,25 @@ class Estimator(BaseEstimator):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
+              This usage is deprecated; instead use `model_fn_kwargs`
       feature_engineering_fn: Feature engineering function. Takes features and
                               labels which are the output of `input_fn` and
                               returns features and labels which will be fed
                               into `model_fn`. Please check `model_fn` for
                               a definition of features and labels.
+      *model_fn_args: Any additional positional arguments will be passed through
+        to the model_fn when the graph is created
+      **model_fn_kwargs: Any additional keyword arguments will be passed through
+        to the model_fn when the graph is created
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
     """
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
-    if model_fn is not None:
-      # Check number of arguments of the given function matches requirements.
-      model_fn_args = _get_arguments(model_fn)
-      if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
-                         'arguments, but not None params (%s) are passed.' %
-                         (model_fn, params))
-      if params is None and 'params' in model_fn_args:
-        logging.warning('Estimator\'s model_fn (%s) includes params '
-                        'argument, but params are not passed to Estimator.',
-                        model_fn)
     self._model_fn = model_fn
-    self.params = params
+    self._model_fn_args = [params] if params else []
+    self._model_fn_args.extend(model_fn_args)
+    self._model_fn_kwargs = model_fn_kwargs
     self._feature_engineering_fn = (
         feature_engineering_fn or _identity_feature_engineering_fn)
 
@@ -1014,13 +1041,10 @@ class Estimator(BaseEstimator):
     features, labels = self._feature_engineering_fn(features, labels)
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
-      if 'params' in model_fn_args:
-        model_fn_results = self._model_fn(features, labels, mode=mode,
-                                          params=self.params)
-      else:
-        model_fn_results = self._model_fn(features, labels, mode=mode)
+        model_fn_results = self._model_fn(
+            features, labels, mode, *self._model_fn_args, **self.model_fn_kwargs)
     else:
-      model_fn_results = self._model_fn(features, labels)
+      model_fn_results = self._model_fn(features, labels, *self._model_fn_args, **self._model_fn_kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results

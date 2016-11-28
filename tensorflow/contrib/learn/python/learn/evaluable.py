@@ -30,7 +30,7 @@ class Evaluable(object):
   @abc.abstractmethod
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, *input_fn_args, **input_fn_kwargs):
     """Evaluates given model with provided evaluation data.
 
     Stop conditions - we evaluate on the given input data until one of the
@@ -75,12 +75,15 @@ class Evaluable(object):
         friendly names for the metric to a `MetricSpec` object defining which
         model outputs to evaluate against which labels with which metric
         function.
-
         Metric ops should support streaming, e.g., returning `update_op` and
         `value` tensors. For example, see the options defined in
         `../../../metrics/python/ops/metrics_ops.py`.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data.
+      *input_fn_args: Any remaining positional arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified.
+      **input_fn_kwargs: Any remaining keyword arguments will be passed through
+        to `input_fn`. Ignored if `input_fn` is not specified.
 
     Returns:
       Returns `dict` with evaluation results.

@@ -62,6 +62,10 @@ class Experiment(object):
                estimator,
                train_input_fn,
                eval_input_fn,
+               train_input_args=None,
+               train_input_kwargs=None,
+               eval_input_args=None,
+               eval_input_kwargs=None,
                eval_metrics=None,
                train_steps=None,
                eval_steps=100,
@@ -115,6 +119,10 @@ class Experiment(object):
     self._estimator = estimator
     self._train_input_fn = train_input_fn
     self._eval_input_fn = eval_input_fn
+    self._train_input_args = train_input_args or []
+    self._train_input_kwargs = train_input_kwargs or {}
+    self._eval_input_args = eval_input_args or []
+    self._eval_input_kwargs = eval_input_kwargs or {}
     self._eval_metrics = eval_metrics
     self._train_steps = train_steps
     self._eval_steps = eval_steps
@@ -175,7 +183,9 @@ class Experiment(object):
 
     return self._estimator.fit(input_fn=self._train_input_fn,
                                max_steps=self._train_steps,
-                               monitors=self._train_monitors + extra_hooks)
+                               monitors=self._train_monitors + extra_hooks
+                               *self._train_input_args,
+                               **self._train_input_kwargs)
 
   def evaluate(self, delay_secs=None):
     """Evaluate on the evaluation data.
@@ -203,7 +213,9 @@ class Experiment(object):
     return self._estimator.evaluate(input_fn=self._eval_input_fn,
                                     steps=self._eval_steps,
                                     metrics=self._eval_metrics,
-                                    name="one_pass")
+                                    name="one_pass",
+                                    *self._eval_input_args,
+                                    **self._eval_input_kwargs)
 
   @deprecated(
       "2016-10-23",
@@ -252,7 +264,9 @@ class Experiment(object):
         self._estimator.evaluate(input_fn=input_fn,
                                  steps=self._eval_steps,
                                  metrics=self._eval_metrics,
-                                 name=name)
+                                 name=name,
+                                 *self._eval_input_args,
+                                 **self._eval_input_kwargs)
       except NotFittedError:
         # Print warning message every 10 mins.
         if time.time() - last_fitted_error_time > 600:
@@ -319,14 +333,16 @@ class Experiment(object):
         self._train_monitors += [monitors.ValidationMonitor(
             input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
             metrics=self._eval_metrics, every_n_steps=self._min_eval_frequency,
-            name=eval_dir_suffix,
+            name=eval_dir_suffix, *self._eval_input_args, **self._eval_input_kwargs
         )]
       self.train(delay_secs=0)
 
     return self._estimator.evaluate(input_fn=self._eval_input_fn,
                                     steps=self._eval_steps,
                                     metrics=self._eval_metrics,
-                                    name=eval_dir_suffix)
+                                    name=eval_dir_suffix,
+                                    *self._eval_input_args,
+                                    **self._eval_input_kwargs)
 
 
   def run_std_server(self):
@@ -348,12 +364,16 @@ class Experiment(object):
     """
     self._estimator.fit(input_fn=self._train_input_fn,
                         steps=1,
-                        monitors=self._train_monitors)
+                        monitors=self._train_monitors
+                        *self._train_input_args,
+                        **self._train_input_kwargs)
 
     return self._estimator.evaluate(input_fn=self._eval_input_fn,
                                     steps=1,
                                     metrics=self._eval_metrics,
-                                    name="one_pass")
+                                    name="one_pass",
+                                    *self._eval_input_args,
+                                    **self._eval_input_kwargs)
 
   def _start_server(self):
     """Creates, starts, and returns a server_lib.Server."""
