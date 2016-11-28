@@ -18,9 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import sys as _sys
 
 from tensorflow.python.platform import flags
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 def run(main=None, argv=None):
@@ -36,8 +37,17 @@ def run(main=None, argv=None):
   flags_passthrough = f._parse_flags(args=args)
   # pylint: enable=protected-access
 
-  main = main or sys.modules['__main__'].main
+  main = main or _sys.modules['__main__'].main
 
   # Call the main function, passing through any arguments
   # to the final program.
-  sys.exit(main(sys.argv[:1] + flags_passthrough))
+  _sys.exit(main(_sys.argv[:1] + flags_passthrough))
+
+
+_allowed_symbols = [
+    'run',
+    # Allowed submodule.
+    'flags',
+]
+
+remove_undocumented(__name__, _allowed_symbols)
