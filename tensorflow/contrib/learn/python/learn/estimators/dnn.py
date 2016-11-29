@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
@@ -145,7 +147,7 @@ def _dnn_model_fn(features, labels, mode, params):
   input_layer_scope = parent_scope + "/input_from_feature_columns"
   with variable_scope.variable_scope(
       input_layer_scope,
-      values=features.values(),
+      values=list(six.itervalues(features)),
       partitioner=input_layer_partitioner) as scope:
     net = layers.input_from_feature_columns(
         columns_to_tensors=features,
