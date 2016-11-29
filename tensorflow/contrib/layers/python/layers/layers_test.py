@@ -628,7 +628,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
@@ -644,7 +644,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 9, 11]
@@ -661,7 +661,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoSamePaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
@@ -678,7 +678,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
@@ -693,7 +693,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoSamePaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
@@ -708,7 +708,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
@@ -723,7 +723,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x1NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -738,7 +738,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x4NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -753,7 +753,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x5NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
