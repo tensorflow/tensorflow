@@ -114,13 +114,12 @@ DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
-NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
-"--genrule_strategy=standalone"
+NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "
 
 DO_DOCKER=1
 
-BAZEL_CMD="bazel test"
-BAZEL_BUILD_ONLY_CMD="bazel build"
+BAZEL_CMD="bazel test --spawn_strategy=sandboxed --genrule_strategy=sandboxed"
+BAZEL_BUILD_ONLY_CMD="bazel build --spawn_strategy=sandboxed --genrule_strategy=sandboxed"
 BAZEL_CLEAN_CMD="bazel clean"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"

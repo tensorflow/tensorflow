@@ -108,10 +108,10 @@ PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
    [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
-  bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+  bazel build -c opt --spawn_strategy=sandboxed --genrule_strategy=sandboxed ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
       die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  bazel build -c opt --config=cuda ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+  bazel build -c opt --config=cuda --spawn_strategy=sandboxed --genrule_strategy=sandboxed ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
       die "Build failed."
   GPU_FLAG="--gpu"
 else

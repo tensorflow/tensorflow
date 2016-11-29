@@ -77,7 +77,7 @@ for BENCHMARK_TEST in ${BENCHMARK_TESTS}; do
   echo ""
   echo "Running benchmark test (${COUNTER} / ${N_TESTS}): ${BENCHMARK_TEST}"
 
-  bazel test ${OPT_FLAG} --cache_test_results=no "${BENCHMARK_TEST}"
+  bazel test ${OPT_FLAG} --spawn_strategy=sandboxed --genrule_strategy=sandboxed --cache_test_results=no "${BENCHMARK_TEST}"
   TEST_RESULT=$?
 
   # Hook for database
