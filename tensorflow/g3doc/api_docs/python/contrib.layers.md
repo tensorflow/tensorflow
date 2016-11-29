@@ -1227,7 +1227,7 @@ Creates a _CrossedColumn for performing feature crosses.
 
 - - -
 
-### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
 
 Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
@@ -1255,6 +1255,8 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 *  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
 
 ##### Returns:
 
@@ -1579,7 +1581,7 @@ Creates a `_RealValuedColumn` for dense numeric data.
 
 - - -
 
-### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#shared_embedding_columns}
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
 
 Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
@@ -1610,6 +1612,8 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
 *  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
 
 ##### Returns:
 
