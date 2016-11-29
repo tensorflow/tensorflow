@@ -105,8 +105,8 @@ class LinearOperatorDiagtest(
 
   def test_broadcast_apply_and_solve(self):
     # These cannot be done in the automated (base test class) tests since they
-    # test shapes that tf.batch_matmul cannot handle.
-    # In particular, tf.batch_matmul does not broadcast.
+    # test shapes that tf.matmul cannot handle.
+    # In particular, tf.matmul does not broadcast.
     with self.test_session() as sess:
       x = tf.random_normal(shape=(2, 2, 3, 4))
 
@@ -122,7 +122,7 @@ class LinearOperatorDiagtest(
       self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
 
       operator_apply = operator.apply(x)
-      mat_apply = tf.batch_matmul(mat, x)
+      mat_apply = tf.matmul(mat, x)
       self.assertAllEqual(operator_apply.get_shape(), mat_apply.get_shape())
       self.assertAllClose(*sess.run([operator_apply, mat_apply]))
 

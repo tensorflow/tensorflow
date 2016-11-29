@@ -74,12 +74,6 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
     """Make a rhs appropriate for calling operator.apply(rhs)."""
     raise NotImplementedError("_make_x is not defined.")
 
-  def _maybe_adjoint(self, x, adjoint):
-    if adjoint:
-      return tf.matrix_transpose(x)
-    else:
-      return x
-
   def test_to_dense(self):
     with self.test_session() as sess:
       for shape in self._shapes_to_test:
@@ -134,7 +128,7 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
               continue
             x = self._make_x(operator)
             op_apply = operator.apply(x, adjoint=adjoint)
-            mat_apply = tf.batch_matmul(self._maybe_adjoint(mat, adjoint), x)
+            mat_apply = tf.matmul(mat, x, adjoint_a=adjoint)
             self.assertAllEqual(op_apply.get_shape(), mat_apply.get_shape())
             op_apply_v, mat_apply_v = sess.run([op_apply, mat_apply])
             self.assertAllClose(op_apply_v, mat_apply_v)
@@ -147,7 +141,7 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
               shape, dtype, use_placeholder=True)
           x = self._make_x(operator)
           op_apply_v, mat_apply_v = sess.run(
-              [operator.apply(x), tf.batch_matmul(mat, x)],
+              [operator.apply(x), tf.matmul(mat, x)],
               feed_dict=feed_dict)
           self.assertAllClose(op_apply_v, mat_apply_v)
 
@@ -162,7 +156,7 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
               continue
             rhs = self._make_rhs(operator)
             op_solve = operator.solve(rhs, adjoint=adjoint)
-            mat_solve = tf.matrix_solve(self._maybe_adjoint(mat, adjoint), rhs)
+            mat_solve = tf.matrix_solve(mat, rhs, adjoint=adjoint)
             self.assertAllEqual(op_solve.get_shape(), mat_solve.get_shape())
             op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve])
             self.assertAllClose(op_solve_v, mat_solve_v)
