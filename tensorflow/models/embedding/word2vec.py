@@ -283,7 +283,7 @@ class Word2Vec(object):
     lr = opts.learning_rate * tf.maximum(
         0.0001, 1.0 - tf.cast(self._words, tf.float32) / words_to_train)
     self._lr = lr
-    optimizer = tf.train.GradientDescentOptimizer(lr)
+    optimizer = tf.train.GradientDescentOptimizer(lr, use_locking=True)
     train = optimizer.minimize(loss,
                                global_step=self.global_step,
                                gate_gradients=optimizer.GATE_NONE)
