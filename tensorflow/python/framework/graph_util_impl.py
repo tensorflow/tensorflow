@@ -25,7 +25,6 @@ import re
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -47,23 +46,6 @@ _VARIABLE_OPS = {
 def _is_variable_op(op):
   """Returns true if 'op' refers to a Variable node."""
   return op in _VARIABLE_OPS
-
-
-def set_cpu0(device_string):
-  """Creates a new device string based on `device_string' but using /CPU:0.
-
-   If the device is already on /CPU:0, this is a no-op.
-
-   Args:
-     device_string: A device string.
-
-   Returns:
-     A device string.
-  """
-  parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
-  return parsed_device.to_string()
 
 
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
