@@ -136,11 +136,17 @@ You can now [test your installation](#test-the-tensorflow-installation).
 
 ### Pip installation on Windows
 
-TensorFlow supports only 64-bit Python 3.5 on Windows. We have tested
-the pip packages with the following distributions of Python:
+TensorFlow supports only 64-bit Python 3.5 on Windows. We have tested the pip packages
+with the following distributions of Python:
 
-* [Python 3.5 from python.org](https://www.python.org/downloads/release/python-352/)
 * [Python 3.5 from Anaconda](https://www.continuum.io/downloads#windows)
+
+* [Python 3.5 from python.org](https://www.python.org/downloads/release/python-352/). (NOTE:
+  you may need to install the [Visual C++ 2015
+  redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=53587)
+  (x64 version) when using this version of Python. If you see an error message that says
+  "ImportError: DLL load failed: The specified module could not be found", then you
+  must install the redistributable.)
 
 Both distributions include pip. To install the CPU-only version of
 TensorFlow, enter the following command at a command prompt:
