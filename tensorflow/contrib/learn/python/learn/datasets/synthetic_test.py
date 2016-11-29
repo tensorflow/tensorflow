@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 import numpy as np
 import tensorflow as tf
 
@@ -34,7 +36,7 @@ class SyntheticTest(tf.test.TestCase):
     """Test if all methods inside the `SYNTHETIC` are callable"""
     self.assertIsInstance(datasets.SYNTHETIC, dict)
     if len(datasets.SYNTHETIC) > 0:
-      for name, method in datasets.SYNTHETIC.iteritems():
+      for name, method in six.iteritems(datasets.SYNTHETIC):
         self.assertTrue(callable(method))
 
   def test_circles(self):
