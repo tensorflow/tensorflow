@@ -2842,6 +2842,17 @@ The following standard keys are defined:
 * `WEIGHTS`: weights inside neural network layers
 * `BIASES`: biases inside neural network layers
 * `ACTIVATIONS`: activations of neural network layers
+- - -
+
+#### `tf.GraphKeys.VARIABLES` {#GraphKeys.VARIABLES}
+
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+VARIABLES collection name is deprecated, please use GLOBAL_VARIABLES instead
+
+
 
 
 ## Defining new operations

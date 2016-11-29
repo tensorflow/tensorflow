@@ -26,7 +26,10 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.11.0'
+# This version string is semver compatible, but incompatible with pip.
+# For pip, we will remove all '-' characters from this string, and use the
+# result for pip.
+_VERSION = '0.12.0-rc0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -161,7 +164,7 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
 
 setup(
     name=project_name,
-    version=_VERSION,
+    version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
     long_description='',
     url='http://tensorflow.org/',
