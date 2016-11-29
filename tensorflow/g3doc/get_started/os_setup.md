@@ -141,13 +141,15 @@ with the following distributions of Python:
 
 * [Python 3.5 from Anaconda](https://www.continuum.io/downloads#windows)
 
-* [Python 3.5 from python.org](https://www.python.org/downloads/release/python-352/). (NOTE:
-  you may need to install the [Visual C++ 2015
-  redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=53587)
-  (x64 version) when using this version of Python. If you see an error message that says
-  "ImportError: DLL load failed: The specified module could not be found", then you
-  must install the redistributable.)
+* [Python 3.5 from python.org](https://www.python.org/downloads/release/python-352/).
 
+  NOTE: TensorFlow requires `MSVCP140.DLL`, which may not be installed on your system.
+  If, when you `import tensorflow as tf`, you see an error about `No module named
+  "_pywrap_tensorflow"` and/or `DLL load failed`, check whether `MSVCP140.DLL` is in
+  your `%PATH%` and, if not, you should install the [Visual C++ 2015
+  redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=53587)
+  (x64 version).
+  
 Both distributions include pip. To install the CPU-only version of
 TensorFlow, enter the following command at a command prompt:
 
