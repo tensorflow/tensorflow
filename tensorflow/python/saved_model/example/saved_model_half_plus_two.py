@@ -36,8 +36,8 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
 tf.app.flags.DEFINE_string("output_dir", "/tmp/saved_model_half_plus_two",
@@ -121,7 +121,7 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     output_tensor = meta_graph_pb2.TensorInfo()
     output_tensor.name = tf.identity(y).name
     signature_outputs = {signature_constants.REGRESS_OUTPUTS: output_tensor}
-    signature_def = utils.build_signature_def(
+    signature_def = signature_def_utils.build_signature_def(
         signature_inputs, signature_outputs,
         signature_constants.REGRESS_METHOD_NAME)
 

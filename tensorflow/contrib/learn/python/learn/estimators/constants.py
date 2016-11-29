@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,28 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for SavedModel utils."""
 
+"""Constants regarding Estimators."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 
-from tensorflow.core.framework import types_pb2
-from tensorflow.python.saved_model import utils
-
-
-class UtilsTest(tf.test.TestCase):
-
-  def testBuildTensorInfo(self):
-    x = tf.placeholder(tf.float32, 1, name="x")
-    x_tensor_info = utils.build_tensor_info(x)
-    self.assertEqual("x:0", x_tensor_info.name)
-    self.assertEqual(types_pb2.DT_FLOAT, x_tensor_info.dtype)
-    self.assertEqual(1, len(x_tensor_info.tensor_shape.dim))
-    self.assertEqual(1, x_tensor_info.tensor_shape.dim[0].size)
-
-
-if __name__ == "__main__":
-  tf.test.main()
+class ProblemType(object):
+  UNSPECIFIED = 0
+  CLASSIFICATION = 1
+  LINEAR_REGRESSION = 2
+  LOGISTIC_REGRESSION = 3

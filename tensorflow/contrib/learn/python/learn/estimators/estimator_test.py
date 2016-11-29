@@ -22,6 +22,7 @@ from __future__ import print_function
 import functools
 import itertools
 import json
+import os
 import tempfile
 
 import numpy as np
@@ -33,6 +34,11 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
+from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
+from tensorflow.python.framework import ops
+from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.util import compat
 
 
 _BOSTON_INPUT_DIM = 13
@@ -92,6 +98,8 @@ def linear_model_fn(features, labels, mode):
       tf.contrib.learn.ModeKeys.TRAIN,
       tf.contrib.learn.ModeKeys.EVAL,
       tf.contrib.learn.ModeKeys.INFER)
+  if isinstance(features, dict):
+    (_, features), = features.items()
   prediction, loss = (
       tf.contrib.learn.models.linear_regression_zero_init(features, labels)
   )
@@ -130,6 +138,45 @@ def logistic_model_no_mode_fn(features, labels):
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=0.1)
   return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
+
+VOCAB_FILE_CONTENT = 'emerson\nlake\npalmer\n'
+EXTRA_FILE_CONTENT = 'kermit\npiggy\nralph\n'
+
+
+def _build_estimator_for_export_tests(tmpdir):
+  def _input_fn():
+    iris = tf.contrib.learn.datasets.load_iris()
+    return {
+        'feature': tf.constant(iris.data, dtype=tf.float32)
+    }, tf.constant(iris.target, shape=[150], dtype=tf.int32)
+
+  feature_columns = [tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)]
+
+  est = tf.contrib.learn.LinearRegressor(feature_columns)
+  est.fit(input_fn=_input_fn, steps=20)
+
+  feature_spec = tf.contrib.layers.create_feature_spec_for_parsing(
+      feature_columns)
+  export_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+
+  # hack in an op that uses an asset, in order to test asset export.
+  # this is not actually valid, of course.
+  def export_input_fn_with_asset():
+    features, labels, inputs = export_input_fn()
+
+    vocab_file_name = os.path.join(tmpdir, 'my_vocab_file')
+    vocab_file = tf.gfile.GFile(vocab_file_name, mode='w')
+    vocab_file.write(VOCAB_FILE_CONTENT)
+    vocab_file.close()
+    hashtable = tf.contrib.lookup.HashTable(
+        tf.contrib.lookup.TextFileStringTableInitializer(vocab_file_name), 'x')
+    features['bogus_lookup'] = hashtable.lookup(
+        tf.to_int64(features['feature']))
+
+    return input_fn_utils.InputFnOps(features, labels, inputs)
+
+  return est, export_input_fn_with_asset
 
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
@@ -502,6 +549,76 @@ class EstimatorTest(tf.test.TestCase):
       actual = est.export('/path/to')
 
     self.assertEquals(expected, actual)
+
+  def test_export_savedmodel(self):
+    tmpdir = tempfile.mkdtemp()
+    est, export_input_fn = _build_estimator_for_export_tests(tmpdir)
+
+    extra_file_name = os.path.join(compat.as_bytes(tmpdir),
+                                   compat.as_bytes('my_extra_file'))
+    extra_file = tf.gfile.GFile(extra_file_name, mode='w')
+    extra_file.write(EXTRA_FILE_CONTENT)
+    extra_file.close()
+    assets_extra = {'some/sub/directory/my_extra_file': extra_file_name}
+
+    export_dir_base = os.path.join(compat.as_bytes(tmpdir),
+                                   compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(export_dir_base, export_input_fn,
+                                       assets_extra=assets_extra)
+
+    self.assertTrue(tf.gfile.Exists(export_dir_base))
+    self.assertTrue(tf.gfile.Exists(export_dir))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('saved_model.pb'))))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('variables'))))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(tf.gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir), compat.as_bytes('assets'))))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('assets/my_vocab_file'))))
+    self.assertEqual(
+        compat.as_bytes(VOCAB_FILE_CONTENT),
+        compat.as_bytes(tf.gfile.GFile(
+            os.path.join(compat.as_bytes(export_dir),
+                         compat.as_bytes('assets/my_vocab_file'))).read()))
+
+    expected_extra_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('assets.extra/some/sub/directory/my_extra_file'))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('assets.extra'))))
+    self.assertTrue(tf.gfile.Exists(expected_extra_path))
+    self.assertEqual(
+        compat.as_bytes(EXTRA_FILE_CONTENT),
+        compat.as_bytes(tf.gfile.GFile(expected_extra_path).read()))
+
+    expected_vocab_file = os.path.join(compat.as_bytes(tmpdir),
+                                       compat.as_bytes('my_vocab_file'))
+    # Restore, to validate that the export was well-formed.
+    with tf.Graph().as_default() as graph:
+      with tf.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        assets = [x.eval()
+                  for x in graph.get_collection(ops.GraphKeys.ASSET_FILEPATHS)]
+        self.assertItemsEqual([expected_vocab_file], assets)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+
+    # cleanup
+    tf.gfile.DeleteRecursively(tmpdir)
 
 
 class InferRealValuedColumnsTest(tf.test.TestCase):

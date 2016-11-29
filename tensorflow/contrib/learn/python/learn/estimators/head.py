@@ -24,6 +24,7 @@ import six
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import metric_spec
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
@@ -200,6 +201,9 @@ class _Head(object):
   """
   __metaclass__ = abc.ABCMeta
 
+  def __init__(self, head_name):
+    self._head_name = head_name
+
   @abc.abstractproperty
   def logits_dimension(self):
     raise NotImplementedError("Calling an abstract method.")
@@ -227,6 +231,25 @@ class _Head(object):
     """
     raise NotImplementedError("Calling an abstract method.")
 
+  def _create_output_alternatives(self, predictions):
+    """Creates output alternative for the Head.
+
+    Args:
+      predictions: a dict of {tensor_name: Tensor}, where 'tensor_name' is a
+      symbolic name for an output Tensor possibly but not necessarily taken from
+      `PredictionKey`, and 'Tensor' is the corresponding output Tensor itself.
+
+    Returns:
+      a dict of {submodel_name: (problem_type, {tensor_name: Tensor})}, where
+      'submodel_name' is a submodel identifier that should be consistent across
+      the pipeline (here likely taken from the head_name),
+      'problem_type' is a `ProblemType`,
+      'tensor_name' is a symbolic name for an output Tensor possibly but not
+       necessarily taken from `PredictionKey`, and
+      'Tensor' is the corresponding output Tensor itself.
+    """
+    return {self._head_name: (self._problem_type, predictions)}
+
 
 class _RegressionHead(_Head):
   """_Head for regression."""
@@ -249,14 +272,16 @@ class _RegressionHead(_Head):
       head_name: name of the head. If provided, predictions, summary and metrics
         keys will be prefixed by the head_name and an underscore.
     """
+    super(_RegressionHead, self).__init__(head_name=head_name)
+
     self._loss_fn = loss_fn
     self._logits_dimension = label_dimension
     self._label_name = label_name
     self._weight_column_name = weight_column_name
-    self._head_name = head_name
     self._enable_centered_bias = enable_centered_bias
     self._centered_bias_weight_collection = _head_prefixed(head_name,
                                                            "centered_bias")
+    self._problem_type = constants.ProblemType.LINEAR_REGRESSION
 
   @property
   def logits_dimension(self):
@@ -289,7 +314,8 @@ class _RegressionHead(_Head):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        signature_fn=self._signature_fn())
+        signature_fn=self._signature_fn(),
+        output_alternatives=self._create_output_alternatives(predictions))
 
   def _training_loss(self, features, labels, logits, name=None):
     """Returns training loss tensor for this head.
@@ -450,6 +476,8 @@ class _BinaryLogisticHead(_Head):
     Raises:
       ValueError: if n_classes is invalid.
     """
+    super(_BinaryLogisticHead, self).__init__(head_name=head_name)
+
     self._thresholds = thresholds if thresholds else [.5]
     self._label_name = label_name
     self._weight_column_name = weight_column_name
@@ -705,6 +733,8 @@ class _MultiClassHead(_Head):
     Raises:
       ValueError: if n_classes is invalid.
     """
+    super(_MultiClassHead, self).__init__(head_name=head_name)
+
     if (n_classes is None) or (n_classes <= 2):
       raise ValueError("n_classes must be > 2: %s." % n_classes)
     self._thresholds = thresholds if thresholds else [.5]
@@ -712,11 +742,11 @@ class _MultiClassHead(_Head):
     self._logits_dimension = n_classes
     self._label_name = label_name
     self._weight_column_name = weight_column_name
-    self._head_name = head_name
     self._loss_fn = loss_fn
     self._enable_centered_bias = enable_centered_bias
     self._centered_bias_weight_collection = _head_prefixed(head_name,
                                                            "centered_bias")
+    self._problem_type = constants.ProblemType.CLASSIFICATION
 
   @property
   def logits_dimension(self):
@@ -749,7 +779,8 @@ class _MultiClassHead(_Head):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        signature_fn=self._signature_fn())
+        signature_fn=self._signature_fn(),
+        output_alternatives=self._create_output_alternatives(predictions))
 
   def _training_loss(self, features, labels, logits=None, name=None):
     """Returns training loss tensor for this head.
