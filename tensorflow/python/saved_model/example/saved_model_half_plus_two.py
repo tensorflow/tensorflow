@@ -40,6 +40,14 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
+tf.app.flags.DEFINE_string("output_dir", "/tmp/saved_model_half_plus_two",
+                           "Directory where to ouput SavedModel.")
+tf.app.flags.DEFINE_string("output_dir_pbtxt",
+                           "/tmp/saved_model_half_plus_two_pbtxt",
+                           "Directory where to ouput the text format of "
+                           "SavedModel.")
+FLAGS = tf.flags.FLAGS
+
 
 def _write_assets(assets_directory, assets_filename):
   """Writes asset files to be used with SavedModel for half plus two.
@@ -130,13 +138,11 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
 
 
 def main(_):
-  export_dir_pb = "/tmp/saved_model/half_plus_two"
-  _generate_saved_model_for_half_plus_two(export_dir_pb)
-  print("SavedModel generated at: %s" % export_dir_pb)
+  _generate_saved_model_for_half_plus_two(FLAGS.output_dir)
+  print("SavedModel generated at: %s" % FLAGS.output_dir)
 
-  export_dir_pbtxt = "/tmp/saved_model/half_plus_two_pbtxt"
-  _generate_saved_model_for_half_plus_two(export_dir_pbtxt, as_text=True)
-  print("SavedModel generated at: %s" % export_dir_pbtxt)
+  _generate_saved_model_for_half_plus_two(FLAGS.output_dir_pbtxt, as_text=True)
+  print("SavedModel generated at: %s" % FLAGS.output_dir_pbtxt)
 
 
 if __name__ == "__main__":

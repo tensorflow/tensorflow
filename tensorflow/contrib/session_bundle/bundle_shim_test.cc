@@ -35,7 +35,7 @@ constexpr char kSessionBundlePath[] =
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
-    "contrib/session_bundle/testdata/saved_model_half_plus_two";
+    "python/saved_model/example/saved_model_half_plus_two/00000123";
 
 string MakeSerializedExample(float x) {
   tensorflow::Example example;
