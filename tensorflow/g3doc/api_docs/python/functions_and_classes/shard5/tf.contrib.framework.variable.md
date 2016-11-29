@@ -21,6 +21,8 @@ Gets an existing variable with these parameters or creates a new one.
       device.
 *  <b>`device`</b>: Optional device to place the variable. It can be an string or a
     function that is called to get the device for the variable.
+*  <b>`custom_getter`</b>: Callable that allows overwriting the internal
+    get_variable method and has to have the same signature.
 
 ##### Returns:
 
