@@ -39,6 +39,16 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "stream_executor_cuda",
+    deps = [
+        "//tensorflow/stream_executor",
+    ] + select({
+        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "stream_executor_no_cuda",
     hdrs = [
         "stream_executor_no_cuda.h",
