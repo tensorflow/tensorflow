@@ -882,7 +882,7 @@ Initializes a DNNClassifier instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
-*  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EbeddingColumn` to
+*  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EmbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
 
