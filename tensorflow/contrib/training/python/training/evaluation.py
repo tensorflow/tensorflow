@@ -254,7 +254,7 @@ def get_or_create_eval_step():
 
 
 class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
-  """A run hook used by the evaluation routines to run the `eval_ops` N times."""
+  """Run hook used by the evaluation routines to run the `eval_ops` N times."""
 
   def __init__(self, num_evals):
     """Constructs the run hook.
@@ -274,6 +274,7 @@ class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     evals_completed = run_values.results['evals_completed']
+    logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
     if evals_completed >= self._num_evals:
       run_context.request_stop()
 
@@ -299,7 +300,7 @@ class _FinalOpsHook(session_run_hook.SessionRunHook):
     return self._final_ops_values
 
   def end(self, session):
-    if self._final_ops:
+    if self._final_ops is not None:
       self._final_ops_values = session.run(self._final_ops,
                                            feed_dict=self._final_ops_feed_dict)
 
@@ -379,14 +380,14 @@ def evaluate_once(
   the requested number of times.
 
   Optionally, a user can pass in `final_ops`, a single `Tensor`, a list of
-  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is evaluated
-  a single time after `eval_ops` has finished running and the fetched values of
-  `final_ops` are returned. If `final_ops` is left as `None`, then `None` is
-  returned.
+  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is
+  evaluated a single time after `eval_ops` has finished running and the fetched
+  values of `final_ops` are returned. If `final_ops` is left as `None`, then
+  `None` is returned.
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
-  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the summaries
-  run immedietly after the model checkpoint has been restored.
+  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
+  summaries run immedietly after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.
@@ -403,8 +404,8 @@ def evaluate_once(
     eval_ops: A operation which is run until the session is requested to stop,
       commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
-    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names to
-      `Tensors`.
+    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`.
     final_ops_feed_dict: A feed dictionary to use when evaluating `final_ops`.
     variables_to_restore: A list of TensorFlow variables to restore during
       evaluation. If the argument is left as `None` then
@@ -484,14 +485,14 @@ def evaluate_repeatedly(
   the requested number of times.
 
   Optionally, a user can pass in `final_ops`, a single `Tensor`, a list of
-  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is evaluated
-  a single time after `eval_ops` has finished running and the fetched values of
-  `final_ops` are returned. If `final_ops` is left as `None`, then `None` is
-  returned.
+  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is
+  evaluated a single time after `eval_ops` has finished running and the fetched
+  values of `final_ops` are returned. If `final_ops` is left as `None`, then
+  `None` is returned.
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
-  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the summaries
-  run immedietly after the model checkpoint has been restored.
+  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
+  summaries run immedietly after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.
@@ -508,8 +509,8 @@ def evaluate_repeatedly(
     eval_ops: A operation which is run until the session is requested to stop,
       commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
-    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names to
-      `Tensors`.
+    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`.
     final_ops_feed_dict: A feed dictionary to use when evaluating `final_ops`.
     variables_to_restore: A list of TensorFlow variables to restore during
       evaluation. If the argument is left as `None` then
@@ -530,8 +531,10 @@ def evaluate_repeatedly(
   eval_step = get_or_create_eval_step()
 
   if eval_ops is not None:
+    if not isinstance(eval_ops, (tuple, list)):
+      eval_ops = [eval_ops]
     eval_ops = control_flow_ops.with_dependencies(
-        [eval_ops],
+        eval_ops,
         state_ops.assign_add(eval_step, 1))
 
   # Must come before the scaffold check.
@@ -572,7 +575,9 @@ def evaluate_repeatedly(
           'Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                     time.gmtime()))
     num_evaluations += 1
-    if num_evaluations >= max_number_of_evaluations:
+
+    reached_max = num_evaluations >= max_number_of_evaluations
+    if max_number_of_evaluations and reached_max:
       return final_ops_hook.final_ops_values
 
   logging.info('Timed-out waiting for a checkpoint.')
