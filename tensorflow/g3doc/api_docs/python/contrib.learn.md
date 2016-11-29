@@ -459,6 +459,39 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
+#### `tf.contrib.learn.Estimator.export_savedmodel(*args, **kwargs)` {#Estimator.export_savedmodel}
+
+Exports inference graph as a SavedModel into given dir. (experimental)
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+    Args:
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      input_fn: A function that takes no argument and
+        returns an `InputFnOps`.
+      default_output_alternative_key: the name of the head to serve when none is
+        specified.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel.  Each key should give the destination
+        path (including the filename) relative to the assets.extra directory.
+        The corresponding value gives the full path of the source file to be
+        copied.  For example, the simple case of copying a single file without
+        renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format.
+      exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if an unrecognized export_type is requested.
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.fit(*args, **kwargs)` {#Estimator.fit}
 
 See `Trainable`. (deprecated arguments)
@@ -926,6 +959,15 @@ See evaluable.Evaluable. Note: Labels must be integer class indices.
 #### `tf.contrib.learn.DNNClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
 See BaseEstimator.export.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(*args, **kwargs)` {#DNNClassifier.export_savedmodel}
+
+EXPERIMENTAL FUNCTION
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
 - - -
@@ -1559,6 +1601,15 @@ See BaseEstimator.export.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.export_savedmodel(*args, **kwargs)` {#LinearClassifier.export_savedmodel}
+
+EXPERIMENTAL FUNCTION
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
 See trainable.Trainable. Note: Labels must be integer class indices.
@@ -1749,6 +1800,15 @@ See BaseEstimator.export.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.export_savedmodel(*args, **kwargs)` {#LinearRegressor.export_savedmodel}
+
+EXPERIMENTAL FUNCTION
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearRegressor.fit}
 
 See trainable.Trainable.
@@ -1927,6 +1987,39 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       added ca. 2016/09/25; clients that depend on the return value may need
       to handle the case where this function returns None because subclasses
       are not returning a value.
+
+
+- - -
+
+#### `tf.contrib.learn.LogisticRegressor.export_savedmodel(*args, **kwargs)` {#LogisticRegressor.export_savedmodel}
+
+Exports inference graph as a SavedModel into given dir. (experimental)
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+    Args:
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      input_fn: A function that takes no argument and
+        returns an `InputFnOps`.
+      default_output_alternative_key: the name of the head to serve when none is
+        specified.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel.  Each key should give the destination
+        path (including the filename) relative to the assets.extra directory.
+        The corresponding value gives the full path of the source file to be
+        copied.  For example, the simple case of copying a single file without
+        renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format.
+      exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if an unrecognized export_type is requested.
 
 
 - - -

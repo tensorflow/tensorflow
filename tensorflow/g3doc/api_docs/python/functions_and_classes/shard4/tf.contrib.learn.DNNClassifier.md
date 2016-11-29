@@ -139,6 +139,15 @@ See BaseEstimator.export.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(*args, **kwargs)` {#DNNClassifier.export_savedmodel}
+
+EXPERIMENTAL FUNCTION
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
 
 See trainable.Trainable. Note: Labels must be integer class indices.
