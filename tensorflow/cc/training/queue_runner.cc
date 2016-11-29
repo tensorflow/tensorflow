@@ -33,6 +33,16 @@ Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
   return (*result)->Init(queue_runner_def);
 }
 
+void QueueRunner::AddErrorCallback(const std::function<void(Status)>& cb) {
+  mutex_lock l(cb_mu_);
+  callbacks_.push_back(cb);
+}
+
+void QueueRunner::ClearErrorCallbacks() {
+  mutex_lock l(cb_mu_);
+  callbacks_.clear();
+}
+
 Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   queue_name_ = queue_runner_def.queue_name();
   enqueue_op_names_.clear();
@@ -125,6 +135,10 @@ void QueueRunner::UpdateStatus(const Status& status) {
   }
   if (coord_) {
     coord_->ReportStatus(status);
+  }
+  mutex_lock l(cb_mu_);
+  for (auto& cb : callbacks_) {
+    cb(status);
   }
 }
 

@@ -46,6 +46,12 @@ class QueueRunner : public RunnerInterface {
   static Status New(const QueueRunnerDef& queue_runner_def, Coordinator* coord,
                     std::unique_ptr<QueueRunner>* result);
 
+  // Adds a callback that the queue runner will call when it detects an error.
+  void AddErrorCallback(const std::function<void(Status)>& cb);
+
+  // Delete the previously registered callbacks.
+  void ClearErrorCallbacks();
+
   // The destructor would join all the threads.
   ~QueueRunner();
 
@@ -101,6 +107,9 @@ class QueueRunner : public RunnerInterface {
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
+
+  mutex cb_mu_;
+  std::vector<std::function<void(Status)>> callbacks_;
 };
 
 }  // namespace tensorflow
