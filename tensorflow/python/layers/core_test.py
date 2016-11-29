@@ -167,6 +167,44 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertEqual(outputs.op.name, 'fc/Relu')
     self.assertEqual(outputs.get_shape().as_list(), [5, 2])
 
+  def testFunctionalFCTwice(self):
+    inputs = tf.random_uniform((5, 3), seed=1)
+    core_layers.fully_connected(inputs, 2)
+    vars1 = tf.trainable_variables()
+    core_layers.fully_connected(inputs, 2)
+    vars2 = tf.trainable_variables()
+    self.assertEqual(len(vars1), 2)
+    self.assertEqual(len(vars2), 4)
+
+  def testFunctionalFCTwiceReuse(self):
+    inputs = tf.random_uniform((5, 3), seed=1)
+    core_layers.fully_connected(inputs, 2, name='fc')
+    vars1 = tf.trainable_variables()
+    core_layers.fully_connected(inputs, 2, name='fc', reuse=True)
+    vars2 = tf.trainable_variables()
+    self.assertEqual(vars1, vars2)
+
+  def testFunctionalFCWithCustomGetter(self):
+    called = [0]
+    def custom_getter(getter, *args, **kwargs):
+      called[0] += 1
+      return getter(*args, **kwargs)
+    with tf.variable_scope('test', custom_getter=custom_getter):
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.fully_connected(inputs, 2)
+    self.assertEqual(called[0], 2)
+
+  def testFunctionalFCInScope(self):
+    with tf.variable_scope('test'):
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.fully_connected(inputs, 2, name='fc')
+      var = tf.trainable_variables()[0]
+      self.assertEqual(var.name, 'test/fc/weights:0')
+    with tf.variable_scope('test1') as scope:
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.fully_connected(inputs, 2, name=scope)
+      var = tf.trainable_variables()[2]
+      self.assertEqual(var.name, 'test1/weights:0')
 
 if __name__ == '__main__':
   tf.test.main()

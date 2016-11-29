@@ -62,7 +62,8 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    name: String, the name of the layer.
+    name: String, the name of the layer. Layers with the same name will
+      share weights, but to avoid mistakes we require reuse=True in such cases.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -204,5 +205,7 @@ def fully_connected(
                          activity_regularizer=activity_regularizer,
                          trainable=trainable,
                          name=name,
+                         dtype=inputs.dtype.base_dtype,
+                         _scope=name,
                          _reuse_weights=reuse)
   return layer.apply(inputs)

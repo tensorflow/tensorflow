@@ -195,9 +195,13 @@ class _Layer(object):
     Returns:
       Output tensor(s).
     """
-    # Define a custom to override tf.get_variable when creating layer weights.
+    # Define a custom getter to override tf.get_variable when creating layer
+    # weights. We respect current custom getter, if one is set.
+    current_custom_getter = vs.get_variable_scope().custom_getter
     def variable_getter(getter, name, shape, dtype=None, initializer=None,
                         regularizer=None, trainable=True, **kwargs):
+      if current_custom_getter is not None:
+        getter = functools.partial(current_custom_getter, getter)
       return self._add_weight(
           name, shape, initializer=initializer, regularizer=regularizer,
           dtype=dtype, trainable=trainable,
