@@ -571,7 +571,6 @@ class Optimizer(object):
     Returns:
       A `Variable` object.
     """
-    op_name += '/' + slot_name
     named_slots = self._slot_dict(slot_name)
     if var not in named_slots:
       named_slots[var] = slot_creator.create_slot(var, val, op_name)
@@ -589,7 +588,6 @@ class Optimizer(object):
     Returns:
       A `Variable` object.
     """
-    op_name += '/' + slot_name
     named_slots = self._slot_dict(slot_name)
     if var not in named_slots:
       named_slots[var] = slot_creator.create_zeros_slot(var, op_name)
