@@ -28,6 +28,7 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn
+from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import test_data
@@ -60,7 +61,7 @@ class EmbeddingMultiplierTest(tf.test.TestCase):
     }
     labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
     with self.assertRaisesRegexp(
-        ValueError, 'can be defined for embedding columns'):
+        ValueError, 'can only be defined for embedding columns'):
       dnn._dnn_model_fn(features, labels,
                         tf.contrib.learn.ModeKeys.TRAIN, params)
 
@@ -97,9 +98,9 @@ class EmbeddingMultiplierTest(tf.test.TestCase):
     model_ops = dnn._dnn_model_fn(features, labels,
                                   tf.contrib.learn.ModeKeys.TRAIN, params)
     with tf.train.MonitoredSession() as sess:
-      language_var = dnn._get_embedding_variable(
+      language_var = dnn_linear_combined._get_embedding_variable(
           embedding_language, 'dnn', 'dnn/input_from_feature_columns')
-      wire_var = dnn._get_embedding_variable(
+      wire_var = dnn_linear_combined._get_embedding_variable(
           embedding_wire, 'dnn', 'dnn/input_from_feature_columns')
       for _ in range(2):
         _, language_value, wire_value = sess.run(
@@ -118,6 +119,18 @@ class DNNClassifierTest(tf.test.TestCase):
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
         self, tf.contrib.learn.DNNClassifier)
+
+  def testEmbeddingMultiplier(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=[embedding_language],
+        hidden_units=[3, 3],
+        embedding_lr_multipliers={embedding_language: 0.8})
+    self.assertEqual(
+        {embedding_language: 0.8},
+        classifier._estimator.params['embedding_lr_multipliers'])
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
