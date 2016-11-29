@@ -16,7 +16,14 @@ BUS_ANY was used.
   indicating its preferred use in language bindings for TensorFlow.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
 * Renamed TF_Port to TF_Output in the C API.
-* Removes RegisterShape from public API. Use C++ shape function registration instead.
+* Removes RegisterShape from public API. Use C++ shape function registration
+  instead.
+* Most RNN cells and RNN functions now use different variable scopes to be
+  consistent with layers (`tf.contrib.layers`).  This means old checkpoints
+  written using this code will not load after this change without providing
+  `Saver` a list of variable renames.  Examples of variable scope changes
+  include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
+  `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
 
 # Release 0.11.0
 
