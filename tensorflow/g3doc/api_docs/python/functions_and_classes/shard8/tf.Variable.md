@@ -56,7 +56,7 @@ all the variables. You then run that Op after launching the graph.
 
 ```python
 # Add an Op to initialize global variables.
-init_op = tf.global_variable_initializers()
+init_op = tf.global_variables_initializer()
 
 # Launch the graph in a session.
 with tf.Session() as sess:
