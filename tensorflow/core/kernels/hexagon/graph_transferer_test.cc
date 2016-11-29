@@ -399,21 +399,29 @@ TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
 }
 
 TEST(GraphTransferer, LoadGraphFromProtoFile) {
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "core/example/testdata/parse_example_graph_def.pbtxt");
   std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {};
   std::vector<string> output_node_names = {};
   bool is_text_proto = true;
+
   // Keep following comments for debugging purpose for now
-  // filename = "";
-  // input_node_names = { "Mul" };
-  // output_node_names = { "softmax" };
+  // filename = "v3_stripped_quantized_graph_opt.pb";
+  // input_node_info_list.emplace_back(
+  // GraphTransferer::InputNodeInfo{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
+  // output_node_names.emplace_back("softmax");
   // is_text_proto = false;
+  // ops_definitions = &HexagonOpsDefinitions::getInstance();
+
+  GraphTransferer::OutputTensorInfo output_tensor_info;
   GraphTransferer gt;
+  gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
-      TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, filename, input_node_info_list,
-      output_node_names, EMPTY_OUTPUT_TENSOR_MAP, is_text_proto);
+      *ops_definitions, filename, input_node_info_list, output_node_names,
+      is_text_proto, true, &output_tensor_info);
   // TODO(satok): Uncomment following assert once we fix the loader problem
   // ASSERT_TRUE(status.ok()) << status;
 }

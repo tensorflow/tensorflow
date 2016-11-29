@@ -100,16 +100,9 @@ class GraphTransferer {
       const IGraphTransferOpsDefinitions& ops_definitions,
       const string& graph_def_path,
       const std::vector<InputNodeInfo>& input_node_info_list,
-      const std::vector<string>& output_node_names,
-      const OutputTensorMap& output_tensor_map, const bool is_text_proto);
-
-  // Load graph structure into GraphTransferer from protobuf file
-  Status LoadGraphFromProtoFile(
-      const IGraphTransferOpsDefinitions& ops_definitions,
-      const string& graph_def_path,
-      const std::vector<InputNodeInfo>& input_node_info_list,
-      const std::vector<string>& output_node_names,
-      const OutputTensorMap& output_tensor_map);
+      const std::vector<string>& output_node_names, const bool is_text_proto,
+      const bool dry_run_for_unknown_shape,
+      OutputTensorInfo* output_tensor_info);
 
   // Dry run inference and cache the result to get memory mapping
   static Status DryRunInference(
@@ -127,6 +120,8 @@ class GraphTransferer {
       const GraphDef& graph_def,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const bool initialize_by_zero, OutputTensorInfo* output_tensor_info);
+
+  void EnableStrictCheckMode(bool enable);
 
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
@@ -212,6 +207,10 @@ class GraphTransferer {
 
   std::vector<const Node*> node_name_cache_list_;
   std::unordered_map<string, int> node_name_to_id_cache_map_;
+
+  // strict check mode is true by default.  Disable this if the ops' shape
+  // inferences are not implemented correctly.
+  bool strict_check_mode_{true};
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphTransferer);
 };

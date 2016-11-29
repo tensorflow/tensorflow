@@ -101,11 +101,13 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const string& graph_def_path,
     const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map, const bool is_text_proto) {
+    const std::vector<string>& output_node_names, const bool is_text_proto,
+    const bool dry_run_for_unknown_shape,
+    OutputTensorInfo* output_tensor_info) {
   GraphDef graph_def;
   string output;
   Status status;
+  VLOG(1) << "Parse file " << graph_def_path;
   if (is_text_proto) {
     status = ReadFileToString(Env::Default(), graph_def_path, &output);
     if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
@@ -115,30 +117,21 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     status = ReadBinaryProto(Env::Default(), graph_def_path, &graph_def);
   }
   if (!status.ok()) {
+    VLOG(1) << "Failed to load graph " << status;
     return status;
   }
+  if (dry_run_for_unknown_shape) {
+    VLOG(1) << "Dry run graph to obtain shape of nodes";
+    status = DryRunInferenceForAllNode(graph_def, input_node_info_list, true,
+                                       output_tensor_info);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  VLOG(1) << "Load graph with output tensors";
   return LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
-                            output_node_names, output_tensor_map);
-}
-
-Status GraphTransferer::LoadGraphFromProtoFile(
-    const IGraphTransferOpsDefinitions& ops_definitions,
-    const string& graph_def_path,
-    const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map) {
-  GraphDef graph_def;
-  string output;
-  Status status = ReadFileToString(Env::Default(), graph_def_path, &output);
-  if (!status.ok()) {
-    return status;
-  }
-  if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
-    return errors::InvalidArgument("Cannot parse proto string.");
-  }
-  LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
-                     output_node_names, output_tensor_map);
-  return Status();
+                            output_node_names,
+                            output_tensor_info->output_tensor_map);
 }
 
 /**
@@ -172,17 +165,17 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     switch (data_type) {
       case DT_INT32: {
         auto int_tensor = input_tensor.flat<int32>();
-        int_tensor = int_tensor.constant(0.0);
+        int_tensor = int_tensor.constant(0);
         break;
       }
       case DT_FLOAT: {
         auto float_tensor = input_tensor.flat<float>();
-        float_tensor = float_tensor.constant(0.0);
+        float_tensor = float_tensor.constant(0.0f);
         break;
       }
       case DT_QUINT8: {
         auto int_tensor = input_tensor.flat<quint8>();
-        int_tensor = int_tensor.constant(0.0);
+        int_tensor = int_tensor.constant(0);
         break;
       }
       default:
@@ -234,7 +227,12 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   const Status status =
       DryRunInference(graph_def, input_node_info_list, output_node_names,
                       initialize_by_zero, &output_tensors);
-  CHECK(output_node_names.size() == output_tensors.size());
+  if (!status.ok()) {
+    VLOG(1) << "Failed to dryrun " << status;
+    return status;
+  }
+  CHECK(output_node_names.size() == output_tensors.size())
+      << output_node_names.size() << ", " << output_tensors.size();
 
   // Append output tensor of input node in advance to create a map
   // to avoid memory reallocation inside vector
@@ -255,6 +253,10 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   }
   CHECK(graph_def.node_size() == output_tensors.size());
   return status;
+}
+
+void GraphTransferer::EnableStrictCheckMode(const bool enable) {
+  strict_check_mode_ = enable;
 }
 
 const std::vector<GraphTransferer::ConstNodeTransferParams>&
@@ -428,7 +430,8 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
       padding == VALID ? PADDING_VALID_STR : PADDING_SAME_STR;
   const int op_type_id = ops_definitions.GetOpIdFor(node.type_string());
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
-      << node.type_string();
+      << "Op " << node.type_string() << " not found in map(id = " << op_type_id
+      << ")";
   AppendNodeParamsWithIoParams(shape_refiner, output_tensor_map, node,
                                node.name(), id, node.type_string(), op_type_id,
                                padding_str, node.num_inputs(), extra_inputs,
@@ -556,11 +559,14 @@ void GraphTransferer::AppendNodeOutputParams(
     if (context->ValueKnown(num_elements_dim)) {
       const int64 num_output_elements = context->Value(num_elements_dim);
       data_size = max_bytes_per_data * num_output_elements;
-      if (!output_tensor_map.empty()) {
+      if (!output_tensor_map.empty() && strict_check_mode_) {
         CHECK(output_tensor_map.count(node.name()) == 1) << node.name();
         const TensorShape& tensor_shape =
             output_tensor_map.at(node.name())->shape();
-        CHECK(num_output_elements == tensor_shape.num_elements());
+        CHECK(num_output_elements == tensor_shape.num_elements())
+            << "num elements of node " << node.name() << " doesn't match "
+            << num_output_elements << " vs " << tensor_shape.num_elements()
+            << ", " << node.type_string();
       }
     } else {
       // Use dryrun result to get the output data size
