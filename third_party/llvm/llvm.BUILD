@@ -15,6 +15,8 @@ load(
     "cmake_var_string",
 )
 
+package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
+
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
 llvm_targets = [
