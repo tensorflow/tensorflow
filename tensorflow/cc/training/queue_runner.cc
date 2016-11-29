@@ -100,7 +100,6 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
 }
 
 void QueueRunner::Stop(Session* sess) {
-  DCHECK(coord_ != nullptr);
   if (cancel_op_name_.empty()) {
     return;
   }
