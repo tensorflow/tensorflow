@@ -39,6 +39,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
@@ -1260,12 +1261,27 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
 
 def _model_variable_getter(getter, name, shape=None, dtype=None,
                            initializer=None, regularizer=None, trainable=True,
-                           collections=None, caching_device=None, **_):
+                           collections=None, caching_device=None,
+                           partitioner=None, **_):
   """Getter that uses model_variable for compatibility with core layers."""
   return variables.model_variable(
       name, shape=shape, dtype=dtype, initializer=initializer,
       regularizer=regularizer, collections=collections, trainable=trainable,
-      caching_device=caching_device, custom_getter=getter)
+      caching_device=caching_device, partitioner=partitioner,
+      custom_getter=getter)
+
+
+def _add_variable_to_collections(variable, collections_set, collections_name):
+  """Adds variable (or all its parts) to all collections with that name."""
+  collections = utils.get_variable_collections(
+      collections_set, collections_name) or []
+  variables_list = [variable]
+  if isinstance(variable, tf_variables.PartitionedVariable):
+    variables_list = [v for v in variable]
+  for collection in collections:
+    for var in variables_list:
+      if var not in ops.get_collection(collection):
+        ops.add_to_collection(collection, var)
 
 
 @add_arg_scope
@@ -1350,17 +1366,9 @@ def fully_connected(inputs,
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
-    weights_collections = utils.get_variable_collections(
-        variables_collections, 'weights') or []
-    for weights_collection in weights_collections:
-      if layer.w not in ops.get_collection(weights_collection):
-        ops.add_to_collection(weights_collection, layer.w)
-
-    biases_collections = utils.get_variable_collections(
-        variables_collections, 'biases') or []
-    for biases_collection in biases_collections:
-      if layer.bias not in ops.get_collection(biases_collection):
-        ops.add_to_collection(biases_collection, layer.bias)
+    _add_variable_to_collections(layer.w, variables_collections, 'weights')
+    if layer.bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     # Apply normalizer function / layer.
     if normalizer_fn is not None:

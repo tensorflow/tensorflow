@@ -171,7 +171,8 @@ def local_variable(initial_value, validate_shape=True, name=None):
 @contrib_add_arg_scope
 def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
-             caching_device=None, device=None, custom_getter=None):
+             caching_device=None, device=None,
+             partitioner=None, custom_getter=None):
   """Gets an existing variable with these parameters or creates a new one.
 
   Args:
@@ -191,6 +192,9 @@ def variable(name, shape=None, dtype=None, initializer=None,
         device.
     device: Optional device to place the variable. It can be an string or a
       function that is called to get the device for the variable.
+    partitioner: Optional callable that accepts a fully defined `TensorShape`
+      and dtype of the `Variable` to be created, and returns a list of
+      partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
 
@@ -210,13 +214,15 @@ def variable(name, shape=None, dtype=None, initializer=None,
                   regularizer=regularizer,
                   trainable=trainable,
                   collections=collections,
-                  caching_device=caching_device)
+                  caching_device=caching_device,
+                  partitioner=partitioner)
 
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                    regularizer=None, trainable=True, collections=None,
-                   caching_device=None, device=None, custom_getter=None):
+                   caching_device=None, device=None, partitioner=None,
+                   custom_getter=None):
   """Gets an existing model variable with these parameters or creates a new one.
 
   Args:
@@ -237,6 +243,9 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         device.
     device: Optional device to place the variable. It can be an string or a
       function that is called to get the device for the variable.
+    partitioner: Optional callable that accepts a fully defined `TensorShape`
+      and dtype of the `Variable` to be created, and returns a list of
+      partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
 
@@ -249,7 +258,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                  initializer=initializer, regularizer=regularizer,
                  trainable=trainable, collections=collections,
                  caching_device=caching_device, device=device,
-                 custom_getter=custom_getter)
+                 partitioner=partitioner, custom_getter=custom_getter)
   return var
 
 
