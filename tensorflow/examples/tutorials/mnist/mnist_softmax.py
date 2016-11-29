@@ -23,16 +23,19 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
-# Import data
 from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
 
-FLAGS = None
-
+flags = tf.app.flags
+flags.DEFINE_string("data_dir", "/tmp/tensorflow/mnist/input_data",
+                    "Directory for storing mnist data")
+FLAGS = flags.FLAGS
 
 def main(_):
+  # Import data
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
   # Create the model
@@ -57,8 +60,8 @@ def main(_):
   train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
   sess = tf.InteractiveSession()
+  tf.global_variables_initializer().run()
   # Train
-  tf.initialize_all_variables().run()
   for _ in range(1000):
     batch_xs, batch_ys = mnist.train.next_batch(100)
     sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
@@ -70,8 +73,5 @@ def main(_):
                                       y_: mnist.test.labels}))
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--data_dir', type=str, default='/tmp/data',
-                      help='Directory for storing data')
-  FLAGS = parser.parse_args()
   tf.app.run()
+  
