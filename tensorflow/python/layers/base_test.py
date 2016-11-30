@@ -101,6 +101,38 @@ class BaseLayerTest(tf.test.TestCase):
     self.assertEqual(layer.built, True)
     self.assertEqual(outputs.op.name, 'my_layer/Square')
 
+  def testNaming(self):
+    default_layer = base_layers._Layer()
+    self.assertEqual(default_layer.name, 'private__layer')
+    default_layer1 = base_layers._Layer()
+    self.assertEqual(default_layer1.name, 'private__layer_1')
+    my_layer = base_layers._Layer(name='my_layer')
+    self.assertEqual(my_layer.name, 'my_layer')
+    my_layer1 = base_layers._Layer(name='my_layer')
+    self.assertEqual(my_layer1.name, 'my_layer_1')
+    # New graph has fully orthogonal names.
+    with tf.Graph().as_default():
+      my_layer_other_graph = base_layers._Layer(name='my_layer')
+      self.assertEqual(my_layer_other_graph.name, 'my_layer')
+    my_layer2 = base_layers._Layer(name='my_layer')
+    self.assertEqual(my_layer2.name, 'my_layer_2')
+    # Name scope shouldn't affect names.
+    with tf.name_scope('some_name_scope'):
+      default_layer2 = base_layers._Layer()
+      self.assertEqual(default_layer2.name, 'private__layer_2')
+      my_layer3 = base_layers._Layer(name='my_layer')
+      self.assertEqual(my_layer3.name, 'my_layer_3')
+      other_layer = base_layers._Layer(name='other_layer')
+      self.assertEqual(other_layer.name, 'other_layer')
+    # Variable scope gets added to names.
+    with tf.variable_scope('var_scope'):
+      default_layer_scoped = base_layers._Layer()
+      self.assertEqual(default_layer_scoped.name, 'var_scope/private__layer')
+      my_layer_scoped = base_layers._Layer(name='my_layer')
+      self.assertEqual(my_layer_scoped.name, 'var_scope/my_layer')
+      my_layer_scoped1 = base_layers._Layer(name='my_layer')
+      self.assertEqual(my_layer_scoped1.name, 'var_scope/my_layer_1')
+
 
 if __name__ == '__main__':
   tf.test.main()

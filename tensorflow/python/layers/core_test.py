@@ -206,6 +206,11 @@ class FullyConnectedTest(tf.test.TestCase):
       core_layers.fully_connected(inputs, 2, name=scope)
       var = tf.trainable_variables()[2]
       self.assertEqual(var.name, 'test1/weights:0')
+    with tf.variable_scope('test2'):
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.fully_connected(inputs, 2)
+      var = tf.trainable_variables()[4]
+      self.assertEqual(var.name, 'test2/fully_connected/weights:0')
 
 
 class DropoutTest(tf.test.TestCase):

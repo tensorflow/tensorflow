@@ -85,18 +85,24 @@ class _Layer(object):
     self._reuse_weights = kwargs.get('_reuse_weights')
     self._dtype = dtype
 
-    # Determine name.
+    # Determine base name (non-unique).
+    base_name = name
     if not name:
-      prefix = _to_snake_case(self.__class__.__name__)
-      name = ops.get_default_graph().unique_name(prefix, mark_as_used=False)
-    self.name = name
+      base_name = _to_snake_case(self.__class__.__name__)
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
-      self._scope = scope
+      self._scope = next(vs.variable_scope(scope).gen)
     else:
-      self._scope = next(vs.variable_scope(None, default_name=self.name).gen)
+      self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+
+    # Unique name is borrowed from scope to match variable names.
+    self._name = self._scope.name
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def trainable_weights(self):
@@ -257,7 +263,12 @@ class _Layer(object):
 
 def _to_snake_case(name):
   intermediate = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-  return re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate).lower()
+  insecure = re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate).lower()
+  # If the class is private the name starts with "_" which is not secure
+  # for creating scopes. We prefix the name with "private" in this case.
+  if insecure[0] != '_':
+    return insecure
+  return 'private' + insecure
 
 
 def _to_list(x):
