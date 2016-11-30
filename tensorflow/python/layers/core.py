@@ -27,11 +27,13 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import control_flow_ops
 
 from tensorflow.python.layers import base
 
@@ -209,3 +211,91 @@ def fully_connected(
                          _scope=name,
                          _reuse_weights=reuse)
   return layer.apply(inputs)
+
+
+class Dropout(base._Layer):  # pylint: disable=protected-access
+  """Applies Dropout to the input.
+
+  Dropout consists in randomly setting a fraction `rate` of input units to 0
+  at each update during training time, which helps prevent overfitting.
+  The units that are kept are scaled by `1 / (1 - rate)`, so that their
+  sum is unchanged at training time and inference time.
+
+  Arguments:
+    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+      10% of input units.
+    noise_shape: 1D tensor of type `int32` representing the shape of the
+      binary dropout mask that will be multiplied with the input.
+      For instance, if your inputs have shape
+      `(batch_size, timesteps, features)`, and you want the dropout mask
+      to be the same for all timesteps, you can use
+      `noise_shape=[batch_size, 1, features]`.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    name: The name of the layer (string).
+  """
+
+  def __init__(self, rate=0.5,
+               noise_shape=None,
+               seed=None,
+               name=None,
+               **kwargs):
+    super(Dropout, self).__init__(name=name, **kwargs)
+    self.rate = rate
+    self.noise_shape = noise_shape
+    self.seed = seed
+
+  def call(self, inputs, training=False):
+    if isinstance(training, bool):
+      training_bool = training
+    else:
+      training_bool = tensor_util.constant_value(training)
+    if training_bool is False:
+      return array_ops.identity(inputs)
+    dropped_inputs = nn.dropout(inputs, 1  - self.rate,
+                                noise_shape=self.noise_shape,
+                                seed=self.seed)
+    if training_bool is True:
+      return dropped_inputs
+    return control_flow_ops.cond(training,
+                                 lambda: dropped_inputs,
+                                 lambda: inputs)
+
+
+def dropout(inputs,
+            rate=0.5,
+            noise_shape=None,
+            seed=None,
+            training=False,
+            name=None):
+  """Applies Dropout to the input.
+
+  Dropout consists in randomly setting a fraction `rate` of input units to 0
+  at each update during training time, which helps prevent overfitting.
+  The units that are kept are scaled by `1 / (1 - rate)`, so that their
+  sum is unchanged at training time and inference time.
+
+  Arguments:
+    inputs: Tensor input.
+    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+      10% of input units.
+    noise_shape: 1D tensor of type `int32` representing the shape of the
+      binary dropout mask that will be multiplied with the input.
+      For instance, if your inputs have shape
+      `(batch_size, timesteps, features)`, and you want the dropout mask
+      to be the same for all timesteps, you can use
+      `noise_shape=[batch_size, 1, features]`.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    training: Either a Python boolean, or a TensorFlow boolean scalar tensor
+      (e.g. a placeholder). Whether to return the output in training mode
+      (apply dropout) or in inference mode (return the input untouched).
+    name: The name of the layer (string).
+
+  Returns:
+    Output tensor.
+  """
+  layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
+  return layer.apply(inputs, training=training)

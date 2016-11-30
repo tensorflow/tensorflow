@@ -80,6 +80,9 @@ class BaseLayerTest(tf.test.TestCase):
           self.w = tf.get_variable('my_var', [2, 2],
                                    initializer=tf.zeros_initializer)
 
+        def call(self, inputs):
+          return inputs
+
       layer = MyLayer(name='my_layer')
       inputs = tf.random_uniform((5,), seed=1)
       _ = layer.apply(inputs)

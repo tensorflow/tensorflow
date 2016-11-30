@@ -1148,12 +1148,16 @@ def dropout(inputs,
   Returns:
     a tensor representing the output of the operation.
   """
-  with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
+  with variable_scope.variable_scope(
+      scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
-    id_fn = lambda: array_ops.identity(inputs)
-    outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    layer = core_layers.Dropout(rate=1 - keep_prob,
+                                noise_shape=noise_shape,
+                                name=sc.name,
+                                _scope=sc)
+    outputs = layer.apply(inputs, training=is_training)
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope

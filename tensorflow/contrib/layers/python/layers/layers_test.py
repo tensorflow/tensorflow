@@ -1181,7 +1181,6 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(True)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEqual(output.op.name, 'Dropout/dropout/mul')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithConstantFalse(self):
@@ -1190,7 +1189,6 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(False)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEqual(output.op.name, 'Dropout/Identity')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithPlaceholder(self):
@@ -1220,8 +1218,8 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
-      self.assertLess(num_elem, num_elem_initial/2 + 0.1)
-      self.assertGreater(num_elem, num_elem_initial/2 - 0.1)
+      self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
+      self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
 
   def testCreateDropoutNoTraining(self):
     height, width = 3, 3
@@ -1246,8 +1244,8 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
-      self.assertLess(num_elem, num_elem_initial/2 + 0.1)
-      self.assertGreater(num_elem, num_elem_initial/2 - 0.1)
+      self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
+      self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
 
   def testCreateFCWithDropout(self):
     height, width = 3, 3

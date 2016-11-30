@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.layers import core as core_layers
@@ -205,6 +206,64 @@ class FullyConnectedTest(tf.test.TestCase):
       core_layers.fully_connected(inputs, 2, name=scope)
       var = tf.trainable_variables()[2]
       self.assertEqual(var.name, 'test1/weights:0')
+
+
+class DropoutTest(tf.test.TestCase):
+
+  def testDropoutProperties(self):
+    dp = core_layers.Dropout(0.5)
+    self.assertEqual(dp.rate, 0.5)
+    self.assertEqual(dp.name, 'dropout')
+    self.assertEqual(dp.noise_shape, None)
+
+  def testBooleanLearningPhase(self):
+    with self.test_session() as sess:
+      dp = core_layers.Dropout(0.5)
+      inputs = tf.ones((5, 3))
+      dropped = dp.apply(inputs, training=True)
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped)
+      self.assertAlmostEqual(0., np_output.min())
+      dropped = dp.apply(inputs, training=False)
+      np_output = sess.run(dropped)
+      self.assertAllClose(np.ones((5, 3)), np_output)
+
+  def testDynamicLearningPhase(self):
+    with self.test_session() as sess:
+      dp = core_layers.Dropout(0.5, seed=1)
+      inputs = tf.ones((5, 5))
+      training = tf.placeholder(dtype='bool')
+      dropped = dp.apply(inputs, training=training)
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={training: True})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
+
+  def testCustomNoiseShape(self):
+    with self.test_session() as sess:
+      inputs = tf.ones((5, 3, 2))
+      noise_shape = [5, 1, 2]
+      dp = core_layers.Dropout(0.5, noise_shape=noise_shape, seed=1)
+      dropped = dp.apply(inputs, training=True)
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped)
+      self.assertAlmostEqual(0., np_output.min())
+      self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
+
+  def testFunctionalDropout(self):
+    with self.test_session() as sess:
+      inputs = tf.ones((5, 5))
+      training = tf.placeholder(dtype='bool')
+      dropped = core_layers.dropout(inputs, 0.5, training=training, seed=1)
+      self.assertEqual(dropped.op.name, 'dropout/cond/Merge')
+
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={training: True})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import functools
 import re
+import inspect
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 import six
@@ -135,16 +136,17 @@ class _Layer(object):
     """
     self._built = True
 
-  def call(self, inputs):
+  def call(self, inputs, **kwargs):
     """The logic of the layer lives here.
 
     Arguments:
       inputs: input tensor(s).
+     **kwargs: additional keyword arguments.
 
     Returns:
       Output tensor(s).
     """
-    return inputs
+    raise NotImplementedError
 
   def _add_weight(self, name, shape, dtype=None,
                   initializer=None, regularizer=None, trainable=True,
@@ -186,11 +188,12 @@ class _Layer(object):
             regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     return variable
 
-  def __call__(self, inputs):
+  def __call__(self, inputs, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
     Arguments:
       inputs: input tensor(s).
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
@@ -219,7 +222,7 @@ class _Layer(object):
           else:
             self.build(input_shapes)
           self._built = True
-        outputs = self.call(inputs)
+        outputs = self.call(inputs, **kwargs)
 
         # Apply activity regularization.
         # Note that it should be applied every time the layer creates a new
@@ -237,18 +240,19 @@ class _Layer(object):
     _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
 
-  def apply(self, inputs):
+  def apply(self, inputs, **kwargs):
     """Apply the layer on a input.
 
     This simply wraps `self.__call__`.
 
     Arguments:
-      inputs: input tensor(s).
+      inputs: Input tensor(s).
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    return self.__call__(inputs)
+    return self.__call__(inputs, **kwargs)
 
 
 def _to_snake_case(name):
