@@ -87,12 +87,17 @@ class DecodeImageOpTest(tf.test.TestCase):
           self.assertEqual(image0.shape, (26, 51, channels or channels_in))
           self.assertAllEqual(image0, image1)
 
-  def testInvalid(self):
+  def testInvalidBytes(self):
     image_bytes = b'ThisIsNotAnImage!'
     decode = tf.image.decode_image(image_bytes)
     with self.test_session():
       with self.assertRaises(tf.errors.InvalidArgumentError):
         decode.eval()
+
+  def testInvalidChannels(self):
+    image_bytes = b'unused'
+    with self.assertRaises(ValueError):
+      decode = tf.image.decode_image(image_bytes, channels=4)
 
 
 if __name__ == "__main__":
