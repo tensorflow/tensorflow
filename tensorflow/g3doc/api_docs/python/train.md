@@ -1372,7 +1372,7 @@ saver.restore(...checkpoint filename...)
 
 - - -
 
-#### `tf.train.ExponentialMovingAverage.__init__(decay, num_updates=None, name='ExponentialMovingAverage')` {#ExponentialMovingAverage.__init__}
+#### `tf.train.ExponentialMovingAverage.__init__(decay, num_updates=None, zero_debias=False, name='ExponentialMovingAverage')` {#ExponentialMovingAverage.__init__}
 
 Creates a new ExponentialMovingAverage object.
 
@@ -1392,6 +1392,8 @@ move faster.  If passed, the actual decay rate used is:
 
 *  <b>`decay`</b>: Float.  The decay to use.
 *  <b>`num_updates`</b>: Optional count of number of updates applied to variables.
+*  <b>`zero_debias`</b>: If `True`, zero debias moving-averages that are initialized
+    with tensors.
 *  <b>`name`</b>: String. Optional prefix name to use for the name of ops added in
     `apply()`.
 
