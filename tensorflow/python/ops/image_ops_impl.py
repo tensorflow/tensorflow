@@ -31,7 +31,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -1183,9 +1183,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     return convert_image_dtype(rgb_altered, orig_dtype)
 
 
-def decode_image(contents, channels=None, ratio=None, fancy_upscaling=None,
-                 try_recover_truncated=None, acceptable_fraction=None,
-                 name=None):
+def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
   Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate 
   operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
@@ -1199,45 +1197,36 @@ def decode_image(contents, channels=None, ratio=None, fancy_upscaling=None,
   Args:
     contents: 0-D `string`. The encoded image bytes.
     channels: Number of color channels for the decoded image.
-    ratio: Downscaling ratio (only used when decoding JPEG images)
-    fancy_upscaling: If true use a slower but nicer upscaling of the chroma 
-      planes (yuv420/422 JPEG images only).
-    try_recover_truncated: If true, try to recover an image from truncated input
-      (only used when decoding JPEG images).
-    acceptable_fraction: The minimum required fraction of lines before a 
-      truncated input is accepted (only used when decoding JPEG images).
-  
+    
   Returns:
     `Tensor` with type `uint8`. Shape `[height, width, num_channels]` for JPEG 
       and PNG images. Shape `[num_frames, height, width, 3]` for GIF images.
   """
-  with ops.name_scope(name, 'decode_image') as scope:
+  with ops.name_scope(name, 'decode_image') as scope: 
+    if channels not in (None, 0, 1, 3):
+      raise ValueError('channels must be in (None, 0, 1, 3)')
+    substr = string_ops.substr(contents, 0, 4)
+
     def _gif():
-      return gen_image_ops.decode_gif(contents)
-
-    def _jpeg():
-      return gen_image_ops.decode_jpeg(contents, channels, ratio, 
-                                       fancy_upscaling, try_recover_truncated, 
-                                       acceptable_fraction)
+      is_gif = math_ops.equal(substr, b'\x47\x49\x46\x38', name='is_gif')
+      decode_msg = 'Unable to decode bytes as JPEG, PNG, or GIF'
+      assert_decode_op = control_flow_ops.Assert(is_gif, [decode_msg])
+      with ops.control_dependencies([assert_decode_op]):
+        if channels == 1:
+          images = gen_image_ops.decode_gif(contents)
+          return rgb_to_grayscale(images)
+        else:
+          return gen_image_ops.decode_gif(contents)
+    
     def _png():
-      return gen_image_ops.decode_png(contents, channels, dtypes.uint8)
+      return gen_image_ops.decode_png(contents, channels)
+    
+    def check_png():
+      is_png = math_ops.equal(substr, b'\211PNG', name='is_png')
+      return control_flow_ops.cond(is_png, _png, _gif, name='cond_png')
+    
+    def _jpeg():
+      return gen_image_ops.decode_jpeg(contents, channels)
 
-    is_gif = math_ops.equal(gen_string_ops.substr(contents, 0, 4),
-                            b'\x47\x49\x46\x38')
-    is_jpeg = math_ops.equal(gen_string_ops.substr(contents, 0, 4), 
-                            b'\xff\xd8\xff\xe0')
-    is_png = math_ops.equal(gen_string_ops.substr(contents, 0, 8), 
-                            b'\211PNG\r\n\032\n')
-    is_decodable = math_ops.logical_or(is_gif, is_jpeg)
-    is_decodable = math_ops.logical_or(is_decodable, is_png)
-    assert_decodable = control_flow_ops.Assert(is_decodable, 
-                                               [b'Unable to decode bytes as a '
-                                                b'PNG or JPEG. Is the file '
-                                                b'encoded properly?'])
-    # Leaving default case to be decode_png
-    cases = [(is_gif, _gif),
-             (is_jpeg, _jpeg),
-            ]
-    with ops.control_dependencies([assert_decodable]):
-      return control_flow_ops.case(cases, _png, exclusive=True, 
-                                   name=scope)
+    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff\xe0', name='is_jpeg')
+    return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
