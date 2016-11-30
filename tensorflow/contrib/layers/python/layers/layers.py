@@ -1354,12 +1354,12 @@ def fully_connected(inputs,
       reuse=reuse, custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.FullyConnected(
-        num_outputs,
+        units=num_outputs,
         activation=None,
         use_bias=not normalizer_fn and biases_initializer,
-        w_initializer=weights_initializer,
+        weights_initializer=weights_initializer,
         bias_initializer=biases_initializer,
-        w_regularizer=weights_regularizer,
+        weights_regularizer=weights_regularizer,
         bias_regularizer=biases_regularizer,
         activity_regularizer=None,
         trainable=trainable,
@@ -2072,4 +2072,3 @@ conv2d = convolution2d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d
-

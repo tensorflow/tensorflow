@@ -24,8 +24,8 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import re
 import inspect
+import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 import six
@@ -99,6 +99,15 @@ class _Layer(object):
 
     # Unique name is borrowed from scope to match variable names.
     self._name = self._scope.name
+
+  def __setattr__(self, name, value):
+    if hasattr(self, name):
+      # Only allow self to update its own attributes
+      stack_0_locals = inspect.stack()[1][0].f_locals
+      called_from_layer = stack_0_locals.get('self', None) is self
+      if not called_from_layer:
+        raise AttributeError('Read-only property cannot be set: %s' % name)
+    super(_Layer, self).__setattr__(name, value)
 
   @property
   def name(self):

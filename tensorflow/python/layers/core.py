@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -53,13 +54,13 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
   flattened prior to the initial matrix multiply by `w`.
 
   Arguments:
-    output_dim: Integer or Long, dimensionality of the output space.
+    units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    w_initializer: Initializer function for the weight matrix.
+    weights_initializer: Initializer function for the weight matrix.
     bias_initializer: Initializer function for the bias.
-    w_regularizer: Regularizer function for the weight matrix.
+    weights_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
@@ -70,24 +71,24 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
       by the same name.
 
   Properties:
-    output_dim: Integer or Long, dimensionality of the output space.
+    units: Python integer, dimensionality of the output space.
     activation: Activation function (callable).
     use_bias: Boolean, whether the layer uses a bias.
-    w_initializer: Initializer instance (or name) for the weight matrix.
+    weights_initializer: Initializer instance (or name) for the weight matrix.
     bias_initializer: Initializer instance (or name) for the bias.
-    w_regularizer: Regularizer instance for the weight matrix (callable)
+    weights_regularizer: Regularizer instance for the weight matrix (callable)
     bias_regularizer: Regularizer instance for the bias (callable).
     activity_regularizer: Regularizer instance for the output (callable)
-    w: Weight matrix (TensorFlow variable or tensor).
+    weights: Weight matrix (TensorFlow variable or tensor).
     bias: Bias vector, if applicable (TensorFlow variable or tensor).
   """
 
-  def __init__(self, output_dim,
+  def __init__(self, units,
                activation=None,
                use_bias=True,
-               w_initializer=None,
+               weights_initializer=None,
                bias_initializer=init_ops.zeros_initializer,
-               w_regularizer=None,
+               weights_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
                trainable=True,
@@ -95,19 +96,22 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
                **kwargs):
     super(FullyConnected, self).__init__(trainable=trainable, name=name,
                                          **kwargs)
-    self.output_dim = output_dim
+    self.units = units
     self.activation = activation
     self.use_bias = use_bias
-    self.w_initializer = w_initializer
+    self.weights_initializer = weights_initializer
     self.bias_initializer = bias_initializer
-    self.w_regularizer = w_regularizer
+    self.weights_regularizer = weights_regularizer
     self.bias_regularizer = bias_regularizer
     self.activity_regularizer = activity_regularizer
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    if input_shape.ndims is None:
+      raise ValueError('Inputs to `FullyConnected` should have known rank.')
     if len(input_shape) < 2:
       raise ValueError('Inputs to `FullyConnected` should have rank >= 2.')
-    if input_shape[-1] is None:
+    if input_shape[-1].value is None:
       raise ValueError('The last dimension of the inputs to `FullyConnected` '
                        'should be defined. Found `None`.')
     # Note that we set `trainable=True` because this is a trainable
@@ -115,14 +119,14 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
     # (self.trainable = False), the variable will not be added to
     # tf.trainable_variables(), and self.trainable_weights will be empty.
     self.w = vs.get_variable('weights',
-                             shape=[input_shape[-1], self.output_dim],
-                             initializer=self.w_initializer,
-                             regularizer=self.w_regularizer,
+                             shape=[input_shape[-1].value, self.units],
+                             initializer=self.weights_initializer,
+                             regularizer=self.weights_regularizer,
                              dtype=self._dtype,
                              trainable=True)
     if self.use_bias:
       self.bias = vs.get_variable('biases',
-                                  shape=[self.output_dim,],
+                                  shape=[self.units,],
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   dtype=self._dtype,
@@ -133,11 +137,11 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
   def call(self, inputs):
     shape = inputs.get_shape().as_list()
     input_dim = shape[-1]
-    output_shape = shape[:-1] + [self.output_dim]
+    output_shape = shape[:-1] + [self.units]
     if len(output_shape) > 2:
       # Reshape the input to 2D.
       output_shape_tensors = array_ops.unpack(array_ops.shape(inputs))
-      output_shape_tensors[-1] = self.output_dim
+      output_shape_tensors[-1] = self.units
       output_shape_tensor = array_ops.pack(output_shape_tensors)
       inputs = array_ops.reshape(inputs, [-1, input_dim])
 
@@ -151,17 +155,17 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
       outputs.set_shape(output_shape)
 
     if self.activation is not None:
-      return self.activation(outputs)
+      return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
 
 def fully_connected(
-    inputs, output_dim,
+    inputs, units,
     activation=None,
     use_bias=True,
-    w_initializer=None,
+    weights_initializer=None,
     bias_initializer=init_ops.zeros_initializer,
-    w_regularizer=None,
+    weights_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
     trainable=True,
@@ -179,13 +183,13 @@ def fully_connected(
 
   Arguments:
     inputs: Tensor input.
-    output_dim: Integer or Long, dimensionality of the output space.
+    units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    w_initializer: Initializer function for the weight matrix.
+    weights_initializer: Initializer function for the weight matrix.
     bias_initializer: Initializer function for the bias.
-    w_regularizer: Regularizer function for the weight matrix.
+    weights_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
@@ -197,12 +201,12 @@ def fully_connected(
   Returns:
     Output tensor.
   """
-  layer = FullyConnected(output_dim,
+  layer = FullyConnected(units,
                          activation=activation,
                          use_bias=use_bias,
-                         w_initializer=w_initializer,
+                         weights_initializer=weights_initializer,
                          bias_initializer=bias_initializer,
-                         w_regularizer=w_regularizer,
+                         weights_regularizer=weights_regularizer,
                          bias_regularizer=bias_regularizer,
                          activity_regularizer=activity_regularizer,
                          trainable=trainable,

@@ -28,9 +28,9 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def testFCProperties(self):
     fc = core_layers.FullyConnected(2, activation=tf.nn.relu, name='fc')
-    self.assertEqual(fc.output_dim, 2)
+    self.assertEqual(fc.units, 2)
     self.assertEqual(fc.activation, tf.nn.relu)
-    self.assertEqual(fc.w_regularizer, None)
+    self.assertEqual(fc.weights_regularizer, None)
     self.assertEqual(fc.bias_regularizer, None)
     self.assertEqual(fc.activity_regularizer, None)
     self.assertEqual(fc.use_bias, True)
@@ -142,7 +142,7 @@ class FullyConnectedTest(tf.test.TestCase):
   def testWeightsRegularizer(self):
     regularizer = lambda x: tf.reduce_sum(x) * 1e-3
     fc = core_layers.FullyConnected(2, name='fc',
-                                    w_regularizer=regularizer)
+                                    weights_regularizer=regularizer)
     inputs = tf.random_uniform((5, 3), seed=1)
     _ = fc(inputs)
     loss_keys = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
