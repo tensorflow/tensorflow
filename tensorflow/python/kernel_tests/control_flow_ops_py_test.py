@@ -1269,6 +1269,31 @@ class ControlFlowTest(tf.test.TestCase):
       tf.global_variables_initializer().run()
       self.assertAllClose(216.0, r[0].eval())
 
+  def testWhileGradInCond(self):
+    with self.test_session():
+      n = tf.convert_to_tensor(1.0, name="n")
+      x = tf.placeholder(tf.float32, shape=None)
+      c = lambda n: tf.less(n, 10.0)
+      b = lambda n: tf.add(n, x)
+      def fn1():
+        r = tf.while_loop(c, b, [n], [tensor_shape.unknown_shape()])
+        return tf.gradients(r, x)
+      r = tf.cond(tf.less(1, 2), fn1, lambda: x)
+      self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
+
+  def testWhileGradInWhile(self):
+    with self.test_session():
+      n = tf.convert_to_tensor(1.0, name="n")
+      x = tf.placeholder(tf.float32, shape=None)
+      c = lambda n: tf.less(n, 10.0)
+      b = lambda n: tf.add(n, x)
+      def b1(n):
+        r = tf.while_loop(c, b, [n], [tensor_shape.unknown_shape()])
+        return tf.gradients(r, x)
+      r = tf.while_loop(lambda n: n < 6.0, b1, [n],
+                        [tensor_shape.unknown_shape()])
+      self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
+
   def testWhile_NestedInput(self):
     with self.test_session() as sess:
       named = collections.namedtuple("named", ("a", "b"))
