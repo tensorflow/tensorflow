@@ -79,10 +79,10 @@ if [ "$TF_NEED_GCP" == "1" ]; then
   fi
 
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_HDFS" == "" ]; do
@@ -101,10 +101,10 @@ done
 
 if [ "$TF_NEED_HDFS" == "1" ]; then
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_HDFS_SUPPORT = False/WITH_HDFS_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 # Invoke python_config and set up symlinks to python includes
