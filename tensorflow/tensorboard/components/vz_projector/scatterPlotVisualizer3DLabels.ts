@@ -98,7 +98,7 @@ type GlyphTexture = {
 export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private dataSet: DataSet;
   private scene: THREE.Scene;
-  private labelAccessor: (ds: DataSet, index: number) => string;
+  private labelStrings: string[];
   private geometry: THREE.BufferGeometry;
   private worldSpacePointPositions: Float32Array;
   private pickingColors: Float32Array;
@@ -147,7 +147,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     let numTotalLetters = 0;
     this.labelVertexMap = [];
     for (let i = 0; i < pointCount; i++) {
-      let label: string = this.labelAccessor(this.dataSet, i).toString();
+      const label = this.labelStrings[i];
       let vertsArray: number[] = [];
       for (let j = 0; j < label.length; j++) {
         for (let k = 0; k < VERTICES_PER_GLYPH; k++) {
@@ -178,7 +178,16 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private createLabels(pointCount: number) {
+  private createLabels() {
+    if ((this.labelStrings == null) ||
+        (this.worldSpacePointPositions == null)) {
+      return;
+    }
+    const pointCount =
+        this.worldSpacePointPositions.length / XYZ_ELEMENTS_PER_ENTRY;
+    if (pointCount !== this.labelStrings.length) {
+      return;
+    }
     this.glyphTexture = this.createGlyphTexture();
 
     this.uniforms = {
@@ -219,7 +228,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
 
     let lettersSoFar = 0;
     for (let i = 0; i < pointCount; i++) {
-      let label: string = this.labelAccessor(this.dataSet, i).toString();
+      const label = this.labelStrings[i];
       let leftOffset = 0;
       // Determine length of word in pixels.
       for (let j = 0; j < label.length; j++) {
@@ -278,7 +287,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   }
 
   private colorLabels(pointColors: Float32Array) {
-    if (this.labelAccessor == null || this.geometry == null ||
+    if (this.labelStrings == null || this.geometry == null ||
         this.dataSet == null || pointColors == null) {
       return;
     }
@@ -321,13 +330,10 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  setLabelAccessor(labelAccessor: (ds: DataSet, index: number) => string) {
-    this.labelAccessor = labelAccessor;
-    this.dispose();
-    this.onPointPositionsChanged(this.worldSpacePointPositions);
-  }
-
   onPickingRender(rc: RenderContext) {
+    if (this.geometry == null) {
+      this.createLabels();
+    }
     if (this.geometry == null) {
       return;
     }
@@ -339,6 +345,9 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   }
 
   onRender(rc: RenderContext) {
+    if (this.geometry == null) {
+      this.createLabels();
+    }
     if (this.geometry == null) {
       return;
     }
@@ -353,10 +362,11 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   onPointPositionsChanged(newPositions: Float32Array) {
     this.worldSpacePointPositions = newPositions;
     this.dispose();
-    if ((this.labelAccessor != null) &&
-        (this.worldSpacePointPositions != null)) {
-      this.createLabels(newPositions.length / 3);
-    }
+  }
+
+  setLabelStrings(labelStrings: string[]) {
+    this.labelStrings = labelStrings;
+    this.dispose();
   }
 
   onResize(newWidth: number, newHeight: number) {}
