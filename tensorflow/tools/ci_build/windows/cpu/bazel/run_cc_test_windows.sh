@@ -34,7 +34,7 @@ set -e
 script_dir=$(dirname $0)
 cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/bazel}.
 
-# Setting up the environment variables Bazel needs
+# Setting up the environment variables Bazel and ./configure needs
 source "tensorflow/tools/ci_build/windows/cpu/bazel/common_env.sh" \
   || { echo "Failed to source common_env.sh" >&2; exit 1; }
 
