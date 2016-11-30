@@ -102,7 +102,6 @@ export class ScatterPlot {
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
   private labels: LabelRenderParams;
-
   private traceColors: {[trace: number]: Float32Array};
   private traceOpacities: Float32Array;
   private traceWidths: Float32Array;

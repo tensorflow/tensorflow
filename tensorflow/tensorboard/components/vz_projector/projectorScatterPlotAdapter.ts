@@ -317,6 +317,7 @@ export class ProjectorScatterPlotAdapter {
     const opacityFlags = new Int8Array(n);
     const fillColors = new Uint8Array(n * 3);
     const strokeColors = new Uint8Array(n * 3);
+    const labelStrings: string[] = [];
 
     scale.fill(LABEL_SCALE_DEFAULT);
     opacityFlags.fill(1);
@@ -324,6 +325,7 @@ export class ProjectorScatterPlotAdapter {
     let dst = 0;
 
     if (hoverPointIndex != null) {
+      labelStrings.push(this.labelPointAccessor(ds, hoverPointIndex));
       visibleLabels[dst] = hoverPointIndex;
       scale[dst] = LABEL_SCALE_LARGE;
       opacityFlags[dst] = 0;
@@ -342,7 +344,9 @@ export class ProjectorScatterPlotAdapter {
       const fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_SELECTED);
       const strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_SELECTED);
       for (let i = 0; i < n; ++i) {
-        visibleLabels[dst] = selectedPointIndices[i];
+        const labelIndex = selectedPointIndices[i];
+        labelStrings.push(this.labelPointAccessor(ds, labelIndex));
+        visibleLabels[dst] = labelIndex;
         scale[dst] = LABEL_SCALE_LARGE;
         opacityFlags[dst] = (n === 1) ? 0 : 1;
         packRgbIntoUint8Array(
@@ -359,7 +363,9 @@ export class ProjectorScatterPlotAdapter {
       const fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
       const strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
       for (let i = 0; i < n; ++i) {
-        visibleLabels[dst] = neighborsOfFirstPoint[i].index;
+        const labelIndex = neighborsOfFirstPoint[i].index;
+        labelStrings.push(this.labelPointAccessor(ds, labelIndex));
+        visibleLabels[dst] = labelIndex;
         packRgbIntoUint8Array(
             fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
         packRgbIntoUint8Array(
@@ -369,8 +375,8 @@ export class ProjectorScatterPlotAdapter {
     }
 
     return new LabelRenderParams(
-        this.labelPointAccessor, visibleLabels, scale, opacityFlags,
-        LABEL_FONT_SIZE, fillColors, strokeColors);
+        visibleLabels, labelStrings, scale, opacityFlags, LABEL_FONT_SIZE,
+        fillColors, strokeColors);
   }
 
   generatePointScaleFactorArray(

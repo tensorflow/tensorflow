@@ -97,9 +97,11 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
     const n = Math.min(MAX_LABELS_ON_SCREEN, lrc.pointIndices.length);
     for (let i = 0; i < n; ++i) {
-      const index = lrc.pointIndices[i];
-      const point =
-          util.vector3FromPackedArray(this.worldSpacePointPositions, index);
+      let point: THREE.Vector3;
+      {
+        const pi = lrc.pointIndices[i];
+        point = util.vector3FromPackedArray(this.worldSpacePointPositions, pi);
+      }
 
       // discard points that are behind the camera
       camToPoint.copy(camPos).sub(point);
@@ -122,7 +124,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
       };
 
       if (grid.insert(textBoundingBox, true)) {
-        const text = lrc.labelAccessor(this.dataSet, index);
+        const text = lrc.labelStrings[i];
         const fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
         this.gc.font = fontSize + 'px roboto';
 
