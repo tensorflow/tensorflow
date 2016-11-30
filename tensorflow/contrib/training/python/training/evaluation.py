@@ -144,7 +144,6 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import summary
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import monitored_session
@@ -421,9 +420,14 @@ def evaluate_once(
   eval_step = get_or_create_eval_step()
 
   if eval_ops is not None:
-    eval_ops = control_flow_ops.with_dependencies(
-        [eval_ops],
-        state_ops.assign_add(eval_step, 1))
+    update_eval_step = state_ops.assign_add(eval_step, 1)
+
+    if isinstance(eval_ops, dict):
+      eval_ops['update_eval_step'] = update_eval_step
+    elif isinstance(eval_ops, (tuple, list)):
+      eval_ops = list(eval_ops) + [update_eval_step]
+    else:
+      eval_ops = [eval_ops, update_eval_step]
 
   # Must come before the scaffold check.
   if scaffold and scaffold.saver:
@@ -531,11 +535,14 @@ def evaluate_repeatedly(
   eval_step = get_or_create_eval_step()
 
   if eval_ops is not None:
-    if not isinstance(eval_ops, (tuple, list)):
-      eval_ops = [eval_ops]
-    eval_ops = control_flow_ops.with_dependencies(
-        eval_ops,
-        state_ops.assign_add(eval_step, 1))
+    update_eval_step = state_ops.assign_add(eval_step, 1)
+
+    if isinstance(eval_ops, dict):
+      eval_ops['update_eval_step'] = update_eval_step
+    elif isinstance(eval_ops, (tuple, list)):
+      eval_ops = list(eval_ops) + [update_eval_step]
+    else:
+      eval_ops = [eval_ops, update_eval_step]
 
   # Must come before the scaffold check.
   if scaffold and scaffold.saver:
