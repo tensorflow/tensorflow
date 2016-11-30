@@ -65,6 +65,13 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
+tf.app.flags.DEFINE_string("decode_input", "stdin",
+                            "Input source for the decode function. If set to 'stdin' "
+                            "it will ask the user for input. If given a filename, " 
+                            "it will read from this file")
+tf.app.flags.DEFINE_string("decode_output", "stdout",
+                            "Output for the decode function. If set to something other " 
+                            "than 'stdout', it will write to that file")														
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 tf.app.flags.DEFINE_boolean("use_fp16", False,
@@ -231,11 +238,9 @@ def decode():
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
     _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
-    # Decode from standard input.
-    sys.stdout.write("> ")
-    sys.stdout.flush()
-    sentence = sys.stdin.readline()
-    while sentence:
+    # Open output (file or stdout) for writing output to
+    output = data_utils.open_output(FLAGS.decode_output)
+    for sentence in data_utils.get_input_method(FLAGS.decode_input):
       # Get token-ids for the input sentence.
       token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
       # Which bucket does it belong to?
@@ -259,10 +264,7 @@ def decode():
       if data_utils.EOS_ID in outputs:
         outputs = outputs[:outputs.index(data_utils.EOS_ID)]
       # Print out French sentence corresponding to outputs.
-      print(" ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs]))
-      print("> ", end="")
-      sys.stdout.flush()
-      sentence = sys.stdin.readline()
+      output.write(" ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs]) + "\n")
 
 
 def self_test():

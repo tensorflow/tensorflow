@@ -22,6 +22,7 @@ import gzip
 import os
 import re
 import tarfile
+import sys
 
 from six.moves import urllib
 
@@ -288,3 +289,69 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size, tokenizer
   return (en_train_ids_path, fr_train_ids_path,
           en_dev_ids_path, fr_dev_ids_path,
           en_vocab_path, fr_vocab_path)
+
+
+def stdinput_generator():
+  """
+    Yields sentences read from stdin.
+
+    Yields:
+      sentences the user types in through the command line
+  """
+  sys.stdout.write("> ")
+  sys.stdout.flush()  
+  sentence = sys.stdin.readline()
+  while sentence:
+    yield sentence
+
+    sys.stdout.write("> ")
+    sys.stdout.flush()
+    sentence = sys.stdin.readline()
+
+
+def file_input_generator(filename):
+  """
+  Yields each sentence in a file
+
+  Args:
+    filename: path where the file is that will be translated
+
+  Yields:
+    sentences in the file specified by the 'filename' argument
+  """
+  f = open(filename)
+  for sentence in f:
+    yield sentence
+  f.close()
+
+
+def get_input_method(input_modality):
+  """"
+  Creates a generator that yields sentences, based on the input_modality specified.
+
+  Args:
+    input_modality: either a filename, or the string 'stdin'
+
+  Returns:
+    A generator that yields sentences
+  """
+  if input_modality == 'stdin':
+    return stdinput_generator()
+  else:
+    return file_input_generator(input_modality)
+
+
+def open_output(output_modality):
+  """
+  Returns either an opened file at location 'output_modality', or stdout.
+
+  Args:
+    output_modality: either a filename, or the string 'stdout'
+
+  Returns:
+    Either an opened file for writing, or stdout
+  """
+  if output_modality == 'stdout':
+    return sys.stdout
+  else:
+    return open(output_modality, 'w')
