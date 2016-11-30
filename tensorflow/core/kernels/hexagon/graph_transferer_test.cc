@@ -46,8 +46,8 @@ class GraphTransfererTest : public ::testing::Test {
   GraphTransferer gt_;
 };
 
-static const std::vector<string> OP_TYPES{"INPUT", "OUTPUT", "Conv2D",
-                                          "MaxPool"};
+static const std::vector<string> OP_TYPES{"INPUT",   "OUTPUT", "Conv2D",
+                                          "MaxPool", "NoOp",   "Add"};
 const GraphTransferer::OutputTensorMap EMPTY_OUTPUT_TENSOR_MAP;
 
 class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
@@ -193,7 +193,8 @@ static void SanityCheckNodes(const GraphTransferer& gt) {
 TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
-                                     {}, {}, EMPTY_OUTPUT_TENSOR_MAP)
+                                     {}, std::vector<string>{NAME_A_PLUS_B},
+                                     EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
 

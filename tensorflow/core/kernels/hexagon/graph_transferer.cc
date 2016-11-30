@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
@@ -31,6 +32,9 @@ namespace tensorflow {
 constexpr bool DBG_DUMP_VERIFICATION_STRING = false;
 constexpr bool DBG_DUMP_PARAMS = false;
 
+const string RESHAPE_NODE_TYPE_STRING = "Reshape";
+const string SOURCE_NODE_NAME = "_SOURCE";
+const string SINK_NODE_NAME = "_SINK";
 const string INPUTS_NODE_PREFIX = "inputs_for_";
 const string OUTPUTS_NODE_PREFIX = "outputs_for_";
 const string DATA_NODE_PREFIX = "data_for_op_";
@@ -83,9 +87,13 @@ Status GraphTransferer::LoadGraphFromProto(
   }
 
   for (const Node* const node : graph.nodes()) {
-    RegisterNodeIfAllInputsAreCached(ops_definitions, shape_refiner, *node,
-                                     false, input_node_info_list,
-                                     output_node_names, output_tensor_map);
+    status = RegisterNodeIfAllInputsAreCached(
+        ops_definitions, shape_refiner, *node, false, input_node_info_list,
+        output_node_names, output_tensor_map);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to transfer graph " << status;
+      return status;
+    }
   }
   ClearCache();
   if (DBG_DUMP_PARAMS) {
@@ -316,13 +324,16 @@ bool GraphTransferer::AreAllInputsCached(const Node& node) const {
   return true;
 }
 
-void GraphTransferer::RegisterNode(
+Status GraphTransferer::RegisterNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
     const Node& node, const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names) {
   VLOG(1) << "Register node: " << node.name();
-  if (IsInputNode(input_node_info_list, node.name())) {
+  if (node.name() == SOURCE_NODE_NAME || node.name() == SINK_NODE_NAME) {
+    // Just ignore sink and source
+    return Status();
+  } else if (IsInputNode(input_node_info_list, node.name())) {
     RegisterInputNode(ops_definitions, shape_refiner, output_tensor_map, node);
   } else if (std::find(output_node_names.begin(), output_node_names.end(),
                        node.name()) != output_node_names.end()) {
@@ -332,10 +343,18 @@ void GraphTransferer::RegisterNode(
   } else if (HasPaddingAndStrides(node)) {
     RegisterNodeWithPaddingAndStrides(ops_definitions, shape_refiner,
                                       output_tensor_map, node);
+  } else if (IsNodeFlattenReshape(node, output_tensor_map, shape_refiner)) {
+    RegisterFlattenNode(ops_definitions, shape_refiner, output_tensor_map,
+                        node);
+  } else if (ops_definitions.GetOpIdFor(node.type_string()) !=
+             IGraphTransferOpsDefinitions::INVALID_OP_ID) {
+    RegisterGenericNode(ops_definitions, shape_refiner, output_tensor_map,
+                        node);
   } else {
-    // TODO(satok): register params for nodes which are supported by SOC
-    VLOG(1) << "Not implemented for " << node.type_string();
+    return errors::InvalidArgument(node.type_string() +
+                                   " has not implemented yet.");
   }
+  return Status();
 }
 
 void GraphTransferer::RegisterConstantNode(
@@ -350,8 +369,8 @@ void GraphTransferer::RegisterConstantNode(
   // TODO(satok): support multiple outputs?
   const int output_index = 0;
   const DataType dt = node.output_type(output_index);
-  const size_t max_bytes_per_data =
-      checkpoint::TensorSliceWriter::MaxBytesPerElement(dt);
+  const size_t max_bytes_per_data = DataTypeSize(dt);
+  CHECK(max_bytes_per_data > 0);
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
   shape_inference::ShapeHandle shape_handle = context->output(output_index);
   const shape_inference::DimensionHandle num_elements_dim =
@@ -404,6 +423,45 @@ bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
          node.def().attr().count(STRIDES_ATTR_NAME) > 0;
 }
 
+bool GraphTransferer::IsNodeFlattenReshape(
+    const Node& node, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner) {
+  // Check if node is reshape op
+  if (node.type_string() != RESHAPE_NODE_TYPE_STRING) {
+    return false;
+  }
+
+  shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
+  // Check if output count is valid
+  if (context->num_outputs() != 1) {
+    return false;
+  }
+
+  shape_inference::ShapeHandle shape_handle = context->output(0);
+  std::array<int64, SHAPE_ARRAY_SIZE> shape;
+  const shape_inference::DimensionHandle dim_handle =
+      context->NumElements(shape_handle);
+
+  // Obtain shape of output of node
+  if (context->ValueKnown(dim_handle)) {
+    shape = BuildShapeArray(shape_handle, context);
+  } else {
+    // Use output tensor for unknown shape
+    // TODO(stok): Remove this fallback
+    CHECK(!output_tensor_map.empty());
+    const TensorShape& tensor_shape =
+        output_tensor_map.at(node.name())->shape();
+    shape = ToTensorShapeArray(tensor_shape);
+  }
+
+  // check if reshape op just does flatten
+  if (shape[0] == 1 && shape[1] == 1 && shape[2] == 1) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void GraphTransferer::RegisterNodeWithPaddingAndStrides(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
@@ -451,9 +509,8 @@ void GraphTransferer::RegisterInputNode(
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
   AppendNodeParamsWithIoParams(
       shape_refiner, output_tensor_map, node, node.name(), id,
-      IGraphTransferOpsDefinitions::INPUT_OP_NAME, op_type_id, PADDING_NA,
-      node.num_inputs(), {}, node.num_outputs(), true /* append_input */,
-      true /* append_output */);
+      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.num_outputs(), true /* append_input */, true /* append_output */);
 }
 
 void GraphTransferer::RegisterOutputNode(
@@ -468,14 +525,47 @@ void GraphTransferer::RegisterOutputNode(
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
   // TODO(satok): Set output for output node?
   AppendNodeParamsWithIoParams(
-      shape_refiner, output_tensor_map, node, node.name(), id, op_type,
-      op_type_id, PADDING_NA, node.num_inputs(), {}, 0 /* outputs_size */,
-      true /* append_input */, false /* append_output */);
+      shape_refiner, output_tensor_map, node, node.name(), id,
+      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      0 /* outputs_size */, true /* append_input */, false /* append_output */);
+}
+
+void GraphTransferer::RegisterFlattenNode(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const Node& node) {
+  VLOG(1) << "Register flatten node: " << node.name();
+  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+  const int id = node_name_to_id_cache_map_[node.name()];
+  const string op_type = IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
+  const int op_type_id = ops_definitions.GetOpIdFor(op_type);
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
+
+  AppendNodeParamsWithIoParams(
+      shape_refiner, output_tensor_map, node, node.name(), id,
+      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.num_outputs(), true /* append_input */, true /* append_output */);
+}
+
+void GraphTransferer::RegisterGenericNode(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const Node& node) {
+  VLOG(1) << "Register generic node: " << node.name();
+  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+  const int id = node_name_to_id_cache_map_[node.name()];
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string());
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
+
+  AppendNodeParamsWithIoParams(
+      shape_refiner, output_tensor_map, node, node.name(), id,
+      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.num_outputs(), true /* append_input */, true /* append_output */);
 }
 
 // TODO(satok): Remove this function.
 // TODO(satok): Remove only_register_const_node.
-bool GraphTransferer::RegisterNodeIfAllInputsAreCached(
+Status GraphTransferer::RegisterNodeIfAllInputsAreCached(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
     const bool only_register_const_node,
@@ -483,12 +573,11 @@ bool GraphTransferer::RegisterNodeIfAllInputsAreCached(
     const std::vector<string>& output_node_names,
     const OutputTensorMap& output_tensor_map) {
   if (only_register_const_node && !node.IsConstant()) {
-    return false;
+    return Status();
   }
   CHECK(AreAllInputsCached(node));
-  RegisterNode(ops_definitions, shape_refiner, output_tensor_map, node,
-               input_node_info_list, output_node_names);
-  return true;
+  return RegisterNode(ops_definitions, shape_refiner, output_tensor_map, node,
+                      input_node_info_list, output_node_names);
 }
 
 // CAVEAT: Append inputs and outputs params accordingly
@@ -545,7 +634,7 @@ void GraphTransferer::AppendNodeOutputParams(
         output_node = output_edge->src();
       }
     }
-    CHECK(output_node != nullptr);
+    CHECK(output_node != nullptr) << node.name() << ", " << node.type_string();
     const int output_index = i;
     const DataType dt = node.output_type(output_index);
     const size_t max_bytes_per_data =
@@ -724,7 +813,7 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
   for (const ConstNodeTransferParams& params :
        const_node_transfer_params_list_) {
     std::stringstream sstream;
-    sstream << "---(CONST) [" << std::hex << params.node_id << ","
+    sstream << "---(CONST) [" << std::hex << params.node_id << std::dec << ","
             << params.shape[0] << "," << params.shape[1] << ","
             << params.shape[2] << "," << params.shape[3] << ","
             << params.data_name << "," << params.data_size << "," << params.name
@@ -735,7 +824,7 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
   for (const NodeTransferParams& params : node_transfer_params_list_) {
     std::stringstream sstream;
     sstream << "---(OP) [" << params.name.c_str() << "," << std::hex
-            << params.node_id << "," << params.soc_op_id << ","
+            << params.node_id << std::dec << "," << params.soc_op_id << ","
             << params.padding << "," << params.inputs_name << ","
             << params.inputs_size << "," << params.outputs_name << ","
             << params.outputs_size << "," << params.type << "]";
@@ -744,7 +833,7 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
   LOG(INFO) << "Op node count = " << node_transfer_params_list_.size();
   for (const NodeInputParams& params : node_input_params_list_) {
     std::stringstream sstream;
-    sstream << "---(INPUT) [" << std::hex << params.node_id;
+    sstream << "---(INPUT) [" << std::hex << params.node_id << std::dec;
     for (const std::tuple<int, int>& pair :
          params.input_node_id_and_output_port_list) {
       sstream << "," << std::get<0>(pair) << "," << std::get<1>(pair);
@@ -755,7 +844,7 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
   LOG(INFO) << "Input params count = " << node_input_params_list_.size();
   for (const NodeOutputParams& params : node_output_params_list_) {
     std::stringstream sstream;
-    sstream << "---(OUTPUT) [" << std::hex << params.node_id;
+    sstream << "---(OUTPUT) [" << std::hex << params.node_id << std::dec;
     for (const int max_size : params.max_sizes) {
       sstream << "," << max_size;
     }
