@@ -1196,11 +1196,14 @@ def decode_image(contents, channels=None, name=None):
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
-    channels: Number of color channels for the decoded image.
+    channels: An optional `int`. Defaults to `0`. Number of color channels for 
+      the decoded image.
+    name: A name for the operation (optional)
     
   Returns:
-    `Tensor` with type `uint8`. Shape `[height, width, num_channels]` for JPEG 
-      and PNG images. Shape `[num_frames, height, width, 3]` for GIF images.
+    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for 
+      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF 
+      images.
   """
   with ops.name_scope(name, 'decode_image') as scope: 
     if channels not in (None, 0, 1, 3):
