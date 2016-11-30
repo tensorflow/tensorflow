@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""tensorboard plugins module containing volatile or experimental code."""
+"""Public API for the Trace plugin."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Add projects here, they will show up under tf.contrib.tensorboard.plugins
-from tensorflow.contrib.tensorboard.plugins import projector
-from tensorflow.contrib.tensorboard.plugins import trace
+# pylint: disable=wildcard-import
+from tensorflow.contrib.tensorboard.plugins.trace.trace import *
+from tensorflow.contrib.tensorboard.plugins.trace.trace_info_pb2 import *
+# pylint: enable=wildcard-import
