@@ -124,17 +124,21 @@ def _dnn_model_fn(features, labels, mode, params):
   hidden_layer_partitioner = (
       partitioned_variables.min_max_variable_partitioner(
           max_partitions=num_ps_replicas))
+
+#HL think we can add here the batch_norm.
   for layer_id, num_hidden_units in enumerate(hidden_units):
     with variable_scope.variable_scope(
         parent_scope + "/hiddenlayer_%d" % layer_id,
         values=[net],
         partitioner=hidden_layer_partitioner) as scope:
+
       net = layers.fully_connected(
           net,
           num_hidden_units,
           activation_fn=activation_fn,
           variables_collections=[parent_scope],
           scope=scope)
+
       if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
         net = layers.dropout(
             net,
