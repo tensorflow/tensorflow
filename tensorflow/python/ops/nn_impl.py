@@ -92,7 +92,7 @@ def log_poisson_loss(log_input, targets, compute_full_loss=False, name=None):
       zeros = array_ops.zeros_like(targets, dtype=targets.dtype)
       ones = array_ops.ones_like(targets, dtype=targets.dtype)
       cond = math_ops.logical_and(targets >= zeros, targets <= ones)
-      result += math_ops.select(cond, zeros, stirling_approx)
+      result += array_ops.where(cond, zeros, stirling_approx)
     return result
 
 
@@ -157,8 +157,8 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     # abs functions.
     zeros = array_ops.zeros_like(logits, dtype=logits.dtype)
     cond = (logits >= zeros)
-    relu_logits = math_ops.select(cond, logits, zeros)
-    neg_abs_logits = math_ops.select(cond, -logits, logits)
+    relu_logits = array_ops.where(cond, logits, zeros)
+    neg_abs_logits = array_ops.where(cond, -logits, logits)
     return math_ops.add(relu_logits - logits * targets,
                         math_ops.log1p(math_ops.exp(neg_abs_logits)),
                         name=name)

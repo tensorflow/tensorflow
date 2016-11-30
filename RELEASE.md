@@ -24,6 +24,7 @@ BUS_ANY was used.
   `Saver` a list of variable renames.  Examples of variable scope changes
   include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
   `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
+* Deprecated tf.select op. tf.where should be used instead.
 
 # Release 0.11.0
 

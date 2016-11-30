@@ -335,7 +335,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = math_ops.select(math_ops.less(shift, 0),
+      shift = array_ops.where(math_ops.less(shift, 0),
                               math_ops.mod(-shift, ndims),
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
@@ -396,8 +396,8 @@ def pick_vector(cond,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
-                           [math_ops.select(cond, 0, n)],
-                           [math_ops.select(cond, n, -1)])
+                           [array_ops.where(cond, 0, n)],
+                           [array_ops.where(cond, n, -1)])
 
 
 def gen_new_seed(seed, salt):

@@ -190,6 +190,7 @@ Min
 Pow
 Prod
 Range
+Select
 SparseMatMul
 Sum
 MatMul

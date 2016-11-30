@@ -366,7 +366,7 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return math_ops.select(copy_cond, output, new_output)
+    return array_ops.where(copy_cond, output, new_output)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -1299,7 +1299,7 @@ def raw_rnn(cell, loop_fn,
         current_flat = nest.flatten(current)
         candidate_flat = nest.flatten(candidate)
         result_flat = [
-            math_ops.select(elements_finished, current_i, candidate_i)
+            array_ops.where(elements_finished, current_i, candidate_i)
             for (current_i, candidate_i) in zip(current_flat, candidate_flat)]
         return nest.pack_sequence_as(
             structure=current, flat_sequence=result_flat)

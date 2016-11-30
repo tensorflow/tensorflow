@@ -25,7 +25,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import gen_math_ops
+
 
 @ops.RegisterGradient("Conv2DBackpropInput")
 def _Conv2DBackpropInputGrad(op, grad):
@@ -271,9 +271,10 @@ def _ReluGrad(op, grad):
 @ops.RegisterGradient("EluGrad")
 def _EluGradGrad(op, grad):
   x = op.inputs[1]
-  return (gen_nn_ops._elu_grad(grad, op.outputs[0]), 
-          gen_math_ops.select(x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + 1), 
-          array_ops.zeros(shape = array_ops.shape(x), dtype = x.dtype)))
+  return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
+          array_ops.where(
+              x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + 1),
+              array_ops.zeros(shape = array_ops.shape(x), dtype = x.dtype)))
 
 
 @ops.RegisterGradient("Relu6")
