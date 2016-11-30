@@ -72,7 +72,6 @@ void LoadAndValidateSavedModelBundle(const string& export_dir,
       session_options, run_options, export_dir, tags, &saved_model_bundle));
   const MetaGraphDef meta_graph_def = saved_model_bundle.meta_graph_def;
   const auto& signature_def_map = meta_graph_def.signature_def();
-  EXPECT_EQ(1, signature_def_map.size());
 
   const auto& regression_entry = signature_def_map.find(signature_def_key);
   SignatureDef regression_signature_def = regression_entry->second;
