@@ -64,11 +64,12 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
 
   setSelectedTensor(
       run: string, tensorInfo: EmbeddingInfo, dataProvider: DataProvider) {
+    // Clear any existing bookmarks.
+    this.addStates(null);
     if (tensorInfo && tensorInfo.bookmarksPath) {
-      this.loadAllStates([]);
       // Get any bookmarks that may come when the projector starts up.
       dataProvider.getBookmarks(run, tensorInfo.tensorName, bookmarks => {
-        this.loadAllStates(bookmarks);
+        this.addStates(bookmarks);
       });
     }
   }
@@ -145,7 +146,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
 
         // Verify the bookmarks match.
         if (this.savedStatesValid(savedStates)) {
-          this.loadAllStates(savedStates);
+          this.addStates(savedStates);
           this.loadSavedState(0);
         } else {
           logging.setWarningMessage(
@@ -157,10 +158,14 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
     });
   }
 
-  loadAllStates(savedStates: State[]) {
-    for (let i = 0; i < savedStates.length; i++) {
-      savedStates[i].isSelected = false;
-      this.push('savedStates', savedStates[i] as any);
+  addStates(savedStates?: State[]) {
+    if (savedStates == null) {
+      this.savedStates = [];
+    } else {
+      for (let i = 0; i < savedStates.length; i++) {
+        savedStates[i].isSelected = false;
+        this.push('savedStates', savedStates[i] as any);
+      }
     }
     this.updateHasStates();
   }
