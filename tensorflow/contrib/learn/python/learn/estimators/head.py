@@ -508,7 +508,7 @@ class _BinaryLogisticHead(_Head):
       eval_metric_ops = None
     else:
       loss = self._training_loss(features, labels, logits)
-      train_op = (None if train_op_fn is None
+      train_op = (None if train_op_fn is None or mode == model_fn.ModeKeys.EVAL
                   else self._train_op(loss, labels, train_op_fn))
       eval_metric_ops = self._eval_metric_ops(features, labels, predictions)
 
