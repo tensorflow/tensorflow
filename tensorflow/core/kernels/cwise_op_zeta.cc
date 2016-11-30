@@ -17,7 +17,5 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Zeta", functor::zeta, float, double);
-#if EIGEN_HAS_C99_MATH
 REGISTER2(BinaryOp, CPU, "Polygamma", functor::polygamma, float, double);
-#endif  // EIGEN_HAS_C99_MATH
 }  // namespace tensorflow
