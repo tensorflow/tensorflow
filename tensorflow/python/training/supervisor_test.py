@@ -418,7 +418,7 @@ class SupervisorTest(tf.test.TestCase):
       tf.summary.scalar("c2", tf.constant(2))
       tf.summary.scalar("c3", tf.constant(3))
       summ = tf.summary.merge_all()
-      sw = tf.train.SummaryWriter(logdir)
+      sw = tf.summary.FileWriter(logdir)
       sv = tf.train.Supervisor(logdir="", summary_op=None, summary_writer=sw)
       meta_graph_def = meta_graph.create_meta_graph_def()
       sess = sv.prepare_or_wait_for_session("")

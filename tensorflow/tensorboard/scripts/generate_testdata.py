@@ -158,7 +158,7 @@ def GenerateTestData(path):
   """Generates the test data directory."""
   run1_path = os.path.join(path, "run1")
   os.makedirs(run1_path)
-  writer1 = tf.train.SummaryWriter(run1_path)
+  writer1 = tf.summary.FileWriter(run1_path)
   WriteScalarSeries(writer1, "foo/square", lambda x: x * x)
   WriteScalarSeries(writer1, "bar/square", lambda x: x * x)
   WriteScalarSeries(writer1, "foo/sin", math.sin)
@@ -171,7 +171,7 @@ def GenerateTestData(path):
 
   run2_path = os.path.join(path, "run2")
   os.makedirs(run2_path)
-  writer2 = tf.train.SummaryWriter(run2_path)
+  writer2 = tf.summary.FileWriter(run2_path)
   WriteScalarSeries(writer2, "foo/square", lambda x: x * x * 2)
   WriteScalarSeries(writer2, "bar/square", lambda x: x * x * 3)
   WriteScalarSeries(writer2, "foo/cos", lambda x: math.cos(x) * 2)

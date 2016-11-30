@@ -333,7 +333,7 @@ class TensorboardServerTest(tf.test.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir)
     run1_path = os.path.join(temp_dir, 'run1')
     os.makedirs(run1_path)
-    writer = tf.train.SummaryWriter(run1_path)
+    writer = tf.summary.FileWriter(run1_path)
 
     histogram_value = tf.HistogramProto(min=0,
                                         max=2,

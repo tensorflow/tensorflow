@@ -38,7 +38,7 @@ class ProjectorApiTest(tf.test.TestCase):
     # Call the API method to save the configuration to a temporary dir.
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
-    writer = tf.train.SummaryWriter(temp_dir)
+    writer = tf.summary.FileWriter(temp_dir)
     tf.contrib.tensorboard.plugins.projector.visualize_embeddings(writer,
                                                                   config)
 
