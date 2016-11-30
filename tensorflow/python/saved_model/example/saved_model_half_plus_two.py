@@ -128,18 +128,13 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # Set up the signature for Predict with input and output tensor
     # specification.
     predict_input_tensor = meta_graph_pb2.TensorInfo()
-    predict_input_tensor.name = "x"
+    predict_input_tensor.name = x.name
     predict_signature_inputs = {
-        signature_constants.PREDICT_INPUTS: predict_input_tensor
-    }
-
-    predict_output_tensor = meta_graph_pb2.TensorInfo()
-    predict_output_tensor.name = "y"
-    predict_signature_outputs = {
-        signature_constants.PREDICT_OUTPUTS: predict_output_tensor
+       "x": predict_input_tensor
     }
     predict_signature_def = signature_def_utils.build_signature_def(
-        predict_signature_inputs, predict_signature_outputs,
+        {"x": predict_input_tensor},
+        {"y": output_tensor},
         signature_constants.PREDICT_METHOD_NAME)
 
     # Initialize all variables and then save the SavedModel.
@@ -147,8 +142,10 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     builder.add_meta_graph_and_variables(
         sess, [tag_constants.SERVING],
         signature_def_map={
-            signature_constants.REGRESS_METHOD_NAME: signature_def,
-            signature_constants.PREDICT_METHOD_NAME: predict_signature_def
+            signature_constants.REGRESS_METHOD_NAME:
+                signature_def,
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                predict_signature_def
         },
         assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
         legacy_init_op=tf.group(assign_filename_op))
