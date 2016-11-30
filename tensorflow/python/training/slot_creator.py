@@ -54,7 +54,7 @@ def _create_slot_var(primary, val, scope):
     # Primary is a partitioned variable, so we need to also indicate that
     # the slot is a partitioned variable.  Slots have the same partitioning
     # as their primaries.
-    real_slot_name = scope[len(primary.op.name + "/"):-1]
+    real_slot_name = slot.name[len(primary.op.name + "/"):-2]
     slice_info = primary._save_slice_info
     slot._set_save_slice_info(variables.Variable.SaveSliceInfo(
         slice_info.full_name + "/" + real_slot_name,
