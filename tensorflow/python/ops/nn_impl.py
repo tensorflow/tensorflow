@@ -292,7 +292,7 @@ def zero_fraction(value, name=None):
 
   ```python
       z = tf.Relu(...)
-      summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+      summ = tf.contrib.deprecated.scalar_summary('sparsity', tf.nn.zero_fraction(z))
   ```
 
   Args:

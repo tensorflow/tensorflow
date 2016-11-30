@@ -86,7 +86,7 @@ more summaries and call the evaluation_loop method:
       logdir,
       num_evals=num_evals,
       eval_op=names_to_updates.values(),
-      summary_op=tf.merge_summary(summary_ops),
+      summary_op=tf.contrib.deprecated.merge_summary(summary_ops),
       eval_interval_secs=600)
 
 **************************************************
@@ -113,7 +113,7 @@ with only summaries. The user need only leave out the 'eval_op' argument:
       checkpoint_dir,
       logdir,
       num_evals=1,
-      summary_op=tf.merge_summary(summary_ops),
+      summary_op=tf.contrib.deprecated.merge_summary(summary_ops),
       eval_interval_secs=600)
 
 """

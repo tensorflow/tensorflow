@@ -645,7 +645,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
       ipt = tf.placeholder(tf.float32)
       tf.summary.scalar('scalar1', ipt)
       tf.summary.scalar('scalar2', ipt * ipt)
-      merged = tf.merge_all_summaries()
+      merged = tf.contrib.deprecated.merge_all_summaries()
       writer.add_graph(sess.graph)
       for i in xrange(10):
         summ = sess.run(merged, feed_dict={ipt: i})
@@ -692,7 +692,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         tf.summary.image('images', ipt, max_outputs=2)
       with tf.name_scope('3'):
         tf.summary.image('images', ipt, max_outputs=3)
-      merged = tf.merge_all_summaries()
+      merged = tf.contrib.deprecated.merge_all_summaries()
       writer.add_graph(sess.graph)
       for i in xrange(10):
         summ = sess.run(merged)

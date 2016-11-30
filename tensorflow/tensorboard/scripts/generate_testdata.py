@@ -110,7 +110,7 @@ def WriteImageSeries(writer, tag, n_images=1):
   step = 0
   session = tf.Session()
   p = tf.placeholder("uint8", (1, 4, 4, 3))
-  s = tf.image_summary(tag, p)
+  s = tf.contrib.deprecated.image_summary(tag, p)
   for _ in xrange(n_images):
     im = np.random.random_integers(0, 255, (1, 4, 4, 3))
     summ = session.run(s, feed_dict={p: im})
@@ -133,7 +133,7 @@ def WriteAudioSeries(writer, tag, n_audio=1):
 
   p = tf.placeholder("float32", (frequencies_per_run, duration_frames,
                                  num_channels))
-  s = tf.audio_summary(tag, p, sample_rate)
+  s = tf.contrib.deprecated.audio_summary(tag, p, sample_rate)
 
   for _ in xrange(n_audio):
     # Generate a different frequency for each channel to show stereo works.

@@ -134,7 +134,7 @@ def evaluate():
     saver = tf.train.Saver(variables_to_restore)
 
     # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.contrib.deprecated.merge_all_summaries()
 
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
 
