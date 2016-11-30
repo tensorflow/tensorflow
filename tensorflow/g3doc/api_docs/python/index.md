@@ -958,7 +958,6 @@
   * [`sparse_column_with_hash_bucket`](../../api_docs/python/contrib.layers.md#sparse_column_with_hash_bucket)
   * [`sparse_column_with_integerized_feature`](../../api_docs/python/contrib.layers.md#sparse_column_with_integerized_feature)
   * [`sparse_column_with_keys`](../../api_docs/python/contrib.layers.md#sparse_column_with_keys)
-  * [`stack`](../../api_docs/python/contrib.layers.md#stack)
   * [`sum_regularizer`](../../api_docs/python/contrib.layers.md#sum_regularizer)
   * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
   * [`summarize_activations`](../../api_docs/python/contrib.layers.md#summarize_activations)
