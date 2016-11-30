@@ -78,7 +78,10 @@ can have speed penalty, specially in distributed settings.
     `batch_size`. The normalization is over all but the last dimension if
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
-*  <b>`decay`</b>: decay for the moving average.
+*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+    `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
+    good training performance but poor validation and/or test performance.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be

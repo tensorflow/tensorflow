@@ -44,7 +44,7 @@ Returns the file system schemes registered for this Env .
 
 #### `bool tensorflow::EnvWrapper::MatchPath(const string &path, const string &pattern) override` {#bool_tensorflow_EnvWrapper_MatchPath}
 
-Returns true if the path matches the given pattern. The wildcards allowed in pattern are described below (GetMatchingPaths).
+Returns true if the path matches the given pattern. The wildcards allowed in pattern are described in FileSystem::GetMatchingPaths.
 
 
 
@@ -85,6 +85,12 @@ Caller takes ownership of the result and must delete it eventually (the deletion
 
 
 #### `Status tensorflow::EnvWrapper::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol) override` {#Status_tensorflow_EnvWrapper_GetSymbolFromLibrary}
+
+
+
+
+
+#### `string tensorflow::EnvWrapper::FormatLibraryFileName(const string &name, const string &version) override` {#string_tensorflow_EnvWrapper_FormatLibraryFileName}
 
 
 
