@@ -54,45 +54,53 @@ class Seq2SeqTest(tf.test.TestCase):
                                                  decoder_embedding_size])
         decoder_length = tf.constant(decoder_sequence_length, dtype=tf.int32,
                                      shape=[batch_size,])
-        # setting up weights for computing the final output
-        output_fn = lambda x: layers.linear(x, num_decoder_symbols,
-                                            scope=varscope)
+        with tf.variable_scope("rnn") as scope:
+          # setting up weights for computing the final output
+          output_fn = lambda x: layers.linear(x, num_decoder_symbols,
+                                              scope=scope)
 
-        # Define model
-        encoder_outputs, encoder_state = tf.nn.dynamic_rnn(
-            cell=tf.nn.rnn_cell.GRUCell(encoder_hidden_size), inputs=inputs,
-            dtype=tf.float32, time_major=True, scope="rnn")
+          # Define model
+          encoder_outputs, encoder_state = tf.nn.dynamic_rnn(
+              cell=tf.nn.rnn_cell.GRUCell(encoder_hidden_size), inputs=inputs,
+              dtype=tf.float32, time_major=True, scope=scope)
 
-        # Train decoder
-        decoder_cell = tf.nn.rnn_cell.GRUCell(decoder_hidden_size)
-        decoder_fn_train = tf.contrib.seq2seq.simple_decoder_fn_train(
-            encoder_state=encoder_state)
-        decoder_outputs_train, decoder_state_train = (
-          tf.contrib.seq2seq.dynamic_rnn_decoder(
-              cell=decoder_cell,
-              decoder_fn=decoder_fn_train,
-              inputs=decoder_inputs,
-              sequence_length=decoder_length,
-              time_major=True))
-        decoder_outputs_train = output_fn(decoder_outputs_train)
 
-        # Inference decoder
-        varscope.reuse_variables()
-        decoder_fn_inference = tf.contrib.seq2seq.simple_decoder_fn_inference(
-            output_fn=output_fn,
-            encoder_state=encoder_state,
-            embeddings=decoder_embeddings,
-            start_of_sequence_id=start_of_sequence_id,
-            end_of_sequence_id=end_of_sequence_id,
-            #TODO: find out why it goes to +1
-            maximum_length=decoder_sequence_length-1,
-            num_decoder_symbols=num_decoder_symbols,
-            dtype=tf.int32)
-        decoder_outputs_inference, decoder_state_inference = (
+        with tf.variable_scope("decoder") as scope:
+          # Train decoder
+          decoder_cell = tf.nn.rnn_cell.GRUCell(decoder_hidden_size)
+          decoder_fn_train = tf.contrib.seq2seq.simple_decoder_fn_train(
+              encoder_state=encoder_state)
+          decoder_outputs_train, decoder_state_train = (
             tf.contrib.seq2seq.dynamic_rnn_decoder(
-              cell=decoder_cell,
-              decoder_fn=decoder_fn_inference,
-              time_major=True))
+                cell=decoder_cell,
+                decoder_fn=decoder_fn_train,
+                inputs=decoder_inputs,
+                sequence_length=decoder_length,
+                time_major=True,
+                scope=scope))
+          decoder_outputs_train = output_fn(decoder_outputs_train)
+
+          # Setup variable reuse
+          scope.reuse_variables()
+
+          # Inference decoder
+          decoder_fn_inference = (
+              tf.contrib.seq2seq.simple_decoder_fn_inference(
+                output_fn=output_fn,
+                encoder_state=encoder_state,
+                embeddings=decoder_embeddings,
+                start_of_sequence_id=start_of_sequence_id,
+                end_of_sequence_id=end_of_sequence_id,
+                #TODO: find out why it goes to +1
+                maximum_length=decoder_sequence_length-1,
+                num_decoder_symbols=num_decoder_symbols,
+                dtype=tf.int32))
+          decoder_outputs_inference, decoder_state_inference = (
+              tf.contrib.seq2seq.dynamic_rnn_decoder(
+                cell=decoder_cell,
+                decoder_fn=decoder_fn_inference,
+                time_major=True,
+                scope=scope))
 
         # Run model
         tf.initialize_all_variables().run()
