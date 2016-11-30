@@ -13,23 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Seq2seq layer operations for use in neural networks.
-"""
-
+"""Tests for contrib.seq2seq.python.seq2seq.loss_ops."""
+# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+# pylint: enable=unused-import
 
-from tensorflow.python.ops import array_ops
-
-
-__all__ = ["rnn_decoder",
-           "rnn_decoder_attention"]
+import tensorflow as tf
 
 
-def rnn_decoder(*args, **kwargs):
-  pass
+class DecoderFnTest(tf.test.TestCase):
+
+  def testDecoderFn(self):
+    pass
 
 
-def rnn_decoder_attention(*args, **kwargs):
-  pass
+if __name__ == '__main__':
+  tf.test.main()
