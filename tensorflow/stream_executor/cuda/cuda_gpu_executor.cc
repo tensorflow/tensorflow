@@ -900,6 +900,9 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
 #if defined(__APPLE__)
   LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
   return 0;
+#elif defined(PLATFORM_WINDOWS)
+  // Windows support for NUMA is not currently implemented. Return node 0.
+  return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
@@ -917,10 +920,8 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   // could use the file::* utilities).
   FILE *file = fopen(filename.c_str(), "r");
   if (file == nullptr) {
-#if !defined(PLATFORM_WINDOWS)
     LOG(ERROR) << "could not open file to read NUMA node: " << filename
                << "\nYour kernel may have been built without NUMA support.";
-#endif
     return kUnknownNumaNode;
   }
 
