@@ -4,8 +4,6 @@
 
 licenses(["notice"])
 
-exports_files(["LICENSE.TXT"])
-
 load(
     "@//third_party/llvm:llvm.bzl",
     "gentbl",
@@ -30,6 +28,7 @@ llvm_targets = [
 llvm_target_asm_parsers = [
     "AArch64",
     "ARM",
+    "NVPTX",
     "PowerPC",
     "X86",
 ]
@@ -1334,6 +1333,28 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "objc_arc",
+    srcs = glob([
+        "lib/Transforms/ObjCARC/*.c",
+        "lib/Transforms/ObjCARC/*.cpp",
+        "lib/Transforms/ObjCARC/*.inc",
+        "lib/Transforms/ObjCARC/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/ObjCARC/*.h",
+        "include/llvm/Transforms/ObjCARC/*.def",
+        "include/llvm/Transforms/ObjCARC/*.inc",
+    ]),
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
     ],
 )
 
