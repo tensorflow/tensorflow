@@ -240,7 +240,7 @@ def construct_rnn(initial_state,
   """Build an RNN and apply a fully connected layer to get the desired output.
 
   Args:
-    initial_state: The initial state to pass the the RNN. If `None`, the
+    initial_state: The initial state to pass the RNN. If `None`, the
       default starting state for `self._cell` is used.
     sequence_input: A `Tensor` with shape `[batch_size, padded_length, d]`
       that will be passed as input to the RNN.

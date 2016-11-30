@@ -54,6 +54,7 @@ or join multiple tensors together.
 @@tile
 @@pad
 @@concat
+@@concat_v2
 @@stack
 @@pack
 @@unstack
@@ -129,13 +130,59 @@ _baseslice = slice
 
 # pylint: disable=redefined-builtin,protected-access
 def expand_dims(input, axis=None, name=None, dim=None):
+  """Inserts a dimension of 1 into a tensor's shape.
+
+  Given a tensor `input`, this operation inserts a dimension of 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index `axis` starts
+  at zero; if you specify a negative number for `axis` it is counted backward
+  from the end.
+
+  This operation is useful if you want to add a batch dimension to a single
+  element. For example, if you have a single image of shape `[height, width,
+  channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
+  which will make the shape `[1, height, width, channels]`.
+
+  Other examples:
+
+  ```python
+  # 't' is a tensor of shape [2]
+  shape(expand_dims(t, 0)) ==> [1, 2]
+  shape(expand_dims(t, 1)) ==> [2, 1]
+  shape(expand_dims(t, -1)) ==> [2, 1]
+
+  # 't2' is a tensor of shape [2, 3, 5]
+  shape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]
+  shape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]
+  shape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]
+  ```
+
+  This operation requires that:
+
+  `-1-input.dims() <= dim <= input.dims()`
+
+  This operation is related to `squeeze()`, which removes dimensions of
+  size 1.
+
+  Args:
+    input: A `Tensor`.
+    axis: 0-D (scalar). Specifies the dimension index at which to
+      expand the shape of `input`.
+    name: The name of the output `Tensor`.
+    dim: 0-D (scalar). Equivalent to `axis`, to be deprecated.
+
+  Returns:
+    A `Tensor` with the same data as `input`, but its shape has an additional
+    dimension of size 1 added.
+
+  Raises:
+    ValueError: if both `dim` and `axis` are specified.
+  """
   # TODO(aselle): Remove argument dim
   if dim is not None:
     if axis is not None:
       raise ValueError("can't specify both 'dim' and 'axis'")
     axis = dim
   return gen_array_ops._expand_dims(input, axis, name)
-expand_dims.__doc__ = gen_array_ops._expand_dims.__doc__.replace("dim", "axis")
 # pylint: enable=redefined-builtin,protected-access
 
 
@@ -553,11 +600,11 @@ def strided_slice(input_,
   # 'input' is [[[1, 1, 1], [2, 2, 2]],
   #             [[3, 3, 3], [4, 4, 4]],
   #             [[5, 5, 5], [6, 6, 6]]]
-  tf.slice(input, [1, 0, 0], [2, 1, 3], [1, 1, 1]) ==> [[[3, 3, 3]]]
-  tf.slice(input, [1, 0, 0], [2, 2, 3], [1, 1, 1]) ==> [[[3, 3, 3],
-                                                         [4, 4, 4]]]
-  tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
-                                                          [3, 3, 3]]]
+  tf.strided_slice(input, [1, 0, 0], [2, 1, 3], [1, 1, 1]) ==> [[[3, 3, 3]]]
+  tf.strided_slice(input, [1, 0, 0], [2, 2, 3], [1, 1, 1]) ==> [[[3, 3, 3],
+                                                                 [4, 4, 4]]]
+  tf.strided_slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
+                                                                  [3, 3, 3]]]
   ```
 
   Args:
@@ -932,6 +979,79 @@ def unpack(value, num=None, axis=0, name="unpack"):
   return unstack(value, num, axis, name)
 
 
+def concat_v2(values, axis, name="concat_v2"):
+  """Concatenates tensors along one dimension.
+
+  Concatenates the list of tensors `values` along dimension `axis`.  If
+  `values[i].shape = [D0, D1, ... Daxis(i), ...Dn]`, the concatenated
+  result has shape
+
+      [D0, D1, ... Raxis, ...Dn]
+
+  where
+
+      Raxis = sum(Daxis(i))
+
+  That is, the data from the input tensors is joined along the `axis`
+  dimension.
+
+  The number of dimensions of the input tensors must match, and all dimensions
+  except `axis` must be equal.
+
+  For example:
+
+  ```python
+  t1 = [[1, 2, 3], [4, 5, 6]]
+  t2 = [[7, 8, 9], [10, 11, 12]]
+  tf.concat_v2([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+  tf.concat_v2([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+
+  # tensor t3 with shape [2, 3]
+  # tensor t4 with shape [2, 3]
+  tf.shape(tf.concat_v2([t3, t4], 0)) ==> [4, 3]
+  tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
+  ```
+
+  Note: If you are concatenating along a new axis consider using pack.
+  E.g.
+
+  ```python
+  tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
+  ```
+
+  can be rewritten as
+
+  ```python
+  tf.pack(tensors, axis=axis)
+  ```
+
+  Args:
+    values: A list of `Tensor` objects or a single `Tensor`.
+    axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` resulting from concatenation of the input tensors.
+  """
+  if not isinstance(values, (list, tuple)):
+    values = [values]
+  # TODO(mrry): Change to return values?
+  if len(values) == 1:  # Degenerate case of one tensor.
+    # Make a throwaway call to convert_to_tensor to make sure
+    # that axis is of the correct type, and make sure that
+    # the returned tensor is a scalar.
+    # TODO(keveman): Implement a standalone type and shape checker.
+    with ops.name_scope(name) as scope:
+      ops.convert_to_tensor(axis,
+                            name="concat_dim",
+                            dtype=dtypes.int32).get_shape(
+                            ).assert_is_compatible_with(tensor_shape.scalar())
+      return identity(values[0], name=scope)
+  return gen_array_ops._concat_v2(values=values,
+                                  axis=axis,
+                                  name=name)
+
+
 def concat(concat_dim, values, name="concat"):
   """Concatenates tensors along one dimension.
 
@@ -986,12 +1106,13 @@ def concat(concat_dim, values, name="concat"):
   Returns:
     A `Tensor` resulting from concatenation of the input tensors.
   """
+  # TODO(annarev): switch to call concat_v2 instead.
   if not isinstance(values, (list, tuple)):
     values = [values]
   # TODO(mrry): Change to return values?
   if len(values) == 1:  # Degenerate case of one tensor.
     # Make a throwaway call to convert_to_tensor to make sure
-    # that concat_dim is of the correct type, and make sure that
+    # that axis is of the correct type, and make sure that
     # the returned tensor is a scalar.
     # TODO(keveman): Implement a standalone type and shape checker.
     with ops.name_scope(name) as scope:

@@ -501,7 +501,7 @@ tc.register_type_abbreviation(LabeledTensor, 'labeled_tensor.LabeledTensor')
 @tc.accepts(LabeledTensor)
 def _convert_labeled_tensor_to_tensor(value, *args, **kwargs):
   # call ops.convert_to_tensor to handle optional arguments appropriately
-  return ops.convert_to_tensor(value.tensor, *args, **kwargs)
+  return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
 
 
 ops.register_tensor_conversion_function(

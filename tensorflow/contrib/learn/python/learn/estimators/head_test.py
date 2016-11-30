@@ -62,6 +62,31 @@ class RegressionModelHeadTest(tf.test.TestCase):
                       _noop_train_op, logits=prediction)
 
 
+class MultiLabelModelHeadTest(tf.test.TestCase):
+
+  def testMultiLabel(self):
+    head = head_lib._multi_label_head(n_classes=3)
+    with tf.Graph().as_default(), tf.Session() as sess:
+      logits = tf.constant([[1., 0., 0.]])
+      labels = tf.constant([[0, 0, 1]])
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.TRAIN,
+                                   _noop_train_op, logits=logits)
+      self.assertAlmostEqual(0.89985204, sess.run(model_fn_ops.loss))
+
+  def testMultiLabelWithWeight(self):
+    head = head_lib._multi_label_head(
+        n_classes=3, weight_column_name="label_weight")
+    with tf.Graph().as_default(), tf.Session() as sess:
+      features = {"label_weight": tf.constant([0.1])}
+      logits = tf.constant([[1., 0., 0.]])
+      labels = tf.constant([[0, 0, 1]])
+      model_fn_ops = head.head_ops(features, labels,
+                                   tf.contrib.learn.ModeKeys.TRAIN,
+                                   _noop_train_op, logits=logits)
+      self.assertAlmostEqual(0.089985214, sess.run(model_fn_ops.loss))
+
+
 class MultiClassModelHeadTest(tf.test.TestCase):
 
   def testBinaryClassification(self):
@@ -131,13 +156,10 @@ class MultiClassModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=logits)
       self.assertAlmostEqual(.15514446, sess.run(model_fn_ops.loss))
 
-  def testMultiClassWithInvalidNClass(self):
-    try:
-      head_lib._multi_class_head(n_classes=1)
-      self.fail("Softmax with no n_classes did not raise error.")
-    except ValueError:
-      # Expected
-      pass
+  def testInvalidNClasses(self):
+    for n_classes in (None, -1, 0, 1):
+      with self.assertRaisesRegexp(ValueError, "n_classes must be > 1"):
+        head_lib._multi_class_head(n_classes=n_classes)
 
 
 class BinarySvmModelHeadTest(tf.test.TestCase):

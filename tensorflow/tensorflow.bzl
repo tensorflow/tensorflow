@@ -46,6 +46,7 @@ load(
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
+    "cuda_path_flags"
 )
 
 # List of proto files for android builds
@@ -420,7 +421,7 @@ def _cuda_copts():
         "@local_config_cuda//cuda:using_nvcc": (
             common_cuda_opts +
             [
-                "-nvcc_options=expt-relaxed-constexpr",
+                "-nvcc_options=relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
@@ -428,7 +429,6 @@ def _cuda_copts():
             common_cuda_opts +
             [
                 "-fcuda-flush-denormals-to-zero",
-                "--cuda-path=external/local_config_cuda/cuda",
                 "--cuda-gpu-arch=sm_35",
             ]
         ),
@@ -437,7 +437,7 @@ def _cuda_copts():
         # optimizations are not enabled at O2.
         "@local_config_cuda//cuda:using_clang_opt": ["-O3"],
         "//conditions:default": [],
-    })
+    }) + cuda_path_flags()
 
 # Build defs for TensorFlow kernels
 
@@ -483,12 +483,15 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
+      deps = deps + if_cuda(cuda_deps + [
+          "//tensorflow/core:cuda",
+          "@local_config_cuda//cuda:cuda_headers"
+      ]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 
 def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
-                      deps=None, alwayslink=1, **kwargs):
+                      deps=None, alwayslink=1, copts=tf_copts(), **kwargs):
   """A rule to build a TensorFlow OpKernel.
 
   May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
@@ -542,7 +545,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       name = name,
       srcs = srcs,
       hdrs = hdrs,
-      copts = tf_copts(),
+      copts = copts,
       cuda_deps = cuda_deps,
       linkstatic = 1,   # Needed since alwayslink is broken in bazel b/27630669
       alwayslink = alwayslink,

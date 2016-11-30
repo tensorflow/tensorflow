@@ -46,7 +46,7 @@ The dynamic calculation performed is, at time `t` for batch row `b`,
     dtype.
 *  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs.
     An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 

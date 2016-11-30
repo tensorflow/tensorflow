@@ -491,8 +491,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         bar2 = tf.constant(3)
         _ = checker[..., bar:bar2]
         _ = checker[..., bar]
-        with self.assertRaisesRegexp(TypeError,
-                                     "DataType float32 for attr 'Index'"):
+        with self.assertRaisesRegexp(
+            TypeError,
+            "Value passed to parameter 'begin' has DataType float32 not in "
+            "list of allowed values"):
           _ = checker[..., 3.0]
         _ = checker[..., 3]
 

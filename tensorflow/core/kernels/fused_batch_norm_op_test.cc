@@ -79,7 +79,7 @@ TEST_F(FusedBatchNormOpTest, Inference) {
   AddInputFromArray<float>(TensorShape({2}), {4.0, 4.0});
   AddInputFromArray<float>(TensorShape({2}), {2.0, 2.0});
   AddInputFromArray<float>(TensorShape({2}), {10, 10});
-  AddInputFromArray<float>(TensorShape({2}), {11.67, 11.67});
+  AddInputFromArray<float>(TensorShape({2}), {11.67f, 11.67f});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -106,8 +106,8 @@ TEST_F(FusedBatchNormGradOpTest, Simple) {
   AddInputFromArray<float>(TensorShape({1, 1, 6, 2}),
                            {1, 1, 7, 7, 4, 4, -3, -3, -11, -11, 13, 13});
   AddInputFromArray<float>(TensorShape({2}), {4, 4});
-  AddInputFromArray<float>(TensorShape({2}), {1.833, 1.833});
-  AddInputFromArray<float>(TensorShape({2}), {57.472, 57.472});
+  AddInputFromArray<float>(TensorShape({2}), {1.833f, 1.833f});
+  AddInputFromArray<float>(TensorShape({2}), {57.472f, 57.472f});
 
   TF_ASSERT_OK(RunOpKernel());
 

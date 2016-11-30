@@ -328,9 +328,28 @@ class NodeStepper(object):
       target_name = target.name
 
     graph_element = self._sess.graph.as_graph_element(target_name)
+    # Any additional tensor handles to obtain in this cont() action.
+    additional_handle_requests = []
+
     if (isinstance(graph_element, ops.Tensor) and
         graph_element.op.type == "Placeholder"):
       raise ValueError("Should not call cont() on a Placeholder")
+
+    if isinstance(graph_element, ops.Operation) and graph_element.outputs:
+      # Check if this op has any output tensors that also fall into this
+      # stepper's transitive closure.
+      node_outputs = [
+          output.name for output in graph_element.outputs
+          if output.name in self.sorted_transitive_closure()
+      ]
+      if node_outputs:
+        # The target is an op with at least one output within the transitive
+        # closure. The cont() action will amount to using the 0-th
+        # output Tensor as the target, as well as obtaining handles to it
+        # and to the rest of the outputs tensors in the transitive closure
+        # (if any).
+        target_name = node_outputs[0]
+        additional_handle_requests = node_outputs[1:]
 
     # Verify that the target is in the transitive closure of the stepper's
     # fetch.
@@ -465,12 +484,23 @@ class NodeStepper(object):
       # No return value for a run of an Operation
     else:
       # This is a Tensor: Will get tensor handle and cache it.
-      target_handle = self._sess.run(session_ops.get_session_handle(fetched),
-                                     feed_dict=feeds,
-                                     options=run_options)
-      self._tensor_handles[target_name] = target_handle
+      # Will also get the additional requested tensor handles (if any).
+      tensors_to_get_handles_for = [fetched]
+      handle_names = [target_name]
 
-      return target_handle.eval()
+      tensors_to_get_handles_for.extend([
+          self._sess.graph.as_graph_element(h)
+          for h in additional_handle_requests
+      ])
+      handle_names.extend(additional_handle_requests)
+
+      for handle_name, tensor in zip(handle_names, tensors_to_get_handles_for):
+        handle = self._sess.run(session_ops.get_session_handle(tensor),
+                                feed_dict=feeds,
+                                options=run_options)
+        self._tensor_handles[handle_name] = handle
+
+      return self._tensor_handles[target_name].eval()
 
     # Invalidate caches at the end.
     for touched_variable in touched_variables:

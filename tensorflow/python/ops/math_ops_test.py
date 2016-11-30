@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -304,6 +305,26 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_result = math_ops.realdiv(nums, divs).eval()
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
+
+  def testComplexDiv(self):
+    foo = array_ops.constant([1.+3.j])
+    with self.test_session():
+      _ = math_ops.div_deprecated(foo, 1.).eval()
+      _ = math_ops.div(foo, 2.).eval()
+
+  def testFloorDivGrad(self):
+    with self.test_session():
+      a = variables.Variable(2.)
+      b = variables.Variable(4.)
+      with self.test_session() as sess:
+        sess.run(variables.initialize_all_variables())
+        c_grad = gradients.gradients(math_ops.div_deprecated(a, b), [a, b])
+        self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
+        c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
+        self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
+        c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
+        self.assertAllEqual([None if x is None else x.eval() for x in c_grad],
+                            [None, None])
 
   def testConsistent(self):
     nums, divs = self.intTestData()

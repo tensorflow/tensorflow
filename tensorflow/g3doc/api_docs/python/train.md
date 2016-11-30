@@ -3469,7 +3469,7 @@ For example,
 cluster_spec = {
     "ps": ["ps0:2222", "ps1:2222"],
     "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
-with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
+with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
   # Build your graph
   v1 = tf.Variable(...)  # assigned to /job:ps/task:0
   v2 = tf.Variable(...)  # assigned to /job:ps/task:1
@@ -4947,9 +4947,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_writer`</b>: `SummaryWriter`. If `None` and an `output_dir` was passed,
       one will be created accordingly.
 *  <b>`scaffold`</b>: `Scaffold` to get summary_op if it's not provided.
-*  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `tf.summary.scalar` or
-      `tf.summary.merge_all`.
+*  <b>`summary_op`</b>: `Tensor` of type `string` containing the serialized `Summary`
+      protocol buffer or a list of `Tensor`. They are most likely an output
+      by TF summary methods like `tf.summary.scalar` or
+      `tf.summary.merge_all`. It can be passed in as one tensor; if more
+      than one, they must be passed in as a list.
 
 ##### Raises:
 
@@ -4983,6 +4985,77 @@ Initializes a `SummarySaver` monitor.
 #### `tf.train.SummarySaverHook.end(session=None)` {#SummarySaverHook.end}
 
 
+
+
+
+- - -
+
+### `class tf.train.GlobalStepWaiterHook` {#GlobalStepWaiterHook}
+
+Delay execution until global step reaches to wait_until_step.
+
+This hook delays execution until global step reaches to `wait_until_step`. It
+is used to gradually start workers in distributed settings. One example usage
+would be setting `wait_until_step=int(K*log(task_id+1))` assuming that
+task_id=0 is the chief.
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.__init__(wait_until_step)` {#GlobalStepWaiterHook.__init__}
+
+Create a _GlobalStepWaiterHook.
+
+##### Args:
+
+
+*  <b>`wait_until_step`</b>: an `int` shows until which global step should we wait.
+
+
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.after_run(run_context, run_values)` {#GlobalStepWaiterHook.after_run}
+
+Called after each call to run().
+
+The `run_values` argument contains results of requested ops/tensors by
+`before_run()`.
+
+The `run_context` argument is the same one send to `before_run` call.
+`run_context.request_stop()` can be called to stop the iteration.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+*  <b>`run_values`</b>: A SessionRunValues object.
+
+
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.before_run(run_context)` {#GlobalStepWaiterHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.begin()` {#GlobalStepWaiterHook.begin}
+
+
+
+
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.end(session)` {#GlobalStepWaiterHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
 
 
 

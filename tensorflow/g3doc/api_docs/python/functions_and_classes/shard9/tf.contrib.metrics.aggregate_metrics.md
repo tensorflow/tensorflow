@@ -10,7 +10,7 @@ Aggregates the metric value tensors and update ops into two lists.
 
 ##### Returns:
 
-  a list of value tensors and a list of update ops.
+  A list of value `Tensor` objects and a list of update ops.
 
 ##### Raises:
 

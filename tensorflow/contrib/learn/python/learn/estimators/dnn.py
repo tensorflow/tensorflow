@@ -60,8 +60,8 @@ def _get_optimizer(optimizer):
 
 
 def _add_hidden_layer_summary(value, tag):
-  summary.scalar("%s:fraction_of_zero_values" % tag, nn.zero_fraction(value))
-  summary.histogram("%s:activation" % tag, value)
+  summary.scalar("%s_fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s_activation" % tag, value)
 
 
 def _dnn_model_fn(features, labels, mode, params):

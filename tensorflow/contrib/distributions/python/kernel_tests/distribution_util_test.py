@@ -362,5 +362,12 @@ class FillLowerTriangularTest(tf.test.TestCase):
               x), x)[0].eval())
 
 
+class GenNewSeedTest(tf.test.TestCase):
+
+  def testOnlyNoneReturnsNone(self):
+    self.assertFalse(distribution_util.gen_new_seed(0, "salt") is None)
+    self.assertTrue(distribution_util.gen_new_seed(None, "salt") is None)
+
+
 if __name__ == "__main__":
   tf.test.main()

@@ -50,13 +50,14 @@ def _AttrValue(attr_protos, name):
                   (name, attr_protos))
 
 
-def _SatisfiesTypeConstraint(dtype, attr_def):
+def _SatisfiesTypeConstraint(dtype, attr_def, param_name):
   if attr_def.HasField("allowed_values"):
     allowed_list = attr_def.allowed_values.list.type
     if dtype not in allowed_list:
       raise TypeError(
-          "DataType %s for attr '%s' not in list of allowed values: %s" %
-          (dtypes.as_dtype(dtype).name, attr_def.name,
+          "Value passed to parameter '%s' has DataType %s not in list of "
+          "allowed values: %s" %
+          (param_name, dtypes.as_dtype(dtype).name,
            ", ".join(dtypes.as_dtype(x).name for x in allowed_list)))
 
 
@@ -176,7 +177,7 @@ def _MakeType(v, attr_def):
     raise TypeError("Expected DataType for argument '%s' not %s." %
                     (attr_def.name, repr(v)))
   i = v.as_datatype_enum
-  _SatisfiesTypeConstraint(i, attr_def)
+  _SatisfiesTypeConstraint(i, attr_def, param_name=attr_def.name)
   return i
 
 
@@ -427,7 +428,7 @@ class OpDefLibrary(object):
           try:
             if not input_arg.is_ref and dtype:
               dtype = dtypes.as_dtype(dtype).base_dtype
-            values = ops.convert_n_to_tensor(
+            values = ops.internal_convert_n_to_tensor(
                 values,
                 name=input_arg.name,
                 dtype=dtype if dtype else None,
@@ -441,7 +442,7 @@ class OpDefLibrary(object):
             observed_types = []
             for value in values:
               try:
-                converted_value = ops.convert_to_tensor(
+                converted_value = ops.internal_convert_to_tensor(
                     value, as_ref=input_arg.is_ref)
                 observed_types.append(converted_value.dtype.base_dtype.name)
               except (TypeError, ValueError):
@@ -482,7 +483,7 @@ class OpDefLibrary(object):
             default_dtype = default_type_attr_map[input_arg.type_attr]
 
           try:
-            values = ops.convert_to_tensor(
+            values = ops.internal_convert_to_tensor(
                 values,
                 name=input_arg.name,
                 dtype=dtype,
@@ -499,8 +500,8 @@ class OpDefLibrary(object):
                    repr(values), type(values).__name__))
           except ValueError:
             # What type does convert_to_tensor think it has?
-            observed = ops.convert_to_tensor(values,
-                                             as_ref=input_arg.is_ref).dtype.name
+            observed = ops.internal_convert_to_tensor(
+                values, as_ref=input_arg.is_ref).dtype.name
             prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
@@ -569,7 +570,8 @@ class OpDefLibrary(object):
             attrs[input_arg.type_attr] = base_types[0]
             inferred_from[input_arg.type_attr] = input_name
             type_attr = _Attr(op_def, input_arg.type_attr)
-            _SatisfiesTypeConstraint(base_types[0], type_attr)
+            _SatisfiesTypeConstraint(base_types[0], type_attr,
+                                     param_name=input_name)
         elif input_arg.type_attr:
           # <type-attr>
           attr_value = base_types[0]
@@ -579,7 +581,8 @@ class OpDefLibrary(object):
           else:
             for base_type in base_types:
               _SatisfiesTypeConstraint(base_type,
-                                       _Attr(op_def, input_arg.type_attr))
+                                       _Attr(op_def, input_arg.type_attr),
+                                       param_name=input_name)
             attrs[input_arg.type_attr] = attr_value
             inferred_from[input_arg.type_attr] = input_name
         elif input_arg.type_list_attr:
@@ -598,7 +601,8 @@ class OpDefLibrary(object):
           else:
             for base_type in base_types:
               _SatisfiesTypeConstraint(base_type,
-                                       _Attr(op_def, input_arg.type_list_attr))
+                                       _Attr(op_def, input_arg.type_list_attr),
+                                       param_name=input_name)
             attrs[input_arg.type_list_attr] = attr_value
             inferred_from[input_arg.type_list_attr] = input_name
         else:

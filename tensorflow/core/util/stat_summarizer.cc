@@ -340,10 +340,10 @@ std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions(
 
 std::string StatSummarizer::GetOutputString() const {
   std::stringstream stream;
-  stream << "Total time (us): " << run_total_micros_;
+  stream << "Total time (us): " << run_total_micros_ << std::endl;
   stream << GetTimingStatsByRunOrder();
   stream << GetTimingStatsByTopDurations();
-  stream << "Total Memory (bytes): " << memory_;
+  stream << "Total Memory (bytes): " << memory_ << std::endl;
   stream << GetMemoryStatsByRunOrder();
   stream << GetMemoryStatsByUsage();
   return stream.str();

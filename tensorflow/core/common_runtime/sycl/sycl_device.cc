@@ -25,8 +25,9 @@ namespace tensorflow {
 
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
-  delete sycl_allocator_;
+  sycl_allocator_->EnterLameDuckMode();
   delete sycl_device_;
+  delete sycl_queue_;
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
@@ -81,6 +82,12 @@ Status SYCLDevice::FillContextMap(const Graph *graph,
 
   return Status::OK();
 }
+
+Status SYCLDevice::Sync() {
+  sycl_device_->synchronize();
+  return Status::OK();
+}
+
 
 } // namespace tensorflow
 

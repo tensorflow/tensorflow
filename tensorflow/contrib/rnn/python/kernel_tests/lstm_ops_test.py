@@ -81,9 +81,9 @@ class LSTMBlockCellTest(tf.test.TestCase):
       basic_names = {v.name: v.get_shape() for v in tf.trainable_variables()}
 
     with self.test_session(use_gpu=self._use_gpu, graph=tf.Graph()):
-      cell = tf.contrib.rnn.LSTMBlockCell(10, use_compatible_names=True)
+      cell = tf.contrib.rnn.LSTMBlockCell(10)
       pcell = tf.contrib.rnn.LSTMBlockCell(
-          10, use_peephole=True, use_compatible_names=True)
+          10, use_peephole=True)
       inputs = [tf.zeros([4, 5])] * 6
       tf.nn.rnn(cell, inputs, dtype=tf.float32, scope="basic")
       tf.nn.rnn(pcell, inputs, dtype=tf.float32, scope="peephole")
@@ -93,8 +93,8 @@ class LSTMBlockCellTest(tf.test.TestCase):
       cell = tf.contrib.rnn.LSTMBlockFusedCell(10)
       pcell = tf.contrib.rnn.LSTMBlockFusedCell(10, use_peephole=True)
       inputs = [tf.zeros([4, 5])] * 6
-      cell(inputs, dtype=tf.float32, scope="basic/LSTMCell")
-      pcell(inputs, dtype=tf.float32, scope="peephole/LSTMCell")
+      cell(inputs, dtype=tf.float32, scope="basic/lstm_cell")
+      pcell(inputs, dtype=tf.float32, scope="peephole/lstm_cell")
       fused_names = {v.name: v.get_shape() for v in tf.trainable_variables()}
 
     self.assertEqual(basic_names, block_names)

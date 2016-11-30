@@ -136,7 +136,7 @@ outputs = outputs_ta.pack()
     but needed for back prop from GPU to CPU.  This allows training RNNs
     which would typically not fit on a single GPU, with very minimal (or no)
     performance penalty.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 

@@ -883,6 +883,7 @@ class ExecutorState {
   const ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
+  bool sync_on_finish_;
 
   // Owned.
 
@@ -998,6 +999,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       impl_(impl),
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
+      sync_on_finish_(args.sync_on_finish),
       num_outstanding_ops_(0) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
@@ -1912,7 +1914,7 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  if (status.ok()) {
+  if (sync_on_finish_ && status.ok()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to

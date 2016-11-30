@@ -131,7 +131,8 @@ class SparseTensor(_TensorLike):
       # values later if it is a VariableOp.
       # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
-      values = ops.convert_to_tensor(values, name="values", as_ref=True)
+      values = ops.internal_convert_to_tensor(
+          values, name="values", as_ref=True)
       shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int64)
     self._indices = indices
     self._values = values

@@ -22,8 +22,8 @@ Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: A floating point tensor of dimension [batch_size, num_classes]
-    labels: A tensor of dimension [batch_size] whose type is in `int32`,
+    predictions: A float `Tensor` of dimension [batch_size, num_classes].
+    labels: A `Tensor` of dimension [batch_size] whose type is in `int32`,
       `int64`.
     k: The number of top elements to look at for computing recall.
     weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
@@ -34,7 +34,7 @@ Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] 
     name: An optional variable_scope name.
 
   Returns:
-    recall_at_k: A tensor representing the recall@k, the fraction of labels
+    recall_at_k: A `Tensor` representing the recall@k, the fraction of labels
       which fall into the top `k` predictions.
     update_op: An operation that increments the `total` and `count` variables
       appropriately and whose value matches `recall_at_k`.

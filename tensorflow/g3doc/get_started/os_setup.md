@@ -251,6 +251,19 @@ Install Anaconda:
 Follow the instructions on the [Anaconda download
 site](https://www.continuum.io/downloads).
 
+Note: If tensorflow has been installed via pip outside the Anaconda environment
+previously, then one should uninstall it if one wants to use the tensorflow 
+installed within an Anaconda environment, because Anaconda searches system 
+site-packages from `.local` with higher priority.
+```bash
+# Python 2
+$ pip uninstall tensorflow
+
+# Python 3
+$ pip3 uninstall tensorflow
+```
+
+
 Create a conda environment called `tensorflow`:
 
 ```bash
@@ -610,8 +623,8 @@ to reflect the cuDNN version you downloaded):
 
 ``` bash
 tar xvzf cudnn-8.0-linux-x64-v5.1-ga.tgz
-sudo cp -P cuda/include/cudnn.h /usr/local/cuda/include
-sudo cp -P cuda/lib64/libcudnn* /usr/local/cuda/lib64
+sudo cp -P cuda/include/cudnn.h /usr/local/cuda/include/
+sudo cp -P cuda/lib64/libcudnn* /usr/local/cuda/lib64/
 sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
 ```
 

@@ -206,6 +206,7 @@ RsqrtGrad
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
+FusedBatchNorm
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad

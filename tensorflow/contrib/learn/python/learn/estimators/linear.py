@@ -196,14 +196,17 @@ def sdca_model_fn(features, labels, mode, params):
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
 
-  if isinstance(head, head_lib._BinarySvmHead):  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  if isinstance(head, head_lib._BinarySvmHead):
     loss_type = "hinge_loss"
-  elif isinstance(head, head_lib._MultiClassHead):  # pylint: disable=protected-access
+  elif isinstance(
+      head, (head_lib._MultiClassHead, head_lib._BinaryLogisticHead)):
     loss_type = "logistic_loss"
-  elif isinstance(head, head_lib._RegressionHead):  # pylint: disable=protected-access
+  elif isinstance(head, head_lib._RegressionHead):
     loss_type = "squared_loss"
   else:
-    return ValueError("Unsupported head type: {}".format(head))
+    raise ValueError("Unsupported head type: {}".format(head))
+  # pylint: enable=protected-access
 
   parent_scope = "linear"
 
@@ -638,9 +641,10 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     """
     self._feature_columns = feature_columns
     assert self._feature_columns
-    self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
+    else:
+      self._optimizer = _get_default_optimizer(feature_columns)
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and

@@ -545,18 +545,19 @@ class CommandHandlerRegistry(object):
     """
     if not cmd_prefix:
       # Print full help information, in sorted order of the command prefixes.
-      lines = []
+      help_info = RichTextLines([])
       if self._help_intro:
         # If help intro is available, show it at the beginning.
-        lines.extend(self._help_intro)
+        help_info.extend(self._help_intro)
 
       sorted_prefixes = sorted(self._handlers)
       for cmd_prefix in sorted_prefixes:
-        lines.extend(self._get_help_for_command_prefix(cmd_prefix))
+        lines = self._get_help_for_command_prefix(cmd_prefix)
         lines.append("")
         lines.append("")
+        help_info.extend(RichTextLines(lines))
 
-      return RichTextLines(lines)
+      return help_info
     else:
       return RichTextLines(self._get_help_for_command_prefix(cmd_prefix))
 
@@ -564,7 +565,7 @@ class CommandHandlerRegistry(object):
     """Set an introductory message to help output.
 
     Args:
-      help_intro: (list of str) Text lines appended to the beginning of the
+      help_intro: (RichTextLines) Rich text lines appended to the
         beginning of the output of the command "help", as introductory
         information.
     """
