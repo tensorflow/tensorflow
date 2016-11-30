@@ -26,17 +26,18 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
 
 
-def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
+def _add_deprecated_function_notice_to_docstring(doc, date, instructions, owner=None):
   """Adds a deprecation notice to a docstring for deprecated functions."""
   return decorator_utils.add_notice_to_docstring(
       doc, instructions,
       'DEPRECATED FUNCTION',
       '(deprecated)', [
           'THIS FUNCTION IS DEPRECATED. It will be removed after %s.' % date,
+          'Contact %s if you have any questions.' % owner if owner is not None else None,
           'Instructions for updating:'])
 
 
-def _add_deprecated_arg_notice_to_docstring(doc, date, instructions):
+def _add_deprecated_arg_notice_to_docstring(doc, date, instructions, owner=None):
   """Adds a deprecation notice to a docstring for deprecated arguments."""
   return decorator_utils.add_notice_to_docstring(
       doc, instructions,
@@ -44,16 +45,19 @@ def _add_deprecated_arg_notice_to_docstring(doc, date, instructions):
       '(deprecated arguments)', [
           'SOME ARGUMENTS ARE DEPRECATED. '
           'They will be removed after %s.' % date,
+          'Contact %s if you have any questions.' % owner if owner is not None else '',
           'Instructions for updating:'])
 
 
-def _validate_deprecation_args(date, instructions):
+def _validate_deprecation_args(date, instructions, owner):
   if not date:
     raise ValueError('Tell us what date this will be deprecated!')
   if not re.match(r'20\d\d-[01]\d-[0123]\d', date):
     raise ValueError('Date must be YYYY-MM-DD.')
   if not instructions:
     raise ValueError('Don\'t deprecate things without conversion instructions!')
+  if owner is not None and not isinstance(owner, str):
+    raise ValueError('Owner of deprecation must be a string.')
 
 
 def _call_location(level=2):
@@ -66,7 +70,7 @@ def _call_location(level=2):
   return '<unknown>'
 
 
-def deprecated(date, instructions):
+def deprecated(date, instructions, owner=None):
   """Decorator for marking functions or methods deprecated.
 
   This decorator logs a deprecation warning whenever the decorated function is
@@ -87,6 +91,8 @@ def deprecated(date, instructions):
       ISO 8601 (YYYY-MM-DD).
     instructions: String. Instructions on how to update code using the
       deprecated function.
+    owner: String. The owner of this deprecation who are responsible of the
+      deprecation before the scheduled removal date.
 
   Returns:
     Decorated function or method.
@@ -94,7 +100,7 @@ def deprecated(date, instructions):
   Raises:
     ValueError: If date is not in ISO 8601 format, or instructions are empty.
   """
-  _validate_deprecation_args(date, instructions)
+  _validate_deprecation_args(date, instructions, owner)
 
   def deprecated_wrapper(func):
     """Deprecation wrapper."""
@@ -109,12 +115,12 @@ def deprecated(date, instructions):
           func.__module__, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_function_notice_to_docstring(
-        func.__doc__, date, instructions)
+        func.__doc__, date, instructions, owner=owner)
     return new_func
   return deprecated_wrapper
 
 
-def deprecated_args(date, instructions, *deprecated_arg_names):
+def deprecated_args(date, instructions, *deprecated_arg_names, owner=None):
   """Decorator for marking specific function arguments as deprecated.
 
   This decorator logs a deprecation warning whenever the decorated function is
@@ -136,6 +142,8 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
     instructions: String. Instructions on how to update code using the
       deprecated function.
     *deprecated_arg_names: String. The deprecated arguments.
+    owner: String. The owner of this deprecation who are responsible of the
+      deprecation before the scheduled removal date.
 
   Returns:
     Decorated function or method.
@@ -144,7 +152,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
     ValueError: If date is not in ISO 8601 format, instructions are empty, or
       the deprecated arguments are not present in the function signature.
   """
-  _validate_deprecation_args(date, instructions)
+  _validate_deprecation_args(date, instructions, owner)
   if not deprecated_arg_names:
     raise ValueError('Specify which argument is deprecated.')
 
@@ -190,12 +198,12 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
             func.__module__, arg_name, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
-        func.__doc__, date, instructions)
+        func.__doc__, date, instructions, owner=owner)
     return new_func
   return deprecated_wrapper
 
 
-def deprecated_arg_values(date, instructions, **deprecated_kwargs):
+def deprecated_arg_values(date, instructions, **deprecated_kwargs, owner=None):
   """Decorator for marking specific function argument values as deprecated.
 
   This decorator logs a deprecation warning whenever the decorated function is
@@ -217,6 +225,8 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
     instructions: String. Instructions on how to update code using the
       deprecated function.
     **deprecated_kwargs: The deprecated argument values.
+    owner: String. The owner of this deprecation who are responsible of the
+      deprecation before the scheduled removal date.
 
   Returns:
     Decorated function or method.
@@ -224,7 +234,7 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
   Raises:
     ValueError: If date is not in ISO 8601 format, or instructions are empty.
   """
-  _validate_deprecation_args(date, instructions)
+  _validate_deprecation_args(date, instructions, owner)
   if not deprecated_kwargs:
     raise ValueError('Specify which argument values are deprecated.')
 
@@ -244,6 +254,6 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
               func.__module__, arg_name, arg_value, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
-        func.__doc__, date, instructions)
+        func.__doc__, date, instructions, owner=owner)
     return new_func
   return deprecated_wrapper
