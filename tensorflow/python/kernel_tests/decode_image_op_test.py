@@ -55,6 +55,11 @@ class DecodeImageOpTest(tf.test.TestCase):
 
         self.assertAllClose(frame, gt)
 
+        bad_channels = tf.image.decode_image(gif0, channels=1)
+        with self.assertRaises(tf.errors.InvalidArgumentError):
+          bad_channels.eval()
+
+
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = ('tensorflow/core/lib/jpeg/testdata/'

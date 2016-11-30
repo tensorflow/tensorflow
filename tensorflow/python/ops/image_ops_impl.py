@@ -1208,15 +1208,18 @@ def decode_image(contents, channels=None, name=None):
     substr = string_ops.substr(contents, 0, 4)
 
     def _gif():
+      # Create assert op to check that bytes are GIF decodable
       is_gif = math_ops.equal(substr, b'\x47\x49\x46\x38', name='is_gif')
       decode_msg = 'Unable to decode bytes as JPEG, PNG, or GIF'
-      assert_decode_op = control_flow_ops.Assert(is_gif, [decode_msg])
-      with ops.control_dependencies([assert_decode_op]):
-        if channels == 1:
-          images = gen_image_ops.decode_gif(contents)
-          return rgb_to_grayscale(images)
-        else:
-          return gen_image_ops.decode_gif(contents)
+      assert_decode = control_flow_ops.Assert(is_gif, [decode_msg])
+      # Create assert to make sure that channels is not set to 1
+      # Already checked above that channels is in (None, 0, 1, 3)
+      gif_channels = 0 if channels is None else channels
+      good_channels = math_ops.not_equal(gif_channels, 1, name='check_channels')
+      channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
+      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
+      with ops.control_dependencies([assert_decode, assert_channels]):
+        return gen_image_ops.decode_gif(contents)
     
     def _png():
       return gen_image_ops.decode_png(contents, channels)
