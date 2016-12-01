@@ -1460,6 +1460,87 @@ Alias for field number 0
 
 - - -
 
+### `class tf.SparseFeature` {#SparseFeature}
+
+Configuration for parsing a sparse input feature.
+
+Fields:
+  index_key: Name of index feature.  The underlying feature's type must
+    be `int64` and its length must always match that of the `value_key`
+    feature.
+  value_key: Name of value feature.  The underlying feature's type must
+    be `dtype` and its length must always match that of the `index_key`
+    feature.
+  dtype: Data type of the `value_key` feature.
+  size: Each value in the `index_key` feature must be in `[0, size)`.
+  already_sorted: A boolean to specify whether the values in `index_key` are
+    already sorted. If so skip sorting, False by default (optional).
+- - -
+
+#### `tf.SparseFeature.__getnewargs__()` {#SparseFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.SparseFeature.__getstate__()` {#SparseFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.SparseFeature.__new__(_cls, index_key, value_key, dtype, size, already_sorted=False)` {#SparseFeature.__new__}
+
+Create new instance of SparseFeature(index_key, value_key, dtype, size, already_sorted)
+
+
+- - -
+
+#### `tf.SparseFeature.__repr__()` {#SparseFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.SparseFeature.already_sorted` {#SparseFeature.already_sorted}
+
+Alias for field number 4
+
+
+- - -
+
+#### `tf.SparseFeature.dtype` {#SparseFeature.dtype}
+
+Alias for field number 2
+
+
+- - -
+
+#### `tf.SparseFeature.index_key` {#SparseFeature.index_key}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.SparseFeature.size` {#SparseFeature.size}
+
+Alias for field number 3
+
+
+- - -
+
+#### `tf.SparseFeature.value_key` {#SparseFeature.value_key}
+
+Alias for field number 1
+
+
+
+- - -
+
 ### `tf.parse_example(serialized, features, name=None, example_names=None)` {#parse_example}
 
 Parses `Example` protos into a `dict` of tensors.
@@ -1469,17 +1550,26 @@ protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
 protos. These may be useful for debugging purposes, but they have no effect on
-the output. If not `None`, `example_names` must be the same length as `serialized`.
+the output. If not `None`, `example_names` must be the same length as
+`serialized`.
 
 This op parses serialized examples into a dictionary mapping keys to `Tensor`
-and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
-and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
-`SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
+and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`,
+`SparseFeature`, and `FixedLenFeature` objects. Each `VarLenFeature`
+and `SparseFeature` is mapped to a `SparseTensor`, and each
+`FixedLenFeature` is mapped to a `Tensor`.
 
 Each `VarLenFeature` maps to a `SparseTensor` of the specified type
 representing a ragged matrix. Its indices are `[batch, index]` where `batch`
 is the batch entry the value is from in `serialized`, and `index` is the
 value's index in the list of values associated with that feature and example.
+
+Each `SparseFeature` maps to a `SparseTensor` of the specified type
+representing a sparse matrix of shape
+`(serialized.size(), SparseFeature.size)`. Its indices are `[batch, index]`
+where `batch` is the batch entry the value is from in `serialized`, and
+`index` is the value's index is given by the values in the
+`SparseFeature.index_key` feature column.
 
 Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
 `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
@@ -1592,13 +1682,48 @@ And the expected output is:
 }
 ```
 
+Given two `Example` input protos in `serialized`:
+
+```
+[
+  features {
+    feature { key: "val" value { float_list { value: [ 0.5, -1.0 ] } } }
+    feature { key: "ix" value { int64_list { value: [ 3, 20 ] } } }
+  },
+  features {
+    feature { key: "val" value { float_list { value: [ 0.0 ] } } }
+    feature { key: "ix" value { int64_list { value: [ 42 ] } } }
+  }
+]
+```
+
+And arguments
+
+```
+example_names: ["input0", "input1"],
+features: {
+    "sparse": SparseFeature("ix", "val", tf.float32, 100),
+}
+```
+
+Then the output is a dictionary:
+
+```python
+{
+  "sparse": SparseTensor(
+      indices=[[0, 3], [0, 20], [1, 42]],
+      values=[0.5, -1.0, 0.0]
+      shape=[2, 100]),
+}
+```
+
 ##### Args:
 
 
 *  <b>`serialized`</b>: A vector (1-D Tensor) of strings, a batch of binary
     serialized `Example` protos.
-*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
-    `VarLenFeature` values.
+*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature`,
+    `VarLenFeature`, and `SparseFeature` values.
 *  <b>`name`</b>: A name for this operation (optional).
 *  <b>`example_names`</b>: A vector (1-D Tensor) of strings (optional), the names of
     the serialized protos in the batch.
