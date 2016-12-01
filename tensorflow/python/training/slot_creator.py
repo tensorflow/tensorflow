@@ -54,6 +54,10 @@ def _create_slot_var(primary, val, scope):
     # Primary is a partitioned variable, so we need to also indicate that
     # the slot is a partitioned variable.  Slots have the same partitioning
     # as their primaries.
+    # For examples when using AdamOptimizer in linear model, slot.name
+    # here can be "linear//weights/Adam:0", while primary.op.name is
+    # "linear//weight". We want to get 'Adam' as real_slot_name, so we
+    # remove "'linear//weight' + '/'" and ':0'.
     real_slot_name = slot.name[len(primary.op.name + "/"):-2]
     slice_info = primary._save_slice_info
     slot._set_save_slice_info(variables.Variable.SaveSliceInfo(
@@ -81,6 +85,10 @@ def create_slot(primary, val, name, colocate_with_primary=True):
     A `Variable` object.
   """
   # Scope the slot name in the namespace of the primary variable.
+  # Set "primary.op.name + '/' + name" as default name, so the scope name of 
+  # optimizer can be shared when reuse is True. Meanwhile when reuse is False
+  # and the same name has been previously used, the scope name will add '_N'
+  # as suffix for unique identifications.
   with variable_scope.variable_scope(None, primary.op.name + '/' + name):
     if colocate_with_primary:
       with ops.colocate_with(primary):
