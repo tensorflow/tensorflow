@@ -39,7 +39,7 @@ class StepStatsCollector;
 //   Rendezvous* rendezvous = NewNaiveRendezvous();
 //   TF_CHECK_OK(rendezvous->Send("input", some_input_tensor));
 //   TF_CHECK_OK(executor->Run({ExecutorOpts, rendezvous, nullptr}));
-//   TF_CHECK_OK(rendezvous->Recv("input", &output_tensor));
+//   TF_CHECK_OK(rendezvous->Recv("output", &output_tensor));
 //   ... ...
 //
 // Multiple threads can call Executor::Run concurrently.
