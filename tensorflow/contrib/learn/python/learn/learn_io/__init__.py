@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tools to allow different io formats."""
 
 from __future__ import absolute_import
@@ -30,6 +29,7 @@ from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_f
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_record_features
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_keyed_batch_examples
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_keyed_batch_features
+from tensorflow.contrib.learn.python.learn.learn_io.numpy_io import numpy_input_fn
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_data
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_labels
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_matrix
