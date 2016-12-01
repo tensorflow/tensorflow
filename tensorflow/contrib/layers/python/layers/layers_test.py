@@ -279,6 +279,18 @@ class ConvolutionTest(tf.test.TestCase):
       biases = tf.contrib.framework.get_variables_by_name('biases')[0]
       self.assertListEqual(biases.get_shape().as_list(), [64])
 
+  def testFullyConvWithCustomGetter(self):
+    height, width = 7, 9
+    with self.test_session():
+      called = [0]
+      def custom_getter(getter, *args, **kwargs):
+        called[0] += 1
+        return getter(*args, **kwargs)
+      with tf.variable_scope('test', custom_getter=custom_getter):
+        images = tf.random_uniform((5, height, width, 32), seed=1)
+        tf.contrib.layers.convolution2d(images, 64, images.get_shape()[1:3])
+      self.assertEqual(called[0], 2)  # Custom getter called twice.
+
   def testCreateVerticalConv(self):
     height, width = 7, 9
     with self.test_session():

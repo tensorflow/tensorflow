@@ -800,15 +800,12 @@ def convolution(inputs,
   if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
 
-  def _layer_variable_getter(*args, **kwargs):
-    rename = {'bias': 'biases',
-              'kernel': 'weights'}
-    kwargs['rename'] = rename
-    return _model_variable_getter(*args, **kwargs)
+  layer_variable_getter = _build_variable_getter(
+      {'bias': 'biases', 'kernel': 'weights'})
 
   with variable_scope.variable_scope(
       scope, 'Conv', [inputs], reuse=reuse,
-      custom_getter=_layer_variable_getter) as sc:
+      custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
 
@@ -1029,15 +1026,12 @@ def convolution2d_transpose(
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: if `C` dimension of `inputs` is None.
   """
-  def _layer_variable_getter(*args, **kwargs):
-    rename = {'bias': 'biases',
-              'kernel': 'weights'}
-    kwargs['rename'] = rename
-    return _model_variable_getter(*args, **kwargs)
+  layer_variable_getter = _build_variable_getter(
+      {'bias': 'biases', 'kernel': 'weights'})
 
   with variable_scope.variable_scope(
       scope, 'Conv2d_transpose', [inputs], reuse=reuse,
-      custom_getter=_layer_variable_getter) as sc:
+      custom_getter=layer_variable_getter) as sc:
     if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
       raise ValueError('data_format has to be either NCHW or NHWC.')
 
@@ -1240,6 +1234,18 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
       custom_getter=getter)
 
 
+def _build_variable_getter(rename):
+  """Build a model variable getter that respects scope getter and renames."""
+  # Respect current getter, if one is set.
+  current_custom_getter = variable_scope.get_variable_scope().custom_getter
+  def layer_variable_getter(getter, *args, **kwargs):
+    if current_custom_getter is not None:
+      getter = functools.partial(current_custom_getter, getter)
+    kwargs['rename'] = rename
+    return _model_variable_getter(getter, *args, **kwargs)
+  return layer_variable_getter
+
+
 def _add_variable_to_collections(variable, collections_set, collections_name):
   """Adds variable (or all its parts) to all collections with that name."""
   collections = utils.get_variable_collections(
@@ -1314,16 +1320,13 @@ def fully_connected(inputs,
   if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
 
-  def _layer_variable_getter(*args, **kwargs):
-    rename = {'bias': 'biases'}
-    kwargs['rename'] = rename
-    return _model_variable_getter(*args, **kwargs)
+  layer_variable_getter = _build_variable_getter({'bias': 'biases'})
 
   with variable_scope.variable_scope(
       scope, 'fully_connected', [inputs],
-      reuse=reuse, custom_getter=_layer_variable_getter) as sc:
+      reuse=reuse, custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    layer = core_layers.FullyConnected(
+    layer = core_layers.Dense(
         units=num_outputs,
         activation=None,
         use_bias=not normalizer_fn and biases_initializer,
@@ -1719,16 +1722,14 @@ def separable_convolution2d(
   Returns:
     A `Tensor` representing the output of the operation.
   """
-  def _layer_variable_getter(*args, **kwargs):
-    rename = {'bias': 'biases',
-              'depthwise_kernel': 'depthwise_weights',
-              'pointwise_kernel': 'pointwise_weights'}
-    kwargs['rename'] = rename
-    return _model_variable_getter(*args, **kwargs)
+  layer_variable_getter = _build_variable_getter(
+      {'bias': 'biases',
+       'depthwise_kernel': 'depthwise_weights',
+       'pointwise_kernel': 'pointwise_weights'})
 
   with variable_scope.variable_scope(
       scope, 'SeparableConv2d', [inputs], reuse=reuse,
-      custom_getter=_layer_variable_getter) as sc:
+      custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
     if num_outputs is not None:
