@@ -21160,6 +21160,16 @@ op {
     description: "The type of the elements on the tensor_array."
   }
   attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, gathering zero-size TensorArrays is an error."
+  }
+  attr {
     name: "dynamic_size"
     type: "bool"
     default_value {
