@@ -92,6 +92,9 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
     "tf_additional_cupti_wrapper_deps",
+    "tf_additional_libdevice_data",
+    "tf_additional_libdevice_deps",
+    "tf_additional_libdevice_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
@@ -1029,6 +1032,7 @@ cc_library(
                 "platform/gif.h",
                 "platform/jpeg.h",
                 "platform/**/cuda.h",
+                "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
                 "platform/load_library.cc",
             ],
@@ -1049,6 +1053,7 @@ cc_library(
                 "platform/gif.h",
                 "platform/jpeg.h",
                 "platform/**/cuda.h",
+                "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
             ],
         ),
@@ -1056,6 +1061,7 @@ cc_library(
         exclude = [
             "**/*test*",
             "platform/**/cuda.h",
+            "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
@@ -2282,6 +2288,18 @@ filegroup(
     srcs = [
         "example/testdata/parse_example_graph_def.pbtxt",
     ],
+)
+
+cc_library(
+    name = "cuda_libdevice_path",
+    srcs = ["platform/cuda_libdevice_path.cc"] + tf_additional_libdevice_srcs(),
+    hdrs = ["platform/cuda_libdevice_path.h"],
+    copts = tf_copts(),
+    data = tf_additional_libdevice_data(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ] + tf_additional_libdevice_deps(),
 )
 
 # -----------------------------------------------------------------------------
