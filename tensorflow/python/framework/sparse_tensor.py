@@ -12,24 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Classes and functions used to construct graphs."""
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import six
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 
-
 # pylint: disable=protected-access
 _TensorLike = ops._TensorLike
 _eval_using_default_session = ops._eval_using_default_session
 _override_helper = ops._override_helper
+
 # pylint: enable=protected-access
 
 
@@ -37,37 +36,41 @@ class SparseTensor(_TensorLike):
   """Represents a sparse tensor.
 
   TensorFlow represents a sparse tensor as three separate dense tensors:
-  `indices`, `values`, and `shape`.  In Python, the three tensors are
+  `indices`, `values`, and `dense_shape`.  In Python, the three tensors are
   collected into a `SparseTensor` class for ease of use.  If you have separate
-  `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
+  `indices`, `values`, and `dense_shape` tensors, wrap them in a `SparseTensor`
   object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(indices, values, shape)`
+  Concretely, the sparse tensor `SparseTensor(indices, values, dense_shape)`
   comprises the following components, where `N` and `ndims` are the number
   of values and number of dimensions in the `SparseTensor`, respectively:
 
-  * `indices`: A 2-D int64 tensor of shape `[N, ndims]`, which specifies
+  * `indices`: A 2-D int64 tensor of dense_shape `[N, ndims]`, which specifies
     the indices of the elements in the sparse tensor that contain nonzero
     values (elements are zero-indexed). For example, `indices=[[1,3], [2,4]]`
     specifies that the elements with indexes of [1,3] and [2,4] have
     nonzero values.
 
-  * `values`: A 1-D tensor of any type and shape `[N]`, which supplies the
+  * `values`: A 1-D tensor of any type and dense_shape `[N]`, which supplies the
     values for each element in `indices`. For example, given
     `indices=[[1,3], [2,4]]`, the parameter `values=[18, 3.6]` specifies
     that element [1,3] of the sparse tensor has a value of 18, and element
     [2,4] of the tensor has a value of 3.6.
 
-  * `shape`: A 1-D int64 tensor of shape `[ndims]`, which specifies the shape
-    of the sparse tensor. Takes a list indicating the number of elements in
-    each dimension. For example, `shape=[3,6]` specifies a two-dimensional 3x6
-    tensor, `shape=[2,3,4]` specifies a three-dimensional 2x3x4 tensor, and
-    `shape=[9]` specifies a one-dimensional tensor with 9 elements.
+  * `dense_shape`: A 1-D int64 tensor of dense_shape `[ndims]`, which specifies
+  the
+    dense_shape of the sparse tensor. Takes a list indicating the number of
+    elements
+    in each dimension. For example, `dense_shape=[3,6]` specifies a
+    two-dimensional
+    3x6 tensor, `dense_shape=[2,3,4]` specifies a three-dimensional 2x3x4
+    tensor, and
+    `dense_shape=[9]` specifies a one-dimensional tensor with 9 elements.
 
   The corresponding dense tensor satisfies:
 
   ```python
-  dense.shape = shape
+  dense.shape = dense_shape
   dense[tuple(indices[i])] = values[i]
   ```
 
@@ -80,7 +83,7 @@ class SparseTensor(_TensorLike):
   Example: The sparse tensor
 
   ```python
-  SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
+  SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
   ```
 
   represents the dense tensor
@@ -95,7 +98,7 @@ class SparseTensor(_TensorLike):
   @@get_shape
   @@indices
   @@values
-  @@shape
+  @@dense_shape
   @@dtype
   @@op
   @@graph
@@ -105,26 +108,31 @@ class SparseTensor(_TensorLike):
   def from_value(cls, sparse_tensor_value):
     if not (isinstance(sparse_tensor_value, SparseTensor) or
             isinstance(sparse_tensor_value, SparseTensorValue)):
-      raise TypeError(
-          "Neither a SparseTensor nor SparseTensorValue: %s."
-          % sparse_tensor_value)
+      raise TypeError("Neither a SparseTensor nor SparseTensorValue: %s." %
+                      sparse_tensor_value)
     return SparseTensor(
         indices=sparse_tensor_value.indices,
         values=sparse_tensor_value.values,
-        shape=sparse_tensor_value.shape)
+        dense_shape=sparse_tensor_value.dense_shape)
 
-  def __init__(self, indices, values, shape):
+  def __init__(self, indices, values, dense_shape=None, shape=None):
     """Creates a `SparseTensor`.
 
     Args:
-      indices: A 2-D int64 tensor of shape `[N, ndims]`.
-      values: A 1-D tensor of any type and shape `[N]`.
-      shape: A 1-D int64 tensor of shape `[ndims]`.
+      indices: A 2-D int64 tensor of dense_shape `[N, ndims]`.
+      values: A 1-D tensor of any type and dense_shape `[N]`.
+      dense_shape: A 1-D int64 tensor of dense_shape `[ndims]`.
+      shape: Temporary.  Legacy naming of dense_shape.  Only one of `shape` or
+        `dense_shape` must be provided.
 
     Returns:
-      A `SparseTensor`
+      A `SparseTensor`.
+
+    Raises:
+      ValueError: if both `shape` and `dense_shape` are provided.
     """
-    with ops.name_scope(None, "SparseTensor", [indices, values, shape]):
+    with ops.name_scope(None, "SparseTensor",
+                        [indices, values, shape, dense_shape]):
       indices = ops.convert_to_tensor(
           indices, name="indices", dtype=dtypes.int64)
       # Always pass as_ref=True because we want to be able to update
@@ -133,35 +141,40 @@ class SparseTensor(_TensorLike):
       # is a VariableOp and updating users of SparseTensor.
       values = ops.internal_convert_to_tensor(
           values, name="values", as_ref=True)
-      shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int64)
+      if shape is not None and dense_shape is not None:
+        raise ValueError("Only one of shape or dense_shape must be provided, "
+                         "but saw %s and %s" % (shape, dense_shape))
+      dense_shape = shape if shape is not None else dense_shape
+      dense_shape = ops.convert_to_tensor(
+          dense_shape, name="dense_shape", dtype=dtypes.int64)
     self._indices = indices
     self._values = values
-    self._shape = shape
+    self._dense_shape = dense_shape
 
     indices_shape = indices.get_shape().with_rank(2)
     values_shape = values.get_shape().with_rank(1)
-    shape_shape = shape.get_shape().with_rank(1)
+    dense_shape_shape = dense_shape.get_shape().with_rank(1)
 
     # Assert number of rows in indices match the number of elements in values.
     indices_shape[0].merge_with(values_shape[0])
     # Assert number of columns in indices matches the number of elements in
-    # shape.
-    indices_shape[1].merge_with(shape_shape[0])
+    # dense_shape.
+    indices_shape[1].merge_with(dense_shape_shape[0])
 
   def get_shape(self):
-    """Get the `TensorShape` that represents the shape of the dense tensor.
+    """Get the `TensorShape` representing the shape of the dense tensor.
 
     Returns:
       A `TensorShape` object.
     """
-    return tensor_util.constant_value_as_shape(self._shape)
+    return tensor_util.constant_value_as_shape(self._dense_shape)
 
   @property
   def indices(self):
     """The indices of non-zero values in the represented dense tensor.
 
     Returns:
-      A 2-D Tensor of int64 with shape `[N, ndims]`, where `N` is the
+      A 2-D Tensor of int64 with dense_shape `[N, ndims]`, where `N` is the
         number of non-zero values in the tensor, and `ndims` is the rank.
     """
     return self._indices
@@ -186,18 +199,23 @@ class SparseTensor(_TensorLike):
     return self._values.dtype
 
   @property
-  def shape(self):
+  def dense_shape(self):
     """A 1-D Tensor of int64 representing the shape of the dense tensor."""
-    return self._shape
+    return self._dense_shape
+
+  @property
+  def shape(self):
+    """Legacy property returning `dense_shape`."""
+    return self._dense_shape
 
   @property
   def graph(self):
-    """The `Graph` that contains the index, value, and shape tensors."""
+    """The `Graph` that contains the index, value, and dense_shape tensors."""
     return self._indices.graph
 
   def __str__(self):
-    return "SparseTensor(indices=%s, values=%s, shape=%s)" % (
-        self._indices, self._values, self._shape)
+    return "SparseTensor(indices=%s, values=%s, dense_shape=%s)" % (
+        self._indices, self._values, self._dense_shape)
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this sparse tensor in a `Session`.
@@ -220,14 +238,67 @@ class SparseTensor(_TensorLike):
     Returns:
       A `SparseTensorValue` object.
     """
-    indices, values, shape = _eval_using_default_session(
-        [self.indices, self.values, self.shape], feed_dict, self.graph, session)
-    return SparseTensorValue(indices, values, shape)
+    indices, values, dense_shape = _eval_using_default_session(
+        [self.indices, self.values, self.dense_shape], feed_dict, self.graph,
+        session)
+    return SparseTensorValue(indices, values, dense_shape)
 
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(SparseTensor, operator, func)
 
 
-SparseTensorValue = collections.namedtuple("SparseTensorValue",
-                                           ["indices", "values", "shape"])
+class _STVIter(six.Iterator):
+  """Iterator for the SparseTensorValue."""
+
+  def __init__(self, st):
+    self._st = st
+    self._ix = -1
+
+  def __iter__(self):  # pylint: disable=non-iterator-returned
+    return self
+
+  def __next__(self):
+    self._ix += 1
+    if self._ix == 0:
+      return self._st.indices
+    elif self._ix == 1:
+      return self._st.values
+    elif self._ix == 2:
+      return self._st.dense_shape
+    else:
+      raise StopIteration
+
+
+class SparseTensorValue(object):
+  """Stores the calculated numpy arrays representing a `SparseTensor`.
+
+  Returned as the output of a session.run on a `SparseTensor` object.
+  """
+
+  def __init__(self, indices, values, dense_shape=None, shape=None):
+    self._indices = indices
+    self._values = values
+    self._dense_shape = shape or dense_shape
+
+  @property
+  def indices(self):
+    return self._indices
+
+  @property
+  def values(self):
+    return self._values
+
+  @property
+  def dense_shape(self):
+    return self._dense_shape
+
+  @property
+  def shape(self):
+    return self._dense_shape
+
+  def __iter__(self):  # pylint: disable=non-iterator-returned
+    return _STVIter(self)
+
+  def __getitem__(self, i):
+    return [self.indices, self.values, self.dense_shape][i]
