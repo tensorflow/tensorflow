@@ -99,7 +99,7 @@ function(AddPythonTests)
   endif(_AT_DEPENDS)
 
   foreach(sourcefile ${_AT_SOURCES})
-    add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile})
+    add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile} WORKING_DIRECTORY ${tensorflow_source_dir})
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
