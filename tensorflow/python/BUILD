@@ -2304,6 +2304,34 @@ py_test(
     ],
 )
 
+py_test(
+    name = "layers_convolutional_test",
+    size = "small",
+    srcs = [
+        "layers/convolutional_test.py",
+    ],
+    main = "layers/convolutional_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "layers_conv_utils_test",
+    size = "small",
+    srcs = [
+        "layers/conv_utils_test.py",
+    ],
+    main = "layers/conv_utils_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "docs",
     srcs = [

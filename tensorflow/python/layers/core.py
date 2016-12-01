@@ -125,7 +125,7 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
                              dtype=self._dtype,
                              trainable=True)
     if self.use_bias:
-      self.bias = vs.get_variable('biases',
+      self.bias = vs.get_variable('bias',
                                   shape=[self.units,],
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,

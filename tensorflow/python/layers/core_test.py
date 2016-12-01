@@ -54,7 +54,7 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(fc.w.name, 'fc/weights:0')
-    self.assertEqual(fc.bias.name, 'fc/biases:0')
+    self.assertEqual(fc.bias.name, 'fc/bias:0')
 
   def testNoBias(self):
     fc = core_layers.FullyConnected(2, use_bias=False, name='fc')

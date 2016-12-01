@@ -369,7 +369,7 @@ class ConvolutionTest(tf.test.TestCase):
           tf.contrib.framework.get_variables_by_name('weights')[0])
       wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                       'Conv/weights/Regularizer/l2_regularizer')
+                       'Conv/kernel/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertAlmostEqual(sess.run(wd), weight_decay * l2_loss.eval())
 
@@ -2612,13 +2612,13 @@ class SeparableConv2dTest(tf.test.TestCase):
       weight_decay = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(
           weight_decay.op.name,
-          'SeparableConv2d/depthwise_weights/Regularizer/l2_regularizer')
+          'SeparableConv2d/depthwise_kernel/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertLessEqual(sess.run(weight_decay), 0.05)
       weight_decay = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[1]
       self.assertEqual(
           weight_decay.op.name,
-          'SeparableConv2d/pointwise_weights/Regularizer/l2_regularizer')
+          'SeparableConv2d/pointwise_kernel/Regularizer/l2_regularizer')
       self.assertLessEqual(sess.run(weight_decay), 0.05)
 
   def testReuseConvWithWeightDecay(self):

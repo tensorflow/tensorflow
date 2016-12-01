@@ -30,6 +30,7 @@ from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -798,68 +799,64 @@ def convolution(inputs,
   """
   if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
-  with variable_scope.variable_scope(scope, 'Conv', [inputs],
-                                     reuse=reuse) as sc:
+
+  def _layer_variable_getter(*args, **kwargs):
+    rename = {'bias': 'biases',
+              'kernel': 'weights'}
+    kwargs['rename'] = rename
+    return _model_variable_getter(*args, **kwargs)
+
+  with variable_scope.variable_scope(
+      scope, 'Conv', [inputs], reuse=reuse,
+      custom_getter=_layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    dtype = inputs.dtype.base_dtype
     input_rank = inputs.get_shape().ndims
-    if input_rank is None:
-      raise ValueError('Rank of inputs must be known')
-    if input_rank < 3 or input_rank > 5:
-      raise ValueError('Rank of inputs is %d, which is not >= 3 and <= 5' %
-                       input_rank)
-    conv_dims = input_rank - 2
-    kernel_size = utils.n_positive_integers(conv_dims, kernel_size)
-    stride = utils.n_positive_integers(conv_dims, stride)
-    rate = utils.n_positive_integers(conv_dims, rate)
 
-    if data_format is None or data_format.endswith('C'):
-      num_input_channels = inputs.get_shape()[input_rank - 1].value
-    elif data_format.startswith('NC'):
-      num_input_channels = inputs.get_shape()[1].value
+    if input_rank == 3:
+      layer_class = convolutional_layers.Convolution1D
+    elif input_rank == 4:
+      layer_class = convolutional_layers.Convolution2D
+    elif input_rank == 5:
+      layer_class = convolutional_layers.Convolution3D
     else:
-      raise ValueError('Invalid data_format')
+      raise ValueError('Convolution not supported for input with rank',
+                       input_rank)
 
-    if num_input_channels is None:
-      raise ValueError('Number of in_channels must be known.')
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = layer_class(filters=num_outputs,
+                        kernel_size=kernel_size,
+                        strides=stride,
+                        padding=padding,
+                        data_format=df,
+                        dilation_rate=rate,
+                        activation=None,
+                        use_bias=not normalizer_fn and biases_initializer,
+                        kernel_initializer=weights_initializer,
+                        bias_initializer=biases_initializer,
+                        kernel_regularizer=weights_regularizer,
+                        bias_regularizer=biases_regularizer,
+                        activity_regularizer=None,
+                        trainable=trainable,
+                        name=sc.name,
+                        dtype=inputs.dtype.base_dtype,
+                        _scope=sc,
+                        _reuse_weights=reuse)
+    outputs = layer.apply(inputs)
 
-    weights_shape = (
-        list(kernel_size) + [num_input_channels, num_outputs])
-    weights_collections = utils.get_variable_collections(variables_collections,
-                                                         'weights')
-    weights = variables.model_variable('weights',
-                                       shape=weights_shape,
-                                       dtype=dtype,
-                                       initializer=weights_initializer,
-                                       regularizer=weights_regularizer,
-                                       collections=weights_collections,
-                                       trainable=trainable)
-    outputs = nn.convolution(input=inputs,
-                             filter=weights,
-                             dilation_rate=rate,
-                             strides=stride,
-                             padding=padding,
-                             data_format=data_format)
+    # Add variables to collections.
+    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
+    if layer.use_bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
+
     if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
-    else:
-      if biases_initializer is not None:
-        biases_collections = utils.get_variable_collections(
-            variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_outputs],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          collections=biases_collections,
-                                          trainable=trainable)
-        outputs = nn.bias_add(outputs, biases, data_format=data_format)
+
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
                                        sc.original_name_scope, outputs)
-
 
 convolution2d = convolution
 
@@ -1032,87 +1029,50 @@ def convolution2d_transpose(
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: if `C` dimension of `inputs` is None.
   """
+  def _layer_variable_getter(*args, **kwargs):
+    rename = {'bias': 'biases',
+              'kernel': 'weights'}
+    kwargs['rename'] = rename
+    return _model_variable_getter(*args, **kwargs)
+
   with variable_scope.variable_scope(
-      scope, 'Conv2d_transpose', [inputs], reuse=reuse) as sc:
+      scope, 'Conv2d_transpose', [inputs], reuse=reuse,
+      custom_getter=_layer_variable_getter) as sc:
     if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
       raise ValueError('data_format has to be either NCHW or NHWC.')
-    dtype = inputs.dtype.base_dtype
-    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
-    stride_h, stride_w = utils.two_element_tuple(stride)
-    if data_format == DATA_FORMAT_NCHW:
-      c_axis, h_axis, w_axis = 1, 2, 3
-    else:
-      h_axis, w_axis, c_axis = 1, 2, 3
-    num_filters_in = inputs.get_shape()[c_axis].value
-    if num_filters_in is None:
-      raise ValueError('`C` dimension of `inputs` must be known but is None.')
-    weights_shape = [kernel_h, kernel_w, num_outputs, num_filters_in]
-    weights_collections = utils.get_variable_collections(
-        variables_collections, 'weights')
-    weights = variables.model_variable(
-        'weights',
-        shape=weights_shape,
-        dtype=dtype,
-        initializer=weights_initializer,
-        regularizer=weights_regularizer,
+
+    inputs = ops.convert_to_tensor(inputs)
+
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = convolutional_layers.Convolution2DTranspose(
+        filters=num_outputs,
+        kernel_size=kernel_size,
+        strides=stride,
+        padding=padding,
+        data_format=df,
+        activation=None,
+        use_bias=not normalizer_fn and biases_initializer,
+        kernel_initializer=weights_initializer,
+        bias_initializer=biases_initializer,
+        kernel_regularizer=weights_regularizer,
+        bias_regularizer=biases_regularizer,
+        activity_regularizer=None,
         trainable=trainable,
-        collections=weights_collections)
+        name=sc.name,
+        dtype=inputs.dtype.base_dtype,
+        _scope=sc,
+        _reuse_weights=reuse)
+    outputs = layer.apply(inputs)
 
-    inputs_shape = array_ops.shape(inputs)
-    batch_size = inputs_shape[0]
-    height, width = inputs_shape[h_axis], inputs_shape[w_axis]
-
-    def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
-      if isinstance(dim_size, ops.Tensor):
-        dim_size = math_ops.mul(dim_size, stride_size)
-      elif dim_size is not None:
-        dim_size *= stride_size
-
-      if padding == 'VALID' and dim_size is not None:
-        dim_size += max(kernel_size - stride_size, 0)
-      return dim_size
-
-    # Infer the dynamic output shape:
-    out_height = get_deconv_dim(height, stride_h, kernel_h, padding)
-    out_width = get_deconv_dim(width, stride_w, kernel_w, padding)
-
-    if data_format == DATA_FORMAT_NHWC:
-      output_shape = [batch_size, out_height, out_width, num_outputs]
-      strides = [1, stride_h, stride_w, 1]
-    else:
-      output_shape = [batch_size, num_outputs, out_height, out_width]
-      strides = [1, 1, stride_h, stride_w]
-
-    output_shape = array_ops.pack(output_shape)
-    outputs = nn.conv2d_transpose(inputs, weights, output_shape,
-                                  strides,
-                                  padding=padding,
-                                  data_format=data_format)
-
-    # Infer the static output shape:
-    out_shape = inputs.get_shape().as_list()
-    out_shape[c_axis] = num_outputs
-    out_shape[h_axis] = get_deconv_dim(
-        out_shape[h_axis], stride_h, kernel_h, padding)
-    out_shape[w_axis] = get_deconv_dim(
-        out_shape[w_axis], stride_w, kernel_w, padding)
-    outputs.set_shape(out_shape)
+    # Add variables to collections.
+    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
+    if layer.bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
-    else:
-      if biases_initializer is not None:
-        biases_collections = utils.get_variable_collections(
-            variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_outputs,],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          trainable=trainable,
-                                          collections=biases_collections)
-        outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
@@ -1266,8 +1226,13 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
 def _model_variable_getter(getter, name, shape=None, dtype=None,
                            initializer=None, regularizer=None, trainable=True,
                            collections=None, caching_device=None,
-                           partitioner=None, **_):
+                           partitioner=None, rename=None, **_):
   """Getter that uses model_variable for compatibility with core layers."""
+  short_name = name.split('/')[-1]
+  if rename and short_name in rename:
+    name_components = name.split('/')
+    name_components[-1] = rename[short_name]
+    name = '/'.join(name_components)
   return variables.model_variable(
       name, shape=shape, dtype=dtype, initializer=initializer,
       regularizer=regularizer, collections=collections, trainable=trainable,
@@ -1349,9 +1314,14 @@ def fully_connected(inputs,
   if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
 
+  def _layer_variable_getter(*args, **kwargs):
+    rename = {'bias': 'biases'}
+    kwargs['rename'] = rename
+    return _model_variable_getter(*args, **kwargs)
+
   with variable_scope.variable_scope(
       scope, 'fully_connected', [inputs],
-      reuse=reuse, custom_getter=_model_variable_getter) as sc:
+      reuse=reuse, custom_getter=_layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.FullyConnected(
         units=num_outputs,
@@ -1749,62 +1719,93 @@ def separable_convolution2d(
   Returns:
     A `Tensor` representing the output of the operation.
   """
-  with variable_scope.variable_scope(
-      scope, 'SeparableConv2d', [inputs], reuse=reuse) as sc:
-    dtype = inputs.dtype.base_dtype
-    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
-    stride_h, stride_w = utils.two_element_tuple(stride)
-    num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
-    weights_collections = utils.get_variable_collections(
-        variables_collections, 'weights')
+  def _layer_variable_getter(*args, **kwargs):
+    rename = {'bias': 'biases',
+              'depthwise_kernel': 'depthwise_weights',
+              'pointwise_kernel': 'pointwise_weights'}
+    kwargs['rename'] = rename
+    return _model_variable_getter(*args, **kwargs)
 
-    depthwise_shape = [kernel_h, kernel_w,
-                       num_filters_in, depth_multiplier]
-    depthwise_weights = variables.model_variable(
-        'depthwise_weights',
-        shape=depthwise_shape,
-        dtype=dtype,
-        initializer=weights_initializer,
-        regularizer=weights_regularizer,
-        trainable=trainable,
-        collections=weights_collections)
-    strides = [1, stride_h, stride_w, 1]
+  with variable_scope.variable_scope(
+      scope, 'SeparableConv2d', [inputs], reuse=reuse,
+      custom_getter=_layer_variable_getter) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+
     if num_outputs is not None:
-      # Full separable convolution: Depthwise followed by pointwise convolution.
-      pointwise_shape = [1, 1, depth_multiplier * num_filters_in,
-                         num_outputs]
-      pointwise_weights = variables.model_variable(
-          'pointwise_weights',
-          shape=pointwise_shape,
+      # Apply separable conv using the SeparableConvolution2D layer.
+      layer = convolutional_layers.SeparableConvolution2D(
+          filters=num_outputs,
+          kernel_size=kernel_size,
+          strides=stride,
+          padding=padding,
+          data_format='channels_last',
+          activation=None,
+          depth_multiplier=depth_multiplier,
+          use_bias=not normalizer_fn and biases_initializer,
+          depthwise_initializer=weights_initializer,
+          pointwise_initializer=weights_initializer,
+          bias_initializer=biases_initializer,
+          depthwise_regularizer=weights_regularizer,
+          pointwise_regularizer=weights_regularizer,
+          bias_regularizer=biases_regularizer,
+          activity_regularizer=None,
+          trainable=trainable,
+          name=sc.name,
+          dtype=inputs.dtype.base_dtype,
+          _scope=sc,
+          _reuse_weights=reuse)
+      outputs = layer.apply(inputs)
+
+      # Add variables to collections.
+      _add_variable_to_collections(layer.depthwise_kernel,
+                                   variables_collections, 'weights')
+      _add_variable_to_collections(layer.pointwise_kernel,
+                                   variables_collections, 'weights')
+      if layer.bias:
+        _add_variable_to_collections(layer.bias,
+                                     variables_collections, 'biases')
+
+      if normalizer_fn is not None:
+        normalizer_params = normalizer_params or {}
+        outputs = normalizer_fn(outputs, **normalizer_params)
+    else:
+      # Actually apply depthwise conv instead of separable conv.
+      dtype = inputs.dtype.base_dtype
+      kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
+      stride_h, stride_w = utils.two_element_tuple(stride)
+      num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+      weights_collections = utils.get_variable_collections(
+          variables_collections, 'weights')
+
+      depthwise_shape = [kernel_h, kernel_w,
+                         num_filters_in, depth_multiplier]
+      depthwise_weights = variables.model_variable(
+          'depthwise_weights',
+          shape=depthwise_shape,
           dtype=dtype,
           initializer=weights_initializer,
           regularizer=weights_regularizer,
           trainable=trainable,
           collections=weights_collections)
-      outputs = nn.separable_conv2d(inputs,
-                                    depthwise_weights,
-                                    pointwise_weights,
-                                    strides,
-                                    padding)
-    else:
-      # Depthwise convolution only.
+      strides = [1, stride_h, stride_w, 1]
+
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding)
       num_outputs = depth_multiplier * num_filters_in
 
-    if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
-      outputs = normalizer_fn(outputs, **normalizer_params)
-    else:
-      if biases_initializer is not None:
-        biases_collections = utils.get_variable_collections(
-            variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_outputs,],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          collections=biases_collections)
-        outputs = nn.bias_add(outputs, biases)
+      if normalizer_fn is not None:
+        normalizer_params = normalizer_params or {}
+        outputs = normalizer_fn(outputs, **normalizer_params)
+      else:
+        if biases_initializer is not None:
+          biases_collections = utils.get_variable_collections(
+              variables_collections, 'biases')
+          biases = variables.model_variable('biases',
+                                            shape=[num_outputs,],
+                                            dtype=dtype,
+                                            initializer=biases_initializer,
+                                            regularizer=biases_regularizer,
+                                            collections=biases_collections)
+          outputs = nn.bias_add(outputs, biases)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
