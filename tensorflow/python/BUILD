@@ -2332,6 +2332,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "layers_pooling_test",
+    size = "small",
+    srcs = [
+        "layers/pooling_test.py",
+    ],
+    main = "layers/pooling_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "docs",
     srcs = [

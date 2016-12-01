@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
@@ -116,19 +117,14 @@ def avg_pool2d(inputs,
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
-    stride_h, stride_w = utils.two_element_tuple(stride)
-    if data_format == DATA_FORMAT_NHWC:
-      ksize = [1, kernel_h, kernel_w, 1]
-      strides = [1, stride_h, stride_w, 1]
-    else:
-      ksize = [1, 1, kernel_h, kernel_w]
-      strides = [1, 1, stride_h, stride_w]
-    outputs = nn.avg_pool(inputs,
-                          ksize=ksize,
-                          strides=strides,
-                          padding=padding,
-                          data_format=data_format)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.AveragePooling2D(pool_size=kernel_size,
+                                            strides=stride,
+                                            padding=padding,
+                                            data_format=df,
+                                            _scope=sc)
+    outputs = layer.apply(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -1487,19 +1483,14 @@ def max_pool2d(inputs,
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
-    stride_h, stride_w = utils.two_element_tuple(stride)
-    if data_format == DATA_FORMAT_NHWC:
-      ksize = [1, kernel_h, kernel_w, 1]
-      strides = [1, stride_h, stride_w, 1]
-    else:
-      ksize = [1, 1, kernel_h, kernel_w]
-      strides = [1, 1, stride_h, stride_w]
-    outputs = nn.max_pool(inputs,
-                          ksize=ksize,
-                          strides=strides,
-                          padding=padding,
-                          data_format=data_format)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.MaxPooling2D(pool_size=kernel_size,
+                                        strides=stride,
+                                        padding=padding,
+                                        data_format=df,
+                                        _scope=sc)
+    outputs = layer.apply(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
