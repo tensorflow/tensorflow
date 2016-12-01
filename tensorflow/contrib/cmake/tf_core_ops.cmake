@@ -67,6 +67,7 @@ file(GLOB_RECURSE tf_core_ops_srcs
     "${tensorflow_source_dir}/tensorflow/core/ops/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/user_ops/*.h"
     "${tensorflow_source_dir}/tensorflow/core/user_ops/*.cc"
+    "${tensorflow_source_dir}/tensorflow/models/embedding/word2vec_ops.cc"
 )
 
 file(GLOB_RECURSE tf_core_ops_exclude_srcs
