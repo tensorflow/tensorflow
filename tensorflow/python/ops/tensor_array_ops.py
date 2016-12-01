@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _maybe_set_device(handle_op, value_t):
@@ -262,20 +263,29 @@ class TensorArray(object):
           ta._elem_shape.append(val_shape)
       return ta
 
-  def pack(self, name=None):
-    """Return the values in the TensorArray as a packed `Tensor`.
+  def stack(self, name=None):
+    """Return the values in the TensorArray as a stacked `Tensor`.
 
     All of the values must have been written and their shapes must all match.
+    If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
 
     Args:
       name: A name for the operation (optional).
 
     Returns:
-      All the tensors in the TensorArray packed into one tensor.
+      All the tensors in the TensorArray stacked into one tensor.
     """
     with ops.colocate_with(self._handle):
-      with ops.name_scope(name, "TensorArrayPack", [self._handle]):
+      with ops.name_scope(name, "TensorArrayStack", [self._handle]):
         return self.gather(math_ops.range(0, self.size()), name=name)
+
+  @deprecated(
+      "2016-12-12",
+      "This op will be removed after the deprecation date. "
+      "Please switch to tf.stack.")
+  def pack(self, name=None):
+    return self.stack(name)
+  pack.__doc__ = stack.__doc__
 
   def gather(self, indices, name=None):
     """Return selected values in the TensorArray as a packed `Tensor`.
@@ -335,24 +345,34 @@ class TensorArray(object):
         value.set_shape([None] + self._elem_shape[0].dims[1:])
       return value
 
-  def unpack(self, value, name=None):
-    """Pack the values of a `Tensor` in the TensorArray.
+  def unstack(self, value, name=None):
+    """Unstack the values of a `Tensor` in the TensorArray.
 
+    If input value shapes have rank-`R`, then the output TensorArray will
+    contain elements whose shapes are rank-`(R-1)`.
     Args:
-      value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
+      value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
       name: A name for the operation (optional).
 
     Returns:
-      A new TensorArray object with flow that ensures the unpack occurs.
+      A new TensorArray object with flow that ensures the unstack occurs.
       Use this object all for subsequent operations.
 
     Raises:
       ValueError: if the shape inference fails.
     """
-    with ops.name_scope(name, "TensorArrayPack", [self._handle, value]):
+    with ops.name_scope(name, "TensorArrayUnstack", [self._handle, value]):
       num_elements = array_ops.shape(value)[0]
       return self.scatter(
           indices=math_ops.range(0, num_elements), value=value, name=name)
+
+  @deprecated(
+      "2016-12-12",
+      "This op will be removed after the deprecation date. "
+      "Please switch to tf.unstack.")
+  def unpack(self, value, name=None):
+    return self.unstack(value, name)
+  unpack.__doc__ = unstack.__doc__
 
   def scatter(self, indices, value, name=None):
     """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
