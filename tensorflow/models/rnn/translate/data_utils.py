@@ -106,7 +106,7 @@ def get_wmt_enfr_dev_set(directory):
 def basic_tokenizer(sentence):
   """Very basic tokenizer: split the sentence into a list of tokens."""
   words = []
-  for space_separated_fragment in sentence.strip().split():
+  for space_separated_fragment in sentence.split():
     words.extend(_WORD_SPLIT.split(space_separated_fragment))
   return [w for w in words if w]
 
