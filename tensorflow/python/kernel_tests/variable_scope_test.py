@@ -22,6 +22,7 @@ import numpy
 import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 
@@ -94,6 +95,21 @@ class VariableScopeTest(tf.test.TestCase):
 
       with self.assertRaises(TypeError):
         tf.get_variable("x", initializer={})
+
+  def testInitFromNonInitializer(self):
+    with self.test_session() as sess:
+      # Test various dtypes with zeros initializer as following:
+      types = [tf.int8, tf.uint8, tf.int16, tf.uint16, tf.int32, tf.int64, 
+              tf.bool]
+
+      # Use different varibale_name to distinguish various dtypes
+      for (i, dtype) in enumerate(types):
+        x = tf.get_variable(name='x%d' % i, shape=(3, 4), dtype=dtype)
+        y = tf.get_variable(name='y%d' % i, dtype=dtype, 
+            initializer=init_ops.zeros_initializer(shape=(3, 4), dtype=dtype))
+        
+        tf.global_variables_initializer().run()
+        self.assertAllEqual(x.eval(), y.eval())
 
   def testVarScopeCachingDevice(self):
     with self.test_session():
@@ -671,6 +687,27 @@ def axis0_into3_partitioner(shape=None, **unused_kwargs):
 
 
 class VariableScopeWithPartitioningTest(tf.test.TestCase):
+
+  def testInitFromNonInitializer(self):
+    with self.test_session() as sess:
+      # Test various dtypes with zeros initializer as following:
+      types = [tf.int8, tf.uint8, tf.int16, tf.uint16, tf.int32, tf.int64, 
+              tf.bool]
+
+      # Use different varibale_name to distinguish various dtypes
+      for (i, dtype) in enumerate(types):
+        x = tf.get_variable(name='x%d' % i, shape=(3, 4), dtype=dtype,
+            partitioner=axis0_into2_partitioner)
+        y = tf.get_variable(name='y%d' % i, dtype=dtype, 
+            partitioner=axis0_into2_partitioner,
+            initializer=init_ops.zeros_initializer(shape=(6, 4), dtype=dtype))
+
+        tf.global_variables_initializer().run()
+        # x and y would become var list after partition
+        val_x = sess.run(list(x))
+        val_y = sess.run(list(y))
+
+        self.assertAllEqual(val_x, val_y)
 
   def testResultNameMatchesRequested(self):
     with tf.variable_scope("scope0", partitioner=axis0_into2_partitioner):
