@@ -110,6 +110,7 @@ concatenated.
 @@depthwise_conv2d_native
 @@separable_conv2d
 @@atrous_conv2d
+@@atrous_conv2d_transpose
 @@conv2d_transpose
 @@conv1d
 @@conv3d
