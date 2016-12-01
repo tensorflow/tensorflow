@@ -384,6 +384,17 @@ add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
 add_python_module("tensorflow/contrib/util")
+add_python_module("tensorflow/models")
+add_python_module("tensorflow/models/embedding")
+add_python_module("tensorflow/models/image")
+add_python_module("tensorflow/models/image/alexnet")
+add_python_module("tensorflow/models/image/cifar10")
+add_python_module("tensorflow/models/image/imagenet")
+add_python_module("tensorflow/models/image/mnist")
+add_python_module("tensorflow/models/rnn")
+add_python_module("tensorflow/models/rnn/ptb")
+add_python_module("tensorflow/models/rnn/translate")
+
 
 # Additional directories with no Python sources.
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
@@ -487,6 +498,8 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_word2vec_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/models/embedding/gen_word2vec.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
