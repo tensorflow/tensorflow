@@ -46,3 +46,9 @@ from tensorflow.contrib.rnn.python.ops.lstm_ops import *
 from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 # pylint: enable=unused-import,wildcard-import,line-too-long
+
+# Provides the links to core rnn. Implementation will be moved in to this
+# package instead of links as tracked in b/33235120.
+from tensorflow.python.ops.rnn import bidirectional_rnn as static_bidirectional_rnn
+from tensorflow.python.ops.rnn import rnn as static_rnn
+from tensorflow.python.ops.rnn import state_saving_rnn as static_state_saving_rnn

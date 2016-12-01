@@ -45,6 +45,16 @@ cuda_py_tests(
     ],
 )
 
+cuda_py_tests(
+    name = "core_rnn_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/core_rnn_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    shard_count = 10,
+)
+
 tf_py_test(
     name = "fused_rnn_cell_test",
     size = "small",
