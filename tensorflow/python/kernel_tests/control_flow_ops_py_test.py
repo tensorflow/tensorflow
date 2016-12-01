@@ -62,6 +62,16 @@ def check_consumers(graph):
   return True
 
 
+def opt_cfg():
+  return tf.ConfigProto(
+      allow_soft_placement=True,
+      graph_options=tf.GraphOptions(
+          optimizer_options=tf.OptimizerOptions(
+              opt_level=tf.OptimizerOptions.L1,
+              do_function_inlining=True,
+              do_constant_folding=True)))
+
+
 def isum(s):
   i = tf.constant(0, name="i")
   c = lambda i, s: tf.less(i, 10)
@@ -432,7 +442,7 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testCondRef(self):
     with self.test_session():
-      x = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
+      x = gen_state_ops._variable(shape=[1], dtype=tf.float32,
           name="x", container="", shared_name="")
       true_fn = lambda: x
       false_fn = lambda: tf.constant([2.0])
@@ -441,8 +451,8 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
-      v = gen_state_ops._variable(shape=[1], dtype=tf.float32, 
-          name="v", container="", shared_name="")      
+      v = gen_state_ops._variable(shape=[1], dtype=tf.float32,
+          name="v", container="", shared_name="")
       inited = state_ops.is_variable_initialized(v)
       v_f, v_t = control_flow_ops.ref_switch(v, inited)
       # Both v_f and v_t are uninitialized references. However, an actual use
@@ -458,6 +468,30 @@ class ControlFlowTest(tf.test.TestCase):
         orig_v = tf.identity(v)
       merged_op = control_flow_ops.merge([assign_v, orig_v])
       self.assertAllEqual([1.0], sess.run(merged_op.output))
+
+  def testCondSwitchIdentity(self):
+    # Make sure the recv identity is not removed by optimization.
+    with tf.Session(config=opt_cfg()) as sess:
+      pred = tf.constant(True)
+      def fn1():
+        return tf.no_op()
+      def fn2():
+        return tf.Assert(False, ["Wrong branch!!!"])
+      r = tf.cond(pred, fn1, fn2)
+      sess.run(r)
+
+  def testCondRecvIdentity(self):
+    # Make sure the switch identity is not removed by optimization.
+    with tf.Session(config=opt_cfg()) as sess:
+      with tf.device("/gpu:0"):
+        pred = tf.constant(True)
+      def fn1():
+        return tf.no_op()
+      def fn2():
+        with tf.device("/cpu:0"):
+          return tf.Assert(False, ["Wrong branch!!!"])
+      r = tf.cond(pred, fn1, fn2)
+      sess.run(r)
 
   def testCondGrad_1(self):
     with self.test_session():
