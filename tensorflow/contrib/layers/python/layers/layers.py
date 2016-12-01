@@ -1344,7 +1344,7 @@ def fully_connected(inputs,
 
     # Add variables to collections.
     _add_variable_to_collections(layer.w, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     # Apply normalizer function / layer.

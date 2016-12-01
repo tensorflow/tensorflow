@@ -154,7 +154,7 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
         strides=self.strides,
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, self.rank + 2))
-    if self.bias:
+    if self.bias is not None:
       if self.rank != 2 and self.data_format == 'channels_first':
         # bias_add does not support channels_first for non-4D inputs.
         if self.rank == 1:
