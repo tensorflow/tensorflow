@@ -460,7 +460,7 @@ def sparse_softmax_cross_entropy(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Tensor` representing the loss value.
+    A scalar `Tensor` representing the mean loss value.
 
   Raises:
     ValueError: If the shapes of logits, labels, and weight are incompatible, or
