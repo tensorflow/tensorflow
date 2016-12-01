@@ -54,10 +54,15 @@ Device* DeviceSet::FindDeviceByName(const string& name) const {
 int DeviceSet::DeviceTypeOrder(const DeviceType& d) {
   if (StringPiece(d.type()) == DEVICE_CPU) {
     return 3;
-  } else if (StringPiece(d.type()) == DEVICE_GPU) {
+  } else if (StringPiece(d.type()) == DEVICE_GPU ||
+             StringPiece(d.type()) == DEVICE_SYCL) {
     return 2;
   } else {
-    return 1;
+    // Non-CPU/GPU devices are never prioritized over CPU and GPU, and
+    // must be explicitly selected.  This is to prevent surprising
+    // placements that cause a lot of cross-device communication
+    // between the host CPU device and other devices.
+    return 10;
   }
 }
 
