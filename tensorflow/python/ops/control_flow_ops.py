@@ -456,7 +456,7 @@ def _make_tensor_array(ta, t_or_flow):
   new_ta = tensor_array_ops.TensorArray(
       dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
       infer_shape=ta._infer_shape)
-  new_ta._elem_shape = ta._elem_shape
+  new_ta._element_shape = ta._element_shape  # pylint: disable=protected-access
   return new_ta
 
 

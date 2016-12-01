@@ -807,7 +807,7 @@ class TensorArrayTest(tf.test.TestCase):
       num_steps = 100
       acc = tf.TensorArray(dtype=tf.float32, size=num_steps,
                            clear_after_read=False,
-                           elem_shape=tensor_shape.scalar())
+                           element_shape=tensor_shape.scalar())
       i = tf.constant(0, name="i")
       x = tf.constant(2.0, name="x")
 

@@ -774,6 +774,7 @@ handle: The handle to a stack.
 REGISTER_OP("TensorArrayV2")
     .Input("size: int32")
     .Attr("dtype: type")
+    .Attr("element_shape: shape = { unknown_rank: true }")
     .Attr("dynamic_size: bool = false")
     .Attr("clear_after_read: bool = true")
     .Attr("tensor_array_name: string = ''")
@@ -792,6 +793,9 @@ via Read or Pack.
 handle: The handle to the TensorArray.
 size: The size of the array.
 dtype: The type of the elements on the tensor_array.
+element_shape: The expected shape of an element, if known. Used to
+  validate the shapes of TensorArray elements. If this shape is not
+  fully specified, gathering zero-size TensorArrays is an error.
 dynamic_size: A boolean that determines whether writes to the TensorArray
   are allowed to grow the size.  By default, this is not allowed.
 clear_after_read: If true (default), Tensors in the TensorArray are cleared
