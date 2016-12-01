@@ -70,8 +70,8 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
-
 # pylint: enable=wildcard-import
+from tensorflow.python.util import deprecation
 
 
 def _convert_to_sparse_tensor(sp_input):
@@ -115,7 +115,11 @@ def _convert_to_sparse_tensors(sp_inputs):
 
 
 # pylint: disable=protected-access
-def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
+def sparse_concat(axis,
+                  sp_inputs,
+                  name=None,
+                  expand_nonconcat_dim=False,
+                  concat_dim=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
@@ -143,7 +147,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   values across all inputs. This is due to the need for an internal sort in
   order to concatenate efficiently across an arbitrary dimension.
 
-  For example, if `concat_dim = 1` and the inputs are
+  For example, if `axis = 1` and the inputs are
 
       sp_inputs[0]: shape = [2, 3]
       [0, 2]: "a"
@@ -168,7 +172,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
       [    a] concat [  d e  ] = [    a   d e  ]
       [b c  ]        [       ]   [b c          ]
 
-  Another example, if 'concat_dim = 1' and the inputs are
+  Another example, if 'axis = 1' and the inputs are
 
       sp_inputs[0]: shape = [3, 3]
       [0, 2]: "a"
@@ -197,12 +201,13 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
 
 
   Args:
-    concat_dim: Dimension to concatenate along. Must be in range [-rank, rank),
+    axis: Dimension to concatenate along. Must be in range [-rank, rank),
       where rank is the number of dimensions in each input `SparseTensor`.
     sp_inputs: List of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.
+    concat_dim: The old (deprecated) name for axis.
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -210,6 +215,8 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "concat_dim",
+                                                concat_dim)
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
@@ -224,13 +231,13 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
         array_ops.concat(0, [array_ops.reshape(shape, [1, -1])
                              for shape in shapes]), 0)
     shapes = [array_ops.concat(0, [
-        max_shape[:concat_dim], shape[-1:] if concat_dim == -1 else
-        shape[concat_dim:concat_dim + 1], [] if concat_dim == -1 else
-        max_shape[concat_dim + 1:]
+        max_shape[:axis], shape[-1:] if axis == -1 else
+        shape[axis:axis + 1], [] if axis == -1 else
+        max_shape[axis + 1:]
     ]) for shape in shapes]
 
   output_ind, output_val, output_shape = (gen_sparse_ops._sparse_concat(
-      inds, vals, shapes, concat_dim, name=name))
+      inds, vals, shapes, axis, name=name))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
@@ -429,12 +436,12 @@ def sparse_reshape(sp_input, shape, name=None):
         reshaped_shape)
 
 
-def sparse_split(split_dim, num_split, sp_input, name=None):
-  """Split a `SparseTensor` into `num_split` tensors along `split_dim`.
+def sparse_split(axis, num_split, sp_input, name=None, split_dim=None):
+  """Split a `SparseTensor` into `num_split` tensors along `axis`.
 
-  If the `sp_input.shape[split_dim]` is not an integer multiple of `num_split`
-  each slice starting from 0:`shape[split_dim] % num_split` gets extra one
-  dimension. For example, if `split_dim = 1` and `num_split = 2` and the
+  If the `sp_input.shape[axis]` is not an integer multiple of `num_split`
+  each slice starting from 0:`shape[axis] % num_split` gets extra one
+  dimension. For example, if `axis = 1` and `num_split = 2` and the
   input is:
 
       input_tensor = shape = [2, 7]
@@ -452,21 +459,25 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
       [      ]
 
   Args:
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
     num_split: A Python integer. The number of ways to split.
     sp_input: The `SparseTensor` to split.
     name: A name for the operation (optional).
+    split_dim: Deprecated old name for axis.
 
   Returns:
     `num_split` `SparseTensor` objects resulting from splitting `value`.
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If the deprecated `split_dim` and `axis` are both non None.
   """
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
+                                                split_dim)
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   output_inds, output_vals, output_shapes = (gen_sparse_ops._sparse_split(
-      split_dim,
+      axis,
       sp_input.indices,
       sp_input.values,
       sp_input.shape,

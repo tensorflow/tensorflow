@@ -116,6 +116,7 @@ from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.deprecation import deprecated
 # pylint: enable=wildcard-import
 
@@ -1235,11 +1236,11 @@ def sparse_mask(a, mask_indices, name=None):
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 
 
-def split(split_dim, num_split, value, name="split"):
+def split(axis, num_split, value, name="split", split_dim=None):
   """Splits a tensor into `num_split` tensors along one dimension.
 
-  Splits `value` along dimension `split_dim` into `num_split` smaller tensors.
-  Requires that `num_split` evenly divide `value.shape[split_dim]`.
+  Splits `value` along dimension `axis` into `num_split` smaller tensors.
+  Requires that `num_split` evenly divide `value.shape[axis]`.
 
   For example:
 
@@ -1265,19 +1266,20 @@ def split(split_dim, num_split, value, name="split"):
   ```
 
   Args:
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
       Must be in the range `[0, rank(value))`.
     num_split: A Python integer. The number of ways to split.
     value: The `Tensor` to split.
     name: A name for the operation (optional).
+    split_dim: The old (deprecated) name for axis.
 
   Returns:
     `num_split` `Tensor` objects resulting from splitting `value`.
   """
-  return gen_array_ops._split(split_dim=split_dim,
-                              num_split=num_split,
-                              value=value,
-                              name=name)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
+                                                split_dim)
+  return gen_array_ops._split(
+      split_dim=axis, num_split=num_split, value=value, name=name)
 
 
 def split_v(value, size_splits, split_dim=0, num=None, name="split_v"):
@@ -2426,3 +2428,30 @@ def where(condition, x=None, y=None, name=None):
     return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
+
+
+# pylint: disable=redefined-builtin
+def reverse_sequence(input,
+                     seq_lengths,
+                     seq_axis=None,
+                     batch_axis=None,
+                     name=None,
+                     seq_dim=None,
+                     batch_dim=None):
+  seq_axis = deprecation.deprecated_argument_lookup("seq_axis", seq_axis,
+                                                    "seq_dim", seq_dim)
+  batch_axis = deprecation.deprecated_argument_lookup("batch_axis", batch_axis,
+                                                      "batch_dim", batch_dim)
+  return gen_array_ops.reverse_sequence(
+      input=input,
+      seq_lengths=seq_lengths,
+      seq_dim=seq_axis,
+      batch_dim=batch_axis,
+      name=name)
+# pylint: enable=redefined-builtin
+
+
+reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
+    deprecation.rewrite_argument_docstring(
+        gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
+    "seq_dim", "seq_axis")

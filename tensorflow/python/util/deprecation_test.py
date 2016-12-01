@@ -722,5 +722,37 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
     self.assertEqual(2, mock_warning.call_count)
 
 
+class DeprecationArgumentsTest(tf.test.TestCase):
+
+  def testDeprecatedArgumentLookup(self):
+    good_value = 3
+    self.assertEqual(deprecation.deprecated_argument_lookup(
+        "val_new", good_value, "val_old", None), good_value)
+    self.assertEqual(deprecation.deprecated_argument_lookup(
+        "val_new", None, "val_old", good_value), good_value)
+    with self.assertRaisesRegexp(ValueError,
+                                 "Cannot specify both 'val_old' and 'val_new'"):
+      self.assertEqual(deprecation.deprecated_argument_lookup(
+          "val_new", good_value, "val_old", good_value), good_value)
+
+  def testRewriteArgumentDocstring(self):
+    docs = """Add `a` and `b`
+
+    Args:
+      a: first arg
+      b: second arg
+    """
+    new_docs = deprecation.rewrite_argument_docstring(
+        deprecation.rewrite_argument_docstring(docs, "a", "left"),
+        "b", "right")
+    new_docs_ref = """Add `left` and `right`
+
+    Args:
+      left: first arg
+      right: second arg
+    """
+    self.assertEqual(new_docs, new_docs_ref)
+
+
 if __name__ == "__main__":
   tf.test.main()
