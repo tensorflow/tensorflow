@@ -268,7 +268,7 @@ class WALSModel(object):
     if self._row_weights is not None:
       assert self._col_weights is not None
       all_vars.extend(self._row_weights + self._col_weights)
-    return tf.initialize_variables(all_vars)
+    return tf.variables_initializer(all_vars)
 
   @classmethod
   def _shard_sizes(cls, dims, num_shards):
