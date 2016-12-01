@@ -587,6 +587,7 @@ def _py_wrap_cc_impl(ctx):
   for dep in ctx.attr.deps:
     inputs += dep.cc.transitive_headers
   inputs += ctx.files._swiglib
+  inputs += ctx.files.toolchain_deps
   swig_include_dirs = set(_get_repository_roots(ctx, inputs))
   swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
   args = ["-c++",
@@ -620,6 +621,9 @@ _py_wrap_cc = rule(
         "deps": attr.label_list(
             allow_files = True,
             providers = ["cc"],
+        ),
+        "toolchain_deps": attr.label_list(
+            allow_files = True,
         ),
         "module_name": attr.string(mandatory = True),
         "py_module_name": attr.string(mandatory = True),
@@ -811,6 +815,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
               srcs=srcs,
               swig_includes=swig_includes,
               deps=deps + extra_deps,
+              toolchain_deps=["//tools/defaults:crosstool"],
               module_name=module_name,
               py_module_name=name)
   extra_linkopts = select({
