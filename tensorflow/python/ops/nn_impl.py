@@ -469,9 +469,9 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
         counts *= x_shape[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
-      x_dims = array_ops.gather(array_ops.shape(x), axes)
-      counts = math_ops.cast(
-          math_ops.reduce_prod(x_dims), x.dtype, name="count")
+      x_dims = array_ops.gather(
+          math_ops.cast(array_ops.shape(x), x.dtype), axes)
+      counts = math_ops.reduce_prod(x_dims, name="count")
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
       m_ss = math_ops.sub(x, shift)
