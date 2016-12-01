@@ -1013,6 +1013,12 @@ def atrous_conv2d_transpose(value,
                             name=None):
   with ops.name_scope(name, "atrous_conv2d_transpose",
                       [value, filter]) as name:
+    if padding == "SAME":
+      return atrous_conv2d(value,
+                    array_ops.transpose(filter,[1,0,2,3]),
+                    rate,
+                    padding="SAME",
+                    name=None)
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
