@@ -1051,6 +1051,9 @@
   * [`LSTMBlockWrapper`](../../api_docs/python/contrib.rnn.md#LSTMBlockWrapper)
   * [`stack_bidirectional_dynamic_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_dynamic_rnn)
   * [`stack_bidirectional_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_rnn)
+  * [`static_bidirectional_rnn`](../../api_docs/python/contrib.rnn.md#static_bidirectional_rnn)
+  * [`static_rnn`](../../api_docs/python/contrib.rnn.md#static_rnn)
+  * [`static_state_saving_rnn`](../../api_docs/python/contrib.rnn.md#static_state_saving_rnn)
   * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
   * [`TimeReversedFusedRNN`](../../api_docs/python/contrib.rnn.md#TimeReversedFusedRNN)
 
