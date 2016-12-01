@@ -489,6 +489,7 @@
 
 * **[Neural Network](../../api_docs/python/nn.md)**:
   * [`atrous_conv2d`](../../api_docs/python/nn.md#atrous_conv2d)
+  * [`atrous_conv2d_transpose`](../../api_docs/python/nn.md#atrous_conv2d_transpose)
   * [`avg_pool`](../../api_docs/python/nn.md#avg_pool)
   * [`avg_pool3d`](../../api_docs/python/nn.md#avg_pool3d)
   * [`batch_norm_with_global_normalization`](../../api_docs/python/nn.md#batch_norm_with_global_normalization)
