@@ -32,6 +32,34 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 
 
+class MockCheckpointSaverListener(
+    basic_session_run_hooks.CheckpointSaverListener):
+
+  def __init__(self):
+    self.begin_count = 0
+    self.before_save_count = 0
+    self.after_save_count = 0
+    self.end_count = 0
+
+  def begin(self):
+    self.begin_count += 1
+
+  def before_save(self, session, global_step):
+    self.before_save_count += 1
+
+  def after_save(self, session, global_step):
+    self.after_save_count += 1
+
+  def end(self, session, global_step):
+    self.end_count += 1
+
+  def get_counts(self):
+    return {'begin': self.begin_count,
+            'before_save': self.before_save_count,
+            'after_save': self.after_save_count,
+            'end': self.end_count}
+
+
 class SecondOrStepTimerTest(tf.test.TestCase):
 
   def test_raise_in_both_secs_and_steps(self):
@@ -247,6 +275,26 @@ class CheckpointSaverHookTest(tf.test.TestCase):
         self.assertEqual(1, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
 
+  def test_save_secs_calls_listeners_at_begin_and_end(self):
+    with self.graph.as_default():
+      listener = MockCheckpointSaverListener()
+      hook = tf.train.CheckpointSaverHook(
+          self.model_dir, save_secs=2, scaffold=self.scaffold,
+          listeners=[listener])
+      hook.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)  # hook runs here
+        mon_sess.run(self.train_op)  # hook won't run here, so it does at end
+        hook.end(sess)  # hook runs here
+      self.assertEqual({'begin': 1,
+                        'before_save': 2,
+                        'after_save': 2,
+                        'end': 1},
+                       listener.get_counts())
+
   def test_save_secs_saves_periodically(self):
     with self.graph.as_default():
       hook = tf.train.CheckpointSaverHook(
@@ -276,6 +324,33 @@ class CheckpointSaverHookTest(tf.test.TestCase):
         # saved
         self.assertEqual(6, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
+
+  def test_save_secs_calls_listeners_periodically(self):
+    with self.graph.as_default():
+      listener = MockCheckpointSaverListener()
+      hook = tf.train.CheckpointSaverHook(
+          self.model_dir, save_secs=2, scaffold=self.scaffold,
+          listeners=[listener])
+      hook.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)  # hook runs here
+        mon_sess.run(self.train_op)
+        time.sleep(2.5)
+        mon_sess.run(self.train_op)  # hook runs here
+        mon_sess.run(self.train_op)
+        mon_sess.run(self.train_op)
+        time.sleep(2.5)
+        mon_sess.run(self.train_op)  # hook runs here
+        mon_sess.run(self.train_op)  # hook won't run here, so it does at end
+        hook.end(sess)  # hook runs here
+      self.assertEqual({'begin': 1,
+                        'before_save': 4,
+                        'after_save': 4,
+                        'end': 1},
+                       listener.get_counts())
 
   def test_save_steps_saves_in_first_step(self):
     with self.graph.as_default():
