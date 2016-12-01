@@ -1007,31 +1007,18 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
 def atrous_conv2d_transpose(value,
                             filter,
-                            output_shape,
                             rate,
                             strides,
                             padding="SAME",
                             name=None):
   with ops.name_scope(name, "atrous_conv2d_transpose",
-                      [value, filter, output_shape]) as name:
+                      [value, filter]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[3], filter.get_shape(
                        )[3]))
-
-    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
-      raise ValueError("output_shape must have shape (4,), got {}"
-                       .format(output_shape_.get_shape()))
-
-    if isinstance(output_shape, (list, np.ndarray)):
-      # output_shape's shape should be == [4] if reached this point.
-      if not filter.get_shape()[2].is_compatible_with(output_shape[3]):
-        raise ValueError(
-            "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[3], filter.get_shape()[2]))
 
     # Handle filters whose shape is unknown during graph creation.
     if filter.get_shape().is_fully_defined():
@@ -1093,12 +1080,12 @@ def atrous_conv2d_transpose(value,
       batch_temp = value_shape[0]
       height_temp = value_shape[1]
       width_temp = value_shape[2]
-      depth_temp = output_shape[3]
+      depth_temp = filter_shape[2]
     elif padding == "VALID":
       batch_temp = value_shape[0]
       height_temp = value_shape[1] + filter_shape[0] - 1
       width_temp = value_shape[2] + filter_shape[1] - 1
-      depth_temp = output_shape[3]
+      depth_temp = filter_shape[2]
     output_shape_temp = [batch_temp, height_temp, width_temp, depth_temp]
     output_shape_temp_ = ops.convert_to_tensor(output_shape_temp, name="output_shape_temp")
 
