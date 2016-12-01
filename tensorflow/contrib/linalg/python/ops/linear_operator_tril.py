@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""`LinearOperator` acting like a diagonal matrix."""
+"""`LinearOperator` acting like a lower triangular matrix."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,30 +24,32 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
-__all__ = ["LinearOperatorDiag",]
+__all__ = ["LinearOperatorTriL",]
 
 
-class LinearOperatorDiag(linear_operator.LinearOperator):
-  """`LinearOperator` acting like a [batch] square diagonal matrix.
+class LinearOperatorTriL(linear_operator.LinearOperator):
+  """`LinearOperator` acting like a [batch] square lower triangular matrix.
 
   This operator acts like a [batch] matrix `A` with shape
   `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
   batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
-  an `N x N` matrix.  This matrix `A` is not materialized, but for
-  purposes of broadcasting this shape will be relevant.
+  an `N x N` matrix.
 
-  `LinearOperatorDiag` is initialized with a (batch) vector.
+  `LinearOperatorTriL` is initialized with a `Tensor` having dimensions
+  `[B1,...,Bb, N, N]`. The upper triangle of the last two dimensions is ignored.
 
   ```python
-  # Create a 2 x 2 diagonal linear operator.
-  diag = [1., -1.]
-  operator = LinearOperatorDiag(diag)
+  # Create a 2 x 2 lower-triangular linear operator.
+  tril = [[1., 2.], [3., 4.]]
+  operator = LinearOperatorTriL(tril)
 
+  # The upper triangle is ignored.
   operator.to_dense()
-  ==> [[1.,  0.]
-       [0., -1.]]
+  ==> [[1., 0.]
+       [3., 4.]]
 
   operator.shape
   ==> [2, 2]
@@ -60,8 +62,8 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  diag = tf.random_normal(shape=[2, 3, 4])
-  operator = LinearOperatorDiag(diag)
+  tril = tf.random_normal(shape=[2, 3, 4, 4])
+  operator = LinearOperatorTriL(tril)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
   # since the batch dimensions, [2, 1], are brodcast to
@@ -78,17 +80,16 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
-  x.shape =   [C1,...,Cc] + [N, R],
-  and [C1,...,Cc] broadcasts with [B1,...,Bb] to [D1,...,Dd]
+  x.shape =        [B1,...,Bb] + [N, R],  with R >= 0.
   ```
 
   ### Performance
 
-  Suppose `operator` is a `LinearOperatorDiag` of shape `[N, N]`,
+  Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` involves `N*R` multiplications.
-  * `operator.solve(x)` involves `N` divisions and `N*R` multiplications.
+  * `operator.apply(x)` involves `N^2 * R` multiplications.
+  * `operator.solve(x)` involves `N * R` size `N` back-substitutions.
   * `operator.determinant()` involves a size `N` `reduce_prod`.
 
   If instead `operator` and `x` have shape `[B1,...,Bb, N, N]` and
@@ -109,20 +110,24 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   """
 
   def __init__(self,
-               diag,
+               tril,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
-               name="LinearOperatorDiag"):
-    """Initialize a `LinearOperatorDiag`.
+               name="LinearOperatorTriL"):
+    """Initialize a `LinearOperatorTriL`.
 
     Args:
-      diag:  Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
-        The diagonal of the operator.  Allowed dtypes: `float32`, `float64`,
-          `complex64`, `complex128`.
+      tril:  Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
+        The lower triangular part of `tril` defines this operator.  The strictly
+        upper triangle is ignored.  Allowed dtypes: `float32`, `float64`.
       is_non_singular:  Expect that this operator is non-singular.
+        This operator is non-singular if and only if its diagonal elements are
+        all non-zero.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
-        transpose.  If `diag.dtype` is real, this is auto-set to `True`.
+        transpose.  This operator is self-adjoint only if it is diagonal with
+        real-valued diagonal entries.  In this case it is advised to use
+        `LinearOperatorDiag`.
       is_positive_definite:  Expect that this operator is positive definite,
         meaning the real part of all eigenvalues is positive.  We do not require
         the operator to be self-adjoint to be positive-definite.  See:
@@ -132,44 +137,35 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
     Raises:
       TypeError:  If `diag.dtype` is not an allowed type.
-      ValueError:  If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
     """
 
-    allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+    # TODO(langmore) Add complex types once matrix_triangular_solve works for
+    # them.
+    allowed_dtypes = [dtypes.float32, dtypes.float64]
 
-    with ops.name_scope(name, values=[diag]):
-      self._diag = ops.convert_to_tensor(diag, name="diag")
-      dtype = self._diag.dtype
+    with ops.name_scope(name, values=[tril]):
+      self._tril = array_ops.matrix_band_part(tril, -1, 0)
+      self._diag = array_ops.matrix_diag_part(self._tril)
+
+      dtype = self._tril.dtype
       if dtype not in allowed_dtypes:
         raise TypeError(
             "Argument diag must have dtype in %s.  Found: %s"
             % (allowed_dtypes, dtype))
 
-      # Check and auto-set hints.
-      if not dtype.is_complex:
-        if is_self_adjoint is False:
-          raise ValueError("A real diagonal operator is always self adjoint.")
-        else:
-          is_self_adjoint = True
-
-      super(LinearOperatorDiag, self).__init__(
-          dtype=dtype,
-          graph_parents=[self._diag],
+      super(LinearOperatorTriL, self).__init__(
+          dtype=self._tril.dtype,
+          graph_parents=[self._tril],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           name=name)
 
   def _shape(self):
-    # If d_shape = [5, 3], we return [5, 3, 3].
-    d_shape = self._diag.get_shape()
-    return d_shape.concatenate(d_shape[-1:])
+    return self._tril.get_shape()
 
   def _shape_dynamic(self):
-    d_shape = array_ops.shape(self._diag)
-    k = d_shape[-1]
-    return array_ops.concat(0, (d_shape, [k]))
+    return array_ops.shape(self._tril)
 
   def _assert_non_singular(self):
     return linear_operator_util.assert_no_entries_with_modulus_zero(
@@ -190,17 +186,8 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         math_ops.real(self._diag),
         message=message)
 
-  def _assert_self_adjoint(self):
-    return linear_operator_util.assert_zero_imag_part(
-        self._diag,
-        message=(
-            "This diagonal operator contained non-zero imaginary values.  "
-            " Thus it was not self-adjoint."))
-
   def _apply(self, x, adjoint=False):
-    diag_term = math_ops.conj(self._diag) if adjoint else self._diag
-    diag_mat = array_ops.expand_dims(diag_term, -1)
-    return diag_mat * x
+    return math_ops.matmul(self._tril, x, adjoint_a=adjoint)
 
   def _determinant(self):
     return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
@@ -210,14 +197,11 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
   def _solve(self, rhs, adjoint=False):
-    diag_term = math_ops.conj(self._diag) if adjoint else self._diag
-    inv_diag_mat = array_ops.expand_dims(1. / diag_term, -1)
-    return rhs * inv_diag_mat
+    return linalg_ops.matrix_triangular_solve(
+        self._tril, rhs, lower=True, adjoint=adjoint)
 
   def _to_dense(self):
-    return array_ops.matrix_diag(self._diag)
+    return self._tril
 
   def _add_to_tensor(self, x):
-    x_diag = array_ops.matrix_diag_part(x)
-    new_diag = self._diag + x_diag
-    return array_ops.matrix_set_diag(x, new_diag)
+    return self._tril + x
