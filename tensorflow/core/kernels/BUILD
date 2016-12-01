@@ -2304,7 +2304,10 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
-    ] + if_not_windows([":depthwise_conv_op"]),
+    ] + if_not_windows([
+        ":depthwise_conv_grad_op",
+        ":depthwise_conv_op",
+    ]),
 )
 
 NN_DEPS = [
