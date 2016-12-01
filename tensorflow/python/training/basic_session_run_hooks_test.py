@@ -334,8 +334,8 @@ class CheckpointSaverHookTest(tf.test.TestCase):
 
   def test_summary_writer_defs(self):
     testing.FakeSummaryWriter.install()
-    tf.train.SummaryWriterCache.clear()
-    summary_writer = tf.train.SummaryWriterCache.get(self.model_dir)
+    tf.summary.FileWriterCache.clear()
+    summary_writer = tf.summary.FileWriterCache.get(self.model_dir)
 
     with self.graph.as_default():
       hook = tf.train.CheckpointSaverHook(
