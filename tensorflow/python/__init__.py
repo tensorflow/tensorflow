@@ -82,6 +82,7 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
+from tensorflow.python import layers
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca
@@ -227,6 +228,7 @@ _allowed_symbols.extend([
     'test',
     'train',
     'user_ops',
+    'layers',
 ])
 
 # Variables framework.versions:
@@ -243,7 +245,7 @@ remove_undocumented(__name__, _allowed_symbols,
                      compat, constant_op, control_flow_ops, functional_ops,
                      histogram_ops, io_ops, math_ops, nn, resource_loader,
                      resources, script_ops, session_ops, sparse_ops, state_ops,
-                     string_ops, summary, tensor_array_ops, train])
+                     string_ops, summary, tensor_array_ops, train, layers])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

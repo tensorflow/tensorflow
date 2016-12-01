@@ -78,7 +78,10 @@ can have speed penalty, specially in distributed settings.
     `batch_size`. The normalization is over all but the last dimension if
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
-*  <b>`decay`</b>: decay for the moving average.
+*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+    `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
+    good training performance but poor validation and/or test performance.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -380,7 +383,7 @@ prior to the initial matrix multiply by `weights`.
 
 ##### Returns:
 
-   the tensor variable representing the result of the series of operations.
+   The tensor variable representing the result of the series of operations.
 
 ##### Raises:
 
@@ -1263,12 +1266,25 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 - - -
 
-### `tf.contrib.layers.hashed_embedding_column(column_name, size, dimension, combiner=None, initializer=None)` {#hashed_embedding_column}
+### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner=None, initializer=None)` {#scattered_embedding_column}
 
 Creates an embedding column of a sparse feature using parameter hashing.
 
 The i-th embedding component of a value v is found by retrieving an
 embedding weight whose index is a fingerprint of the pair (v,i).
+
+An embedding column with sparse_column_with_hash_bucket such as
+  embedding_column(
+      sparse_column_with_hash_bucket(column_name, bucket_size),
+      dimension)
+
+could be replaced by
+  scattered_embedding_column(
+      column_name, size=bucket_size * dimension, dimension=dimension,
+      hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+
+for the same number of embedding parameters and hopefully reduced impact of
+collisions with a cost of slowing down training.
 
 ##### Args:
 
@@ -1276,6 +1292,8 @@ embedding weight whose index is a fingerprint of the pair (v,i).
 *  <b>`column_name`</b>: A string defining sparse column name.
 *  <b>`size`</b>: An integer specifying the number of parameters in the embedding layer.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
+    function to combine the crosses fingerprints on SparseFeatureCrossOp.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
     in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
     of this can be thought as example level normalizations on the column:
@@ -1289,7 +1307,7 @@ embedding weight whose index is a fingerprint of the pair (v,i).
 
 ##### Returns:
 
-  A _HashedEmbeddingColumn.
+  A _ScatteredEmbeddingColumn.
 
 ##### Raises:
 

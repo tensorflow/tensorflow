@@ -410,9 +410,11 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
           one will be created accordingly.
       scaffold: `Scaffold` to get summary_op if it's not provided.
-      summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `tf.summary.scalar` or
-          `tf.summary.merge_all`.
+      summary_op: `Tensor` of type `string` containing the serialized `Summary`
+          protocol buffer or a list of `Tensor`. They are most likely an output
+          by TF summary methods like `tf.summary.scalar` or
+          `tf.summary.merge_all`. It can be passed in as one tensor; if more
+          than one, they must be passed in as a list.
 
     Raises:
       ValueError: Exactly one of scaffold or summary_op should be set.
@@ -443,10 +445,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
         self._timer.should_trigger_for_step(self._next_step))
     requests = {"global_step": self._global_step_tensor}
     if self._request_summary:
-      if self._summary_op is not None:
-        requests["summary"] = self._summary_op
-      elif self._scaffold.summary_op is not None:
-        requests["summary"] = self._scaffold.summary_op
+      if self._get_summary_op() is not None:
+        requests["summary"] = self._get_summary_op()
 
     return SessionRunArgs(requests)
 
@@ -464,14 +464,33 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if self._request_summary:
       self._timer.update_last_triggered_step(global_step)
       if "summary" in run_values.results:
-        self._summary_writer.add_summary(run_values.results["summary"],
-                                         global_step)
+        for summary in run_values.results["summary"]:
+          self._summary_writer.add_summary(summary, global_step)
 
     self._next_step = global_step + 1
 
   def end(self, session=None):
     if self._summary_writer:
       self._summary_writer.flush()
+
+  def _get_summary_op(self):
+    """Fetches the summary op either from self._summary_op or self._scaffold.
+
+    Returns:
+      Returns a list of summary `Tensor`.
+    """
+    summary_op = None
+    if self._summary_op is not None:
+      summary_op = self._summary_op
+    elif self._scaffold.summary_op is not None:
+      summary_op = self._scaffold.summary_op
+
+    if summary_op is None:
+      return None
+
+    if not isinstance(summary_op, list):
+      return [summary_op]
+    return summary_op
 
 
 class GlobalStepWaiterHook(session_run_hook.SessionRunHook):

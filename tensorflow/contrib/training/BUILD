@@ -151,7 +151,10 @@ py_test(
     srcs = ["python/training/evaluation_test.py"],
     shard_count = 3,
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",  # Disabling until b/33000128 and b/33040312 are fixed.
+    ],
     deps = [
         ":training_py",
         "//tensorflow:tensorflow_py",

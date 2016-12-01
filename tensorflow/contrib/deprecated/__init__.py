@@ -12,24 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Seq2seq layer operations for use in neural networks.
+"""Deprecated endpoints that we aren't yet ready to remove entirely.
 """
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import array_ops
-
-
-__all__ = ["rnn_decoder",
-           "rnn_decoder_attention"]
-
-
-def rnn_decoder(*args, **kwargs):
-  pass
-
-
-def rnn_decoder_attention(*args, **kwargs):
-  pass
+# pylint: disable=unused-import,line-too-long
+from tensorflow.contrib.deprecated.summaries import audio_summary
+from tensorflow.contrib.deprecated.summaries import histogram_summary
+from tensorflow.contrib.deprecated.summaries import image_summary
+from tensorflow.contrib.deprecated.summaries import merge_all_summaries
+from tensorflow.contrib.deprecated.summaries import merge_summary
+from tensorflow.contrib.deprecated.summaries import scalar_summary
+# pylint: enable=unused-import,line-too-long

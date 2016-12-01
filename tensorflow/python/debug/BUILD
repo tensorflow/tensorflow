@@ -81,6 +81,17 @@ py_library(
 )
 
 py_library(
+    name = "cli_shared",
+    srcs = ["cli/cli_shared.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debugger_cli_common",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
     name = "analyzer_cli",
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
@@ -109,6 +120,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":analyzer_cli",
+        ":cli_shared",
         ":curses_ui",
         ":debug_data",
         ":debugger_cli_common",
@@ -294,6 +306,19 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_format",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "cli_shared_test",
+    size = "small",
+    srcs = [
+        "cli/cli_shared_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cli_shared",
         "//tensorflow/python:framework_test_lib",
     ],
 )

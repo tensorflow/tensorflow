@@ -108,21 +108,7 @@ multiply with arbitrary tensors.
 
 ### `tf.div(x, y, name=None)` {#div}
 
-Returns x / y element-wise.
 
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -323,9 +309,12 @@ with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
 
 ### `tf.mod(x, y, name=None)` {#mod}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -1955,6 +1944,45 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
     `M`-by-`K` matrices that solve the equations
     `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
     squares sense.
+
+
+- - -
+
+### `tf.qr(input, full_matrices=None, name=None)` {#qr}
+
+Computes the QR decompositions of one or more matrices.
+
+Computes the QR decomposition of each inner matrix in `tensor` such that
+`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
+
+```prettyprint
+# a is a tensor.
+# q is a tensor of orthonormal matrices.
+# r is a tensor of upper triangular matrices.
+q, r = qr(a)
+q_full, r_full = qr(a, full_matrices=True)
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
+    A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+    form matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`.
+*  <b>`full_matrices`</b>: An optional `bool`. Defaults to `False`.
+    If true, compute full-sized `q` and `r`. If false
+    (the default), compute only the leading `P` columns of `q`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (q, r).
+
+*  <b>`q`</b>: A `Tensor`. Has the same type as `input`. Orthonormal basis for range of `a`. If `full_matrices` is `False` then
+    shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
+    `[..., M, M]`.
+*  <b>`r`</b>: A `Tensor`. Has the same type as `input`. Triangular factor. If `full_matrices` is `False` then shape is
+    `[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`.
 
 
 - - -

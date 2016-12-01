@@ -699,6 +699,10 @@ TEST(CommonShapeFnsTest, Pool3DShapeTest) {
   // 2x3x4 stride, 1x1x1 filter.
   set_op({1, 2, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
   INFER_OK(op, "[1,24,24,24,1]", "[d0_0,12,8,6,d0_4]");
+
+  // Test partially known dimensions
+  set_op({1, 1, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_OK(op, "[1,?,24,24,1]", "[d0_0,?,8,6,d0_4]");
 }
 
 TEST(CommonShapeFnsTest, UnknownShapeTest) {

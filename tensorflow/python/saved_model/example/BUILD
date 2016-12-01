@@ -40,3 +40,29 @@ py_binary(
         "//tensorflow/python/saved_model:utils",
     ],
 )
+
+# TODO(b/32248363): change saved_model_half_plus_two.py to accept output
+# location so that we can avoid writing to /tmp/ and copying the files from
+# /tmp/.
+genrule(
+    name = "versioned_saved_model_half_plus_two_data",
+    outs = [
+        "saved_model_half_plus_two/00000123/saved_model.pb",
+        "saved_model_half_plus_two/00000123/assets/foo.txt",
+        "saved_model_half_plus_two/00000123/variables/variables.data-00000-of-00001",
+        "saved_model_half_plus_two/00000123/variables/variables.index",
+        "saved_model_half_plus_two_pbtxt/00000123/saved_model.pbtxt",
+        "saved_model_half_plus_two_pbtxt/00000123/assets/foo.txt",
+        "saved_model_half_plus_two_pbtxt/00000123/variables/variables.data-00000-of-00001",
+        "saved_model_half_plus_two_pbtxt/00000123/variables/variables.index",
+    ],
+    cmd =
+        "rm -rf /tmp/saved_model; " +
+        "./$(locations :saved_model_half_plus_two); " +
+        "cp -r /tmp/saved_model/half_plus_two/* $(@D)/saved_model_half_plus_two/00000123; " +
+        "cp -r /tmp/saved_model/half_plus_two_pbtxt/* $(@D)/saved_model_half_plus_two_pbtxt/00000123",
+    tools = [
+        ":saved_model_half_plus_two",
+    ],
+    visibility = ["//visibility:public"],
+)

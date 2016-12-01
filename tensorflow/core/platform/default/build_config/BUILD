@@ -9,7 +9,6 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 
 cc_library(
@@ -127,7 +126,7 @@ filegroup(
 cc_library(
     name = "cuda",
     data = [
-        "@local_config_cuda//cuda:{}".format(cuda_library_path("cudart")),
+        "@local_config_cuda//cuda:cudart",
     ],
     linkopts = select({
         "@local_config_cuda//cuda:darwin": [

@@ -785,18 +785,23 @@ with g.colocate_with(a):
 `b` and `c` will always be colocated with `a`, no matter where `a`
 is eventually placed.
 
+**NOTE** Using a colocation scope resets any existing device constraints.
+
+If `op` is `None` then `ignore_existing` must be `True` and the new
+scope resets all colocation and device constraints.
+
 ##### Args:
 
 
-*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`op`</b>: The op to colocate all created ops with, or `None`.
 *  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
     the context, rather than applying all colocation properties
-    on the stack.
+    on the stack.  If `op` is `None`, this value must be `True`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if op is None.
+*  <b>`ValueError`</b>: if op is None but ignore_existing is False.
 
 ##### Yields:
 
@@ -1433,21 +1438,7 @@ dynamic condition of the `Tensor`.
 
 #### `tf.Tensor.__div__(x, y)` {#Tensor.__div__}
 
-Returns x / y element-wise.
 
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -1701,9 +1692,12 @@ Returns the truth value of (x < y) element-wise.
 
 #### `tf.Tensor.__mod__(x, y)` {#Tensor.__mod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -1853,21 +1847,7 @@ Returns the truth value of x AND y element-wise.
 
 #### `tf.Tensor.__rdiv__(y, x)` {#Tensor.__rdiv__}
 
-Returns x / y element-wise.
 
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -1916,9 +1896,12 @@ as well.
 
 #### `tf.Tensor.__rmod__(y, x)` {#Tensor.__rmod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -2859,6 +2842,17 @@ The following standard keys are defined:
 * `WEIGHTS`: weights inside neural network layers
 * `BIASES`: biases inside neural network layers
 * `ACTIVATIONS`: activations of neural network layers
+- - -
+
+#### `tf.GraphKeys.VARIABLES` {#GraphKeys.VARIABLES}
+
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+VARIABLES collection name is deprecated, please use GLOBAL_VARIABLES instead
+
+
 
 
 ## Defining new operations

@@ -177,6 +177,11 @@ Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
 template <typename T>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
 
+// Looks up or creates a resource.
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              T** value, std::function<Status(T**)> creator);
+
 // Destroys a resource pointed by a given resource handle.
 template <typename T>
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
@@ -411,6 +416,14 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       T** value) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Lookup(p.container(), p.name(), value);
+}
+
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              T** value, std::function<Status(T**)> creator) {
+  TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  return ctx->resource_manager()->LookupOrCreate(p.container(), p.name(), value,
+                                                 creator);
 }
 
 template <typename T>

@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import tempfile
 import tensorflow as tf
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
@@ -121,37 +122,6 @@ class DNNLinearCombinedClassifierBenchmark(tf.test.Benchmark):
 
     metrics = classifier.fit(input_fn=_input_fn, steps=_ITERS).evaluate(
         input_fn=_input_fn, steps=100)
-    self._assertSingleClassMetrics(metrics)
-
-  def benchmarkPartitionedVariables(self):
-    def _input_fn():
-      features = {
-          'language': tf.SparseTensor(values=('en', 'fr', 'zh'),
-                                      indices=((0, 0), (0, 1), (2, 0)),
-                                      shape=(3, 2))
-      }
-      return features, tf.constant(((1), (0), (0)))
-
-    # The given hash_bucket_size results in variables larger than the
-    # default min_slice_size attribute, so the variables are partitioned.
-    sparse_feature = tf.contrib.layers.sparse_column_with_hash_bucket(
-        'language', hash_bucket_size=2e7)
-    embedding_feature = tf.contrib.layers.embedding_column(
-        sparse_feature, dimension=1)
-
-    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
-        model_dir=tempfile.mkdtemp(),
-        linear_feature_columns=(sparse_feature,),
-        dnn_feature_columns=(embedding_feature,),
-        dnn_hidden_units=(3, 3),
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({})))
-
-    metrics = classifier.fit(input_fn=_input_fn, steps=_ITERS).evaluate(
-        input_fn=_input_fn, steps=1)
     self._assertSingleClassMetrics(metrics)
 
   def benchmarkCustomOptimizer(self):

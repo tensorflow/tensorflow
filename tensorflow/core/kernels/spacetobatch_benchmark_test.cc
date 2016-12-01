@@ -54,6 +54,8 @@ static Graph* ConstructSpaceToBatchGraph(
   return g;
 }
 
+// The BM_Expand macro is needed for this to build with VC++.
+#define BM_Expand(x) x
 #define BM_SpaceToBatchDev(OP, DEVICE, DTYPE, B, H, W, D, BS, P00, P01, P10,                            \
                            P11)                                                                         \
   static void                                                                                           \
@@ -69,10 +71,10 @@ static Graph* ConstructSpaceToBatchGraph(
   BENCHMARK(                                                                                            \
       BM_##OP##_##DEVICE##_##DTYPE##_##B##_##H##_##W##_##D##_bs##BS##_pad##P00##_##P01##_##P10##_##P11);
 #define BM_SpaceToBatch(OP, ...)                      \
-  BM_SpaceToBatchDev(OP, cpu, DT_FLOAT, __VA_ARGS__); \
-  BM_SpaceToBatchDev(OP, gpu, DT_FLOAT, __VA_ARGS__); \
-  BM_SpaceToBatchDev(OP, cpu, DT_HALF, __VA_ARGS__);  \
-  BM_SpaceToBatchDev(OP, gpu, DT_HALF, __VA_ARGS__);
+  BM_Expand(BM_SpaceToBatchDev(OP, cpu, DT_FLOAT, __VA_ARGS__)); \
+  BM_Expand(BM_SpaceToBatchDev(OP, gpu, DT_FLOAT, __VA_ARGS__)); \
+  BM_Expand(BM_SpaceToBatchDev(OP, cpu, DT_HALF, __VA_ARGS__));  \
+  BM_Expand(BM_SpaceToBatchDev(OP, gpu, DT_HALF, __VA_ARGS__));
 
 BM_SpaceToBatch(SpaceToBatch, 64, 100, 100, 64, 2, 0, 0, 0, 0);
 BM_SpaceToBatch(SpaceToBatch, 64, 100, 100, 1, 2, 0, 0, 0, 0);

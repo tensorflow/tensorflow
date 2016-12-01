@@ -374,6 +374,19 @@ Status DivGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Div", DivGrad);
 
+Status RealDivGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"gx"}, "RealDiv", {"dz", "y"}},
+      {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dz"}},
+      {{"nx_y2"}, "RealDiv", {"nx", "y2"}},
+      {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("RealDiv", RealDivGrad);
+
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   std::vector<FDH::Node> nodes = {
@@ -677,5 +690,7 @@ REGISTER_OP_NO_GRADIENT("Range");
 REGISTER_OP_NO_GRADIENT("LinSpace");
 
 REGISTER_OP_NO_GRADIENT("Floor");
+REGISTER_OP_NO_GRADIENT("FloorDiv");
+REGISTER_OP_NO_GRADIENT("TruncateDiv");
 
 }  // end namespace tensorflow

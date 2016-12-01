@@ -89,7 +89,7 @@ Feature columns provide a mechanism to map data to a model.
 @@create_feature_spec_for_parsing
 @@crossed_column
 @@embedding_column
-@@hashed_embedding_column
+@@scattered_embedding_column
 @@input_from_feature_columns
 @@joint_weighted_sum_from_feature_columns
 @@make_place_holder_tensors_for_base_features

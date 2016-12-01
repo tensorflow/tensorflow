@@ -557,17 +557,6 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
   DimensionHandle output_depth_dim = c->Dim(input_shape, 4);
 
-  // At the moment we need to know the values of several fields.
-  if (!c->ValueKnown(in_planes_dim) || !c->ValueKnown(in_rows_dim) ||
-      !c->ValueKnown(in_cols_dim)) {
-    ShapeHandle output_shape =
-        c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
-                      InferenceContext::kUnknownDim,
-                      InferenceContext::kUnknownDim, output_depth_dim});
-    c->set_output(0, output_shape);
-    return Status::OK();
-  }
-
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 

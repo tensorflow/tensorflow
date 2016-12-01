@@ -28,11 +28,7 @@ if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
     exit 1
 fi
 
-if [ "$#" -gt 1 ]; then
-    JOBS_COUNT=$1
-else
-    JOBS_COUNT=4
-fi
+JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
 GENDIR=`pwd`/gen/protobuf_ios/
 LIBDIR=${GENDIR}lib
@@ -93,7 +89,7 @@ ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
@@ -120,7 +116,7 @@ ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
@@ -143,7 +139,7 @@ LDFLAGS="-arch armv7 \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
@@ -166,7 +162,7 @@ LDFLAGS="-arch armv7s \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
@@ -188,7 +184,7 @@ LDFLAGS="-arch arm64 \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 lipo \

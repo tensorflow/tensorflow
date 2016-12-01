@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_LOGISTIC_LOSS_H_
 #define TENSORFLOW_KERNELS_LOGISTIC_LOSS_H_
 
-#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/core/kernels/loss.h"

@@ -87,6 +87,42 @@ export interface DataProvider {
       void;
 }
 
+export function retrieveTensorAsBytes(
+    dp: DataProvider, embedding: EmbeddingInfo, run: string, tensorName: string,
+    tensorsPath: string, callback: (ds: DataSet) => void) {
+  // Get the tensor.
+  logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
+  let xhr = new XMLHttpRequest();
+  xhr.open('GET', tensorsPath);
+  xhr.responseType = 'arraybuffer';
+  xhr.onprogress = (ev) => {
+    if (ev.lengthComputable) {
+      let percent = (ev.loaded * 100 / ev.total).toFixed(1);
+      logging.setModalMessage(
+          'Fetching tensor values: ' + percent + '%', TENSORS_MSG_ID);
+    }
+  };
+  xhr.onload = () => {
+    if (xhr.status !== 200) {
+      let msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
+      logging.setErrorMessage(msg);
+      return;
+    }
+    let data = new Float32Array(xhr.response);
+    let dim = embedding.tensorShape[1];
+    let N = data.length / dim;
+    if (embedding.tensorShape[0] > N) {
+      logging.setWarningMessage(
+          `Showing the first ${N.toLocaleString()}` +
+          ` of ${embedding.tensorShape[0].toLocaleString()} data points`);
+    }
+    parseTensorsFromFloat32Array(data, dim).then(dataPoints => {
+      callback(new DataSet(dataPoints));
+    });
+  };
+  xhr.send();
+}
+
 export function parseRawTensors(
     content: string, callback: (ds: DataSet) => void) {
   parseTensors(content).then(data => {

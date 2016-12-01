@@ -233,7 +233,10 @@ export class DataPanel extends DataPanelPolymer {
       this.dom.select('#checkpoint-file')
           .html(wordBreakablePath)
           .attr('title', this.projectorConfig.modelCheckpointPath);
-      let defaultTensor = names[0];
+      // If in demo mode, let the order decide which tensor to load by default.
+      let defaultTensor = this.projector.servingMode === 'demo' ?
+          this.projectorConfig.embeddings[0].tensorName :
+          names[0];
       if (this.selectedTensor === defaultTensor) {
         // Explicitly call the observer. Polymer won't call it if the previous
         // string matches the current string.

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for contrib.seq2seq.python.seq2seq.layers_ops."""
+"""Tests for contrib.seq2seq.python.seq2seq.loss_ops."""
 # pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
@@ -23,12 +23,9 @@ from __future__ import print_function
 import tensorflow as tf
 
 
-class LayersTest(tf.test.TestCase):
+class DecoderFnTest(tf.test.TestCase):
 
-  def testRNNDecoder(self):
-    pass
-
-  def testRNNDecoderAttention(self):
+  def testDecoderFn(self):
     pass
 
 

@@ -27,11 +27,10 @@ from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
-
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
@@ -223,14 +222,16 @@ def _fused_batch_norm(
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
     elif original_rank not in [2, 4]:
-      raise ValueError('Inputs %s has unsupported rank. \
-          Expected 2 or 4 but got %d' % (inputs.name, original_rank))
+      raise ValueError('Inputs %s has unsupported rank.'
+                       ' Expected 2 or 4 but got %d' % (
+                           inputs.name, original_rank))
     if original_rank == 2:
       channels = inputs.get_shape()[-1].value
       if channels is None:
         raise ValueError('`C` dimension must be known but is None')
-      new_shape = [-1, channels, 1, 1] if data_format == DATA_FORMAT_NCHW else \
-          [-1, 1, 1, channels]
+      new_shape = [-1, 1, 1, channels]
+      if data_format == DATA_FORMAT_NCHW:
+        new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
     dtype = inputs.dtype.base_dtype
@@ -319,7 +320,7 @@ def _fused_batch_norm(
     need_updates = is_training_value is None or is_training_value
     if need_updates:
       if updates_collections is None:
-        _no_updates = lambda: outputs
+        no_updates = lambda: outputs
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -329,7 +330,7 @@ def _fused_batch_norm(
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
-        outputs = utils.smart_cond(is_training, _force_updates, _no_updates)
+        outputs = utils.smart_cond(is_training, _force_updates, no_updates)
       else:
         moving_vars_fn = lambda: (moving_mean, moving_variance)
         def _delay_updates():
@@ -690,7 +691,7 @@ def bias_add(inputs,
       raise ValueError('Dims of shape must be known but is None')
     elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
       raise ValueError('Data format NCHW only supports 4D Tensor')
-    axis = 1 if data_format==DATA_FORMAT_NCHW else -1
+    axis = 1 if data_format == DATA_FORMAT_NCHW else -1
     num_features = inputs_shape[axis].value
     if num_features is None:
       raise ValueError('`C` dimension must be known but is None')
@@ -1087,7 +1088,6 @@ def convolution2d_transpose(
       output_shape = [batch_size, num_outputs, out_height, out_width]
       strides = [1, 1, stride_h, stride_w]
 
-
     output_shape = array_ops.pack(output_shape)
     outputs = nn.conv2d_transpose(inputs, weights, output_shape,
                                   strides,
@@ -1097,8 +1097,10 @@ def convolution2d_transpose(
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = num_outputs
-    out_shape[h_axis] = get_deconv_dim(out_shape[h_axis], stride_h, kernel_h, padding)
-    out_shape[w_axis] = get_deconv_dim(out_shape[w_axis], stride_w, kernel_w, padding)
+    out_shape[h_axis] = get_deconv_dim(
+        out_shape[h_axis], stride_h, kernel_h, padding)
+    out_shape[w_axis] = get_deconv_dim(
+        out_shape[w_axis], stride_w, kernel_w, padding)
     outputs.set_shape(out_shape)
 
     if normalizer_fn is not None:
@@ -1113,6 +1115,7 @@ def convolution2d_transpose(
                                           dtype=dtype,
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
+                                          trainable=trainable,
                                           collections=biases_collections)
         outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
@@ -1314,16 +1317,57 @@ def fully_connected(inputs,
     scope: Optional scope for variable_scope.
 
   Returns:
-     the tensor variable representing the result of the series of operations.
+     The tensor variable representing the result of the series of operations.
 
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
   if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
+
+  # Currently, the layers in this module do not create variables via
+  # `tf.get_variable`, rather they use their own variable management system
+  # which wraps `tf.get_variable` (the `model_variable()` interface from Slim).
+  # This interface is globally-configured via an argscope. This global
+  # configuration mechanism is used for instance by Slim-deploy to globally
+  # configure the target device of the variables of a model.
+  #
+  # We have the following the constraints:
+  #   - Argscopes are not currently moving into core, thus core layers cannot
+  #     rely on the Slim variable wrapper, and should instead
+  #     use `tf.get_variable`.
+  #   - Contrib layers require to use the argscope-enabled Slim variable wrapper
+  #     rather than raw TF variables.
+  #   - We want to be able to reuse at least the logic across core layers
+  #     and contrib layers.
+  #
+  # We use the following strategy:
+  #   - We instantiate variables in the contrib layer via the Slim interface.
+  #   - We instantiate a core layer and set its variables to be the Slim ones.
+  #   - We call the core layer.
+  #
+  # This enables us to reuse the `call` method across both implementations.
+
   with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
                                      reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
+
+    # Instantiate the FullyConnected layer.
+    layer = core_layers.FullyConnected(
+        num_outputs,
+        activation=None,
+        use_bias=not normalizer_fn and biases_initializer,
+        w_initializer=weights_initializer,
+        bias_initializer=biases_initializer,
+        w_regularizer=weights_regularizer,
+        bias_regularizer=biases_regularizer,
+        activity_regularizer=None,
+        trainable=trainable,
+        name=sc.name,
+        dtype=inputs.dtype.base_dtype,
+        _scope=sc,
+        _reuse_weights=reuse)
+
     dtype = inputs.dtype.base_dtype
     inputs_shape = inputs.get_shape()
     num_input_units = utils.last_dimension(inputs_shape, min_rank=2)
@@ -1341,35 +1385,33 @@ def fully_connected(inputs,
                                        regularizer=weights_regularizer,
                                        collections=weights_collections,
                                        trainable=trainable)
-    if len(static_shape) > 2:
-      out_shape = array_ops.unpack(array_ops.shape(inputs))
-      out_shape[-1] = num_outputs
-      # Reshape inputs
-      inputs = array_ops.reshape(inputs, [-1, num_input_units])
-    outputs = standard_ops.matmul(inputs, weights)
+    layer.w = weights
+
+    if layer.use_bias:
+      biases_collections = utils.get_variable_collections(
+          variables_collections, 'biases')
+      biases = variables.model_variable('biases',
+                                        shape=[num_outputs,],
+                                        dtype=dtype,
+                                        initializer=biases_initializer,
+                                        regularizer=biases_regularizer,
+                                        collections=biases_collections,
+                                        trainable=trainable)
+      layer.bias = biases
+
+    outputs = layer.call(inputs)
+
+    # Apply normalizer function / layer.
     if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
+      if not normalizer_params:
+        normalizer_params = {}
       outputs = normalizer_fn(outputs, **normalizer_params)
-    else:
-      if biases_initializer is not None:
-        biases_collections = utils.get_variable_collections(
-            variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_outputs,],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          collections=biases_collections,
-                                          trainable=trainable)
-        outputs = nn.bias_add(outputs, biases)
+
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    if len(static_shape) > 2:
-      # Reshape back outputs
-      outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
-      outputs.set_shape(static_shape)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -2057,3 +2099,4 @@ conv2d = convolution2d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d
+
